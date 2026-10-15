@@ -1,0 +1,463 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "copy-trading-sync-notice-fill-differences";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Sync Notice & Fill Diffs (Funded vs Demo)";
+const META_DESCRIPTION =
+  "Tradovate fill differences between funded and demo accounts are normal simulation timing, see when tick gaps are fine and when to investigate.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { de: "Tradovate-Sync-Hinweis und Fill-Unterschiede (Funded/Demo)", es: "Tradovate: aviso de sincronización y diferencias de fill", fr: "Tradovate : avis de synchronisation et écarts d'exécution", it: "Tradovate: avviso di sincronizzazione e differenze di fill" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Sync-Hinweis und Fill-Unterschiede (Funded vs. Demo)", es: "Aviso de sincronización de Tradovate y diferencias de ejecución (cuenta financiada vs. demo)", fr: "Avis de synchronisation Tradovate et écarts d'exécution (compte financé vs démo)", it: "Avviso di sincronizzazione Tradovate e differenze di esecuzione (conto finanziato vs demo)" },
+  dek: { en: "One account closes on the stop a heartbeat before the other, entries land a tick apart, or a sync notice flashes for a second. Here's why, and when a gap actually deserves a support ticket.", de: "Ein Konto schließt beim Stop einen Herzschlag vor dem anderen, Einstiege landen einen Tick auseinander, oder ein Sync-Hinweis blinkt für eine Sekunde auf. Hier erfahren Sie, warum das passiert und wann eine Abweichung tatsächlich ein Support-Ticket verdient.", es: "Una cuenta se cierra en el stop una fracción de segundo antes que la otra, las entradas caen con un tick de diferencia o aparece brevemente un aviso de sincronización. Le explicamos por qué ocurre esto y cuándo una diferencia realmente merece un ticket de soporte.", fr: "Un compte se ferme sur le stop une fraction de seconde avant l'autre, les entrées atterrissent avec un tick d'écart, ou un avis de synchronisation clignote pendant une seconde. Voici pourquoi, et quand un écart mérite réellement un ticket d'assistance.", it: "Un conto si chiude sullo stop una frazione di secondo prima dell'altro, gli ingressi arrivano con un tick di differenza, oppure un avviso di sincronizzazione lampeggia per un secondo. Ecco perché succede e quando uno scarto merita davvero un ticket di supporto." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Run the same trade into a funded and a demo Tradovate account long enough and you'll hit it: one account closes on the stop a heartbeat before the other, the entry prices land a tick apart, or a &ldquo;sync notice&rdquo; flashes because the two positions don't match for a second. It's the thing traders panic about most when they're running more than one account, and almost every time nothing is actually broken. The fill differences you see between a funded and a demo Tradovate account come from independent, per-account simulation queues, not a faulty copier. Below is what's really happening, when a small gap is expected, and the rare cases where a desync genuinely deserves a support ticket." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Sync Notices & Fill Differences",
+      items: [
+        "<strong class='text-white'>A 1&ndash;2 tick or millisecond gap between accounts</strong>, normal simulation timing, no action needed.",
+        "<strong class='text-white'>A stop triggering &ldquo;seconds apart&rdquo; on two accounts</strong>, expected; each account is matched independently.",
+        "<strong class='text-white'>A sync notice that clears on its own within a second or two</strong>, normal; the position states re-align once both fills land.",
+        "<strong class='text-white'>One account closed while the other stays open briefly</strong>, normal during fast moves; just confirm both flatten shortly after.",
+        "<strong class='text-white'>A large price discrepancy (many ticks or points), a missing order, or a desync that never clears</strong>, investigate; grab screenshots and contact support.",
+        "<strong class='text-white'>Every account on a stable, low-latency connection</strong>, the single biggest lever you control to keep the gaps tiny.",
+      ],
+    },
+    { type: "heading", text: "What the “Sync Notice” and Fill Differences Actually Mean" },
+    { type: "paragraph", html: "A sync notice is simply a heads-up that, for a brief moment, the position or order state on one account doesn't match the other account(s) in your copy group. You'll see it most often around entries and exits, the instant one account has filled and the other is still a few milliseconds behind. Once both fills settle, the states re-align and the notice clears." },
+    { type: "paragraph", html: "Fill differences are the concrete version of the same thing: the entry or exit price on Account A sits a tick or two off Account B, or a stop-loss executes at a slightly different moment on each account. It happens even though your copier sent both orders at nearly the same time." },
+    { type: "paragraph", html: "The core reason is that almost every funded prop-firm account connected through Tradovate, and every demo account, runs inside a simulated matching environment that mimics live market conditions. Tradovate keeps evaluation and funded trades inside its own simulated environment, and that simulation processes each account independently. Two orders submitted in the same millisecond still land in separate queues and get matched separately. That's realistic market behavior reproduced per account, not a platform error and not a copier malfunction." },
+    { type: "heading", text: "Top Causes of Tradovate Fill Differences (Funded vs Demo)" },
+    { type: "heading", text: "1. Independent simulation queues per account" },
+    { type: "paragraph", html: "This is the root cause behind nearly every sync notice. Even when your copier fires both orders at once, Tradovate's simulation gives each account its own queue position. Fill times can differ by milliseconds or a tick, so one account fills fractionally earlier than the other. On a stop, that means one account can close while the other stays open for a brief moment before it catches up." },
+    { type: "heading", text: "2. The millisecond dispatch gap in copy trading" },
+    { type: "paragraph", html: "A copier detects the master fill, then dispatches the follower order. That detect-then-dispatch cycle is measured in milliseconds, but in a fast market, a few milliseconds is enough for price to move a tick between the leader's fill and the follower's fill. This is baked into any trade copier across any set of accounts: identical orders can fill several pips earlier or later on a second account because ticks rarely arrive at the exact same instant." },
+    { type: "heading", text: "3. Market volatility and thin liquidity" },
+    { type: "paragraph", html: "The faster the market and the thinner the book, the wider the normal gap gets. During high-volatility windows, a news release, the cash open, a fast reversal, a stop can slip a tick or two on each account, and the two accounts can slip by different amounts. That's expected, and it grows with volatility; it isn't evidence of a fault. Exact slippage varies by instrument, session, and firm, so check your firm's current rules and fill policy." },
+    { type: "heading", text: "4. Demo vs funded fill models are not identical" },
+    { type: "paragraph", html: "A pure demo account uses virtual money with simulated fills and no real capital at risk, so its fills can be slightly more favorable than reality. A funded prop account is also simulated, but it's tuned to more closely mimic live conditions under the firm's risk rules. Because the two models are calibrated differently, the same trade can fill a shade better on the demo than on the funded account, one more reason small, consistent differences show up between the two." },
+    { type: "heading", text: "5. Latency and connection quality" },
+    { type: "paragraph", html: "If one account routes over a slower or less stable connection than the others, its dispatch lands later and its fills drift further from the group. This is the one cause you directly control. Run every account from the same stable, low-latency environment and you keep the gap as small as physically possible." },
+    { type: "heading", text: "How to Tell “Normal” From a Real Problem: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Measure the actual gap on a single event", html: "Open the Orders/Fills report on each account and compare the fill timestamps and prices for the same trade. If you're looking at a fill-time gap in the millisecond-to-second range and a price gap of roughly a tick or two, you're seeing normal simulation timing. Stop here, nothing is wrong." },
+        { title: "Confirm the accounts re-sync", html: "Watch the positions after the event. A healthy sync notice clears within a second or two once both fills land, and both accounts end up flat (or both in the position) shortly after. If the notice appears, disappears, and the accounts match again, the copier is doing exactly what it should." },
+        { title: "Escalate only large, missing, or persistent gaps", html: "Investigate a large price discrepancy (many ticks or full points apart), an order that never fires on one account or goes missing, or a persistent desync that never re-aligns. Capture screenshots of both accounts' Orders/Fills reports with timestamps, note the instrument and time, and contact support. Have your connection and account details ready so the issue can be traced." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["What you see", "What it means", "What to do"],
+      rows: [
+        ["Sync notice that clears in ~1&ndash;2 seconds", "Position states briefly differed while both fills settled", "Nothing, it re-syncs automatically"],
+        ["Entry/exit price a tick or two apart", "Independent per-account queue plus the millisecond dispatch gap", "Nothing, expected simulation timing"],
+        ["Stop closes one account seconds before the other", "Each account matched independently in the simulation", "Confirm both flatten shortly after; otherwise no action"],
+        ["Demo fills slightly better than funded", "Demo and funded use differently calibrated fill models", "Expected; compare gross-to-gross, not tick-to-tick"],
+        ["Gaps widen during news/fast markets", "Higher volatility means wider normal slippage per account", "Size down around news; still normal"],
+        ["One account consistently lags the group", "That account's connection or latency is worse", "Move all accounts to one stable, low-latency setup"],
+        ["Large multi-tick or multi-point discrepancy", "Not normal timing", "Screenshot both fills, contact support"],
+        ["Order missing on one account", "Possible dropped order, not normal", "Reconcile positions, capture evidence, contact support"],
+        ["Positions never re-align (persistent desync)", "Not normal", "Flatten manually if needed, then report with screenshots"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "You can't delete simulation timing, but you can keep the gaps as small as possible and remove the guesswork about whether a difference is &ldquo;normal.&rdquo; PickMyTrade routes TradingView alerts straight to every linked Tradovate account, so the whole group fires from one source of truth:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Single-Source Alert Routing</strong>, one TradingView signal fans out to all accounts, so there's no manual re-entry and no leader-detection lag stacking up.",
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, blocks orders that would breach caps before they're sent, so a &ldquo;difference&rdquo; is never a rejected order in disguise.",
+        "<strong class='text-white'>Entitlement &amp; Risk Filters</strong>, respects prop-firm limits and data-agreement state on each account, cutting the false alarms that look like desyncs.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, spaces order flow so nothing bounces off Tradovate's request limits during bursts.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors the same instruction across every account and surfaces a clear sync notice only when the states genuinely differ.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Lassen Sie denselben Trade lange genug parallel auf einem Funded- und einem Demo-Tradovate-Konto laufen, und Sie werden es erleben: Ein Konto schließt beim Stop einen Herzschlag vor dem anderen, die Einstiegspreise liegen einen Tick auseinander, oder ein &ldquo;Sync-Hinweis&rdquo; blinkt kurz auf, weil die beiden Positionen für eine Sekunde nicht übereinstimmen. Das ist der Moment, in dem Trader am meisten in Panik geraten, wenn sie mehr als ein Konto betreiben, und fast immer ist tatsächlich nichts kaputt. Die Fill-Unterschiede, die Sie zwischen einem Funded- und einem Demo-Tradovate-Konto sehen, entstehen durch unabhängige, kontospezifische Simulationswarteschlangen, nicht durch einen fehlerhaften Copier. Im Folgenden erfahren Sie, was wirklich passiert, wann eine kleine Abweichung zu erwarten ist und in welchen seltenen Fällen ein Desync tatsächlich ein Support-Ticket verdient." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste für Sync-Hinweise und Fill-Unterschiede",
+      items: [
+        "<strong class='text-white'>Eine Abweichung von 1&ndash;2 Ticks oder Millisekunden zwischen Konten</strong>, normales Simulationstiming, keine Aktion erforderlich.",
+        "<strong class='text-white'>Ein Stop, der auf zwei Konten &ldquo;Sekunden auseinander&rdquo; auslöst</strong>, zu erwarten; jedes Konto wird unabhängig gematcht.",
+        "<strong class='text-white'>Ein Sync-Hinweis, der sich innerhalb von ein bis zwei Sekunden von selbst auflöst</strong>, normal; die Positionsstatus gleichen sich an, sobald beide Fills eingetroffen sind.",
+        "<strong class='text-white'>Ein Konto geschlossen, während das andere kurz offen bleibt</strong>, normal bei schnellen Marktbewegungen; prüfen Sie nur, ob beide kurz danach glattgestellt sind.",
+        "<strong class='text-white'>Eine große Preisabweichung (viele Ticks oder Punkte), eine fehlende Order oder ein Desync, der sich nicht auflöst</strong>, untersuchen; Screenshots erstellen und den Support kontaktieren.",
+        "<strong class='text-white'>Jedes Konto auf einer stabilen Verbindung mit niedriger Latenz</strong>, der größte Hebel, den Sie selbst kontrollieren, um die Abweichungen minimal zu halten.",
+      ],
+    },
+    { type: "heading", text: "Was der “Sync-Hinweis” und Fill-Unterschiede wirklich bedeuten" },
+    { type: "paragraph", html: "Ein Sync-Hinweis ist einfach ein Signal, dass der Positions- oder Orderstatus auf einem Konto für einen kurzen Moment nicht mit dem anderen Konto (oder den anderen Konten) in Ihrer Copy-Gruppe übereinstimmt. Am häufigsten sehen Sie ihn rund um Ein- und Ausstiege, in dem Moment, in dem ein Konto bereits gefüllt hat und das andere noch ein paar Millisekunden hinterherhinkt. Sobald beide Fills abgeschlossen sind, gleichen sich die Status an, und der Hinweis verschwindet." },
+    { type: "paragraph", html: "Fill-Unterschiede sind die konkrete Version desselben Phänomens: Der Einstiegs- oder Ausstiegspreis auf Konto A liegt einen oder zwei Ticks neben Konto B, oder ein Stop-Loss wird auf jedem Konto zu einem leicht unterschiedlichen Zeitpunkt ausgeführt. Das passiert, obwohl Ihr Copier beide Orders nahezu gleichzeitig gesendet hat." },
+    { type: "paragraph", html: "Der Hauptgrund dafür ist, dass fast jedes über Tradovate verbundene Funded-Prop-Firm-Konto und jedes Demo-Konto in einer simulierten Matching-Umgebung läuft, die reale Marktbedingungen nachbildet. Tradovate führt Evaluierungs- und Funded-Trades in seiner eigenen simulierten Umgebung aus, und diese Simulation verarbeitet jedes Konto unabhängig. Zwei Orders, die in derselben Millisekunde eingereicht werden, landen dennoch in getrennten Warteschlangen und werden separat gematcht. Das ist realistisches Marktverhalten, das pro Konto reproduziert wird, kein Plattformfehler und keine Fehlfunktion des Copiers." },
+    { type: "heading", text: "Die häufigsten Ursachen für Tradovate-Fill-Unterschiede (Funded vs. Demo)" },
+    { type: "heading", text: "1. Unabhängige Simulationswarteschlangen pro Konto" },
+    { type: "paragraph", html: "Das ist die Hauptursache hinter fast jedem Sync-Hinweis. Selbst wenn Ihr Copier beide Orders gleichzeitig auslöst, weist die Tradovate-Simulation jedem Konto eine eigene Position in der Warteschlange zu. Die Fill-Zeiten können sich um Millisekunden oder einen Tick unterscheiden, sodass ein Konto minimal früher füllt als das andere. Bei einem Stop bedeutet das, dass ein Konto schließen kann, während das andere noch einen kurzen Moment offen bleibt, bevor es nachzieht." },
+    { type: "heading", text: "2. Die Millisekunden-Verzögerung beim Copy-Trading" },
+    { type: "paragraph", html: "Ein Copier erkennt den Fill des Master-Kontos und leitet dann die Order des Follower-Kontos weiter. Dieser Erkennungs-und-Weiterleitungs-Zyklus wird in Millisekunden gemessen, aber in einem schnellen Markt reichen bereits wenige Millisekunden, damit sich der Preis zwischen dem Fill des Leaders und dem des Followers um einen Tick bewegt. Das ist bei jedem Trade-Copier über jede Kontogruppe hinweg der Fall: identische Orders können auf einem zweiten Konto mehrere Pips früher oder später füllen, weil Ticks selten exakt im gleichen Moment eintreffen." },
+    { type: "heading", text: "3. Marktvolatilität und geringe Liquidität" },
+    { type: "paragraph", html: "Je schneller sich der Markt bewegt und je dünner das Orderbuch ist, desto größer wird die normale Abweichung. In Phasen hoher Volatilität, etwa bei einer Nachrichtenveröffentlichung, der Kasseneröffnung oder einer schnellen Trendumkehr, kann ein Stop auf jedem Konto ein bis zwei Ticks abrutschen, und die beiden Konten können dabei um unterschiedliche Beträge abweichen. Das ist zu erwarten und nimmt mit der Volatilität zu; es ist kein Beleg für einen Fehler. Die genaue Slippage variiert je nach Instrument, Handelssitzung und Firma, prüfen Sie daher die aktuellen Regeln und die Fill-Richtlinie Ihrer Firma." },
+    { type: "heading", text: "4. Demo- und Funded-Fill-Modelle sind nicht identisch" },
+    { type: "paragraph", html: "Ein reines Demokonto verwendet virtuelles Geld mit simulierten Fills und ohne echtes Kapitalrisiko, sodass seine Fills etwas günstiger ausfallen können als in der Realität. Ein Funded-Prop-Konto wird ebenfalls simuliert, ist aber so kalibriert, dass es die Live-Bedingungen unter den Risikoregeln der Firma enger nachbildet. Da die beiden Modelle unterschiedlich kalibriert sind, kann derselbe Trade auf dem Demokonto etwas besser füllen als auf dem Funded-Konto, ein weiterer Grund, warum kleine, konsistente Unterschiede zwischen den beiden auftreten." },
+    { type: "heading", text: "5. Latenz und Verbindungsqualität" },
+    { type: "paragraph", html: "Wenn ein Konto über eine langsamere oder weniger stabile Verbindung läuft als die anderen, landet seine Weiterleitung später, und seine Fills weichen stärker von der Gruppe ab. Das ist die einzige Ursache, die Sie direkt kontrollieren können. Betreiben Sie jedes Konto über dieselbe stabile Umgebung mit niedriger Latenz, und Sie halten die Abweichung so gering wie physisch möglich." },
+    { type: "heading", text: "Wie Sie “normal” von einem echten Problem unterscheiden: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Messen Sie die tatsächliche Abweichung bei einem einzelnen Ereignis", html: "Öffnen Sie den Orders/Fills-Bericht auf jedem Konto und vergleichen Sie die Fill-Zeitstempel und -Preise für denselben Trade. Wenn Sie eine Fill-Zeit-Abweichung im Bereich von Millisekunden bis Sekunden und eine Preisabweichung von etwa ein bis zwei Ticks sehen, handelt es sich um normales Simulationstiming. Hier können Sie aufhören, es ist nichts falsch." },
+        { title: "Bestätigen Sie, dass sich die Konten wieder synchronisieren", html: "Beobachten Sie die Positionen nach dem Ereignis. Ein gesunder Sync-Hinweis löst sich innerhalb von ein bis zwei Sekunden auf, sobald beide Fills eingetroffen sind, und beide Konten enden kurz danach flach (oder beide in der Position). Wenn der Hinweis erscheint, verschwindet und die Konten wieder übereinstimmen, macht der Copier genau das, was er soll." },
+        { title: "Eskalieren Sie nur große, fehlende oder anhaltende Abweichungen", html: "Untersuchen Sie eine große Preisabweichung (viele Ticks oder ganze Punkte auseinander), eine Order, die auf einem Konto nie auslöst oder verloren geht, oder einen anhaltenden Desync, der sich nie wieder angleicht. Erstellen Sie Screenshots der Orders/Fills-Berichte beider Konten mit Zeitstempeln, notieren Sie Instrument und Uhrzeit, und kontaktieren Sie den Support. Halten Sie Ihre Verbindungs- und Kontodetails bereit, damit das Problem nachverfolgt werden kann." },
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Was Sie sehen", "Was es bedeutet", "Was zu tun ist"],
+      rows: [
+        ["Sync-Hinweis, der sich in ~1&ndash;2 Sekunden auflöst", "Positionsstatus wichen kurzzeitig ab, während beide Fills abgeschlossen wurden", "Nichts, es synchronisiert sich automatisch"],
+        ["Ein-/Ausstiegspreis ein bis zwei Ticks auseinander", "Unabhängige kontospezifische Warteschlange plus Millisekunden-Verzögerung bei der Weiterleitung", "Nichts, erwartetes Simulationstiming"],
+        ["Stop schließt ein Konto Sekunden vor dem anderen", "Jedes Konto wird in der Simulation unabhängig gematcht", "Bestätigen Sie, dass beide kurz danach glattgestellt sind; sonst keine Aktion"],
+        ["Demo füllt etwas besser als Funded", "Demo und Funded verwenden unterschiedlich kalibrierte Fill-Modelle", "Erwartet; vergleichen Sie brutto zu brutto, nicht Tick zu Tick"],
+        ["Abweichungen vergrößern sich bei Nachrichten/schnellen Märkten", "Höhere Volatilität bedeutet größere normale Slippage pro Konto", "Positionsgröße rund um Nachrichten reduzieren; weiterhin normal"],
+        ["Ein Konto hinkt der Gruppe konsequent hinterher", "Die Verbindung oder Latenz dieses Kontos ist schlechter", "Alle Konten auf ein stabiles Low-Latency-Setup umstellen"],
+        ["Große Abweichung über mehrere Ticks oder Punkte", "Kein normales Timing", "Beide Fills als Screenshot festhalten, Support kontaktieren"],
+        ["Order fehlt auf einem Konto", "Möglicherweise eine verlorene Order, nicht normal", "Positionen abgleichen, Nachweise sammeln, Support kontaktieren"],
+        ["Positionen gleichen sich nie an (anhaltender Desync)", "Nicht normal", "Bei Bedarf manuell glattstellen und dann mit Screenshots melden"],
+      ],
+    },
+    { type: "heading", text: "So verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "Sie können das Simulationstiming nicht abschaffen, aber Sie können die Abweichungen so klein wie möglich halten und das Rätselraten beseitigen, ob eine Differenz &ldquo;normal&rdquo; ist. PickMyTrade leitet TradingView-Alerts direkt an jedes verknüpfte Tradovate-Konto weiter, sodass die gesamte Gruppe aus einer einzigen Quelle der Wahrheit feuert:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Alert-Routing aus einer einzigen Quelle</strong>, ein TradingView-Signal wird an alle Konten verteilt, sodass keine manuelle Neueingabe und keine sich aufbauende Verzögerung durch Leader-Erkennung entsteht.",
+        "<strong class='text-white'>Mengen-/Symbolvalidierung</strong>, blockiert Orders, die Limits überschreiten würden, bevor sie gesendet werden, sodass eine &ldquo;Abweichung&rdquo; nie eine verdeckte abgelehnte Order ist.",
+        "<strong class='text-white'>Berechtigungs- &amp; Risikofilter</strong>, berücksichtigt Prop-Firm-Limits und den Datenvereinbarungsstatus jedes Kontos und reduziert so Fehlalarme, die wie Desyncs aussehen.",
+        "<strong class='text-white'>Ratenlimit-sicheres Routing</strong>, staffelt den Orderfluss so, dass während Lastspitzen nichts an Tradovates Anfragelimits abprallt.",
+        "<strong class='text-white'>Multi-Konto-Synchronisation</strong>, spiegelt dieselbe Anweisung über jedes Konto hinweg und zeigt einen klaren Sync-Hinweis nur an, wenn die Status tatsächlich voneinander abweichen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Ejecute el mismo trade en una cuenta Tradovate financiada y en una demo el tiempo suficiente y lo verá: una cuenta se cierra en el stop una fracción de segundo antes que la otra, los precios de entrada caen con un tick de diferencia, o aparece brevemente un &ldquo;aviso de sincronización&rdquo; porque las dos posiciones no coinciden durante un segundo. Es lo que más preocupa a los traders cuando operan con más de una cuenta, y casi siempre no hay nada realmente averiado. Las diferencias de ejecución que ve entre una cuenta Tradovate financiada y una demo provienen de colas de simulación independientes por cuenta, no de un copiador defectuoso. A continuación se explica qué está ocurriendo realmente, cuándo se espera una pequeña diferencia y los casos excepcionales en los que una desincronización realmente merece un ticket de soporte." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para avisos de sincronización y diferencias de ejecución",
+      items: [
+        "<strong class='text-white'>Una diferencia de 1&ndash;2 ticks o milisegundos entre cuentas</strong>, tiempo de simulación normal, no requiere acción.",
+        "<strong class='text-white'>Un stop que se activa &ldquo;con segundos de diferencia&rdquo; en dos cuentas</strong>, esperado; cada cuenta se ejecuta de forma independiente.",
+        "<strong class='text-white'>Un aviso de sincronización que se resuelve por sí solo en uno o dos segundos</strong>, normal; los estados de posición se realinean en cuanto se completan ambas ejecuciones.",
+        "<strong class='text-white'>Una cuenta cerrada mientras la otra permanece abierta brevemente</strong>, normal durante movimientos rápidos; solo confirme que ambas se cierran poco después.",
+        "<strong class='text-white'>Una discrepancia de precio importante (muchos ticks o puntos), una orden faltante o una desincronización que nunca se resuelve</strong>, investigue; capture pantallazos y contacte con soporte.",
+        "<strong class='text-white'>Cada cuenta con una conexión estable y de baja latencia</strong>, la palanca más importante que usted controla para mantener las diferencias mínimas.",
+      ],
+    },
+    { type: "heading", text: "Qué significan realmente el “aviso de sincronización” y las diferencias de ejecución" },
+    { type: "paragraph", html: "Un aviso de sincronización simplemente le advierte de que, por un breve instante, el estado de la posición o de la orden en una cuenta no coincide con el de las demás cuentas de su grupo de copia. Lo verá con más frecuencia en torno a las entradas y salidas, en el instante en que una cuenta ya se ha ejecutado y la otra aún va unos milisegundos por detrás. En cuanto ambas ejecuciones se completan, los estados se realinean y el aviso desaparece." },
+    { type: "paragraph", html: "Las diferencias de ejecución son la versión concreta de lo mismo: el precio de entrada o salida en la cuenta A queda uno o dos ticks respecto a la cuenta B, o un stop-loss se ejecuta en un momento ligeramente distinto en cada cuenta. Esto sucede incluso cuando su copiador envió ambas órdenes casi al mismo tiempo." },
+    { type: "paragraph", html: "La razón principal es que casi todas las cuentas de prop firm financiadas conectadas a través de Tradovate, y todas las cuentas demo, se ejecutan dentro de un entorno de simulación que imita las condiciones reales del mercado. Tradovate mantiene los trades de evaluación y financiados dentro de su propio entorno simulado, y esa simulación procesa cada cuenta de forma independiente. Dos órdenes enviadas en el mismo milisegundo siguen llegando a colas separadas y se ejecutan por separado. Es un comportamiento de mercado realista reproducido por cuenta, no un error de la plataforma ni un fallo del copiador." },
+    { type: "heading", text: "Principales causas de las diferencias de ejecución en Tradovate (financiada vs. demo)" },
+    { type: "heading", text: "1. Colas de simulación independientes por cuenta" },
+    { type: "paragraph", html: "Esta es la causa raíz de casi todos los avisos de sincronización. Aunque su copiador dispare ambas órdenes a la vez, la simulación de Tradovate asigna a cada cuenta su propia posición en la cola. Los tiempos de ejecución pueden diferir en milisegundos o un tick, de modo que una cuenta se ejecuta fraccionalmente antes que la otra. En un stop, eso significa que una cuenta puede cerrarse mientras la otra permanece abierta un breve instante antes de alcanzarla." },
+    { type: "heading", text: "2. El desfase de milisegundos en el envío del copy trading" },
+    { type: "paragraph", html: "Un copiador detecta la ejecución de la cuenta maestra y luego envía la orden a la cuenta seguidora. Ese ciclo de detección y envío se mide en milisegundos, pero en un mercado rápido, unos pocos milisegundos bastan para que el precio se mueva un tick entre la ejecución del líder y la del seguidor. Esto es inherente a cualquier copiador de trades en cualquier conjunto de cuentas: órdenes idénticas pueden ejecutarse varios pips antes o después en una segunda cuenta porque los ticks rara vez llegan en el instante exacto." },
+    { type: "heading", text: "3. Volatilidad del mercado y liquidez reducida" },
+    { type: "paragraph", html: "Cuanto más rápido se mueve el mercado y más delgado es el libro de órdenes, mayor es la diferencia normal. Durante ventanas de alta volatilidad, una publicación de noticias, la apertura de caja o una reversión rápida, un stop puede deslizarse uno o dos ticks en cada cuenta, y las dos cuentas pueden deslizarse en cantidades distintas. Esto es esperable y aumenta con la volatilidad; no es evidencia de un fallo. El deslizamiento exacto varía según el instrumento, la sesión y la firma, así que consulte las reglas y la política de ejecución vigentes de su firma." },
+    { type: "heading", text: "4. Los modelos de ejecución de demo y financiada no son idénticos" },
+    { type: "paragraph", html: "Una cuenta demo pura utiliza dinero virtual con ejecuciones simuladas y sin riesgo de capital real, por lo que sus ejecuciones pueden ser algo más favorables que en la realidad. Una cuenta prop financiada también es simulada, pero está calibrada para imitar más de cerca las condiciones reales bajo las reglas de riesgo de la firma. Como los dos modelos están calibrados de forma distinta, el mismo trade puede ejecutarse ligeramente mejor en la demo que en la cuenta financiada, otra razón por la que aparecen diferencias pequeñas y constantes entre ambas." },
+    { type: "heading", text: "5. Latencia y calidad de la conexión" },
+    { type: "paragraph", html: "Si una cuenta pasa por una conexión más lenta o menos estable que las demás, su envío llega más tarde y sus ejecuciones se alejan más del grupo. Esta es la única causa que usted controla directamente. Ejecute todas las cuentas desde el mismo entorno estable y de baja latencia, y mantendrá la diferencia lo más pequeña que sea físicamente posible." },
+    { type: "heading", text: "Cómo distinguir lo “normal” de un problema real: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Mida la diferencia real en un evento concreto", html: "Abra el informe de órdenes/ejecuciones en cada cuenta y compare las marcas de tiempo y los precios de ejecución del mismo trade. Si observa una diferencia de tiempo de ejecución en el rango de milisegundos a segundos y una diferencia de precio de aproximadamente uno o dos ticks, está viendo un tiempo de simulación normal. Deténgase aquí, no hay ningún problema." },
+        { title: "Confirme que las cuentas se resincronizan", html: "Observe las posiciones tras el evento. Un aviso de sincronización saludable se resuelve en uno o dos segundos una vez que ambas ejecuciones se completan, y ambas cuentas terminan planas (o ambas en la posición) poco después. Si el aviso aparece, desaparece y las cuentas vuelven a coincidir, el copiador está haciendo exactamente lo que debe." },
+        { title: "Escale únicamente diferencias grandes, faltantes o persistentes", html: "Investigue una discrepancia de precio importante (muchos ticks o puntos completos de diferencia), una orden que nunca se dispara en una cuenta o que desaparece, o una desincronización persistente que nunca se realinea. Capture pantallazos de los informes de órdenes/ejecuciones de ambas cuentas con marcas de tiempo, anote el instrumento y la hora, y contacte con soporte. Tenga listos los datos de su conexión y de su cuenta para que el problema pueda rastrearse." },
+      ],
+    },
+    { type: "heading", text: "Tabla de resolución de problemas" },
+    {
+      type: "table",
+      headers: ["Qué observa", "Qué significa", "Qué hacer"],
+      rows: [
+        ["Aviso de sincronización que se resuelve en ~1&ndash;2 segundos", "Los estados de posición difirieron brevemente mientras se completaban ambas ejecuciones", "Nada, se resincroniza automáticamente"],
+        ["Precio de entrada/salida con uno o dos ticks de diferencia", "Cola independiente por cuenta más el desfase de milisegundos en el envío", "Nada, tiempo de simulación esperado"],
+        ["El stop cierra una cuenta segundos antes que la otra", "Cada cuenta se ejecuta de forma independiente en la simulación", "Confirme que ambas se cierran poco después; si no, ninguna acción"],
+        ["La demo ejecuta ligeramente mejor que la financiada", "Demo y financiada usan modelos de ejecución calibrados de forma distinta", "Esperado; compare bruto contra bruto, no tick a tick"],
+        ["Las diferencias aumentan durante noticias/mercados rápidos", "Mayor volatilidad implica un deslizamiento normal mayor por cuenta", "Reduzca el tamaño en torno a las noticias; sigue siendo normal"],
+        ["Una cuenta va sistemáticamente rezagada respecto al grupo", "La conexión o la latencia de esa cuenta es peor", "Traslade todas las cuentas a una configuración estable de baja latencia"],
+        ["Discrepancia grande de varios ticks o puntos", "No es un tiempo normal", "Capture pantallazos de ambas ejecuciones, contacte con soporte"],
+        ["Falta una orden en una cuenta", "Posible orden perdida, no es normal", "Concilie posiciones, recopile evidencia, contacte con soporte"],
+        ["Las posiciones nunca se realinean (desincronización persistente)", "No es normal", "Cierre manualmente si es necesario y luego informe con pantallazos"],
+      ],
+    },
+    { type: "heading", text: "Cómo prevenirlo con PickMyTrade" },
+    { type: "paragraph", html: "No puede eliminar el tiempo de simulación, pero sí puede mantener las diferencias lo más pequeñas posible y eliminar la incertidumbre sobre si una diferencia es &ldquo;normal&rdquo;. PickMyTrade envía las alertas de TradingView directamente a cada cuenta de Tradovate vinculada, de modo que todo el grupo actúa desde una única fuente de verdad:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Enrutamiento de alertas desde una sola fuente</strong>, una señal de TradingView se distribuye a todas las cuentas, sin reingreso manual ni acumulación de retraso por detección de líder.",
+        "<strong class='text-white'>Validación de cantidad y símbolo</strong>, bloquea las órdenes que superarían los límites antes de enviarlas, de modo que una &ldquo;diferencia&rdquo; nunca es en realidad una orden rechazada.",
+        "<strong class='text-white'>Filtros de derechos de uso y riesgo</strong>, respeta los límites de la prop firm y el estado del acuerdo de datos en cada cuenta, reduciendo las falsas alarmas que parecen desincronizaciones.",
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de tasa</strong>, espacia el flujo de órdenes para que nada rebote contra los límites de solicitudes de Tradovate durante los picos de actividad.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, refleja la misma instrucción en todas las cuentas y muestra un aviso de sincronización claro solo cuando los estados realmente difieren.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Exécutez le même trade sur un compte Tradovate financé et un compte démo suffisamment longtemps, et vous finirez par le constater : un compte se ferme sur le stop une fraction de seconde avant l'autre, les prix d'entrée atterrissent avec un tick d'écart, ou un &ldquo;avis de synchronisation&rdquo; clignote un instant parce que les deux positions ne correspondent pas pendant une seconde. C'est ce qui inquiète le plus les traders lorsqu'ils gèrent plusieurs comptes, et presque à chaque fois, rien n'est réellement cassé. Les écarts d'exécution que vous observez entre un compte Tradovate financé et un compte démo proviennent de files de simulation indépendantes par compte, pas d'un copieur défectueux. Voici ce qui se passe réellement, quand un léger écart est normal, et les rares cas où une désynchronisation mérite véritablement un ticket d'assistance." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide pour les avis de synchronisation et les écarts d'exécution",
+      items: [
+        "<strong class='text-white'>Un écart de 1 à 2 ticks ou millisecondes entre les comptes</strong>, timing de simulation normal, aucune action requise.",
+        "<strong class='text-white'>Un stop qui se déclenche &ldquo;à quelques secondes d'écart&rdquo; sur deux comptes</strong>, normal ; chaque compte est exécuté indépendamment.",
+        "<strong class='text-white'>Un avis de synchronisation qui disparaît de lui-même en une ou deux secondes</strong>, normal ; les états de position se réalignent dès que les deux exécutions sont effectuées.",
+        "<strong class='text-white'>Un compte fermé pendant que l'autre reste brièvement ouvert</strong>, normal lors de mouvements rapides ; vérifiez simplement que les deux se soldent peu après.",
+        "<strong class='text-white'>Un écart de prix important (plusieurs ticks ou points), un ordre manquant, ou une désynchronisation qui ne se résorbe jamais</strong>, à examiner ; prenez des captures d'écran et contactez le support.",
+        "<strong class='text-white'>Chaque compte sur une connexion stable et à faible latence</strong>, le levier le plus important que vous contrôlez pour limiter les écarts.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifient vraiment l'“avis de synchronisation” et les écarts d'exécution" },
+    { type: "paragraph", html: "Un avis de synchronisation est simplement un signal indiquant que, pendant un bref instant, l'état de position ou d'ordre d'un compte ne correspond pas à celui du ou des autres comptes de votre groupe de copie. Vous le verrez le plus souvent autour des entrées et sorties, à l'instant où un compte vient d'être exécuté et où l'autre accuse encore quelques millisecondes de retard. Une fois les deux exécutions stabilisées, les états se réalignent et l'avis disparaît." },
+    { type: "paragraph", html: "Les écarts d'exécution en sont la version concrète : le prix d'entrée ou de sortie du compte A se situe à un ou deux ticks de celui du compte B, ou un stop-loss s'exécute à un moment légèrement différent sur chaque compte. Cela se produit même si votre copieur a envoyé les deux ordres presque au même instant." },
+    { type: "paragraph", html: "La raison principale est que presque tous les comptes de prop firm financés connectés via Tradovate, ainsi que tous les comptes démo, fonctionnent dans un environnement de simulation qui reproduit les conditions réelles du marché. Tradovate conserve les trades d'évaluation et financés dans son propre environnement simulé, et cette simulation traite chaque compte indépendamment. Deux ordres soumis à la même milliseconde atterrissent malgré tout dans des files distinctes et sont exécutés séparément. C'est un comportement de marché réaliste reproduit par compte, pas une erreur de la plateforme ni un dysfonctionnement du copieur." },
+    { type: "heading", text: "Principales causes des écarts d'exécution Tradovate (financé vs démo)" },
+    { type: "heading", text: "1. Files de simulation indépendantes par compte" },
+    { type: "paragraph", html: "C'est la cause première de presque tous les avis de synchronisation. Même lorsque votre copieur déclenche les deux ordres en même temps, la simulation de Tradovate attribue à chaque compte sa propre position dans la file. Les temps d'exécution peuvent différer de quelques millisecondes ou d'un tick, si bien qu'un compte s'exécute légèrement avant l'autre. Sur un stop, cela signifie qu'un compte peut se fermer pendant que l'autre reste ouvert un bref instant avant de le rattraper." },
+    { type: "heading", text: "2. Le décalage en millisecondes de la transmission en copy trading" },
+    { type: "paragraph", html: "Un copieur détecte l'exécution du compte maître, puis transmet l'ordre au compte suiveur. Ce cycle de détection puis de transmission se mesure en millisecondes, mais sur un marché rapide, quelques millisecondes suffisent pour que le prix bouge d'un tick entre l'exécution du leader et celle du suiveur. Cela concerne intrinsèquement tout copieur de trades sur n'importe quel ensemble de comptes : des ordres identiques peuvent s'exécuter plusieurs pips plus tôt ou plus tard sur un second compte, car les ticks arrivent rarement exactement au même instant." },
+    { type: "heading", text: "3. Volatilité du marché et liquidité réduite" },
+    { type: "paragraph", html: "Plus le marché est rapide et plus le carnet d'ordres est mince, plus l'écart normal s'élargit. Pendant les périodes de forte volatilité, une publication d'actualité, l'ouverture de la séance de cash, un retournement rapide, un stop peut glisser d'un ou deux ticks sur chaque compte, et les deux comptes peuvent glisser de montants différents. Cela est attendu et s'accentue avec la volatilité ; ce n'est pas la preuve d'un dysfonctionnement. Le glissement exact varie selon l'instrument, la session et la firme, vérifiez donc les règles et la politique d'exécution actuelles de votre firme." },
+    { type: "heading", text: "4. Les modèles d'exécution démo et financé ne sont pas identiques" },
+    { type: "paragraph", html: "Un compte démo pur utilise de l'argent virtuel avec des exécutions simulées et aucun capital réel en jeu, ses exécutions peuvent donc être légèrement plus favorables que dans la réalité. Un compte prop financé est également simulé, mais il est calibré pour reproduire plus fidèlement les conditions réelles selon les règles de risque de la firme. Comme les deux modèles sont calibrés différemment, le même trade peut s'exécuter légèrement mieux sur le démo que sur le compte financé, une raison supplémentaire pour laquelle de petits écarts constants apparaissent entre les deux." },
+    { type: "heading", text: "5. Latence et qualité de la connexion" },
+    { type: "paragraph", html: "Si un compte transite par une connexion plus lente ou moins stable que les autres, sa transmission arrive plus tard et ses exécutions s'éloignent davantage du groupe. C'est la seule cause que vous contrôlez directement. Faites fonctionner tous les comptes depuis le même environnement stable et à faible latence, et vous maintiendrez l'écart aussi réduit que physiquement possible." },
+    { type: "heading", text: "Comment distinguer le “normal” d'un vrai problème : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Mesurez l'écart réel sur un seul événement", html: "Ouvrez le rapport Ordres/Exécutions sur chaque compte et comparez les horodatages et les prix d'exécution pour le même trade. Si vous observez un écart de temps d'exécution de l'ordre de la milliseconde à la seconde et un écart de prix d'environ un ou deux ticks, il s'agit d'un timing de simulation normal. Arrêtez-vous là, tout va bien." },
+        { title: "Vérifiez que les comptes se resynchronisent", html: "Observez les positions après l'événement. Un avis de synchronisation sain disparaît en une ou deux secondes une fois les deux exécutions effectuées, et les deux comptes se retrouvent à plat (ou tous deux en position) peu après. Si l'avis apparaît, disparaît, et que les comptes correspondent à nouveau, le copieur fait exactement ce qu'il doit faire." },
+        { title: "N'escaladez que les écarts importants, manquants ou persistants", html: "Examinez un écart de prix important (plusieurs ticks ou points entiers d'écart), un ordre qui ne se déclenche jamais sur un compte ou qui disparaît, ou une désynchronisation persistante qui ne se réaligne jamais. Capturez des captures d'écran des rapports Ordres/Exécutions des deux comptes avec les horodatages, notez l'instrument et l'heure, et contactez le support. Ayez vos informations de connexion et de compte à portée de main afin que le problème puisse être retracé." },
+      ],
+    },
+    { type: "heading", text: "Tableau de résolution des problèmes" },
+    {
+      type: "table",
+      headers: ["Ce que vous observez", "Ce que cela signifie", "Que faire"],
+      rows: [
+        ["Avis de synchronisation qui disparaît en ~1 à 2 secondes", "Les états de position ont brièvement différé pendant que les deux exécutions se stabilisaient", "Rien, la resynchronisation est automatique"],
+        ["Prix d'entrée/sortie décalé d'un ou deux ticks", "File indépendante par compte plus le décalage de transmission en millisecondes", "Rien, timing de simulation attendu"],
+        ["Le stop ferme un compte plusieurs secondes avant l'autre", "Chaque compte est exécuté indépendamment dans la simulation", "Vérifiez que les deux se soldent peu après ; sinon, aucune action"],
+        ["Le démo s'exécute légèrement mieux que le financé", "Démo et financé utilisent des modèles d'exécution calibrés différemment", "Attendu ; comparez brut à brut, pas tick à tick"],
+        ["Les écarts s'élargissent lors d'actualités/marchés rapides", "Une volatilité plus élevée signifie un glissement normal plus large par compte", "Réduisez la taille autour des actualités ; toujours normal"],
+        ["Un compte accuse systématiquement du retard sur le groupe", "La connexion ou la latence de ce compte est moins bonne", "Faites migrer tous les comptes vers une configuration stable à faible latence"],
+        ["Écart important de plusieurs ticks ou points", "Timing anormal", "Faites une capture d'écran des deux exécutions, contactez le support"],
+        ["Ordre manquant sur un compte", "Ordre potentiellement perdu, anormal", "Réconciliez les positions, rassemblez des preuves, contactez le support"],
+        ["Les positions ne se réalignent jamais (désynchronisation persistante)", "Anormal", "Soldez manuellement si nécessaire, puis signalez avec des captures d'écran"],
+      ],
+    },
+    { type: "heading", text: "Comment éviter cela avec PickMyTrade" },
+    { type: "paragraph", html: "Vous ne pouvez pas supprimer le timing de simulation, mais vous pouvez réduire les écarts au minimum et éliminer l'incertitude quant à savoir si un écart est &ldquo;normal&rdquo;. PickMyTrade transmet les alertes TradingView directement à chaque compte Tradovate lié, afin que tout le groupe se déclenche à partir d'une seule source de vérité :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Routage des alertes depuis une source unique</strong>, un signal TradingView se diffuse à tous les comptes, sans ressaisie manuelle ni accumulation de latence liée à la détection du leader.",
+        "<strong class='text-white'>Validation de la quantité et du symbole</strong>, bloque les ordres qui dépasseraient les plafonds avant leur envoi, de sorte qu'un &ldquo;écart&rdquo; n'est jamais un ordre rejeté déguisé.",
+        "<strong class='text-white'>Filtres de droits et de risque</strong>, respecte les limites de la prop firm et l'état de l'accord de données sur chaque compte, réduisant les fausses alertes qui ressemblent à des désynchronisations.",
+        "<strong class='text-white'>Routage sécurisé face aux limites de débit</strong>, espace le flux d'ordres pour que rien ne bute contre les limites de requêtes de Tradovate lors des pics d'activité.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, reflète la même instruction sur tous les comptes et n'affiche un avis de synchronisation clair que lorsque les états diffèrent réellement.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Eseguite lo stesso trade su un conto Tradovate finanziato e su uno demo abbastanza a lungo e prima o poi lo noterete: un conto si chiude sullo stop una frazione di secondo prima dell'altro, i prezzi di ingresso arrivano con un tick di differenza, oppure un &ldquo;avviso di sincronizzazione&rdquo; lampeggia perché le due posizioni non coincidono per un secondo. È la cosa che preoccupa di più i trader quando gestiscono più conti, e quasi sempre non c'è in realtà nulla di rotto. Le differenze di esecuzione che si osservano tra un conto Tradovate finanziato e uno demo derivano da code di simulazione indipendenti per singolo conto, non da un copiatore difettoso. Di seguito trovate cosa sta realmente accadendo, quando uno scarto ridotto è normale e i rari casi in cui una desincronizzazione merita davvero un ticket di supporto." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per avvisi di sincronizzazione e differenze di esecuzione",
+      items: [
+        "<strong class='text-white'>Uno scarto di 1&ndash;2 tick o millisecondi tra i conti</strong>, normale tempistica di simulazione, nessuna azione necessaria.",
+        "<strong class='text-white'>Uno stop che scatta &ldquo;a distanza di secondi&rdquo; su due conti</strong>, previsto; ogni conto viene eseguito in modo indipendente.",
+        "<strong class='text-white'>Un avviso di sincronizzazione che si risolve da solo entro uno o due secondi</strong>, normale; gli stati delle posizioni si riallineano non appena entrambe le esecuzioni sono completate.",
+        "<strong class='text-white'>Un conto chiuso mentre l'altro resta brevemente aperto</strong>, normale durante movimenti rapidi; basta confermare che entrambi si chiudano poco dopo.",
+        "<strong class='text-white'>Una discrepanza di prezzo rilevante (molti tick o punti), un ordine mancante o una desincronizzazione che non si risolve mai</strong>, da approfondire; raccogliete screenshot e contattate il supporto.",
+        "<strong class='text-white'>Ogni conto su una connessione stabile e a bassa latenza</strong>, la leva più importante che potete controllare per mantenere gli scarti minimi.",
+      ],
+    },
+    { type: "heading", text: "Cosa significano davvero l'“avviso di sincronizzazione” e le differenze di esecuzione" },
+    { type: "paragraph", html: "Un avviso di sincronizzazione è semplicemente un avvertimento che, per un breve istante, lo stato di posizione o di ordine su un conto non corrisponde a quello degli altri conti del vostro gruppo di copia. Lo vedrete più spesso in prossimità di ingressi e uscite, nell'istante in cui un conto ha già eseguito e l'altro è ancora indietro di qualche millisecondo. Non appena entrambe le esecuzioni si stabilizzano, gli stati si riallineano e l'avviso scompare." },
+    { type: "paragraph", html: "Le differenze di esecuzione sono la versione concreta dello stesso fenomeno: il prezzo di ingresso o uscita sul Conto A si trova a uno o due tick da quello del Conto B, oppure uno stop-loss viene eseguito in un momento leggermente diverso su ciascun conto. Questo accade anche se il vostro copiatore ha inviato entrambi gli ordini quasi contemporaneamente." },
+    { type: "paragraph", html: "Il motivo principale è che quasi tutti i conti prop firm finanziati collegati tramite Tradovate, e tutti i conti demo, operano all'interno di un ambiente di simulazione che riproduce le condizioni reali di mercato. Tradovate mantiene i trade di valutazione e finanziati all'interno del proprio ambiente simulato, e tale simulazione elabora ciascun conto in modo indipendente. Due ordini inviati nello stesso millisecondo finiscono comunque in code separate e vengono eseguiti separatamente. Si tratta di un comportamento di mercato realistico riprodotto per singolo conto, non di un errore della piattaforma né di un malfunzionamento del copiatore." },
+    { type: "heading", text: "Le principali cause delle differenze di esecuzione su Tradovate (finanziato vs demo)" },
+    { type: "heading", text: "1. Code di simulazione indipendenti per conto" },
+    { type: "paragraph", html: "Questa è la causa principale di quasi ogni avviso di sincronizzazione. Anche quando il vostro copiatore invia entrambi gli ordini contemporaneamente, la simulazione di Tradovate assegna a ciascun conto una propria posizione in coda. I tempi di esecuzione possono differire di millisecondi o di un tick, quindi un conto esegue leggermente prima dell'altro. Su uno stop, ciò significa che un conto può chiudersi mentre l'altro resta aperto per un breve istante prima di raggiungerlo." },
+    { type: "heading", text: "2. Il ritardo di invio in millisecondi nel copy trading" },
+    { type: "paragraph", html: "Un copiatore rileva l'esecuzione del conto master, quindi invia l'ordine al conto follower. Questo ciclo di rilevamento e invio si misura in millisecondi, ma in un mercato veloce bastano pochi millisecondi perché il prezzo si muova di un tick tra l'esecuzione del leader e quella del follower. Questo è intrinseco a qualsiasi copiatore di trade su qualsiasi insieme di conti: ordini identici possono eseguirsi diversi pip prima o dopo su un secondo conto, perché i tick raramente arrivano esattamente nello stesso istante." },
+    { type: "heading", text: "3. Volatilità di mercato e bassa liquidità" },
+    { type: "paragraph", html: "Più il mercato è veloce e più sottile è il book, più si allarga lo scarto normale. Durante le finestre di alta volatilità, come una pubblicazione di dati macro, l'apertura della sessione cash o un'inversione rapida, uno stop può scivolare di uno o due tick su ciascun conto, e i due conti possono scivolare di importi diversi. Questo è previsto e aumenta con la volatilità; non è prova di un malfunzionamento. Lo slippage esatto varia in base a strumento, sessione e società, quindi verificate le regole e la politica di esecuzione attuali della vostra società." },
+    { type: "heading", text: "4. I modelli di esecuzione demo e finanziato non sono identici" },
+    { type: "paragraph", html: "Un conto demo puro utilizza denaro virtuale con esecuzioni simulate e nessun capitale reale a rischio, quindi le sue esecuzioni possono essere leggermente più favorevoli rispetto alla realtà. Anche un conto prop finanziato è simulato, ma è calibrato per riprodurre più fedelmente le condizioni reali secondo le regole di rischio della società. Poiché i due modelli sono calibrati in modo diverso, lo stesso trade può eseguirsi leggermente meglio sul demo rispetto al conto finanziato, un ulteriore motivo per cui compaiono piccole differenze costanti tra i due." },
+    { type: "heading", text: "5. Latenza e qualità della connessione" },
+    { type: "paragraph", html: "Se un conto instrada su una connessione più lenta o meno stabile rispetto agli altri, il suo invio arriva più tardi e le sue esecuzioni si allontanano maggiormente dal gruppo. Questa è l'unica causa che controllate direttamente. Eseguite ogni conto dallo stesso ambiente stabile a bassa latenza e manterrete lo scarto il più piccolo possibile." },
+    { type: "heading", text: "Come distinguere il “normale” da un problema reale: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Misurate lo scarto effettivo su un singolo evento", html: "Aprite il report Ordini/Esecuzioni su ciascun conto e confrontate gli orari e i prezzi di esecuzione per lo stesso trade. Se osservate uno scarto di tempo di esecuzione nell'intervallo da millisecondi a secondi e uno scarto di prezzo di circa uno o due tick, si tratta di normale tempistica di simulazione. Fermatevi qui, non c'è nulla che non va." },
+        { title: "Confermate che i conti si risincronizzano", html: "Osservate le posizioni dopo l'evento. Un avviso di sincronizzazione sano si risolve entro uno o due secondi non appena entrambe le esecuzioni sono completate, e i due conti finiscono piatti (o entrambi in posizione) poco dopo. Se l'avviso compare, scompare e i conti tornano a coincidere, il copiatore sta facendo esattamente ciò che deve fare." },
+        { title: "Segnalate solo scarti ampi, mancanti o persistenti", html: "Approfondite una discrepanza di prezzo rilevante (molti tick o punti interi di differenza), un ordine che non scatta mai su un conto o che risulta mancante, oppure una desincronizzazione persistente che non si riallinea mai. Raccogliete screenshot dei report Ordini/Esecuzioni di entrambi i conti con gli orari, annotate strumento e ora, e contattate il supporto. Tenete pronti i dettagli della connessione e del conto in modo che il problema possa essere ricostruito." },
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Cosa osservate", "Cosa significa", "Cosa fare"],
+      rows: [
+        ["Avviso di sincronizzazione che si risolve in ~1&ndash;2 secondi", "Gli stati di posizione sono differiti brevemente mentre entrambe le esecuzioni si stabilizzavano", "Nulla, si risincronizza automaticamente"],
+        ["Prezzo di ingresso/uscita con uno o due tick di differenza", "Coda indipendente per conto più il ritardo di invio in millisecondi", "Nulla, tempistica di simulazione prevista"],
+        ["Lo stop chiude un conto secondi prima dell'altro", "Ogni conto viene eseguito in modo indipendente nella simulazione", "Confermate che entrambi si chiudano poco dopo; altrimenti nessuna azione"],
+        ["Il demo esegue leggermente meglio del finanziato", "Demo e finanziato usano modelli di esecuzione calibrati in modo diverso", "Previsto; confrontate lordo su lordo, non tick su tick"],
+        ["Gli scarti si allargano durante notizie/mercati veloci", "Maggiore volatilità significa slippage normale più ampio per conto", "Riducete la size intorno alle notizie; resta normale"],
+        ["Un conto è sistematicamente in ritardo rispetto al gruppo", "La connessione o la latenza di quel conto è peggiore", "Spostate tutti i conti su una configurazione stabile a bassa latenza"],
+        ["Discrepanza ampia di più tick o punti", "Non è tempistica normale", "Fate screenshot di entrambe le esecuzioni, contattate il supporto"],
+        ["Ordine mancante su un conto", "Possibile ordine perso, non normale", "Riconciliate le posizioni, raccogliete prove, contattate il supporto"],
+        ["Le posizioni non si riallineano mai (desincronizzazione persistente)", "Non normale", "Chiudete manualmente se necessario, poi segnalate con screenshot"],
+      ],
+    },
+    { type: "heading", text: "Come prevenirlo con PickMyTrade" },
+    { type: "paragraph", html: "Non potete eliminare la tempistica di simulazione, ma potete mantenere gli scarti il più piccoli possibile ed eliminare l'incertezza su se una differenza sia &ldquo;normale&rdquo;. PickMyTrade instrada gli alert di TradingView direttamente a ogni conto Tradovate collegato, cosicché l'intero gruppo operi da un'unica fonte di verità:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Instradamento degli alert da un'unica fonte</strong>, un segnale TradingView si distribuisce a tutti i conti, senza reinserimento manuale né accumulo di ritardo dovuto al rilevamento del leader.",
+        "<strong class='text-white'>Convalida di quantità e simbolo</strong>, blocca gli ordini che supererebbero i limiti prima che vengano inviati, cosicché una &ldquo;differenza&rdquo; non è mai un ordine rifiutato mascherato.",
+        "<strong class='text-white'>Filtri di entitlement e rischio</strong>, rispetta i limiti della prop firm e lo stato dell'accordo sui dati su ciascun conto, riducendo i falsi allarmi che sembrano desincronizzazioni.",
+        "<strong class='text-white'>Instradamento sicuro rispetto ai rate limit</strong>, distribuisce il flusso degli ordini in modo che nulla rimbalzi contro i limiti di richieste di Tradovate durante i picchi.",
+        "<strong class='text-white'>Sincronizzazione multi-conto</strong>, replica la stessa istruzione su ogni conto e mostra un avviso di sincronizzazione chiaro solo quando gli stati differiscono realmente.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Guessing at Fill Gaps", de: "Schluss mit dem Rätselraten bei Fill-Abweichungen", es: "Deje de adivinar en las diferencias de ejecución", fr: "Ne devinez plus les écarts d'exécution", it: "Basta indovinare gli scarti di esecuzione" },
+  ctaText: { en: "Route one TradingView alert to every Tradovate account and let PickMyTrade keep the whole group firing from a single source of truth.", de: "Leiten Sie einen TradingView-Alert an jedes Tradovate-Konto weiter und lassen Sie PickMyTrade die gesamte Gruppe aus einer einzigen Quelle der Wahrheit feuern.", es: "Envíe una alerta de TradingView a todas las cuentas de Tradovate y deje que PickMyTrade mantenga a todo el grupo operando desde una única fuente de verdad.", fr: "Transmettez une alerte TradingView à chaque compte Tradovate et laissez PickMyTrade faire fonctionner tout le groupe à partir d'une seule source de vérité.", it: "Instradate un alert di TradingView verso ogni conto Tradovate e lasciate che PickMyTrade mantenga l'intero gruppo operativo da un'unica fonte di verità." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvia la tua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why do my funded and demo Tradovate accounts fill at slightly different prices?", a: "Because each account is matched in its own independent simulation queue. Even when both orders are sent at the same millisecond, they land in separate queues and fill separately, so entry and exit prices can sit a tick or two apart. This is normal." },
+    { q: "Is a sync notice a sign my copier is broken?", a: "No. A sync notice just tells you two accounts' position states momentarily differ, usually because one filled a few milliseconds before the other. If it clears within a second or two and the accounts re-align, everything is working." },
+    { q: "My stop closed one account before the other. Did something fail?", a: "Almost certainly not. Stops are matched independently per account, so one can trigger seconds before another, especially in a fast market. As long as both accounts flatten shortly after, this is expected behavior." },
+    { q: "How big a fill difference is “normal”?", a: "A gap on the order of a tick or two in price and milliseconds-to-seconds in timing is normal, and it widens with volatility. Large multi-tick or full-point discrepancies, missing orders, or gaps that never clear are the ones worth investigating. Exact tolerances vary by firm and instrument, so check your firm's current rules." },
+    { q: "Are funded prop-firm Tradovate accounts real or simulated?", a: "For evaluations and most funded accounts, trades stay inside Tradovate's simulated environment that mimics live conditions under the firm's risk rules. That simulation is exactly why fills are matched per account and can differ slightly between accounts." },
+    { q: "Why does my demo account sometimes fill better than my funded account?", a: "Pure demo accounts use virtual money and simulated fills with no real slippage risk, so they can fill a shade more favorably. Funded accounts are calibrated to more closely mimic live conditions, so the same trade can fill slightly worse there." },
+    { q: "How do I reduce fill differences between my accounts?", a: "Run every account from the same stable, low-latency connection, avoid piling on entries during the most volatile seconds of a news event, and route all accounts from a single alert source so dispatch happens together rather than one at a time." },
+    { q: "When should I actually contact support?", a: "When a difference is large (many ticks or points), an order goes missing on one account, or positions stay mismatched and never re-sync. Capture both accounts' fill reports with timestamps before reaching out." },
+  ], de: [
+    { q: "Warum füllen meine Funded- und Demo-Tradovate-Konten zu leicht unterschiedlichen Preisen?", a: "Weil jedes Konto in seiner eigenen unabhängigen Simulationswarteschlange gematcht wird. Selbst wenn beide Orders in derselben Millisekunde gesendet werden, landen sie in getrennten Warteschlangen und werden separat gefüllt, sodass Ein- und Ausstiegspreise ein bis zwei Ticks auseinanderliegen können. Das ist normal." },
+    { q: "Ist ein Sync-Hinweis ein Zeichen dafür, dass mein Copier defekt ist?", a: "Nein. Ein Sync-Hinweis zeigt Ihnen lediglich, dass die Positionsstatus zweier Konten für einen Moment voneinander abweichen, meist weil eines ein paar Millisekunden vor dem anderen gefüllt hat. Wenn er sich innerhalb von ein bis zwei Sekunden auflöst und die Konten sich wieder angleichen, funktioniert alles korrekt." },
+    { q: "Mein Stop hat ein Konto vor dem anderen geschlossen. Ist etwas fehlgeschlagen?", a: "Mit ziemlicher Sicherheit nicht. Stops werden pro Konto unabhängig gematcht, sodass einer Sekunden vor dem anderen auslösen kann, besonders in einem schnellen Markt. Solange beide Konten kurz danach glattgestellt sind, ist das erwartetes Verhalten." },
+    { q: "Wie groß darf eine Fill-Abweichung sein, um noch “normal” zu sein?", a: "Eine Abweichung in der Größenordnung von ein bis zwei Ticks im Preis und Millisekunden bis Sekunden im Timing ist normal und nimmt mit der Volatilität zu. Große Abweichungen über mehrere Ticks oder ganze Punkte, fehlende Orders oder Abweichungen, die sich nie auflösen, sind es wert, untersucht zu werden. Die genauen Toleranzen variieren je nach Firma und Instrument, prüfen Sie daher die aktuellen Regeln Ihrer Firma." },
+    { q: "Sind Funded-Prop-Firm-Tradovate-Konten real oder simuliert?", a: "Bei Evaluierungen und den meisten Funded-Konten bleiben Trades innerhalb der simulierten Umgebung von Tradovate, die Live-Bedingungen unter den Risikoregeln der Firma nachbildet. Genau diese Simulation ist der Grund, warum Fills pro Konto gematcht werden und zwischen Konten leicht abweichen können." },
+    { q: "Warum füllt mein Demokonto manchmal besser als mein Funded-Konto?", a: "Reine Demokonten verwenden virtuelles Geld und simulierte Fills ohne echtes Slippage-Risiko, sodass sie etwas günstiger füllen können. Funded-Konten sind so kalibriert, dass sie Live-Bedingungen enger nachbilden, sodass derselbe Trade dort etwas schlechter füllen kann." },
+    { q: "Wie reduziere ich Fill-Unterschiede zwischen meinen Konten?", a: "Betreiben Sie jedes Konto über dieselbe stabile Verbindung mit niedriger Latenz, vermeiden Sie es, in den volatilsten Sekunden eines Nachrichtenereignisses zusätzliche Einstiege vorzunehmen, und leiten Sie alle Konten aus einer einzigen Alert-Quelle, sodass die Weiterleitung gemeinsam statt nacheinander erfolgt." },
+    { q: "Wann sollte ich tatsächlich den Support kontaktieren?", a: "Wenn eine Abweichung groß ist (viele Ticks oder Punkte), eine Order auf einem Konto verloren geht oder Positionen dauerhaft nicht mehr übereinstimmen und sich nie wieder synchronisieren. Erfassen Sie die Fill-Berichte beider Konten mit Zeitstempeln, bevor Sie sich melden." },
+  ], es: [
+    { q: "¿Por qué mis cuentas Tradovate financiada y demo se ejecutan a precios ligeramente distintos?", a: "Porque cada cuenta se ejecuta en su propia cola de simulación independiente. Aunque ambas órdenes se envíen en el mismo milisegundo, llegan a colas separadas y se ejecutan por separado, de modo que los precios de entrada y salida pueden quedar uno o dos ticks de diferencia. Esto es normal." },
+    { q: "¿Un aviso de sincronización es señal de que mi copiador está averiado?", a: "No. Un aviso de sincronización solo le indica que los estados de posición de dos cuentas difieren momentáneamente, normalmente porque una se ejecutó unos milisegundos antes que la otra. Si desaparece en uno o dos segundos y las cuentas vuelven a coincidir, todo funciona correctamente." },
+    { q: "Mi stop cerró una cuenta antes que la otra. ¿Falló algo?", a: "Casi con toda seguridad, no. Los stops se ejecutan de forma independiente en cada cuenta, por lo que uno puede activarse segundos antes que otro, especialmente en un mercado rápido. Mientras ambas cuentas se cierren poco después, este es el comportamiento esperado." },
+    { q: "¿Qué tamaño de diferencia de ejecución se considera “normal”?", a: "Una diferencia del orden de uno o dos ticks en precio y de milisegundos a segundos en tiempo es normal, y aumenta con la volatilidad. Las discrepancias grandes de varios ticks o puntos completos, las órdenes faltantes o las diferencias que nunca se resuelven son las que merece la pena investigar. Las tolerancias exactas varían según la firma y el instrumento, así que consulte las reglas vigentes de su firma." },
+    { q: "¿Las cuentas Tradovate de prop firm financiadas son reales o simuladas?", a: "En las evaluaciones y en la mayoría de las cuentas financiadas, los trades permanecen dentro del entorno simulado de Tradovate, que imita las condiciones reales bajo las reglas de riesgo de la firma. Precisamente esa simulación es la razón por la que las ejecuciones se calculan por cuenta y pueden diferir ligeramente entre cuentas." },
+    { q: "¿Por qué mi cuenta demo a veces ejecuta mejor que mi cuenta financiada?", a: "Las cuentas demo puras usan dinero virtual y ejecuciones simuladas sin riesgo real de deslizamiento, por lo que pueden ejecutarse de forma algo más favorable. Las cuentas financiadas están calibradas para imitar más de cerca las condiciones reales, por lo que el mismo trade puede ejecutarse ligeramente peor allí." },
+    { q: "¿Cómo reduzco las diferencias de ejecución entre mis cuentas?", a: "Ejecute todas las cuentas desde la misma conexión estable y de baja latencia, evite acumular entradas durante los segundos más volátiles de un evento de noticias, y enrute todas las cuentas desde una única fuente de alertas para que el envío ocurra de forma conjunta y no una tras otra." },
+    { q: "¿Cuándo debo contactar realmente con soporte?", a: "Cuando la diferencia sea grande (muchos ticks o puntos), una orden desaparezca en una cuenta, o las posiciones queden desalineadas de forma permanente y nunca se resincronicen. Capture los informes de ejecución de ambas cuentas con marcas de tiempo antes de contactar." },
+  ], fr: [
+    { q: "Pourquoi mes comptes Tradovate financé et démo s'exécutent-ils à des prix légèrement différents ?", a: "Parce que chaque compte est exécuté dans sa propre file de simulation indépendante. Même lorsque les deux ordres sont envoyés à la même milliseconde, ils atterrissent dans des files distinctes et s'exécutent séparément, si bien que les prix d'entrée et de sortie peuvent différer d'un ou deux ticks. Cela est normal." },
+    { q: "Un avis de synchronisation signifie-t-il que mon copieur est défaillant ?", a: "Non. Un avis de synchronisation indique simplement que les états de position de deux comptes diffèrent momentanément, généralement parce que l'un a été exécuté quelques millisecondes avant l'autre. S'il disparaît en une ou deux secondes et que les comptes se réalignent, tout fonctionne correctement." },
+    { q: "Mon stop a fermé un compte avant l'autre. Y a-t-il eu un problème ?", a: "Presque certainement pas. Les stops sont exécutés indépendamment sur chaque compte, l'un peut donc se déclencher plusieurs secondes avant l'autre, surtout sur un marché rapide. Tant que les deux comptes se soldent peu après, il s'agit d'un comportement attendu." },
+    { q: "Quelle ampleur d'écart d'exécution est considérée comme “normale” ?", a: "Un écart de l'ordre d'un ou deux ticks en prix et de quelques millisecondes à quelques secondes en timing est normal, et il s'accentue avec la volatilité. Les écarts importants de plusieurs ticks ou points entiers, les ordres manquants, ou les écarts qui ne se résorbent jamais méritent d'être examinés. Les tolérances exactes varient selon la firme et l'instrument, vérifiez donc les règles actuelles de votre firme." },
+    { q: "Les comptes Tradovate de prop firm financés sont-ils réels ou simulés ?", a: "Pour les évaluations et la plupart des comptes financés, les trades restent dans l'environnement simulé de Tradovate, qui reproduit les conditions réelles selon les règles de risque de la firme. C'est précisément cette simulation qui explique pourquoi les exécutions sont calculées par compte et peuvent légèrement différer d'un compte à l'autre." },
+    { q: "Pourquoi mon compte démo s'exécute-t-il parfois mieux que mon compte financé ?", a: "Les comptes démo purs utilisent de l'argent virtuel et des exécutions simulées sans risque réel de glissement, ils peuvent donc s'exécuter un peu plus favorablement. Les comptes financés sont calibrés pour reproduire plus fidèlement les conditions réelles, si bien que le même trade peut s'y exécuter légèrement moins bien." },
+    { q: "Comment réduire les écarts d'exécution entre mes comptes ?", a: "Faites fonctionner tous les comptes depuis la même connexion stable à faible latence, évitez d'empiler des entrées pendant les secondes les plus volatiles d'un événement d'actualité, et routez tous les comptes depuis une source d'alerte unique afin que la transmission se fasse ensemble plutôt que l'une après l'autre." },
+    { q: "Quand dois-je réellement contacter le support ?", a: "Lorsque l'écart est important (plusieurs ticks ou points), qu'un ordre disparaît sur un compte, ou que les positions restent décalées et ne se resynchronisent jamais. Rassemblez les rapports d'exécution des deux comptes avec horodatages avant de contacter le support." },
+  ], it: [
+    { q: "Perché i miei conti Tradovate finanziato e demo eseguono a prezzi leggermente diversi?", a: "Perché ciascun conto viene eseguito nella propria coda di simulazione indipendente. Anche quando entrambi gli ordini vengono inviati nello stesso millisecondo, finiscono in code separate e vengono eseguiti separatamente, quindi i prezzi di ingresso e uscita possono differire di uno o due tick. Questo è normale." },
+    { q: "Un avviso di sincronizzazione è segno che il mio copiatore è guasto?", a: "No. Un avviso di sincronizzazione indica solo che gli stati di posizione di due conti differiscono momentaneamente, di solito perché uno ha eseguito qualche millisecondo prima dell'altro. Se si risolve entro uno o due secondi e i conti tornano ad allinearsi, tutto funziona correttamente." },
+    { q: "Il mio stop ha chiuso un conto prima dell'altro. È fallito qualcosa?", a: "Quasi certamente no. Gli stop vengono eseguiti in modo indipendente per ciascun conto, quindi uno può scattare secondi prima dell'altro, specialmente in un mercato veloce. Finché entrambi i conti si chiudono poco dopo, questo è il comportamento previsto." },
+    { q: "Quanto può essere ampia una differenza di esecuzione per essere considerata “normale”?", a: "Uno scarto dell'ordine di uno o due tick nel prezzo e da millisecondi a secondi nella tempistica è normale, e aumenta con la volatilità. Le discrepanze ampie di più tick o punti interi, gli ordini mancanti o gli scarti che non si risolvono mai meritano di essere approfonditi. Le tolleranze esatte variano in base a società e strumento, quindi verificate le regole attuali della vostra società." },
+    { q: "I conti Tradovate prop firm finanziati sono reali o simulati?", a: "Per le valutazioni e la maggior parte dei conti finanziati, i trade restano all'interno dell'ambiente simulato di Tradovate, che riproduce le condizioni reali secondo le regole di rischio della società. Proprio questa simulazione è il motivo per cui le esecuzioni vengono calcolate per conto e possono differire leggermente da un conto all'altro." },
+    { q: "Perché il mio conto demo a volte esegue meglio del mio conto finanziato?", a: "I conti demo puri utilizzano denaro virtuale ed esecuzioni simulate senza alcun rischio reale di slippage, quindi possono eseguire in modo leggermente più favorevole. I conti finanziati sono calibrati per riprodurre più fedelmente le condizioni reali, quindi lo stesso trade può eseguire lì leggermente peggio." },
+    { q: "Come posso ridurre le differenze di esecuzione tra i miei conti?", a: "Eseguite tutti i conti dalla stessa connessione stabile a bassa latenza, evitate di accumulare ingressi nei secondi più volatili di un evento di notizie, e instradate tutti i conti da un'unica fonte di alert in modo che l'invio avvenga insieme anziché uno alla volta." },
+    { q: "Quando dovrei effettivamente contattare il supporto?", a: "Quando la differenza è ampia (molti tick o punti), un ordine risulta mancante su un conto, oppure le posizioni restano disallineate e non si risincronizzano mai. Raccogliete i report di esecuzione di entrambi i conti con gli orari prima di contattare il supporto." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Abläufe der Plattform ändern sich im Laufe der Zeit. Bestätigen Sie daher stets den aktuellen Prozess in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent au fil du temps ; vérifiez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un notevole rischio di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e le procedure della piattaforma cambiano nel tempo, pertanto verificare sempre il processo attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

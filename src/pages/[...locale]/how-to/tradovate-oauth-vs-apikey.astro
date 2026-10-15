@@ -1,0 +1,254 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-oauth-vs-apikey";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Tradovate OAuth vs API-Key Authentication";
+const META_DESCRIPTION =
+  "Compare the direct access-token and OAuth login flows for the futures API, see how each works, and pick the right authentication method for your bot.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate OAuth vs. API-Key-Authentifizierung", es: "Autenticación OAuth vs. clave API en Tradovate", fr: "Authentification Tradovate : OAuth ou clé API", it: "Autenticazione Tradovate: OAuth o chiave API" },
+  dek: { en: "Compare the direct access-token and OAuth login flows for the futures API, see how each works, and pick the right authentication method for your bot.", de: "Vergleichen Sie den direkten Access-Token-Ablauf mit dem OAuth-Login-Ablauf für die Futures-API, sehen Sie, wie beide funktionieren, und wählen Sie die passende Authentifizierungsmethode für Ihren Bot.", es: "Compare el flujo de token de acceso directo y el de inicio de sesión OAuth para la API de futuros, vea cómo funciona cada uno y elija el método de autenticación adecuado para su bot.", fr: "Comparez le flux de jeton d'accès direct et le flux de connexion OAuth pour l'API de contrats à terme, voyez comment chacun fonctionne et choisissez la bonne méthode d'authentification pour votre bot.", it: "Confronti il flusso con token di accesso diretto e quello con login OAuth per l'API dei futures, veda come funziona ciascuno e scelga il metodo di autenticazione giusto per il Suo bot." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "There are two ways to get code talking to the Tradovate API, and people mix them up all the time. One is the direct access-token request, where you use an API key you generated for your own account. The other is OAuth, where a trader logs in on Tradovate's own page and hands your app a token without ever giving you their password. Choose the wrong one and you'll either sit on credentials you shouldn't be holding, or hit a wall the moment you try to connect somebody else's account. Here's how each flow actually works and when to reach for it." },
+    { type: "paragraph", html: "Both methods end in the same place: a short-lived bearer token you attach to every request as <code>Authorization: Bearer {token}</code>. The difference is entirely in how you get that token and whose account it's for." },
+    {
+      type: "table",
+      headers: ["", "Direct access-token (API key)", "OAuth"],
+      rows: [
+        ["Best for", "Automating your own account", "An app that other traders log into"],
+        ["Credentials you hold", "Your own username, password, and API key (cid + secret)", "A client ID and secret from Tradovate, never the user's password"],
+        ["Where the user logs in", "Inside your own code", "On Tradovate's hosted login page"],
+        ["How you get set up", "Generate the key yourself in Settings", "Request client credentials from Tradovate"],
+        ["What comes back", "Bearer access token", "Bearer access token"],
+      ],
+    },
+    { type: "heading", text: "The Direct Access-Token Method" },
+    { type: "paragraph", html: "This is the simpler path, and it's the right one when the account you're automating belongs to you. You create an API key inside the platform once, then trade a short POST for a token whenever you need one." },
+    {
+      type: "steps",
+      items: [
+        { title: "Enable API Access and Generate Your Key", html: "Open your account Settings and find the API Access add-on. It carries a small recurring fee, and key generation is gated behind a funded live account above a minimum balance. Those numbers change, so confirm the current price and threshold in your own account. Once it's active, open the API Access tab, generate a new key, give it a nickname, allow full access, and create it. Copy the <strong class='text-white'>CID</strong> and <strong class='text-white'>secret</strong> immediately. Tradovate shows the secret exactly once and never displays it again, so store it somewhere safe and keep it out of public repositories." },
+        { title: "Request a Bearer Token Directly", html: "Send a POST to <code>/auth/accesstokenrequest</code> with your <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code>, and a stable <code>deviceId</code>. Hit the demo host while you're testing and the live host once you're placing real orders. The response hands back an <code>accessToken</code> for trading, a separate <code>mdAccessToken</code> for market data, and an expiration time." },
+      ],
+    },
+    { type: "paragraph", html: "That token is short-lived. The response tells you exactly when it expires, and you renew it by calling <code>/auth/renewAccessToken</code> with the still-valid token a little before that time, not by re-sending your password on a loop, which is how people end up locked out with a 401." },
+    { type: "heading", text: "The OAuth Method" },
+    { type: "paragraph", html: "Reach for OAuth the moment you're acting on behalf of anyone but yourself, a dashboard, a copy-trade tool, any product real traders sign into. They log in on Tradovate's page, so their password never touches your servers. You get a token scoped to their account and nothing more." },
+    {
+      type: "steps",
+      items: [
+        { title: "Get OAuth Client Credentials", html: "Unlike an API key, you can't self-serve these. Contact Tradovate, request a <strong class='text-white'>client ID</strong> and <strong class='text-white'>client secret</strong>, and register the exact redirect URI your app will use, for example <code>https://yourapp.com/oauth/callback</code>. The redirect URI has to match later, character for character." },
+        { title: "Send the User to the Authorization Page", html: "Redirect the trader to Tradovate's authorization URL, <code>https://trader.tradovate.com/oauth</code>, with <code>response_type=code</code>, your URL-encoded <code>client_id</code>, and your URL-encoded <code>redirect_uri</code>. They sign in with their own Tradovate credentials and approve access. Tradovate then bounces them back to your redirect URI with a single-use <code>code</code> tacked onto the query string." },
+        { title: "Exchange the Code for a Token", html: "Do this from your server, never from the browser, the client secret has to stay private. POST to the OAuth token endpoint, <code>https://live.tradovateapi.com/auth/oauthtoken</code>, with <code>grant_type=authorization_code</code>, the <code>code</code> you just received, your <code>client_id</code>, <code>client_secret</code>, and the matching <code>redirect_uri</code>. Back comes an <code>access_token</code> and an <code>expires_in</code>. From here it's identical to the direct flow: attach the bearer token to every request and refresh it before it lapses." },
+      ],
+    },
+    { type: "heading", text: "Which One Should You Use?" },
+    { type: "paragraph", html: "If you're automating only your own account, use the direct access-token flow. It's fewer moving parts, you control the key, and there's no third party to coordinate with. If you're building anything other traders connect to, use OAuth every single time. Handling someone else's password yourself is a liability you don't want, and the OAuth flow exists precisely so you never have to." },
+    { type: "paragraph", html: "Two things to check before you build on a funded or evaluation account: whether direct API automation is allowed depends on your firm, some permit it, some don't, and real-time API market data can carry a separate exchange fee. Confirm both against your firm's current rules and your own account rather than assuming." },
+    { type: "heading", text: "Automate This with PickMyTrade" },
+    { type: "paragraph", html: "Rather not babysit tokens, renewals, and redirect URIs at all? <strong class='text-white'>PickMyTrade connects your TradingView alerts straight to Tradovate</strong> without you writing a line of authentication code." },
+  ], de: [
+    { type: "paragraph",html: "Es gibt zwei Wege, Code mit der Tradovate-API sprechen zu lassen, und die beiden werden ständig verwechselt. Der eine ist die direkte Access-Token-Anfrage, bei der Sie einen API-Schlüssel verwenden, den Sie für Ihr eigenes Konto erzeugt haben. Der andere ist OAuth, bei dem sich ein Trader auf der eigenen Seite von Tradovate anmeldet und Ihrer App ein Token übergibt, ohne Ihnen je sein Passwort zu geben. Wählen Sie den falschen, halten Sie entweder Zugangsdaten, die Sie nicht besitzen sollten, oder scheitern in dem Moment, in dem Sie das Konto eines anderen verbinden wollen. So funktioniert jeder Ablauf wirklich und wann Sie ihn einsetzen." },
+    { type: "paragraph",html: "Beide Methoden enden am selben Punkt: einem kurzlebigen Bearer-Token, das Sie jeder Anfrage als <code>Authorization: Bearer {token}</code> mitgeben. Der Unterschied liegt ausschließlich darin, wie Sie dieses Token erhalten und für wessen Konto es gilt." },
+    { type: "table", headers: ["","Direkter Access-Token (API-Schlüssel)","OAuth"], rows: [
+      ["Am besten geeignet für","Die Automatisierung Ihres eigenen Kontos","Eine App, bei der sich andere Trader anmelden"],
+      ["Zugangsdaten, die Sie halten","Ihr eigener Benutzername, Ihr Passwort und Ihr API-Schlüssel (cid + secret)","Eine Client-ID und ein Secret von Tradovate, niemals das Passwort des Nutzers"],
+      ["Wo sich der Nutzer anmeldet","In Ihrem eigenen Code","Auf der gehosteten Anmeldeseite von Tradovate"],
+      ["Wie Sie die Einrichtung vornehmen","Den Schlüssel selbst in den Einstellungen erzeugen","Client-Zugangsdaten bei Tradovate anfordern"],
+      ["Was zurückkommt","Bearer-Access-Token","Bearer-Access-Token"],
+    ] },
+    { type: "heading",text: "Die direkte Access-Token-Methode" },
+    { type: "paragraph",html: "Das ist der einfachere Weg und der richtige, wenn das zu automatisierende Konto Ihnen gehört. Sie erzeugen einmal einen API-Schlüssel in der Plattform und tauschen dann bei Bedarf mit einem kurzen POST ein Token ein." },
+    {
+      type: "steps",
+      items: [
+        { title: "API-Zugriff aktivieren und Schlüssel erzeugen", html: "Öffnen Sie die Einstellungen Ihres Kontos und suchen Sie das Add-on „API Access“. Es ist mit einer kleinen wiederkehrenden Gebühr verbunden, und die Schlüsselerzeugung setzt ein finanziertes Live-Konto über einem Mindestguthaben voraus. Diese Zahlen ändern sich, bestätigen Sie daher den aktuellen Preis und die Schwelle in Ihrem eigenen Konto. Sobald es aktiv ist, öffnen Sie den Reiter „API Access“, erzeugen einen neuen Schlüssel, vergeben einen Spitznamen, erlauben vollen Zugriff und erstellen ihn. Kopieren Sie <strong class='text-white'>CID</strong> und <strong class='text-white'>Secret</strong> sofort. Tradovate zeigt das Secret genau einmal an und nie wieder. Bewahren Sie es daher sicher auf und halten Sie es aus öffentlichen Repositories heraus." },
+        { title: "Ein Bearer-Token direkt anfordern", html: "Senden Sie einen POST an <code>/auth/accesstokenrequest</code> mit Ihren Werten für <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> und einer stabilen <code>deviceId</code>. Verwenden Sie beim Testen den Demo-Host und den Live-Host, sobald Sie echte Orders platzieren. Die Antwort liefert ein <code>accessToken</code> für den Handel, ein separates <code>mdAccessToken</code> für Marktdaten und einen Ablaufzeitpunkt." },
+      ],
+    },
+    { type: "paragraph",html: "Dieses Token ist kurzlebig. Die Antwort nennt Ihnen genau, wann es abläuft, und Sie erneuern es, indem Sie kurz vorher <code>/auth/renewAccessToken</code> mit dem noch gültigen Token aufrufen, nicht indem Sie Ihr Passwort immer wieder in einer Schleife senden, womit man sich am Ende mit einem 401 aussperrt." },
+    { type: "heading",text: "Die OAuth-Methode" },
+    { type: "paragraph",html: "Greifen Sie zu OAuth, sobald Sie für jemand anderen als sich selbst handeln: ein Dashboard, ein Copy-Trading-Tool, jedes Produkt, bei dem sich echte Trader anmelden. Sie melden sich auf der Seite von Tradovate an, sodass ihr Passwort nie Ihre Server berührt. Sie erhalten ein Token, das auf ihr Konto beschränkt ist, und nicht mehr." },
+    {
+      type: "steps",
+      items: [
+        { title: "OAuth-Client-Zugangsdaten erhalten", html: "Anders als einen API-Schlüssel können Sie diese nicht selbst erzeugen. Kontaktieren Sie Tradovate, fordern Sie eine <strong class='text-white'>Client-ID</strong> und ein <strong class='text-white'>Client-Secret</strong> an und registrieren Sie die exakte Redirect-URI, die Ihre App verwenden wird, zum Beispiel <code>https://yourapp.com/oauth/callback</code>. Die Redirect-URI muss später Zeichen für Zeichen übereinstimmen." },
+        { title: "Den Nutzer zur Autorisierungsseite schicken", html: "Leiten Sie den Trader zur Autorisierungs-URL von Tradovate weiter, <code>https://trader.tradovate.com/oauth</code>, mit <code>response_type=code</code>, Ihrer URL-kodierten <code>client_id</code> und Ihrer URL-kodierten <code>redirect_uri</code>. Er meldet sich mit seinen eigenen Tradovate-Zugangsdaten an und genehmigt den Zugriff. Tradovate leitet ihn dann zurück zu Ihrer Redirect-URI, wobei ein einmalig gültiger <code>code</code> an die Query-String angehängt ist." },
+        { title: "Den Code gegen ein Token eintauschen", html: "Erledigen Sie das von Ihrem Server aus, niemals im Browser, denn das Client-Secret muss privat bleiben. Senden Sie einen POST an den OAuth-Token-Endpunkt <code>https://live.tradovateapi.com/auth/oauthtoken</code> mit <code>grant_type=authorization_code</code>, dem soeben erhaltenen <code>code</code>, Ihrer <code>client_id</code>, Ihrem <code>client_secret</code> und der passenden <code>redirect_uri</code>. Zurück kommen ein <code>access_token</code> und ein <code>expires_in</code>. Ab hier ist es identisch mit dem direkten Ablauf: Hängen Sie das Bearer-Token an jede Anfrage an und erneuern Sie es, bevor es abläuft." },
+      ],
+    },
+    { type: "heading",text: "Welche Methode sollten Sie verwenden?" },
+    { type: "paragraph",html: "Wenn Sie nur Ihr eigenes Konto automatisieren, verwenden Sie den direkten Access-Token-Ablauf. Er hat weniger bewegliche Teile, Sie kontrollieren den Schlüssel, und es ist kein Dritter abzustimmen. Wenn Sie etwas bauen, mit dem sich andere Trader verbinden, verwenden Sie jedes Mal OAuth. Das Passwort eines anderen selbst zu verarbeiten ist eine Haftung, die Sie nicht wollen, und der OAuth-Ablauf existiert genau dafür, dass Sie das nie tun müssen." },
+    { type: "paragraph",html: "Zwei Dinge sollten Sie prüfen, bevor Sie auf einem finanzierten oder Evaluierungskonto aufbauen: Ob die direkte API-Automatisierung erlaubt ist, hängt von Ihrer Firma ab, manche erlauben sie, andere nicht, und API-Marktdaten in Echtzeit können eine separate Börsengebühr verursachen. Bestätigen Sie beides anhand der aktuellen Regeln Ihrer Firma und Ihres eigenen Kontos, statt es anzunehmen." },
+    { type: "heading",text: "Automatisieren mit PickMyTrade" },
+    { type: "paragraph",html: "Möchten Sie sich lieber nicht um Tokens, Erneuerungen und Redirect-URIs kümmern? <strong class='text-white'>PickMyTrade verbindet Ihre TradingView-Alarme direkt mit Tradovate</strong>, ohne dass Sie eine Zeile Authentifizierungscode schreiben müssen." },
+  ], es: [
+    { type: "paragraph",html: "Hay dos formas de hacer que el código se comunique con la API de Tradovate, y la gente las confunde todo el tiempo. Una es la solicitud directa de token de acceso, en la que usa una clave API que generó para su propia cuenta. La otra es OAuth, en la que un operador inicia sesión en la propia página de Tradovate y entrega un token a su aplicación sin darle nunca su contraseña. Si elige la equivocada, o bien conservará credenciales que no debería tener, o bien se topará con un muro en cuanto intente conectar la cuenta de otra persona. Aquí le explicamos cómo funciona realmente cada flujo y cuándo recurrir a él." },
+    { type: "paragraph",html: "Ambos métodos terminan en el mismo lugar: un token bearer de corta duración que adjunta a cada solicitud como <code>Authorization: Bearer {token}</code>. La diferencia está por completo en cómo obtiene ese token y de quién es la cuenta." },
+    { type: "table", headers: ["","Token de acceso directo (clave API)","OAuth"], rows: [
+      ["Ideal para","Automatizar su propia cuenta","Una aplicación en la que inician sesión otros operadores"],
+      ["Credenciales que usted conserva","Su propio nombre de usuario, contraseña y clave API (cid + secret)","Un client ID y un secret de Tradovate, nunca la contraseña del usuario"],
+      ["Dónde inicia sesión el usuario","Dentro de su propio código","En la página de inicio de sesión alojada por Tradovate"],
+      ["Cómo se configura","Genere usted mismo la clave en Settings","Solicite las credenciales de cliente a Tradovate"],
+      ["Qué se devuelve","Token de acceso bearer","Token de acceso bearer"],
+    ] },
+    { type: "heading",text: "El método de token de acceso directo" },
+    { type: "paragraph",html: "Es el camino más sencillo y el adecuado cuando la cuenta que automatiza le pertenece. Crea una clave API dentro de la plataforma una sola vez y después intercambia un breve POST por un token cuando lo necesite." },
+    {
+      type: "steps",
+      items: [
+        { title: "Active el acceso a la API y genere su clave", html: "Abra la configuración de su cuenta y busque el complemento «API Access». Tiene una pequeña tarifa recurrente y la generación de claves requiere una cuenta real financiada con un saldo mínimo. Esas cifras cambian, así que confirme el precio y el umbral actuales en su propia cuenta. Una vez activo, abra la pestaña «API Access», genere una nueva clave, asígnele un nombre, permita acceso completo y créela. Copie de inmediato el <strong class='text-white'>CID</strong> y el <strong class='text-white'>secret</strong>. Tradovate muestra el secret exactamente una vez y no lo vuelve a mostrar, así que guárdelo en un lugar seguro y manténgalo fuera de los repositorios públicos." },
+        { title: "Solicite directamente un token bearer", html: "Envíe un POST a <code>/auth/accesstokenrequest</code> con su <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> y un <code>deviceId</code> estable. Use el host de demo mientras prueba y el host real cuando coloque órdenes reales. La respuesta devuelve un <code>accessToken</code> para operar, un <code>mdAccessToken</code> independiente para datos de mercado y una hora de expiración." },
+      ],
+    },
+    { type: "paragraph",html: "Ese token es de corta duración. La respuesta le indica exactamente cuándo expira, y lo renueva llamando a <code>/auth/renewAccessToken</code> con el token todavía válido un poco antes de esa hora, no reenviando su contraseña en bucle, que es como la gente termina bloqueada con un 401." },
+    { type: "heading",text: "El método OAuth" },
+    { type: "paragraph",html: "Recurra a OAuth en cuanto actúe en nombre de alguien que no sea usted: un panel, una herramienta de copy trading, cualquier producto en el que inicien sesión operadores reales. Inician sesión en la página de Tradovate, por lo que su contraseña nunca toca sus servidores. Usted obtiene un token limitado a su cuenta y nada más." },
+    {
+      type: "steps",
+      items: [
+        { title: "Obtenga las credenciales de cliente OAuth", html: "A diferencia de una clave API, no puede obtenerlas por su cuenta. Póngase en contacto con Tradovate, solicite un <strong class='text-white'>client ID</strong> y un <strong class='text-white'>client secret</strong> y registre el URI de redirección exacto que usará su aplicación, por ejemplo <code>https://yourapp.com/oauth/callback</code>. El URI de redirección tendrá que coincidir después carácter por carácter." },
+        { title: "Envíe al usuario a la página de autorización", html: "Redirija al operador a la URL de autorización de Tradovate, <code>https://trader.tradovate.com/oauth</code>, con <code>response_type=code</code>, su <code>client_id</code> codificado como URL y su <code>redirect_uri</code> codificado como URL. Inicia sesión con sus propias credenciales de Tradovate y aprueba el acceso. Tradovate lo devuelve entonces a su URI de redirección con un <code>code</code> de un solo uso añadido a la cadena de consulta." },
+        { title: "Intercambie el código por un token", html: "Haga esto desde su servidor, nunca desde el navegador, porque el client secret debe permanecer privado. Envíe un POST al endpoint de token de OAuth, <code>https://live.tradovateapi.com/auth/oauthtoken</code>, con <code>grant_type=authorization_code</code>, el <code>code</code> que acaba de recibir, su <code>client_id</code>, <code>client_secret</code> y el <code>redirect_uri</code> correspondiente. Recibirá un <code>access_token</code> y un <code>expires_in</code>. A partir de aquí es idéntico al flujo directo: adjunte el token bearer a cada solicitud y renuévelo antes de que caduque." },
+      ],
+    },
+    { type: "heading",text: "¿Cuál debería usar?" },
+    { type: "paragraph",html: "Si solo automatiza su propia cuenta, use el flujo de token de acceso directo. Tiene menos piezas móviles, usted controla la clave y no hay un tercero con quien coordinarse. Si está creando algo a lo que se conectan otros operadores, use OAuth siempre. Gestionar usted mismo la contraseña de otra persona es una responsabilidad que no quiere asumir, y el flujo OAuth existe precisamente para que nunca tenga que hacerlo." },
+    { type: "paragraph",html: "Dos cosas que debe comprobar antes de construir sobre una cuenta financiada o de evaluación: si la automatización directa por API está permitida depende de su firma, algunas la permiten y otras no, y los datos de mercado en tiempo real por API pueden conllevar una tarifa de bolsa aparte. Confirme ambas cosas con las reglas actuales de su firma y su propia cuenta en lugar de darlas por sentadas." },
+    { type: "heading",text: "Automatice esto con PickMyTrade" },
+    { type: "paragraph",html: "¿Prefiere no ocuparse de tokens, renovaciones y URIs de redirección? <strong class='text-white'>PickMyTrade conecta sus alertas de TradingView directamente con Tradovate</strong> sin que tenga que escribir una línea de código de autenticación." },
+  ], fr: [
+    { type: "paragraph",html: "Il existe deux manières de faire communiquer du code avec l'API Tradovate, et on les confond tout le temps. La première est la demande directe de jeton d'accès, où vous utilisez une clé API générée pour votre propre compte. La seconde est OAuth, où un trader se connecte sur la page propre à Tradovate et remet un jeton à votre application sans jamais vous donner son mot de passe. Choisissez la mauvaise et vous détiendrez soit des identifiants que vous ne devriez pas avoir, soit vous vous heurterez à un mur dès que vous tenterez de connecter le compte d'un autre. Voici comment chaque flux fonctionne réellement et quand l'utiliser." },
+    { type: "paragraph",html: "Les deux méthodes aboutissent au même résultat : un jeton bearer de courte durée que vous joignez à chaque requête sous la forme <code>Authorization: Bearer {token}</code>. La différence réside entièrement dans la façon d'obtenir ce jeton et dans le compte auquel il se rapporte." },
+    { type: "table", headers: ["","Jeton d'accès direct (clé API)","OAuth"], rows: [
+      ["Idéal pour","Automatiser votre propre compte","Une application à laquelle d'autres traders se connectent"],
+      ["Identifiants que vous détenez","Vos propres identifiant, mot de passe et clé API (cid + secret)","Un client ID et un secret fournis par Tradovate, jamais le mot de passe de l'utilisateur"],
+      ["Où l'utilisateur se connecte","Dans votre propre code","Sur la page de connexion hébergée par Tradovate"],
+      ["Comment la mise en place s'effectue","Vous générez vous-même la clé dans les paramètres","Vous demandez les identifiants client à Tradovate"],
+      ["Ce que vous recevez","Jeton d'accès bearer","Jeton d'accès bearer"],
+    ] },
+    { type: "heading",text: "La méthode du jeton d'accès direct" },
+    { type: "paragraph",html: "C'est la voie la plus simple, et la bonne lorsque le compte que vous automatisez vous appartient. Vous créez une fois une clé API dans la plateforme, puis vous échangez un court POST contre un jeton chaque fois que nécessaire." },
+    {
+      type: "steps",
+      items: [
+        { title: "Activer l'accès API et générer votre clé", html: "Ouvrez les paramètres de votre compte et repérez le module complémentaire « API Access ». Il s'accompagne d'un petit abonnement récurrent, et la génération de clé exige un compte réel financé au-delà d'un solde minimum. Ces montants évoluent ; vérifiez donc le prix et le seuil actuels dans votre propre compte. Une fois actif, ouvrez l'onglet « API Access », générez une nouvelle clé, donnez-lui un surnom, autorisez l'accès complet et créez-la. Copiez immédiatement le <strong class='text-white'>CID</strong> et le <strong class='text-white'>secret</strong>. Tradovate n'affiche le secret qu'une seule fois et ne le montre plus jamais ; conservez-le donc en lieu sûr et gardez-le hors des dépôts publics." },
+        { title: "Demander directement un jeton bearer", html: "Envoyez un POST à <code>/auth/accesstokenrequest</code> avec vos <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> et un <code>deviceId</code> stable. Utilisez l'hôte de démo pendant vos tests et l'hôte réel dès que vous passez de vrais ordres. La réponse renvoie un <code>accessToken</code> pour le trading, un <code>mdAccessToken</code> distinct pour les données de marché et une heure d'expiration." },
+      ],
+    },
+    { type: "paragraph",html: "Ce jeton est de courte durée. La réponse vous indique exactement quand il expire, et vous le renouvelez en appelant <code>/auth/renewAccessToken</code> avec le jeton encore valide un peu avant cette échéance, et non en renvoyant votre mot de passe en boucle, ce qui vous vaut un blocage avec une erreur 401." },
+    { type: "heading",text: "La méthode OAuth" },
+    { type: "paragraph",html: "Choisissez OAuth dès que vous agissez pour le compte de quelqu'un d'autre que vous : un tableau de bord, un outil de copy trading, tout produit auquel de vrais traders se connectent. Ils se connectent sur la page de Tradovate, donc leur mot de passe ne touche jamais vos serveurs. Vous obtenez un jeton limité à leur compte, et rien de plus." },
+    {
+      type: "steps",
+      items: [
+        { title: "Obtenir les identifiants client OAuth", html: "Contrairement à une clé API, vous ne pouvez pas les créer vous-même. Contactez Tradovate, demandez un <strong class='text-white'>client ID</strong> et un <strong class='text-white'>client secret</strong>, et enregistrez l'URI de redirection exact que votre application utilisera, par exemple <code>https://yourapp.com/oauth/callback</code>. L'URI de redirection devra correspondre plus tard caractère pour caractère." },
+        { title: "Envoyer l'utilisateur vers la page d'autorisation", html: "Redirigez le trader vers l'URL d'autorisation de Tradovate, <code>https://trader.tradovate.com/oauth</code>, avec <code>response_type=code</code>, votre <code>client_id</code> encodé en URL et votre <code>redirect_uri</code> encodé en URL. Il se connecte avec ses propres identifiants Tradovate et approuve l'accès. Tradovate le renvoie alors vers votre URI de redirection avec un <code>code</code> à usage unique ajouté à la chaîne de requête." },
+        { title: "Échanger le code contre un jeton", html: "Faites-le depuis votre serveur, jamais depuis le navigateur, car le client secret doit rester privé. Envoyez un POST au point de terminaison de jeton OAuth, <code>https://live.tradovateapi.com/auth/oauthtoken</code>, avec <code>grant_type=authorization_code</code>, le <code>code</code> que vous venez de recevoir, votre <code>client_id</code>, votre <code>client_secret</code> et le <code>redirect_uri</code> correspondant. Vous recevez un <code>access_token</code> et un <code>expires_in</code>. À partir de là, c'est identique au flux direct : joignez le jeton bearer à chaque requête et renouvelez-le avant son expiration." },
+      ],
+    },
+    { type: "heading",text: "Laquelle choisir ?" },
+    { type: "paragraph",html: "Si vous n'automatisez que votre propre compte, utilisez le flux de jeton d'accès direct. Il comporte moins d'éléments mobiles, vous contrôlez la clé et il n'y a aucun tiers avec qui se coordonner. Si vous construisez quelque chose auquel d'autres traders se connectent, utilisez OAuth à chaque fois. Gérer vous-même le mot de passe de quelqu'un d'autre est une responsabilité dont vous ne voulez pas, et le flux OAuth existe précisément pour que vous n'ayez jamais à le faire." },
+    { type: "paragraph",html: "Deux points à vérifier avant de construire sur un compte financé ou d'évaluation : l'autorisation de l'automatisation directe par API dépend de votre société, certaines l'autorisent, d'autres non, et les données de marché en temps réel via l'API peuvent entraîner des frais de bourse distincts. Vérifiez les deux dans les règles actuelles de votre société et dans votre propre compte plutôt que de les supposer." },
+    { type: "heading",text: "Automatiser avec PickMyTrade" },
+    { type: "paragraph",html: "Vous préférez ne pas vous occuper des jetons, des renouvellements et des URI de redirection ? <strong class='text-white'>PickMyTrade connecte vos alertes TradingView directement à Tradovate</strong> sans que vous ayez à écrire une ligne de code d'authentification." },
+  ], it: [
+    { type: "paragraph",html: "Ci sono due modi per far dialogare il codice con l'API di Tradovate, e vengono confusi di continuo. Il primo è la richiesta diretta di token di accesso, in cui usa una chiave API generata per il Suo account. Il secondo è OAuth, in cui un trader accede sulla pagina di Tradovate e consegna un token alla Sua app senza mai darLe la propria password. Se sceglie quello sbagliato, o conserverà credenziali che non dovrebbe avere, o si scontrerà con un muro nel momento in cui proverà a collegare l'account di qualcun altro. Ecco come funziona davvero ciascun flusso e quando usarlo." },
+    { type: "paragraph",html: "Entrambi i metodi portano allo stesso risultato: un token bearer di breve durata che allega a ogni richiesta come <code>Authorization: Bearer {token}</code>. La differenza sta interamente in come ottiene quel token e di chi è l'account." },
+    { type: "table", headers: ["","Token di accesso diretto (chiave API)","OAuth"], rows: [
+      ["Ideale per","Automatizzare il Suo account","Un'app a cui accedono altri trader"],
+      ["Credenziali che Lei conserva","Il Suo nome utente, la Sua password e la Sua chiave API (cid + secret)","Un client ID e un secret forniti da Tradovate, mai la password dell'utente"],
+      ["Dove accede l'utente","All'interno del Suo codice","Sulla pagina di login ospitata da Tradovate"],
+      ["Come si configura","Genera la chiave Lei stesso nelle impostazioni","Richieda le credenziali client a Tradovate"],
+      ["Cosa viene restituito","Token di accesso bearer","Token di accesso bearer"],
+    ] },
+    { type: "heading",text: "Il metodo del token di accesso diretto" },
+    { type: "paragraph",html: "È il percorso più semplice ed è quello giusto quando l'account che automatizza Le appartiene. Crea una volta una chiave API nella piattaforma, poi scambia un breve POST con un token ogni volta che serve." },
+    {
+      type: "steps",
+      items: [
+        { title: "Attivi l'accesso API e generi la Sua chiave", html: "Apra le impostazioni del Suo account e trovi il componente aggiuntivo «API Access». Prevede un piccolo costo ricorrente e la generazione della chiave richiede un conto reale finanziato con un saldo minimo. Queste cifre cambiano, quindi verifichi prezzo e soglia attuali nel Suo account. Una volta attivo, apra la scheda «API Access», generi una nuova chiave, le dia un nome, consenta l'accesso completo e la crei. Copi subito il <strong class='text-white'>CID</strong> e il <strong class='text-white'>secret</strong>. Tradovate mostra il secret una sola volta e non lo visualizza più, quindi lo conservi in un luogo sicuro e lo tenga fuori dai repository pubblici." },
+        { title: "Richieda direttamente un token bearer", html: "Invii un POST a <code>/auth/accesstokenrequest</code> con <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> e un <code>deviceId</code> stabile. Usi l'host demo durante i test e l'host live quando inserisce ordini reali. La risposta restituisce un <code>accessToken</code> per il trading, un <code>mdAccessToken</code> separato per i dati di mercato e un orario di scadenza." },
+      ],
+    },
+    { type: "paragraph",html: "Quel token ha breve durata. La risposta Le dice esattamente quando scade, e lo rinnova chiamando <code>/auth/renewAccessToken</code> con il token ancora valido poco prima di quell'orario, non rinviando la password in un ciclo, che è il modo in cui si finisce bloccati con un 401." },
+    { type: "heading",text: "Il metodo OAuth" },
+    { type: "paragraph",html: "Scelga OAuth nel momento in cui agisce per conto di chiunque non sia Lei: una dashboard, uno strumento di copy trading, qualsiasi prodotto a cui accedono trader reali. Accedono sulla pagina di Tradovate, quindi la loro password non tocca mai i Suoi server. Ottiene un token limitato al loro account e nient'altro." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ottenga le credenziali client OAuth", html: "A differenza di una chiave API, non può ottenerle in autonomia. Contatti Tradovate, richieda un <strong class='text-white'>client ID</strong> e un <strong class='text-white'>client secret</strong> e registri l'esatto redirect URI che la Sua app utilizzerà, per esempio <code>https://yourapp.com/oauth/callback</code>. Il redirect URI dovrà corrispondere in seguito carattere per carattere." },
+        { title: "Indirizzi l'utente alla pagina di autorizzazione", html: "Reindirizzi il trader all'URL di autorizzazione di Tradovate, <code>https://trader.tradovate.com/oauth</code>, con <code>response_type=code</code>, il Suo <code>client_id</code> codificato come URL e il Suo <code>redirect_uri</code> codificato come URL. L'utente accede con le proprie credenziali Tradovate e approva l'accesso. Tradovate lo rimanda quindi al Suo redirect URI con un <code>code</code> monouso aggiunto alla query string." },
+        { title: "Scambi il codice con un token", html: "Lo faccia dal Suo server, mai dal browser, perché il client secret deve restare privato. Invii un POST all'endpoint del token OAuth, <code>https://live.tradovateapi.com/auth/oauthtoken</code>, con <code>grant_type=authorization_code</code>, il <code>code</code> appena ricevuto, il Suo <code>client_id</code>, <code>client_secret</code> e il <code>redirect_uri</code> corrispondente. Ottiene un <code>access_token</code> e un <code>expires_in</code>. Da qui in poi è identico al flusso diretto: allega il token bearer a ogni richiesta e lo aggiorna prima che scada." },
+      ],
+    },
+    { type: "heading",text: "Quale dovrebbe usare?" },
+    { type: "paragraph",html: "Se automatizza solo il Suo account, usi il flusso con token di accesso diretto. Ha meno parti in movimento, controlla Lei la chiave e non c'è alcuna terza parte con cui coordinarsi. Se sta costruendo qualcosa a cui si collegano altri trader, usi sempre OAuth. Gestire di persona la password di qualcun altro è una responsabilità che non vuole assumersi, e il flusso OAuth esiste proprio perché non debba mai farlo." },
+    { type: "paragraph",html: "Due cose da verificare prima di costruire su un conto finanziato o di valutazione: se l'automazione API diretta sia consentita dipende dalla Sua società, alcune la permettono e altre no, e i dati di mercato in tempo reale via API possono comportare una commissione di borsa separata. Verifichi entrambe le cose nelle regole attuali della Sua società e nel Suo account, anziché darle per scontate." },
+    { type: "heading",text: "Automatizzi con PickMyTrade" },
+    { type: "paragraph",html: "Preferisce non occuparsi di token, rinnovi e redirect URI? <strong class='text-white'>PickMyTrade collega i Suoi alert di TradingView direttamente a Tradovate</strong> senza che debba scrivere una riga di codice di autenticazione." },
+  ] },
+  ctaHeading: { en: "Skip the Authentication Code", de: "Verzichten Sie auf den Authentifizierungscode", es: "Olvídese del código de autenticación", fr: "Évitez le code d'authentification", it: "Eviti il codice di autenticazione" },
+  ctaText: { en: "Let PickMyTrade connect your TradingView alerts straight to Tradovate, no tokens, renewals, or redirect URIs to manage.", de: "Lassen Sie PickMyTrade Ihre TradingView-Alarme direkt mit Tradovate verbinden, ohne dass Sie Tokens, Erneuerungen oder Redirect-URIs verwalten müssen.", es: "Deje que PickMyTrade conecte sus alertas de TradingView directamente con Tradovate, sin tokens, renovaciones ni URIs de redirección que gestionar.", fr: "Laissez PickMyTrade connecter vos alertes TradingView directement à Tradovate, sans jetons, renouvellements ni URI de redirection à gérer.", it: "Lasci che PickMyTrade colleghi i Suoi alert di TradingView direttamente a Tradovate, senza token, rinnovi o redirect URI da gestire." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [], de: [], es: [], fr: [], it: [] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von dieser weder unterstützt noch gesponsert. \"Tradovate\" und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und Schritte ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, avalada ni patrocinada por Tradovate, Inc. \"Tradovate\" y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni uniquement à des fins éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ni parrainée par cette dernière. « Tradovate » ainsi que tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure actuelle sur la plateforme et dans la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a ogni investitore. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. \"Tradovate\" e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

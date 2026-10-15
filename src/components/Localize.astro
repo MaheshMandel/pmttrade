@@ -1,0 +1,29 @@
+---
+// Renders its slot, then swaps every English text unit for its translation (see i18n/compare-i18n-core.mjs).
+// English passes through untouched. With COMPARE_I18N_DUMP=<dir> the English build also writes the
+// translatable units of each page there (the source for translation).
+import fs from "node:fs";
+import path from "node:path";
+import { collect } from "../i18n/compare-i18n-core.mjs";
+import { translateFragment } from "../i18n/compare-i18n.mjs";
+
+interface Props {
+  locale: string;
+}
+const { locale } = Astro.props;
+let html = await Astro.slots.render("default");
+
+if (locale === "en") {
+  const dump = process.env.COMPARE_I18N_DUMP;
+  if (dump) {
+    const slug = Astro.url.pathname.replace(/^\/|\/$/g, "").replace(/\//g, "__") || "home";
+    const { found, problems } = collect(html);
+    fs.mkdirSync(dump, { recursive: true });
+    fs.writeFileSync(path.join(dump, `${slug}.json`), JSON.stringify({ units: [...found.entries()], problems }));
+  }
+} else {
+  html = translateFragment(html, locale);
+}
+---
+
+<Fragment set:html={html} />

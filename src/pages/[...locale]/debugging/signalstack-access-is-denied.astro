@@ -1,0 +1,584 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "signalstack-access-is-denied";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "SignalStack 'Tradovate: Access Is Denied' Fix";
+const META_DESCRIPTION =
+  "Getting 'Access is denied' connecting Tradovate to SignalStack? Re-authorize the link and grant order permissions to clear the handshake error fast.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "SignalStack „Tradovate: Access Is Denied“ beheben", es: "Solución a «Tradovate: Access Is Denied» en SignalStack", fr: "Corriger « Tradovate : Access Is Denied » dans SignalStack", it: "Risoluzione di «Tradovate: Access Is Denied» in SignalStack" },
+  dek: { en: "You go to connect Tradovate in SignalStack and instead of a green connected badge you get Access is denied. Here's what's actually failing at the OAuth handshake, and how to clear it.", de: "Sie möchten Tradovate in SignalStack verbinden und erhalten statt eines grünen „Verbunden“-Symbols die Meldung Access is denied. Hier erfahren Sie, was beim OAuth-Handshake tatsächlich fehlschlägt und wie Sie es beheben.", es: "Va a conectar Tradovate en SignalStack y, en lugar de una insignia verde de conectado, recibe Access is denied. Esto es lo que realmente falla en el handshake de OAuth y cómo resolverlo.", fr: "Vous essayez de connecter Tradovate dans SignalStack et, au lieu d'un badge vert « connecté », vous obtenez Access is denied. Voici ce qui échoue réellement lors du handshake OAuth et comment y remédier.", it: "Va a connettere Tradovate in SignalStack e, al posto di un badge verde di connessione, ottiene Access is denied. Ecco cosa fallisce davvero nell'handshake OAuth e come risolverlo." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You link your strategy to SignalStack, go to connect Tradovate, and instead of a green &ldquo;connected&rdquo; badge you get <code>Tradovate: Access is denied</code>. The maddening part is that nothing looks broken. Your password is right. The same account might link fine to a charting tool or a journal. Yet SignalStack won't complete the handshake. Here's what's actually happening: that message isn't SignalStack failing on its own. It's Tradovate refusing to finish authorization at the last step of the connection, and it does that for a small set of specific, fixable reasons. Almost every case comes down to a permission you didn't fully grant, a device-approval email sitting unread, the wrong account picked at login, or a prop-firm rule blocking the link. Work through the checklist below in order and you'll clear it, and at the end you'll see how to route your alerts to Tradovate without babysitting this handshake at all." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for “Access Is Denied”",
+      items: [
+        "<strong class='text-white'>Re-authorize from scratch</strong>, remove the Tradovate connection in SignalStack and add it again, granting <em>every</em> requested permission on the way through.",
+        "<strong class='text-white'>Grant the order permission</strong>, the authorization screen asks for read access <em>and</em> the ability to modify orders; skip the second one and every order gets denied.",
+        "<strong class='text-white'>Approve the device</strong>, on a live account, Tradovate emails a device-approval link and blocks access until you click it.",
+        "<strong class='text-white'>Pick the right account at login</strong>, sign in with the exact Tradovate credentials that own the account you intend to trade, in the correct environment.",
+        "<strong class='text-white'>Check prop-firm rules</strong>, some firms restrict or forbid third-party automation on evaluation and funded accounts.",
+        "<strong class='text-white'>Clear extra sessions</strong>, too many active Tradovate logins (web, desktop, mobile, plus the tool) can bump a session and revoke the link.",
+      ],
+    },
+    { type: "heading", text: "What “Access Is Denied” Means Here" },
+    { type: "paragraph", html: "SignalStack connects to Tradovate through an OAuth login, not by pasting keys into a box. When you add Tradovate as a broker, SignalStack sends you over to Tradovate's own login page. You sign in there, and Tradovate shows an authorization screen asking whether you want to grant read access and the ability to modify orders. Approve it, and Tradovate hands SignalStack a token that lets it place and manage orders on your behalf. That token, not your password, is what carries the connection from then on." },
+    { type: "paragraph", html: "<code>Access is denied</code> is Tradovate's blanket way of saying &ldquo;this request isn't authorized to do that.&rdquo; It's the same three words Tradovate uses across its platform and API, which is why it's so easy to misread as a broken account. It isn't. It means the authorization chain snapped somewhere between you logging in and Tradovate agreeing to trust SignalStack with your account. The break could be a permission you declined, a device Tradovate hasn't been told to trust yet, an account the login doesn't actually control, or an entitlement your prop firm hasn't switched on. Same message, several possible roots, so you fix it by ruling them out in order rather than guessing." },
+    { type: "heading", text: "Top Causes of “Access Is Denied”" },
+    { type: "heading", text: "1. You didn't grant the order permission during authorization" },
+    { type: "paragraph", html: "The Tradovate authorization screen offers more than one scope. There's read-only access, and there's full access including the ability to modify orders. SignalStack needs the second one to actually place trades. If you rushed the screen, only ticked the read scope, or closed the tab before confirming, Tradovate hands back a token that can look at the account but can't touch orders, and the first thing SignalStack tries to do trips <code>Access is denied</code>. The fix is to re-run the flow and deliberately approve the order-modification permission, not just the read one." },
+    { type: "heading", text: "2. A device-approval email is still pending" },
+    { type: "paragraph", html: "Tradovate treats the first connection from a new machine or session as a security event. On a live account it emails you a link to approve that device, and until you click it, it will deny access, even with the right password and the right permissions. This is the same behavior you hit when Tradovate says you've logged in from a new machine. If your login has two-factor authentication enabled, that step is mandatory. Check the inbox tied to your Tradovate account, approve the device, then retry the connection." },
+    { type: "heading", text: "3. You signed in with the wrong account or environment" },
+    { type: "paragraph", html: "When Tradovate's login page opens inside the connection flow, it's easy to sign in with a different set of credentials than the account you actually want to automate, an old personal login instead of your funded one, for instance. The token you get back is then tied to an account SignalStack can't route your trades through, and you're denied. Tradovate also runs separate simulated and live environments, and a prop-firm evaluation account lives in a different place than a self-funded live account. Make sure the credentials you enter, and the account they open, match the one you mean to trade." },
+    { type: "heading", text: "4. A prop-firm rule is blocking the link" },
+    { type: "paragraph", html: "If your Tradovate account came from a prop firm, the firm, not Tradovate directly, controls whether third-party automation is allowed on it. Some firms permit it, some forbid it outright on evaluation accounts, and some enable it only after certain conditions. Data and order entitlements vary by firm and account size too, so what works on one program can be denied on another. Exact rules change often, so check your firm's current automation policy before you assume the error is yours to fix." },
+    { type: "heading", text: "5. Too many active Tradovate sessions" },
+    { type: "paragraph", html: "Tradovate caps how many places can be signed into the same account at once. Open the web app, the desktop app, the mobile app, and a third-party tool all together and you can push past that limit, which bumps an existing session and revokes its authorization. When SignalStack's session is the one that gets kicked, its next order lands on <code>Access is denied</code>. Sign out of the sessions you're not actively using, then re-authorize the connection." },
+    { type: "heading", text: "6. A stale or half-finished prior authorization" },
+    { type: "paragraph", html: "Authorizations don't last forever, and a connection that was interrupted the first time, a closed tab, a timed-out login, a password change since you linked it, can leave SignalStack holding a token Tradovate no longer honors. It'll keep failing quietly until you refresh it. The cure for this one is the same as the cure for most of the list: tear the connection down and build it back up cleanly." },
+    { type: "heading", text: "How to Fix “Access Is Denied”: Step-by-Step" },
+    { type: "heading", text: "Re-authorize the connection from scratch" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Brokers & Webhooks", html: "Open SignalStack and go to the <strong class='text-white'>Brokers &amp; Webhooks</strong> area where your Tradovate connection is listed." },
+        { title: "Remove the existing link", html: "Remove or disconnect the existing Tradovate link so you start clean rather than patching a stale one." },
+        { title: "Add Tradovate again", html: "Add Tradovate again and let it redirect you to Tradovate's own login page." },
+        { title: "Approve both permissions", html: "Sign in with the exact account you want to trade, then on the authorization screen approve <strong class='text-white'>both</strong> the read access and the ability to modify orders." },
+        { title: "Confirm the connection", html: "Wait for Tradovate to hand you back to SignalStack and confirm the account now shows as connected." },
+      ],
+    },
+    { type: "heading", text: "Approve the device and clear 2FA" },
+    {
+      type: "steps",
+      items: [
+        { title: "Check your Tradovate inbox", html: "Check the email inbox tied to your Tradovate login for a device-approval message." },
+        { title: "Click the approval link", html: "Click the approval link to trust the machine or session you're connecting from." },
+        { title: "Complete 2FA if enabled", html: "If two-factor authentication is enabled, complete that prompt too, live accounts enforce it." },
+        { title: "Retry the connection", html: "Return to SignalStack and run the connection again now that the device is trusted." },
+      ],
+    },
+    { type: "heading", text: "Confirm the right credentials, account, and environment" },
+    {
+      type: "steps",
+      items: [
+        { title: "Double-check the account", html: "Double-check you're entering the credentials for the account you actually intend to automate, not an older or unrelated Tradovate login." },
+        { title: "Match the environment", html: "Make sure the environment lines up, a simulated or evaluation account is not the same place as a self-funded live account." },
+        { title: "Paste, don't retype", html: "Paste the password rather than typing it, so a mistyped character or wrong capitalization doesn't send you chasing an authorization problem that isn't there." },
+        { title: "Verify prop-firm rules", html: "If the account is a prop-firm account, verify the firm currently allows third-party automation before retrying." },
+      ],
+    },
+    { type: "heading", text: "Reduce active sessions, then retry" },
+    {
+      type: "steps",
+      items: [
+        { title: "Log out of unused sessions", html: "Log out of Tradovate everywhere you're not using it, spare browser tabs, the desktop app, the mobile app." },
+        { title: "Keep only what you need", html: "Leave only the session you need plus the SignalStack link." },
+        { title: "Re-authorize and test", html: "Re-authorize the connection and place a small test order to confirm routing works end to end." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Likely cause", "Fix"],
+      rows: [
+        ["Denied right after the Tradovate login screen", "Order permission not granted on the authorization screen", "Re-run the flow and approve read and modify-orders access"],
+        ["Password is correct but still denied", "Device-approval email not yet confirmed (live/2FA)", "Click the device-approval link Tradovate emailed, then retry"],
+        ["Connects to the wrong account or nothing routes", "Signed in with the wrong credentials or environment", "Log in with the exact account you trade, in the correct environment"],
+        ["Denied only on a prop-firm account", "Firm restricts third-party automation", "Check the firm's current automation rules before linking"],
+        ["Worked earlier, now failing", "Session bumped past the concurrent-login limit, or a stale token", "Log out of extra sessions and re-authorize the connection"],
+        ["Repeatedly denied after every attempt", "Half-finished or expired prior authorization", "Remove the connection entirely and rebuild it clean"],
+      ],
+    },
+    { type: "heading", text: "Prevent This With PickMyTrade" },
+    { type: "paragraph", html: "Most &ldquo;access is denied&rdquo; moments come from re-doing the Tradovate authorization by hand and hitting one of the snags above at exactly the wrong time, right before a signal fires. PickMyTrade takes that handshake off your plate:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>One-time managed connection</strong>, link your Tradovate account once and PickMyTrade keeps the authorization alive, so a stale token doesn't resurface as a denial mid-session.",
+        "<strong class='text-white'>Correct permissions and account resolved for you</strong>, the right account and order entitlement are handled during setup instead of guessed from a rushed permission screen.",
+        "<strong class='text-white'>Environment and session handling built in</strong>, simulated versus live routing and concurrent-session limits are managed, cutting the &ldquo;worked earlier, denied now&rdquo; class of failure.",
+        "<strong class='text-white'>Alerts to orders, cleanly</strong>, your TradingView or strategy alerts map to a live Tradovate order without you debugging an OAuth flow at the open.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie verknüpfen Ihre Strategie mit SignalStack, möchten Tradovate verbinden und erhalten statt eines grünen &ldquo;Verbunden&rdquo;-Symbols <code>Tradovate: Access is denied</code>. Das Ärgerliche daran: Nichts wirkt defekt. Ihr Passwort stimmt. Dasselbe Konto lässt sich womöglich problemlos mit einem Charting-Tool oder einem Journal verknüpfen. Dennoch schließt SignalStack den Handshake nicht ab. Was tatsächlich passiert: Diese Meldung ist kein eigenes Versagen von SignalStack. Es ist Tradovate, das den letzten Schritt der Verbindung, die Autorisierung, verweigert, und zwar aus einer kleinen Zahl konkreter, behebbarer Gründe. Fast immer liegt es an einer nicht vollständig erteilten Berechtigung, einer ungelesenen Geräte-Freigabe-E-Mail, dem beim Login gewählten falschen Konto oder einer Prop-Firm-Regel, die die Verknüpfung blockiert. Arbeiten Sie die Checkliste unten der Reihe nach ab, dann ist es behoben, und am Ende sehen Sie, wie Sie Ihre Alerts an Tradovate weiterleiten, ohne diesen Handshake überwachen zu müssen." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste für „Access Is Denied“",
+      items: [
+        "<strong class='text-white'>Von Grund auf neu autorisieren</strong>: Entfernen Sie die Tradovate-Verbindung in SignalStack und fügen Sie sie erneut hinzu, wobei Sie <em>jede</em> angeforderte Berechtigung erteilen.",
+        "<strong class='text-white'>Die Order-Berechtigung erteilen</strong>: Der Autorisierungsbildschirm verlangt Lesezugriff <em>und</em> die Möglichkeit, Orders zu ändern. Wird die zweite übersprungen, wird jede Order abgelehnt.",
+        "<strong class='text-white'>Das Gerät freigeben</strong>: Bei einem Live-Konto sendet Tradovate einen Link zur Geräte-Freigabe per E-Mail und blockiert den Zugriff, bis Sie ihn anklicken.",
+        "<strong class='text-white'>Beim Login das richtige Konto wählen</strong>: Melden Sie sich mit genau den Tradovate-Zugangsdaten an, die zu dem Konto gehören, das Sie handeln möchten, in der richtigen Umgebung.",
+        "<strong class='text-white'>Prop-Firm-Regeln prüfen</strong>: Manche Firmen schränken Drittanbieter-Automatisierung auf Evaluierungs- und Funded-Konten ein oder verbieten sie.",
+        "<strong class='text-white'>Überzählige Sitzungen beenden</strong>: Zu viele aktive Tradovate-Logins (Web, Desktop, Mobile plus das Tool) können eine Sitzung verdrängen und die Verknüpfung widerrufen.",
+      ],
+    },
+    { type: "heading",text: "Was „Access Is Denied“ hier bedeutet" },
+    { type: "paragraph",html: "SignalStack verbindet sich über einen OAuth-Login mit Tradovate und nicht, indem Sie Schlüssel in ein Feld einfügen. Wenn Sie Tradovate als Broker hinzufügen, leitet SignalStack Sie auf die eigene Anmeldeseite von Tradovate weiter. Dort melden Sie sich an, und Tradovate zeigt einen Autorisierungsbildschirm, auf dem Sie gefragt werden, ob Sie Lesezugriff und die Möglichkeit zum Ändern von Orders gewähren möchten. Wenn Sie zustimmen, übergibt Tradovate SignalStack ein Token, mit dem es in Ihrem Namen Orders platzieren und verwalten kann. Dieses Token, nicht Ihr Passwort, trägt die Verbindung von da an." },
+    { type: "paragraph",html: "<code>Access is denied</code> ist Tradovates pauschale Art zu sagen: &ldquo;Diese Anfrage ist dafür nicht autorisiert.&rdquo; Es sind dieselben drei Wörter, die Tradovate auf seiner gesamten Plattform und in der API verwendet, weshalb man sie so leicht als defektes Konto missversteht. Das ist es nicht. Es bedeutet, dass die Autorisierungskette zwischen Ihrem Login und Tradovates Zustimmung, SignalStack Ihr Konto anzuvertrauen, irgendwo gerissen ist. Die Ursache kann eine abgelehnte Berechtigung sein, ein Gerät, dem Tradovate noch nicht vertraut, ein Konto, das der Login gar nicht kontrolliert, oder eine Berechtigung, die Ihre Prop Firm nicht aktiviert hat. Dieselbe Meldung, mehrere mögliche Ursachen, also beheben Sie es, indem Sie sie der Reihe nach ausschließen, statt zu raten." },
+    { type: "heading",text: "Die häufigsten Ursachen für „Access Is Denied“" },
+    { type: "heading",text: "1. Sie haben die Order-Berechtigung bei der Autorisierung nicht erteilt" },
+    { type: "paragraph",html: "Der Tradovate-Autorisierungsbildschirm bietet mehr als einen Umfang an. Es gibt reinen Lesezugriff und es gibt Vollzugriff einschließlich der Möglichkeit, Orders zu ändern. SignalStack benötigt Letzteren, um tatsächlich Trades zu platzieren. Wenn Sie den Bildschirm hastig durchlaufen, nur den Lesezugriff angehakt oder den Tab vor der Bestätigung geschlossen haben, liefert Tradovate ein Token zurück, das das Konto einsehen, aber keine Orders anfassen kann, und das Erste, was SignalStack versucht, löst <code>Access is denied</code> aus. Die Lösung: den Ablauf erneut durchlaufen und die Berechtigung zum Ändern von Orders bewusst genehmigen, nicht nur die zum Lesen." },
+    { type: "heading",text: "2. Eine E-Mail zur Geräte-Freigabe steht noch aus" },
+    { type: "paragraph",html: "Tradovate behandelt die erste Verbindung von einem neuen Rechner oder einer neuen Sitzung als Sicherheitsereignis. Bei einem Live-Konto sendet es Ihnen einen Link zur Freigabe dieses Geräts per E-Mail, und bis Sie ihn anklicken, wird der Zugriff verweigert, selbst bei richtigem Passwort und richtigen Berechtigungen. Das ist dasselbe Verhalten wie bei der Meldung, dass Sie sich von einem neuen Rechner angemeldet haben. Ist für Ihren Login die Zwei-Faktor-Authentifizierung aktiviert, ist dieser Schritt verpflichtend. Prüfen Sie das mit Ihrem Tradovate-Konto verknüpfte Postfach, geben Sie das Gerät frei und versuchen Sie die Verbindung dann erneut." },
+    { type: "heading",text: "3. Sie haben sich mit dem falschen Konto oder der falschen Umgebung angemeldet" },
+    { type: "paragraph",html: "Wenn sich die Anmeldeseite von Tradovate im Verbindungsablauf öffnet, meldet man sich leicht mit anderen Zugangsdaten an als denen des Kontos, das man automatisieren möchte, etwa mit einem alten privaten Login statt dem des Funded-Kontos. Das zurückgelieferte Token gehört dann zu einem Konto, über das SignalStack Ihre Trades nicht routen kann, und Sie werden abgelehnt. Tradovate betreibt außerdem getrennte Simulations- und Live-Umgebungen, und ein Prop-Firm-Evaluierungskonto liegt an einem anderen Ort als ein selbst finanziertes Live-Konto. Stellen Sie sicher, dass die eingegebenen Zugangsdaten und das damit geöffnete Konto zu dem passen, das Sie handeln möchten." },
+    { type: "heading",text: "4. Eine Prop-Firm-Regel blockiert die Verknüpfung" },
+    { type: "paragraph",html: "Wenn Ihr Tradovate-Konto von einer Prop Firm stammt, entscheidet die Firma, nicht Tradovate direkt, ob Drittanbieter-Automatisierung darauf erlaubt ist. Manche Firmen erlauben sie, manche verbieten sie auf Evaluierungskonten ganz, und manche aktivieren sie nur unter bestimmten Bedingungen. Auch Daten- und Order-Berechtigungen unterscheiden sich je nach Firma und Kontogröße, sodass etwas, das in einem Programm funktioniert, in einem anderen abgelehnt werden kann. Die genauen Regeln ändern sich häufig. Prüfen Sie daher die aktuelle Automatisierungsrichtlinie Ihrer Firma, bevor Sie annehmen, dass Sie den Fehler beheben müssen." },
+    { type: "heading",text: "5. Zu viele aktive Tradovate-Sitzungen" },
+    { type: "paragraph",html: "Tradovate begrenzt, an wie vielen Orten gleichzeitig dasselbe Konto angemeldet sein kann. Wenn Sie Web-App, Desktop-App, Mobile-App und ein Drittanbieter-Tool gleichzeitig öffnen, kann das die Grenze überschreiten, wodurch eine bestehende Sitzung verdrängt und deren Autorisierung widerrufen wird. Wird die Sitzung von SignalStack verdrängt, endet die nächste Order bei <code>Access is denied</code>. Melden Sie sich von den Sitzungen ab, die Sie nicht aktiv nutzen, und autorisieren Sie die Verbindung dann neu." },
+    { type: "heading",text: "6. Eine veraltete oder halb abgeschlossene frühere Autorisierung" },
+    { type: "paragraph",html: "Autorisierungen halten nicht ewig, und eine Verbindung, die beim ersten Mal unterbrochen wurde, etwa durch einen geschlossenen Tab, einen abgelaufenen Login oder eine Passwortänderung seit der Verknüpfung, kann dazu führen, dass SignalStack ein Token hält, das Tradovate nicht mehr akzeptiert. Es schlägt dann still immer wieder fehl, bis Sie es erneuern. Die Abhilfe ist dieselbe wie bei den meisten Punkten der Liste: die Verbindung abbauen und sauber neu aufbauen." },
+    { type: "heading",text: "„Access Is Denied“ beheben: Schritt für Schritt" },
+    { type: "heading",text: "Die Verbindung von Grund auf neu autorisieren" },
+    {
+      type: "steps",
+      items: [
+        { title: "Brokers & Webhooks öffnen", html: "Öffnen Sie SignalStack und rufen Sie den Bereich <strong class='text-white'>Brokers &amp; Webhooks</strong> auf, in dem Ihre Tradovate-Verbindung aufgeführt ist." },
+        { title: "Die bestehende Verknüpfung entfernen", html: "Entfernen oder trennen Sie die bestehende Tradovate-Verknüpfung, damit Sie sauber neu beginnen, statt eine veraltete zu flicken." },
+        { title: "Tradovate erneut hinzufügen", html: "Fügen Sie Tradovate erneut hinzu und lassen Sie sich auf die eigene Anmeldeseite von Tradovate weiterleiten." },
+        { title: "Beide Berechtigungen genehmigen", html: "Melden Sie sich mit genau dem Konto an, das Sie handeln möchten, und genehmigen Sie auf dem Autorisierungsbildschirm <strong class='text-white'>sowohl</strong> den Lesezugriff als auch die Möglichkeit, Orders zu ändern." },
+        { title: "Die Verbindung bestätigen", html: "Warten Sie, bis Tradovate Sie zu SignalStack zurückleitet, und bestätigen Sie, dass das Konto nun als verbunden angezeigt wird." },
+      ],
+    },
+    { type: "heading",text: "Das Gerät freigeben und 2FA abschließen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Tradovate-Posteingang prüfen", html: "Prüfen Sie das mit Ihrem Tradovate-Login verknüpfte E-Mail-Postfach auf eine Nachricht zur Geräte-Freigabe." },
+        { title: "Auf den Freigabe-Link klicken", html: "Klicken Sie auf den Freigabe-Link, um dem Rechner oder der Sitzung, von der aus Sie sich verbinden, zu vertrauen." },
+        { title: "2FA abschließen, falls aktiviert", html: "Wenn die Zwei-Faktor-Authentifizierung aktiviert ist, schließen Sie auch diese Abfrage ab, denn Live-Konten erzwingen sie." },
+        { title: "Verbindung erneut versuchen", html: "Kehren Sie zu SignalStack zurück und führen Sie die Verbindung erneut aus, nun da das Gerät als vertrauenswürdig gilt." },
+      ],
+    },
+    { type: "heading",text: "Zugangsdaten, Konto und Umgebung bestätigen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Konto noch einmal prüfen", html: "Vergewissern Sie sich, dass Sie die Zugangsdaten des Kontos eingeben, das Sie tatsächlich automatisieren möchten, und nicht einen älteren oder fremden Tradovate-Login." },
+        { title: "Umgebung abgleichen", html: "Stellen Sie sicher, dass die Umgebung übereinstimmt: Ein Simulations- oder Evaluierungskonto ist nicht derselbe Ort wie ein selbst finanziertes Live-Konto." },
+        { title: "Einfügen statt abtippen", html: "Fügen Sie das Passwort ein, statt es zu tippen, damit ein vertippter Buchstabe oder eine falsche Groß- und Kleinschreibung Sie nicht einem Autorisierungsproblem nachjagen lässt, das gar nicht existiert." },
+        { title: "Prop-Firm-Regeln prüfen", html: "Handelt es sich um ein Prop-Firm-Konto, prüfen Sie vor dem erneuten Versuch, ob die Firma Drittanbieter-Automatisierung derzeit erlaubt." },
+      ],
+    },
+    { type: "heading",text: "Aktive Sitzungen reduzieren, dann erneut versuchen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Aus ungenutzten Sitzungen abmelden", html: "Melden Sie sich überall bei Tradovate ab, wo Sie es nicht nutzen: zusätzliche Browser-Tabs, die Desktop-App, die Mobile-App." },
+        { title: "Nur das Nötige behalten", html: "Lassen Sie nur die Sitzung, die Sie benötigen, sowie die SignalStack-Verknüpfung aktiv." },
+        { title: "Neu autorisieren und testen", html: "Autorisieren Sie die Verbindung neu und platzieren Sie eine kleine Test-Order, um zu bestätigen, dass das Routing durchgängig funktioniert." },
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Symptom","Wahrscheinliche Ursache","Lösung"], rows: [
+      ["Ablehnung direkt nach dem Tradovate-Login-Bildschirm","Order-Berechtigung auf dem Autorisierungsbildschirm nicht erteilt","Ablauf erneut durchlaufen und Lese- sowie Order-Änderungs-Zugriff genehmigen"],
+      ["Passwort ist korrekt, aber weiterhin abgelehnt","E-Mail zur Geräte-Freigabe noch nicht bestätigt (Live/2FA)","Den von Tradovate per E-Mail gesendeten Freigabe-Link anklicken, dann erneut versuchen"],
+      ["Verbindet sich mit dem falschen Konto oder nichts wird geroutet","Mit falschen Zugangsdaten oder falscher Umgebung angemeldet","Mit genau dem Konto, das Sie handeln, in der richtigen Umgebung anmelden"],
+      ["Nur bei einem Prop-Firm-Konto abgelehnt","Firma schränkt Drittanbieter-Automatisierung ein","Vor der Verknüpfung die aktuellen Automatisierungsregeln der Firma prüfen"],
+      ["Funktionierte früher, schlägt jetzt fehl","Sitzung über das Limit gleichzeitiger Logins hinaus verdrängt oder veraltetes Token","Bei zusätzlichen Sitzungen abmelden und die Verbindung neu autorisieren"],
+      ["Nach jedem Versuch wiederholt abgelehnt","Halb abgeschlossene oder abgelaufene frühere Autorisierung","Die Verbindung vollständig entfernen und sauber neu aufbauen"],
+    ] },
+    { type: "heading",text: "Mit PickMyTrade vorbeugen" },
+    { type: "paragraph",html: "Die meisten „Access-is-denied“-Momente entstehen, weil man die Tradovate-Autorisierung von Hand wiederholt und genau im falschen Moment, kurz vor einem Signal, auf eines der obigen Hindernisse stößt. PickMyTrade nimmt Ihnen diesen Handshake ab:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Einmalig verwaltete Verbindung</strong>: Verknüpfen Sie Ihr Tradovate-Konto einmal, und PickMyTrade hält die Autorisierung am Leben, sodass ein veraltetes Token nicht mitten in der Sitzung als Ablehnung auftaucht.",
+        "<strong class='text-white'>Korrekte Berechtigungen und Konto werden für Sie geklärt</strong>: Das richtige Konto und die Order-Berechtigung werden bei der Einrichtung erledigt, statt von einem hastig durchlaufenen Berechtigungsbildschirm erraten zu werden.",
+        "<strong class='text-white'>Umgebungs- und Sitzungsverwaltung eingebaut</strong>: Simulations- gegenüber Live-Routing und Limits für gleichzeitige Sitzungen werden verwaltet, was die Fehlerklasse „funktionierte früher, jetzt abgelehnt“ reduziert.",
+        "<strong class='text-white'>Alerts sauber zu Orders</strong>: Ihre TradingView- oder Strategie-Alerts werden zu einer Live-Tradovate-Order, ohne dass Sie zur Eröffnung einen OAuth-Ablauf debuggen müssen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Vincula su estrategia a SignalStack, va a conectar Tradovate y, en lugar de una insignia verde de &ldquo;conectado&rdquo;, obtiene <code>Tradovate: Access is denied</code>. Lo exasperante es que nada parece roto. Su contraseña es correcta. La misma cuenta quizá se vincule sin problema a una herramienta de gráficos o a un diario. Aun así, SignalStack no completa el handshake. Lo que realmente ocurre: ese mensaje no es un fallo propio de SignalStack. Es Tradovate negándose a finalizar la autorización en el último paso de la conexión, y lo hace por un conjunto reducido de motivos concretos y solucionables. Casi todos los casos se reducen a un permiso que no concedió por completo, un correo de aprobación de dispositivo sin leer, la cuenta equivocada elegida al iniciar sesión o una regla de la prop firm que bloquea el vínculo. Repase la lista siguiente en orden y lo resolverá; al final verá cómo enrutar sus alertas a Tradovate sin tener que vigilar este handshake." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para «Access Is Denied»",
+      items: [
+        "<strong class='text-white'>Vuelva a autorizar desde cero</strong>: elimine la conexión de Tradovate en SignalStack y añádala de nuevo, concediendo <em>todos</em> los permisos solicitados.",
+        "<strong class='text-white'>Conceda el permiso de órdenes</strong>: la pantalla de autorización pide acceso de lectura <em>y</em> la posibilidad de modificar órdenes; si omite el segundo, todas las órdenes se deniegan.",
+        "<strong class='text-white'>Apruebe el dispositivo</strong>: en una cuenta real, Tradovate envía por correo un enlace de aprobación de dispositivo y bloquea el acceso hasta que lo pulse.",
+        "<strong class='text-white'>Elija la cuenta correcta al iniciar sesión</strong>: inicie sesión con las credenciales exactas de Tradovate de la cuenta con la que desea operar, en el entorno correcto.",
+        "<strong class='text-white'>Revise las reglas de la prop firm</strong>: algunas empresas restringen o prohíben la automatización de terceros en cuentas de evaluación y fondeadas.",
+        "<strong class='text-white'>Elimine las sesiones sobrantes</strong>: demasiados inicios de sesión activos en Tradovate (web, escritorio, móvil, más la herramienta) pueden desplazar una sesión y revocar el vínculo.",
+      ],
+    },
+    { type: "heading",text: "Qué significa «Access Is Denied» aquí" },
+    { type: "paragraph",html: "SignalStack se conecta a Tradovate mediante un inicio de sesión OAuth, no pegando claves en un cuadro. Cuando añade Tradovate como bróker, SignalStack le envía a la propia página de inicio de sesión de Tradovate. Allí inicia sesión y Tradovate muestra una pantalla de autorización que le pregunta si desea conceder acceso de lectura y la posibilidad de modificar órdenes. Si lo aprueba, Tradovate entrega a SignalStack un token que le permite colocar y gestionar órdenes en su nombre. Ese token, no su contraseña, es lo que mantiene la conexión a partir de entonces." },
+    { type: "paragraph",html: "<code>Access is denied</code> es la forma genérica de Tradovate de decir &ldquo;esta solicitud no está autorizada para hacer eso&rdquo;. Son las mismas tres palabras que Tradovate usa en toda su plataforma y su API, y por eso es tan fácil interpretarlas como una cuenta rota. No lo es. Significa que la cadena de autorización se rompió en algún punto entre su inicio de sesión y el momento en que Tradovate acepta confiar en SignalStack para su cuenta. La rotura puede deberse a un permiso rechazado, a un dispositivo en el que Tradovate aún no confía, a una cuenta que el inicio de sesión en realidad no controla o a un derecho que su prop firm no ha activado. El mismo mensaje, varias causas posibles, así que lo arregla descartándolas en orden en lugar de adivinar." },
+    { type: "heading",text: "Principales causas de «Access Is Denied»" },
+    { type: "heading",text: "1. No concedió el permiso de órdenes durante la autorización" },
+    { type: "paragraph",html: "La pantalla de autorización de Tradovate ofrece más de un alcance. Hay acceso de solo lectura y hay acceso completo, incluida la posibilidad de modificar órdenes. SignalStack necesita el segundo para colocar operaciones de verdad. Si pasó la pantalla con prisa, marcó solo el alcance de lectura o cerró la pestaña antes de confirmar, Tradovate devuelve un token que puede ver la cuenta pero no tocar las órdenes, y lo primero que intente SignalStack provocará <code>Access is denied</code>. La solución es volver a ejecutar el flujo y aprobar deliberadamente el permiso de modificación de órdenes, no solo el de lectura." },
+    { type: "heading",text: "2. Hay un correo de aprobación de dispositivo pendiente" },
+    { type: "paragraph",html: "Tradovate trata la primera conexión desde un equipo o una sesión nuevos como un evento de seguridad. En una cuenta real le envía por correo un enlace para aprobar ese dispositivo y, hasta que lo pulse, denegará el acceso, aunque la contraseña y los permisos sean correctos. Es el mismo comportamiento que ve cuando Tradovate indica que ha iniciado sesión desde un equipo nuevo. Si su inicio de sesión tiene activada la autenticación de dos factores, ese paso es obligatorio. Revise la bandeja de entrada asociada a su cuenta de Tradovate, apruebe el dispositivo y vuelva a intentar la conexión." },
+    { type: "heading",text: "3. Inició sesión con la cuenta o el entorno equivocados" },
+    { type: "paragraph",html: "Cuando la página de inicio de sesión de Tradovate se abre dentro del flujo de conexión, es fácil entrar con unas credenciales distintas a las de la cuenta que realmente quiere automatizar, por ejemplo un antiguo acceso personal en lugar del de su cuenta fondeada. El token que recibe queda entonces asociado a una cuenta a través de la cual SignalStack no puede enrutar sus operaciones, y se le deniega. Tradovate también tiene entornos simulado y real separados, y una cuenta de evaluación de una prop firm vive en un lugar distinto al de una cuenta real financiada por usted. Asegúrese de que las credenciales que introduce, y la cuenta que abren, coinciden con la que desea operar." },
+    { type: "heading",text: "4. Una regla de la prop firm bloquea el vínculo" },
+    { type: "paragraph",html: "Si su cuenta de Tradovate procede de una prop firm, es la empresa, y no Tradovate directamente, quien controla si se permite la automatización de terceros en ella. Algunas la permiten, otras la prohíben por completo en cuentas de evaluación y otras la habilitan solo tras cumplir ciertas condiciones. Los derechos de datos y de órdenes también varían según la empresa y el tamaño de la cuenta, por lo que lo que funciona en un programa puede denegarse en otro. Las reglas exactas cambian a menudo, así que revise la política de automatización vigente de su empresa antes de dar por hecho que el error es suyo." },
+    { type: "heading",text: "5. Demasiadas sesiones activas de Tradovate" },
+    { type: "paragraph",html: "Tradovate limita en cuántos sitios puede estar conectada a la vez la misma cuenta. Si abre juntas la aplicación web, la de escritorio, la móvil y una herramienta de terceros, puede superar ese límite, lo que desplaza una sesión existente y revoca su autorización. Cuando la sesión desplazada es la de SignalStack, su siguiente orden termina en <code>Access is denied</code>. Cierre las sesiones que no esté usando activamente y vuelva a autorizar la conexión." },
+    { type: "heading",text: "6. Una autorización previa obsoleta o a medio completar" },
+    { type: "paragraph",html: "Las autorizaciones no duran para siempre, y una conexión que se interrumpió la primera vez (una pestaña cerrada, un inicio de sesión caducado, un cambio de contraseña desde que la vinculó) puede dejar a SignalStack con un token que Tradovate ya no respeta. Seguirá fallando en silencio hasta que lo renueve. El remedio es el mismo que para casi toda la lista: desmontar la conexión y volver a construirla limpia." },
+    { type: "heading",text: "Cómo solucionar «Access Is Denied»: paso a paso" },
+    { type: "heading",text: "Vuelva a autorizar la conexión desde cero" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra Brokers & Webhooks", html: "Abra SignalStack y vaya al área <strong class='text-white'>Brokers &amp; Webhooks</strong> donde figura su conexión de Tradovate." },
+        { title: "Elimine el vínculo existente", html: "Elimine o desconecte el vínculo de Tradovate existente para empezar limpio en lugar de remendar uno obsoleto." },
+        { title: "Vuelva a añadir Tradovate", html: "Añada Tradovate de nuevo y deje que le redirija a la propia página de inicio de sesión de Tradovate." },
+        { title: "Apruebe ambos permisos", html: "Inicie sesión con la cuenta exacta con la que desea operar y, en la pantalla de autorización, apruebe <strong class='text-white'>tanto</strong> el acceso de lectura como la posibilidad de modificar órdenes." },
+        { title: "Confirme la conexión", html: "Espere a que Tradovate le devuelva a SignalStack y confirme que la cuenta aparece ya como conectada." },
+      ],
+    },
+    { type: "heading",text: "Apruebe el dispositivo y complete el 2FA" },
+    {
+      type: "steps",
+      items: [
+        { title: "Revise su bandeja de Tradovate", html: "Revise la bandeja de entrada de correo asociada a su inicio de sesión de Tradovate en busca de un mensaje de aprobación de dispositivo." },
+        { title: "Pulse el enlace de aprobación", html: "Pulse el enlace de aprobación para confiar en el equipo o la sesión desde la que se conecta." },
+        { title: "Complete el 2FA si está activado", html: "Si la autenticación de dos factores está activada, complete también ese paso, ya que las cuentas reales la exigen." },
+        { title: "Vuelva a intentar la conexión", html: "Regrese a SignalStack y ejecute la conexión de nuevo ahora que el dispositivo es de confianza." },
+      ],
+    },
+    { type: "heading",text: "Confirme las credenciales, la cuenta y el entorno correctos" },
+    {
+      type: "steps",
+      items: [
+        { title: "Compruebe de nuevo la cuenta", html: "Verifique que introduce las credenciales de la cuenta que realmente desea automatizar, no las de un acceso de Tradovate más antiguo o ajeno." },
+        { title: "Haga coincidir el entorno", html: "Asegúrese de que el entorno coincide: una cuenta simulada o de evaluación no es lo mismo que una cuenta real financiada por usted." },
+        { title: "Pegue, no vuelva a escribir", html: "Pegue la contraseña en lugar de escribirla, para que un carácter mal tecleado o una mayúscula incorrecta no le haga perseguir un problema de autorización que no existe." },
+        { title: "Verifique las reglas de la prop firm", html: "Si la cuenta es de una prop firm, verifique que la empresa permite actualmente la automatización de terceros antes de reintentarlo." },
+      ],
+    },
+    { type: "heading",text: "Reduzca las sesiones activas y vuelva a intentarlo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cierre las sesiones que no use", html: "Cierre sesión en Tradovate en todos los sitios donde no lo esté usando: pestañas de navegador sobrantes, la aplicación de escritorio, la aplicación móvil." },
+        { title: "Mantenga solo lo necesario", html: "Deje únicamente la sesión que necesita más el vínculo de SignalStack." },
+        { title: "Vuelva a autorizar y pruebe", html: "Vuelva a autorizar la conexión y coloque una pequeña orden de prueba para confirmar que el enrutamiento funciona de extremo a extremo." },
+      ],
+    },
+    { type: "heading",text: "Tabla de resolución de problemas" },
+    { type: "table", headers: ["Síntoma","Causa probable","Solución"], rows: [
+      ["Denegado justo después de la pantalla de inicio de sesión de Tradovate","Permiso de órdenes no concedido en la pantalla de autorización","Vuelva a ejecutar el flujo y apruebe el acceso de lectura y de modificación de órdenes"],
+      ["La contraseña es correcta pero sigue denegado","Correo de aprobación de dispositivo aún sin confirmar (real/2FA)","Pulse el enlace de aprobación de dispositivo que Tradovate envió por correo y reintente"],
+      ["Se conecta a la cuenta equivocada o no se enruta nada","Inició sesión con credenciales o entorno equivocados","Inicie sesión con la cuenta exacta con la que opera, en el entorno correcto"],
+      ["Denegado solo en una cuenta de prop firm","La empresa restringe la automatización de terceros","Compruebe las reglas de automatización vigentes de la empresa antes de vincular"],
+      ["Funcionaba antes, ahora falla","Sesión desplazada por superar el límite de inicios de sesión simultáneos, o token obsoleto","Cierre sesión en las sesiones adicionales y vuelva a autorizar la conexión"],
+      ["Denegado repetidamente tras cada intento","Autorización previa a medio completar o caducada","Elimine la conexión por completo y vuelva a construirla limpia"],
+    ] },
+    { type: "heading",text: "Prevenga esto con PickMyTrade" },
+    { type: "paragraph",html: "La mayoría de los momentos de &ldquo;access is denied&rdquo; surgen de repetir a mano la autorización de Tradovate y topar con uno de los obstáculos anteriores justo en el peor momento, antes de que se dispare una señal. PickMyTrade le quita ese handshake de encima:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Conexión gestionada de una sola vez</strong>: vincule su cuenta de Tradovate una vez y PickMyTrade mantiene viva la autorización, de modo que un token obsoleto no reaparezca como denegación en plena sesión.",
+        "<strong class='text-white'>Permisos y cuenta correctos resueltos por usted</strong>: la cuenta y el derecho de órdenes correctos se gestionan durante la configuración en lugar de adivinarse en una pantalla de permisos recorrida con prisa.",
+        "<strong class='text-white'>Gestión de entorno y sesiones integrada</strong>: el enrutamiento simulado frente al real y los límites de sesiones simultáneas se gestionan, lo que reduce la clase de fallo de &ldquo;funcionaba antes, ahora se deniega&rdquo;.",
+        "<strong class='text-white'>De alertas a órdenes, sin complicaciones</strong>: sus alertas de TradingView o de su estrategia se convierten en una orden real de Tradovate sin que tenga que depurar un flujo OAuth en la apertura.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous reliez votre stratégie à SignalStack, vous essayez de connecter Tradovate et, au lieu d'un badge vert &ldquo;connecté&rdquo;, vous obtenez <code>Tradovate: Access is denied</code>. Le plus exaspérant, c'est que rien ne semble cassé. Votre mot de passe est correct. Le même compte se relie peut-être sans problème à un outil graphique ou à un journal. Pourtant, SignalStack ne termine pas le handshake. Voici ce qui se passe réellement : ce message n'est pas une défaillance propre de SignalStack. C'est Tradovate qui refuse de finaliser l'autorisation à la dernière étape de la connexion, et il le fait pour un petit nombre de raisons précises et corrigibles. Presque tous les cas se résument à une permission que vous n'avez pas entièrement accordée, à un e-mail d'approbation d'appareil resté non lu, au mauvais compte choisi à la connexion ou à une règle de prop firm qui bloque la liaison. Parcourez la liste de contrôle ci-dessous dans l'ordre et vous réglerez le problème ; à la fin, vous verrez comment acheminer vos alertes vers Tradovate sans avoir à surveiller ce handshake." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour « Access Is Denied »",
+      items: [
+        "<strong class='text-white'>Réautorisez depuis le début</strong> : supprimez la connexion Tradovate dans SignalStack et ajoutez-la à nouveau en accordant <em>toutes</em> les permissions demandées.",
+        "<strong class='text-white'>Accordez la permission sur les ordres</strong> : l'écran d'autorisation demande l'accès en lecture <em>et</em> la possibilité de modifier les ordres ; si vous ignorez la seconde, chaque ordre est refusé.",
+        "<strong class='text-white'>Approuvez l'appareil</strong> : sur un compte réel, Tradovate envoie par e-mail un lien d'approbation d'appareil et bloque l'accès tant que vous n'avez pas cliqué dessus.",
+        "<strong class='text-white'>Choisissez le bon compte à la connexion</strong> : connectez-vous avec les identifiants Tradovate exacts du compte que vous souhaitez trader, dans le bon environnement.",
+        "<strong class='text-white'>Vérifiez les règles de la prop firm</strong> : certaines sociétés restreignent ou interdisent l'automatisation par des tiers sur les comptes d'évaluation et financés.",
+        "<strong class='text-white'>Supprimez les sessions superflues</strong> : trop de connexions Tradovate actives (web, bureau, mobile, plus l'outil) peuvent évincer une session et révoquer la liaison.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « Access Is Denied » ici" },
+    { type: "paragraph",html: "SignalStack se connecte à Tradovate via une connexion OAuth, et non en collant des clés dans un champ. Lorsque vous ajoutez Tradovate comme courtier, SignalStack vous renvoie vers la page de connexion propre à Tradovate. Vous vous y connectez, et Tradovate affiche un écran d'autorisation vous demandant si vous souhaitez accorder l'accès en lecture et la possibilité de modifier les ordres. Une fois approuvé, Tradovate remet à SignalStack un jeton lui permettant de passer et de gérer des ordres en votre nom. C'est ce jeton, et non votre mot de passe, qui porte la connexion par la suite." },
+    { type: "paragraph",html: "<code>Access is denied</code> est la façon générale qu'a Tradovate de dire &ldquo;cette requête n'est pas autorisée à faire cela&rdquo;. Ce sont les mêmes trois mots que Tradovate emploie sur toute sa plateforme et son API, ce qui explique qu'on les interprète si facilement comme un compte cassé. Ce n'est pas le cas. Cela signifie que la chaîne d'autorisation s'est rompue quelque part entre votre connexion et l'accord de Tradovate de faire confiance à SignalStack pour votre compte. La rupture peut venir d'une permission refusée, d'un appareil auquel Tradovate n'a pas encore été autorisé à faire confiance, d'un compte que la connexion ne contrôle pas réellement ou d'un droit que votre prop firm n'a pas activé. Même message, plusieurs causes possibles : on corrige donc en les écartant dans l'ordre plutôt qu'en devinant." },
+    { type: "heading",text: "Principales causes de « Access Is Denied »" },
+    { type: "heading",text: "1. Vous n'avez pas accordé la permission sur les ordres lors de l'autorisation" },
+    { type: "paragraph",html: "L'écran d'autorisation de Tradovate propose plus d'une portée. Il y a l'accès en lecture seule, et l'accès complet incluant la possibilité de modifier les ordres. SignalStack a besoin du second pour passer réellement des trades. Si vous avez parcouru l'écran trop vite, coché uniquement la portée de lecture ou fermé l'onglet avant de confirmer, Tradovate renvoie un jeton qui peut consulter le compte mais pas toucher aux ordres, et la première action tentée par SignalStack déclenche <code>Access is denied</code>. La solution consiste à relancer le flux et à approuver délibérément la permission de modification des ordres, pas seulement celle de lecture." },
+    { type: "heading",text: "2. Un e-mail d'approbation d'appareil est toujours en attente" },
+    { type: "paragraph",html: "Tradovate traite la première connexion depuis une nouvelle machine ou session comme un événement de sécurité. Sur un compte réel, il vous envoie par e-mail un lien pour approuver cet appareil et, tant que vous n'y avez pas cliqué, il refusera l'accès, même avec le bon mot de passe et les bonnes permissions. C'est le même comportement que lorsque Tradovate indique que vous vous êtes connecté depuis une nouvelle machine. Si l'authentification à deux facteurs est activée sur votre compte, cette étape est obligatoire. Consultez la boîte de réception associée à votre compte Tradovate, approuvez l'appareil, puis relancez la connexion." },
+    { type: "heading",text: "3. Vous vous êtes connecté avec le mauvais compte ou le mauvais environnement" },
+    { type: "paragraph",html: "Lorsque la page de connexion de Tradovate s'ouvre dans le flux de connexion, il est facile de saisir d'autres identifiants que ceux du compte que vous souhaitez réellement automatiser, par exemple un ancien identifiant personnel au lieu de celui de votre compte financé. Le jeton obtenu est alors lié à un compte par lequel SignalStack ne peut pas router vos trades, et vous êtes refusé. Tradovate exploite en outre des environnements simulé et réel distincts, et un compte d'évaluation de prop firm se trouve à un autre endroit qu'un compte réel autofinancé. Assurez-vous que les identifiants saisis, et le compte qu'ils ouvrent, correspondent à celui que vous voulez trader." },
+    { type: "heading",text: "4. Une règle de prop firm bloque la liaison" },
+    { type: "paragraph",html: "Si votre compte Tradovate provient d'une prop firm, c'est la société, et non Tradovate directement, qui décide si l'automatisation par des tiers y est autorisée. Certaines l'autorisent, d'autres l'interdisent purement et simplement sur les comptes d'évaluation, et d'autres ne l'activent qu'à certaines conditions. Les droits sur les données et les ordres varient aussi selon la société et la taille du compte ; ce qui fonctionne sur un programme peut donc être refusé sur un autre. Les règles exactes changent souvent ; vérifiez donc la politique d'automatisation en vigueur de votre société avant de supposer que l'erreur vous incombe." },
+    { type: "heading",text: "5. Trop de sessions Tradovate actives" },
+    { type: "paragraph",html: "Tradovate plafonne le nombre d'endroits où l'on peut être connecté simultanément au même compte. Ouvrez ensemble l'application web, l'application de bureau, l'application mobile et un outil tiers, et vous pouvez dépasser cette limite, ce qui évince une session existante et révoque son autorisation. Lorsque c'est la session de SignalStack qui est évincée, son ordre suivant se solde par <code>Access is denied</code>. Déconnectez-vous des sessions que vous n'utilisez pas activement, puis réautorisez la connexion." },
+    { type: "heading",text: "6. Une autorisation précédente périmée ou à moitié terminée" },
+    { type: "paragraph",html: "Les autorisations ne durent pas éternellement, et une connexion interrompue la première fois (onglet fermé, connexion expirée, mot de passe changé depuis la liaison) peut laisser SignalStack avec un jeton que Tradovate n'honore plus. Elle continuera d'échouer silencieusement jusqu'à ce que vous le rafraîchissiez. Le remède est le même que pour la plupart de la liste : démonter la connexion et la reconstruire proprement." },
+    { type: "heading",text: "Corriger « Access Is Denied » : pas à pas" },
+    { type: "heading",text: "Réautoriser la connexion depuis le début" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrir Brokers & Webhooks", html: "Ouvrez SignalStack et accédez à la zone <strong class='text-white'>Brokers &amp; Webhooks</strong> où figure votre connexion Tradovate." },
+        { title: "Supprimer la liaison existante", html: "Supprimez ou déconnectez la liaison Tradovate existante afin de repartir de zéro plutôt que de rafistoler une liaison périmée." },
+        { title: "Ajouter Tradovate à nouveau", html: "Ajoutez Tradovate à nouveau et laissez-vous rediriger vers la page de connexion propre à Tradovate." },
+        { title: "Approuver les deux permissions", html: "Connectez-vous avec le compte exact que vous souhaitez trader, puis, sur l'écran d'autorisation, approuvez <strong class='text-white'>à la fois</strong> l'accès en lecture et la possibilité de modifier les ordres." },
+        { title: "Confirmer la connexion", html: "Attendez que Tradovate vous renvoie vers SignalStack et vérifiez que le compte apparaît désormais comme connecté." },
+      ],
+    },
+    { type: "heading",text: "Approuver l'appareil et valider la 2FA" },
+    {
+      type: "steps",
+      items: [
+        { title: "Consulter votre boîte de réception Tradovate", html: "Consultez la boîte de réception e-mail associée à votre identifiant Tradovate pour y trouver un message d'approbation d'appareil." },
+        { title: "Cliquer sur le lien d'approbation", html: "Cliquez sur le lien d'approbation pour faire confiance à la machine ou à la session depuis laquelle vous vous connectez." },
+        { title: "Terminer la 2FA si elle est activée", html: "Si l'authentification à deux facteurs est activée, validez aussi cette étape, car les comptes réels l'imposent." },
+        { title: "Relancer la connexion", html: "Revenez dans SignalStack et relancez la connexion maintenant que l'appareil est approuvé." },
+      ],
+    },
+    { type: "heading",text: "Confirmer les bons identifiants, compte et environnement" },
+    {
+      type: "steps",
+      items: [
+        { title: "Revérifier le compte", html: "Vérifiez que vous saisissez les identifiants du compte que vous souhaitez réellement automatiser, et non ceux d'un ancien identifiant Tradovate ou d'un compte sans rapport." },
+        { title: "Faire correspondre l'environnement", html: "Assurez-vous que l'environnement correspond : un compte simulé ou d'évaluation n'est pas le même endroit qu'un compte réel autofinancé." },
+        { title: "Coller plutôt que retaper", html: "Collez le mot de passe plutôt que de le taper, afin qu'un caractère mal saisi ou une majuscule erronée ne vous fasse pas chercher un problème d'autorisation qui n'existe pas." },
+        { title: "Vérifier les règles de la prop firm", html: "S'il s'agit d'un compte de prop firm, vérifiez que la société autorise actuellement l'automatisation par des tiers avant de réessayer." },
+      ],
+    },
+    { type: "heading",text: "Réduire les sessions actives, puis réessayer" },
+    {
+      type: "steps",
+      items: [
+        { title: "Se déconnecter des sessions inutilisées", html: "Déconnectez-vous de Tradovate partout où vous ne l'utilisez pas : onglets de navigateur superflus, application de bureau, application mobile." },
+        { title: "Ne conserver que le nécessaire", html: "Ne laissez que la session dont vous avez besoin, plus la liaison SignalStack." },
+        { title: "Réautoriser et tester", html: "Réautorisez la connexion et passez un petit ordre de test pour confirmer que le routage fonctionne de bout en bout." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme","Cause probable","Solution"], rows: [
+      ["Refus juste après l'écran de connexion Tradovate","Permission sur les ordres non accordée sur l'écran d'autorisation","Relancez le flux et approuvez l'accès en lecture et en modification des ordres"],
+      ["Le mot de passe est correct mais refus persistant","E-mail d'approbation d'appareil pas encore confirmé (réel/2FA)","Cliquez sur le lien d'approbation d'appareil envoyé par Tradovate, puis réessayez"],
+      ["Se connecte au mauvais compte ou rien n'est routé","Connecté avec de mauvais identifiants ou le mauvais environnement","Connectez-vous avec le compte exact que vous tradez, dans le bon environnement"],
+      ["Refus uniquement sur un compte de prop firm","La société restreint l'automatisation par des tiers","Vérifiez les règles d'automatisation en vigueur de la société avant de relier"],
+      ["Fonctionnait avant, échoue maintenant","Session évincée au-delà de la limite de connexions simultanées, ou jeton périmé","Déconnectez-vous des sessions supplémentaires et réautorisez la connexion"],
+      ["Refus répétés après chaque tentative","Autorisation précédente à moitié terminée ou expirée","Supprimez entièrement la connexion et reconstruisez-la proprement"],
+    ] },
+    { type: "heading",text: "Prévenir ce problème avec PickMyTrade" },
+    { type: "paragraph",html: "La plupart des moments « access is denied » viennent du fait de refaire à la main l'autorisation Tradovate et de heurter l'un des écueils ci-dessus au pire moment, juste avant le déclenchement d'un signal. PickMyTrade vous décharge de ce handshake :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connexion gérée une seule fois</strong> : reliez votre compte Tradovate une fois et PickMyTrade maintient l'autorisation active, de sorte qu'un jeton périmé ne resurgisse pas sous forme de refus en pleine session.",
+        "<strong class='text-white'>Permissions et compte corrects réglés pour vous</strong> : le bon compte et le bon droit sur les ordres sont gérés lors de la configuration plutôt que devinés sur un écran de permissions parcouru à la hâte.",
+        "<strong class='text-white'>Gestion de l'environnement et des sessions intégrée</strong> : le routage simulé ou réel et les limites de sessions simultanées sont gérés, ce qui réduit la catégorie de défaillance « fonctionnait avant, refusé maintenant ».",
+        "<strong class='text-white'>Des alertes aux ordres, proprement</strong> : vos alertes TradingView ou de stratégie se transforment en ordre Tradovate réel sans que vous ayez à déboguer un flux OAuth à l'ouverture.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Collega la sua strategia a SignalStack, prova a connettere Tradovate e, al posto di un badge verde &ldquo;connesso&rdquo;, ottiene <code>Tradovate: Access is denied</code>. La cosa esasperante è che nulla sembra rotto. La sua password è corretta. Lo stesso account potrebbe collegarsi senza problemi a uno strumento grafico o a un diario. Eppure SignalStack non completa l'handshake. Ecco cosa succede davvero: quel messaggio non è un fallimento di SignalStack in sé. È Tradovate che rifiuta di completare l'autorizzazione all'ultimo passaggio della connessione, e lo fa per un piccolo insieme di motivi specifici e risolvibili. Quasi ogni caso si riduce a un permesso non concesso per intero, a un'e-mail di approvazione del dispositivo rimasta non letta, all'account sbagliato scelto al login o a una regola della prop firm che blocca il collegamento. Segua la checklist qui sotto in ordine e lo risolverà; alla fine vedrà come instradare i suoi alert a Tradovate senza dover sorvegliare questo handshake." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per «Access Is Denied»",
+      items: [
+        "<strong class='text-white'>Riautorizzi da zero</strong>: rimuova la connessione Tradovate in SignalStack e la aggiunga di nuovo, concedendo <em>ogni</em> permesso richiesto lungo il percorso.",
+        "<strong class='text-white'>Conceda il permesso sugli ordini</strong>: la schermata di autorizzazione chiede l'accesso in lettura <em>e</em> la possibilità di modificare gli ordini; se salta il secondo, ogni ordine viene negato.",
+        "<strong class='text-white'>Approvi il dispositivo</strong>: su un account reale, Tradovate invia via e-mail un link di approvazione del dispositivo e blocca l'accesso finché non ci fa clic.",
+        "<strong class='text-white'>Scelga l'account giusto al login</strong>: acceda con le credenziali Tradovate esatte dell'account con cui intende operare, nell'ambiente corretto.",
+        "<strong class='text-white'>Verifichi le regole della prop firm</strong>: alcune società limitano o vietano l'automazione di terze parti sugli account di valutazione e finanziati.",
+        "<strong class='text-white'>Elimini le sessioni in più</strong>: troppi login Tradovate attivi (web, desktop, mobile, più lo strumento) possono sostituire una sessione e revocare il collegamento.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa qui «Access Is Denied»" },
+    { type: "paragraph",html: "SignalStack si connette a Tradovate tramite un login OAuth, non incollando chiavi in un campo. Quando aggiunge Tradovate come broker, SignalStack la porta alla pagina di login di Tradovate. Lì accede e Tradovate mostra una schermata di autorizzazione che chiede se desidera concedere l'accesso in lettura e la possibilità di modificare gli ordini. Una volta approvato, Tradovate consegna a SignalStack un token che gli permette di inserire e gestire ordini per suo conto. Quel token, non la sua password, è ciò che regge la connessione da quel momento." },
+    { type: "paragraph",html: "<code>Access is denied</code> è il modo generico di Tradovate per dire &ldquo;questa richiesta non è autorizzata a farlo&rdquo;. Sono le stesse tre parole che Tradovate usa su tutta la piattaforma e nell'API, ed è per questo che è così facile scambiarle per un account rotto. Non lo è. Significa che la catena di autorizzazione si è spezzata da qualche parte tra il suo login e l'accordo di Tradovate di fidarsi di SignalStack per il suo account. La rottura può essere un permesso rifiutato, un dispositivo di cui Tradovate non è ancora stato informato di potersi fidare, un account che il login non controlla davvero o un diritto che la sua prop firm non ha attivato. Stesso messaggio, più cause possibili: lo si risolve quindi escludendole in ordine anziché tirando a indovinare." },
+    { type: "heading",text: "Principali cause di «Access Is Denied»" },
+    { type: "heading",text: "1. Non ha concesso il permesso sugli ordini durante l'autorizzazione" },
+    { type: "paragraph",html: "La schermata di autorizzazione di Tradovate offre più di un ambito. C'è l'accesso di sola lettura e c'è l'accesso completo, compresa la possibilità di modificare gli ordini. SignalStack ha bisogno del secondo per piazzare davvero i trade. Se ha scorso la schermata di fretta, spuntato solo l'ambito di lettura o chiuso la scheda prima di confermare, Tradovate restituisce un token che può vedere l'account ma non toccare gli ordini, e la prima cosa che SignalStack tenta fa scattare <code>Access is denied</code>. La soluzione è rieseguire il flusso e approvare deliberatamente il permesso di modifica degli ordini, non solo quello di lettura." },
+    { type: "heading",text: "2. Un'e-mail di approvazione del dispositivo è ancora in sospeso" },
+    { type: "paragraph",html: "Tradovate tratta la prima connessione da un nuovo computer o da una nuova sessione come un evento di sicurezza. Su un account reale le invia via e-mail un link per approvare quel dispositivo e, finché non ci fa clic, nega l'accesso, anche con la password e i permessi giusti. È lo stesso comportamento che incontra quando Tradovate segnala che ha effettuato l'accesso da un nuovo computer. Se il suo login ha l'autenticazione a due fattori attiva, quel passaggio è obbligatorio. Controlli la casella di posta associata al suo account Tradovate, approvi il dispositivo e riprovi la connessione." },
+    { type: "heading",text: "3. Ha effettuato l'accesso con l'account o l'ambiente sbagliato" },
+    { type: "paragraph",html: "Quando la pagina di login di Tradovate si apre all'interno del flusso di connessione, è facile accedere con credenziali diverse da quelle dell'account che vuole davvero automatizzare, per esempio un vecchio login personale invece di quello del conto finanziato. Il token restituito è allora legato a un account attraverso il quale SignalStack non può instradare i suoi trade, e viene negato. Tradovate gestisce inoltre ambienti simulato e reale separati, e un account di valutazione di una prop firm si trova in un posto diverso rispetto a un conto reale autofinanziato. Si assicuri che le credenziali inserite, e l'account che aprono, corrispondano a quello con cui intende operare." },
+    { type: "heading",text: "4. Una regola della prop firm blocca il collegamento" },
+    { type: "paragraph",html: "Se il suo account Tradovate proviene da una prop firm, è la società, non direttamente Tradovate, a controllare se l'automazione di terze parti è consentita. Alcune la permettono, altre la vietano del tutto sugli account di valutazione e altre la abilitano solo a determinate condizioni. Anche i diritti su dati e ordini variano in base alla società e alle dimensioni del conto, quindi ciò che funziona su un programma può essere negato su un altro. Le regole esatte cambiano spesso, quindi verifichi la politica di automazione attuale della sua società prima di presumere che l'errore sia da correggere da parte sua." },
+    { type: "heading",text: "5. Troppe sessioni Tradovate attive" },
+    { type: "paragraph",html: "Tradovate limita il numero di posti da cui si può essere connessi contemporaneamente allo stesso account. Aprendo insieme l'app web, l'app desktop, l'app mobile e uno strumento di terze parti si può superare quel limite, il che sostituisce una sessione esistente e ne revoca l'autorizzazione. Quando a essere espulsa è la sessione di SignalStack, il suo ordine successivo finisce su <code>Access is denied</code>. Esca dalle sessioni che non sta usando attivamente, poi riautorizzi la connessione." },
+    { type: "heading",text: "6. Un'autorizzazione precedente scaduta o completata a metà" },
+    { type: "paragraph",html: "Le autorizzazioni non durano per sempre e una connessione interrotta la prima volta (una scheda chiusa, un login scaduto, una password cambiata dopo il collegamento) può lasciare SignalStack con un token che Tradovate non riconosce più. Continuerà a fallire in silenzio finché non lo aggiorna. Il rimedio è lo stesso di gran parte dell'elenco: smontare la connessione e ricostruirla da capo in modo pulito." },
+    { type: "heading",text: "Come risolvere «Access Is Denied»: passo dopo passo" },
+    { type: "heading",text: "Riautorizzare la connessione da zero" },
+    {
+      type: "steps",
+      items: [
+        { title: "Aprire Brokers & Webhooks", html: "Apra SignalStack e vada nell'area <strong class='text-white'>Brokers &amp; Webhooks</strong> in cui è elencata la sua connessione Tradovate." },
+        { title: "Rimuovere il collegamento esistente", html: "Rimuova o disconnetta il collegamento Tradovate esistente, così da ripartire da zero anziché rattoppare uno scaduto." },
+        { title: "Aggiungere di nuovo Tradovate", html: "Aggiunga di nuovo Tradovate e si lasci reindirizzare alla pagina di login di Tradovate." },
+        { title: "Approvare entrambi i permessi", html: "Acceda con l'account esatto con cui desidera operare, poi nella schermata di autorizzazione approvi <strong class='text-white'>sia</strong> l'accesso in lettura sia la possibilità di modificare gli ordini." },
+        { title: "Confermare la connessione", html: "Attenda che Tradovate la riporti in SignalStack e confermi che l'account risulti ora connesso." },
+      ],
+    },
+    { type: "heading",text: "Approvare il dispositivo e completare la 2FA" },
+    {
+      type: "steps",
+      items: [
+        { title: "Controllare la posta di Tradovate", html: "Controlli nella casella di posta associata al suo login Tradovate la presenza di un messaggio di approvazione del dispositivo." },
+        { title: "Fare clic sul link di approvazione", html: "Faccia clic sul link di approvazione per fidarsi del computer o della sessione da cui si sta connettendo." },
+        { title: "Completare la 2FA se attiva", html: "Se l'autenticazione a due fattori è attiva, completi anche quella richiesta, perché gli account reali la impongono." },
+        { title: "Riprovare la connessione", html: "Torni in SignalStack e riesegua la connessione ora che il dispositivo è considerato attendibile." },
+      ],
+    },
+    { type: "heading",text: "Confermare credenziali, account e ambiente corretti" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ricontrollare l'account", html: "Verifichi di inserire le credenziali dell'account che intende davvero automatizzare, non un vecchio login Tradovate o uno non correlato." },
+        { title: "Far corrispondere l'ambiente", html: "Si assicuri che l'ambiente corrisponda: un account simulato o di valutazione non è lo stesso posto di un conto reale autofinanziato." },
+        { title: "Incollare, non riscrivere", html: "Incolli la password anziché digitarla, così che un carattere sbagliato o una maiuscola errata non la mandi a inseguire un problema di autorizzazione che non esiste." },
+        { title: "Verificare le regole della prop firm", html: "Se l'account è di una prop firm, verifichi che la società consenta attualmente l'automazione di terze parti prima di riprovare." },
+      ],
+    },
+    { type: "heading",text: "Ridurre le sessioni attive, poi riprovare" },
+    {
+      type: "steps",
+      items: [
+        { title: "Uscire dalle sessioni inutilizzate", html: "Esca da Tradovate ovunque non lo stia usando: schede del browser in più, app desktop, app mobile." },
+        { title: "Tenere solo ciò che serve", html: "Lasci soltanto la sessione che le serve più il collegamento di SignalStack." },
+        { title: "Riautorizzare e testare", html: "Riautorizzi la connessione e inserisca un piccolo ordine di prova per confermare che l'instradamento funzioni end to end." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo","Causa probabile","Soluzione"], rows: [
+      ["Negato subito dopo la schermata di login di Tradovate","Permesso sugli ordini non concesso nella schermata di autorizzazione","Riesegua il flusso e approvi l'accesso in lettura e in modifica degli ordini"],
+      ["La password è corretta ma viene comunque negato","E-mail di approvazione del dispositivo non ancora confermata (reale/2FA)","Faccia clic sul link di approvazione del dispositivo inviato da Tradovate, poi riprovi"],
+      ["Si connette all'account sbagliato o nulla viene instradato","Accesso con credenziali o ambiente sbagliati","Acceda con l'account esatto con cui opera, nell'ambiente corretto"],
+      ["Negato solo su un account di prop firm","La società limita l'automazione di terze parti","Verifichi le attuali regole di automazione della società prima di collegare"],
+      ["Funzionava prima, ora fallisce","Sessione sostituita oltre il limite di login simultanei, oppure token scaduto","Esca dalle sessioni aggiuntive e riautorizzi la connessione"],
+      ["Negato ripetutamente a ogni tentativo","Autorizzazione precedente completata a metà o scaduta","Rimuova del tutto la connessione e la ricostruisca da capo"],
+    ] },
+    { type: "heading",text: "Prevenire il problema con PickMyTrade" },
+    { type: "paragraph",html: "La maggior parte dei momenti «access is denied» nasce dal rifare a mano l'autorizzazione di Tradovate e incappare in uno degli ostacoli sopra nel momento peggiore, subito prima che scatti un segnale. PickMyTrade le toglie di mezzo questo handshake:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connessione gestita una tantum</strong>: colleghi il suo account Tradovate una volta e PickMyTrade mantiene attiva l'autorizzazione, così un token scaduto non ricompare come negazione a sessione in corso.",
+        "<strong class='text-white'>Permessi e account corretti risolti al suo posto</strong>: l'account giusto e il diritto sugli ordini vengono gestiti durante la configurazione anziché indovinati da una schermata di permessi scorsa di fretta.",
+        "<strong class='text-white'>Gestione di ambiente e sessioni integrata</strong>: l'instradamento simulato rispetto al reale e i limiti di sessioni simultanee sono gestiti, riducendo la classe di errori «funzionava prima, ora negato».",
+        "<strong class='text-white'>Dagli alert agli ordini, in modo pulito</strong>: i suoi alert di TradingView o della strategia diventano un ordine Tradovate reale senza che debba fare il debug di un flusso OAuth all'apertura.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Fighting the Handshake", de: "Schluss mit dem Kampf um den Handshake", es: "Deje de pelear con el handshake", fr: "Cessez de lutter contre le handshake", it: "Smetta di lottare con l'handshake" },
+  ctaText: { en: "Start your free trial, connect Tradovate once, and let PickMyTrade keep the authorization alive for you.", de: "Starten Sie Ihre kostenlose Testphase, verbinden Sie Tradovate einmalig und überlassen Sie PickMyTrade die Aufrechterhaltung der Autorisierung.", es: "Comience su prueba gratuita, conecte Tradovate una sola vez y deje que PickMyTrade mantenga viva la autorización por usted.", fr: "Commencez votre essai gratuit, connectez Tradovate une seule fois et laissez PickMyTrade maintenir l'autorisation active pour vous.", it: "Inizi la prova gratuita, connetta Tradovate una sola volta e lasci che PickMyTrade mantenga attiva l'autorizzazione al suo posto." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does SignalStack say “Tradovate: Access is denied” when other tools connect fine?", a: "Access is denied is Tradovate's generic “not authorized” response, so a different tool connecting successfully doesn't rule it out. The link failed at the authorization step for this session, usually a permission you didn't fully grant, a device-approval email you haven't confirmed, or the wrong account picked at login. Re-run the connection from scratch and approve every requested permission." },
+    { q: "How do I re-authorize my Tradovate account in SignalStack?", a: "Remove the existing Tradovate connection from your Brokers &amp; Webhooks list, then add it again. When Tradovate's login page opens, sign in with the exact account you want to trade and approve both the read and the order-modification permissions on the authorization screen before it hands you back." },
+    { q: "Does the Access is denied error mean my Tradovate password is wrong?", a: "Not usually. A bad password normally returns an “invalid credentials” message, not “access is denied.” Access is denied points at authorization, permissions, device approval, environment, or account entitlement, rather than the password itself. Confirm the password is right, then work through the authorization causes." },
+    { q: "Do I need to approve a device before Tradovate will connect?", a: "On a live account, yes. Tradovate emails a device-approval link the first time it sees a new machine or session, and it denies access until you click that link. Check the inbox tied to your Tradovate login, confirm the device, then retry the SignalStack connection." },
+    { q: "Can a prop-firm evaluation account cause Access is denied in SignalStack?", a: "It can. Some firms restrict or forbid third-party automation on evaluation and funded accounts, and what's allowed varies by firm and account size. If your account is with a prop firm, check that firm's current automation rules before assuming the error is on your end." },
+    { q: "Why does the connection break again after it worked for a while?", a: "Authorizations expire and sessions get bumped. Tradovate limits how many places can be signed in at once, so opening the web app, desktop, mobile, and a third-party tool together can push you over and revoke a session. Log out of the extras and re-authorize the SignalStack link." },
+    { q: "How do I stop this handshake error from happening at all?", a: "Use a managed connection that handles the Tradovate authorization, environment, and session logic for you instead of re-doing the OAuth handshake by hand. PickMyTrade links your account once and keeps the order routing alive, so a stale authorization doesn't show up as “access is denied” at the worst moment." },
+  ], de: [
+    { q: "Warum meldet SignalStack „Tradovate: Access is denied“, obwohl andere Tools problemlos verbinden?", a: "Access is denied ist die allgemeine „Nicht autorisiert“-Antwort von Tradovate, daher schließt die erfolgreiche Verbindung eines anderen Tools sie nicht aus. Die Verknüpfung ist in dieser Sitzung im Autorisierungsschritt gescheitert, meist wegen einer nicht vollständig erteilten Berechtigung, einer unbestätigten Geräte-Freigabe-E-Mail oder eines beim Login gewählten falschen Kontos. Führen Sie die Verbindung von Grund auf neu aus und genehmigen Sie jede angeforderte Berechtigung." },
+    { q: "Wie autorisiere ich mein Tradovate-Konto in SignalStack neu?", a: "Entfernen Sie die bestehende Tradovate-Verbindung aus Ihrer Liste unter Brokers &amp; Webhooks und fügen Sie sie dann erneut hinzu. Wenn sich die Tradovate-Anmeldeseite öffnet, melden Sie sich mit genau dem Konto an, das Sie handeln möchten, und genehmigen Sie auf dem Autorisierungsbildschirm sowohl die Lese- als auch die Berechtigung zum Ändern von Orders, bevor Sie zurückgeleitet werden." },
+    { q: "Bedeutet der Fehler Access is denied, dass mein Tradovate-Passwort falsch ist?", a: "In der Regel nicht. Ein falsches Passwort liefert normalerweise eine Meldung wie „invalid credentials“ und nicht „access is denied“. Access is denied deutet auf Autorisierung, Berechtigungen, Geräte-Freigabe, Umgebung oder Konto-Berechtigung hin und nicht auf das Passwort selbst. Prüfen Sie, ob das Passwort stimmt, und arbeiten Sie dann die Autorisierungsursachen ab." },
+    { q: "Muss ich ein Gerät freigeben, bevor Tradovate die Verbindung zulässt?", a: "Bei einem Live-Konto ja. Tradovate sendet beim ersten Zugriff von einem neuen Rechner oder einer neuen Sitzung einen Link zur Geräte-Freigabe per E-Mail und verweigert den Zugriff, bis Sie diesen Link anklicken. Prüfen Sie das mit Ihrem Tradovate-Login verknüpfte Postfach, bestätigen Sie das Gerät und versuchen Sie die SignalStack-Verbindung dann erneut." },
+    { q: "Kann ein Prop-Firm-Evaluierungskonto in SignalStack Access is denied verursachen?", a: "Das ist möglich. Manche Firmen schränken Drittanbieter-Automatisierung auf Evaluierungs- und Funded-Konten ein oder verbieten sie, und was erlaubt ist, hängt von Firma und Kontogröße ab. Wenn Ihr Konto bei einer Prop Firm liegt, prüfen Sie deren aktuelle Automatisierungsregeln, bevor Sie annehmen, dass der Fehler bei Ihnen liegt." },
+    { q: "Warum bricht die Verbindung erneut ab, nachdem sie eine Weile funktioniert hat?", a: "Autorisierungen laufen ab und Sitzungen werden verdrängt. Tradovate begrenzt, an wie vielen Orten gleichzeitig angemeldet sein kann. Wenn Sie Web-App, Desktop, Mobile und ein Drittanbieter-Tool zusammen öffnen, kann das die Grenze überschreiten und eine Sitzung widerrufen. Melden Sie sich bei den überzähligen Sitzungen ab und autorisieren Sie die SignalStack-Verbindung neu." },
+    { q: "Wie verhindere ich diesen Handshake-Fehler grundsätzlich?", a: "Nutzen Sie eine verwaltete Verbindung, die Tradovate-Autorisierung, Umgebung und Sitzungslogik für Sie übernimmt, statt den OAuth-Handshake von Hand zu wiederholen. PickMyTrade verknüpft Ihr Konto einmalig und hält das Order-Routing am Laufen, sodass eine veraltete Autorisierung nicht im ungünstigsten Moment als „access is denied“ auftaucht." },
+  ], es: [
+    { q: "¿Por qué SignalStack dice «Tradovate: Access is denied» cuando otras herramientas se conectan sin problema?", a: "Access is denied es la respuesta genérica de «no autorizado» de Tradovate, así que el hecho de que otra herramienta se conecte correctamente no lo descarta. El vínculo falló en el paso de autorización de esta sesión, normalmente por un permiso que no concedió por completo, un correo de aprobación de dispositivo que no ha confirmado o la cuenta equivocada elegida al iniciar sesión. Vuelva a ejecutar la conexión desde cero y apruebe todos los permisos solicitados." },
+    { q: "¿Cómo vuelvo a autorizar mi cuenta de Tradovate en SignalStack?", a: "Elimine la conexión de Tradovate existente de su lista de Brokers &amp; Webhooks y vuelva a añadirla. Cuando se abra la página de inicio de sesión de Tradovate, inicie sesión con la cuenta exacta con la que desea operar y apruebe tanto el permiso de lectura como el de modificación de órdenes en la pantalla de autorización antes de que le devuelva a SignalStack." },
+    { q: "¿El error Access is denied significa que mi contraseña de Tradovate es incorrecta?", a: "Normalmente no. Una contraseña incorrecta suele devolver un mensaje de «invalid credentials», no «access is denied». Access is denied apunta a la autorización, los permisos, la aprobación de dispositivo, el entorno o los derechos de la cuenta, y no a la contraseña en sí. Confirme que la contraseña es correcta y revise después las causas de autorización." },
+    { q: "¿Necesito aprobar un dispositivo antes de que Tradovate se conecte?", a: "En una cuenta real, sí. Tradovate envía por correo un enlace de aprobación de dispositivo la primera vez que ve un equipo o una sesión nuevos, y le deniega el acceso hasta que pulse ese enlace. Revise la bandeja de entrada asociada a su inicio de sesión de Tradovate, confirme el dispositivo y vuelva a intentar la conexión de SignalStack." },
+    { q: "¿Puede una cuenta de evaluación de una prop firm causar Access is denied en SignalStack?", a: "Puede. Algunas empresas restringen o prohíben la automatización de terceros en cuentas de evaluación y fondeadas, y lo permitido varía según la empresa y el tamaño de la cuenta. Si su cuenta es de una prop firm, compruebe las reglas de automatización vigentes de esa empresa antes de dar por hecho que el error es suyo." },
+    { q: "¿Por qué la conexión vuelve a fallar después de haber funcionado un tiempo?", a: "Las autorizaciones caducan y las sesiones se desplazan. Tradovate limita en cuántos sitios se puede estar conectado a la vez, así que abrir juntas la aplicación web, la de escritorio, la móvil y una herramienta de terceros puede superar el límite y revocar una sesión. Cierre la sesión en las que sobran y vuelva a autorizar el vínculo de SignalStack." },
+    { q: "¿Cómo evito por completo este error de handshake?", a: "Use una conexión gestionada que se ocupe de la autorización, el entorno y la lógica de sesión de Tradovate en lugar de repetir a mano el handshake de OAuth. PickMyTrade vincula su cuenta una sola vez y mantiene activo el enrutamiento de órdenes, de modo que una autorización obsoleta no aparezca como «access is denied» en el peor momento." },
+  ], fr: [
+    { q: "Pourquoi SignalStack affiche-t-il « Tradovate : Access is denied » alors que d'autres outils se connectent sans problème ?", a: "Access is denied est la réponse générique « non autorisé » de Tradovate ; qu'un autre outil se connecte correctement ne l'exclut donc pas. La liaison a échoué à l'étape d'autorisation de cette session, le plus souvent à cause d'une permission que vous n'avez pas entièrement accordée, d'un e-mail d'approbation d'appareil non confirmé ou d'un mauvais compte choisi lors de la connexion. Relancez la connexion depuis le début et approuvez chaque permission demandée." },
+    { q: "Comment réautoriser mon compte Tradovate dans SignalStack ?", a: "Supprimez la connexion Tradovate existante de votre liste Brokers &amp; Webhooks, puis ajoutez-la à nouveau. Lorsque la page de connexion de Tradovate s'ouvre, connectez-vous avec le compte exact que vous souhaitez trader et approuvez à la fois la permission de lecture et celle de modification des ordres sur l'écran d'autorisation avant d'être renvoyé." },
+    { q: "L'erreur Access is denied signifie-t-elle que mon mot de passe Tradovate est incorrect ?", a: "Pas en général. Un mauvais mot de passe renvoie normalement un message « invalid credentials », pas « access is denied ». Access is denied renvoie à l'autorisation, aux permissions, à l'approbation de l'appareil, à l'environnement ou aux droits du compte, plutôt qu'au mot de passe lui-même. Vérifiez que le mot de passe est correct, puis passez en revue les causes liées à l'autorisation." },
+    { q: "Dois-je approuver un appareil avant que Tradovate se connecte ?", a: "Sur un compte réel, oui. Tradovate envoie par e-mail un lien d'approbation d'appareil la première fois qu'il voit une nouvelle machine ou session, et refuse l'accès tant que vous n'avez pas cliqué sur ce lien. Consultez la boîte de réception associée à votre identifiant Tradovate, confirmez l'appareil, puis relancez la connexion SignalStack." },
+    { q: "Un compte d'évaluation de prop firm peut-il provoquer Access is denied dans SignalStack ?", a: "C'est possible. Certaines sociétés restreignent ou interdisent l'automatisation par des tiers sur les comptes d'évaluation et financés, et ce qui est autorisé varie selon la société et la taille du compte. Si votre compte dépend d'une prop firm, vérifiez les règles d'automatisation en vigueur de cette société avant de supposer que l'erreur vient de vous." },
+    { q: "Pourquoi la connexion se rompt-elle de nouveau après avoir fonctionné un certain temps ?", a: "Les autorisations expirent et les sessions sont évincées. Tradovate limite le nombre d'endroits où l'on peut être connecté simultanément ; ouvrir ensemble l'application web, le bureau, le mobile et un outil tiers peut dépasser la limite et révoquer une session. Déconnectez-vous des sessions superflues et réautorisez la liaison SignalStack." },
+    { q: "Comment éviter totalement cette erreur de handshake ?", a: "Utilisez une connexion gérée qui prend en charge pour vous l'autorisation, l'environnement et la logique de session de Tradovate, au lieu de refaire le handshake OAuth à la main. PickMyTrade relie votre compte une seule fois et maintient le routage des ordres actif, de sorte qu'une autorisation périmée n'apparaisse pas sous la forme « access is denied » au pire moment." },
+  ], it: [
+    { q: "Perché SignalStack dice «Tradovate: Access is denied» quando altri strumenti si connettono senza problemi?", a: "Access is denied è la risposta generica «non autorizzato» di Tradovate, quindi il fatto che un altro strumento si connetta correttamente non lo esclude. Il collegamento è fallito nel passaggio di autorizzazione di questa sessione, di solito per un permesso non concesso per intero, un'e-mail di approvazione del dispositivo non confermata o l'account sbagliato scelto al login. Riesegua la connessione da zero e approvi ogni permesso richiesto." },
+    { q: "Come riautorizzo il mio account Tradovate in SignalStack?", a: "Rimuova la connessione Tradovate esistente dall'elenco Brokers &amp; Webhooks, quindi la aggiunga di nuovo. Quando si apre la pagina di login di Tradovate, acceda con l'account esatto con cui desidera operare e approvi sia il permesso di lettura sia quello di modifica degli ordini nella schermata di autorizzazione prima di essere riportato indietro." },
+    { q: "L'errore Access is denied significa che la mia password di Tradovate è sbagliata?", a: "Di solito no. Una password errata in genere restituisce un messaggio «invalid credentials», non «access is denied». Access is denied rimanda ad autorizzazione, permessi, approvazione del dispositivo, ambiente o diritti dell'account, non alla password in sé. Confermi che la password sia corretta, poi esamini le cause legate all'autorizzazione." },
+    { q: "Devo approvare un dispositivo prima che Tradovate si connetta?", a: "Su un account reale, sì. Tradovate invia via e-mail un link di approvazione del dispositivo la prima volta che vede un nuovo computer o una nuova sessione e nega l'accesso finché non fa clic su quel link. Controlli la casella di posta associata al suo login Tradovate, confermi il dispositivo e riprovi la connessione di SignalStack." },
+    { q: "Un account di valutazione di una prop firm può causare Access is denied in SignalStack?", a: "Può succedere. Alcune società limitano o vietano l'automazione di terze parti sugli account di valutazione e finanziati, e ciò che è consentito varia in base alla società e alle dimensioni del conto. Se il suo account è presso una prop firm, verifichi le attuali regole di automazione di quella società prima di presumere che l'errore sia suo." },
+    { q: "Perché la connessione si interrompe di nuovo dopo aver funzionato per un po'?", a: "Le autorizzazioni scadono e le sessioni vengono sostituite. Tradovate limita il numero di posti da cui si può essere connessi contemporaneamente, quindi aprire insieme l'app web, desktop, mobile e uno strumento di terze parti può superare il limite e revocare una sessione. Esca dalle sessioni in più e riautorizzi il collegamento di SignalStack." },
+    { q: "Come evito del tutto questo errore di handshake?", a: "Usi una connessione gestita che si occupi al suo posto di autorizzazione, ambiente e logica di sessione di Tradovate, invece di rifare a mano l'handshake OAuth. PickMyTrade collega il suo account una sola volta e mantiene attivo l'instradamento degli ordini, così un'autorizzazione scaduta non si presenta come «access is denied» nel momento peggiore." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Ähnliche Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von diesem Unternehmen weder unterstützt noch gesponsert. „Tradovate“ sowie alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit. Bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à titre purement éducatif et informatif et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette société. « Tradovate » et tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né da essa approvata o sponsorizzata. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

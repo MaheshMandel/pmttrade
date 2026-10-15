@@ -1,0 +1,654 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "level-2-depth-not-showing-dom";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Level 2 Depth Not Showing in DOM";
+const META_DESCRIPTION =
+  "Tradovate DOM stuck on one level of depth? Re-add the ladder, confirm your Level 2 add-on and monthly renewal, and learn when to report it to support.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate Level-2-Tiefe wird im DOM nicht angezeigt", es: "La profundidad Level 2 de Tradovate no aparece en el DOM", fr: "La profondeur Level 2 de Tradovate ne s'affiche pas dans le DOM", it: "La profondità Level 2 di Tradovate non compare nel DOM" },
+  dek: { en: "Your Tradovate DOM shows a single bid and ask instead of a stacked ladder, and nothing you click brings the depth back. Here's why Level 2 collapses to one level and how to restore it in a few minutes.", de: "Ihr Tradovate-DOM zeigt nur ein einziges Bid und Ask statt einer gestaffelten Leiter, und kein Klick bringt die Tiefe zurück. Hier erfahren Sie, warum Level 2 auf eine Ebene zusammenfällt und wie Sie es in wenigen Minuten wiederherstellen.", es: "Su DOM de Tradovate muestra un único bid y ask en lugar de una escalera apilada, y nada de lo que pulsa devuelve la profundidad. Le explicamos por qué Level 2 se reduce a un solo nivel y cómo restaurarlo en pocos minutos.", fr: "Votre DOM Tradovate affiche un seul bid et un seul ask au lieu d'une échelle empilée, et rien de ce que vous cliquez ne ramène la profondeur. Voici pourquoi Level 2 se réduit à un seul niveau et comment le rétablir en quelques minutes.", it: "Il Suo DOM di Tradovate mostra un solo bid e un solo ask invece di una ladder impilata, e nulla di ciò che clicca riporta la profondità. Ecco perché Level 2 si riduce a un solo livello e come ripristinarlo in pochi minuti." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-10",
+  blocks: { en: [
+    { type: "paragraph", html: "You open the DOM to read order flow, and instead of the stacked ladder you're used to, there's a single bid and a single ask staring back at you. No depth, no queue sizes building up above and below the market, just best bid, best ask, and nothing else. On a contract like ES that normally shows a full column of resting orders, that's jarring, especially if you're paying for Level 2 and nothing on your end has changed. The good news is that most cases trace back to one of a few predictable causes, and you can clear them in a couple of minutes. This guide walks the fastest path: confirm the Level 2 add-on, force it to activate, re-add the ladder, and, if it's still collapsed to one level with everything correct, hand it to support, because that last case is on the platform, not you." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Missing DOM Depth",
+      items: [
+        "<strong class='text-white'>Confirm your Level 2 subscription is active for this month.</strong> Depth data is billed per calendar month and expires on the last day, so a lapse on the 1st is the number-one cause.",
+        "<strong class='text-white'>Log out and log back in.</strong> A freshly renewed subscription often doesn't kick in until you restart the session.",
+        "<strong class='text-white'>Remove the DOM panel and add a new one.</strong> A stale panel can keep showing a single level even after the feed is back.",
+        "<strong class='text-white'>Load a liquid front-month contract.</strong> Continuous or expired symbols and thin back-months look empty even with depth working.",
+        "<strong class='text-white'>Remember the ceiling is about 10 levels.</strong> More than roughly 10 above and below isn't available from the data feed, but far fewer than 10 means something's wrong.",
+        "<strong class='text-white'>On a prop/evaluation account, contact the firm.</strong> They control your market data, so they have to enable or fix Level 2.",
+        "<strong class='text-white'>Still one level with everything correct? Report it to support.</strong> That's a platform-side glitch, not a setting you can change.",
+      ],
+    },
+    { type: "heading", text: "What Level 2 Depth in the DOM Actually Is" },
+    { type: "paragraph", html: "It helps to be precise about what's missing. Level 1 data is the top of the book: the best bid, the best ask, and the last traded price. That's enough to place and fill orders, and it's what a lot of quote windows and charts run on. Level 2, market depth, is the rest of the book: the stack of resting bids below the market and resting asks above it, with the size sitting at each price. The DOM (also called the ladder or SuperDOM) is the one place that depth actually renders. If you're only looking at a chart or a quote board, you'd never notice Level 2 was gone. On the ladder, it's obvious the moment it drops." },
+    { type: "paragraph", html: "So &ldquo;Level 2 not showing in the DOM&rdquo; almost always means the ladder has fallen back to Level 1. It's still showing you the best bid and ask, that top-of-book quote never needs the depth add-on, but the columns of resting size that make the DOM useful have collapsed to a single row each way." },
+    { type: "paragraph", html: "One thing to get straight before you start troubleshooting: the DOM isn't designed to show unlimited depth. It typically renders about 10 price levels above and below the current price, and that number is set by the upstream market-data provider, not by a slider in your settings. A handful of the most liquid contracts can show deeper than 10, while micro contracts are generally capped right at 10. That matters here because the fix is different depending on what you're seeing. If you've got roughly 10 levels and want 30, that's a data-feed limit you can't change. If you had 10 and now you have one, that's a broken subscription or a stale panel, and that's what the rest of this guide fixes." },
+    { type: "heading", text: "Top Causes of Missing DOM Depth in 2026" },
+    { type: "heading", text: "1. The Level 2 subscription lapsed at month-end" },
+    { type: "paragraph", html: "This is the first thing to check because it's the most common, and it's sneaky. Market depth is a paid add-on, and exchange data feeds are billed by the calendar month. When you buy Level 2 mid-month, you're buying it for that month only, it expires on the last day, and the charge renews on the 1st of the next month. Feeds aren't prorated, so the full cost hits at the start of each month regardless of when you first subscribed. If that renewal payment doesn't clear, or the subscription simply wasn't set to continue, the depth feed drops overnight and your DOM wakes up on the 1st showing one level each way. Nothing on your machine changed, which is exactly why it's confusing." },
+    { type: "heading", text: "2. The subscription is active but the session hasn't picked it up" },
+    { type: "paragraph", html: "Even when the subscription is genuinely active, the live session you're sitting in may have connected before the depth feed switched on. Market data activation isn't always instant inside an open session, a renewal or a fresh purchase frequently needs a full logout and login before the DOM starts receiving the depth stream. If you just resubscribed and the ladder is still flat, you probably haven't restarted the session yet." },
+    { type: "heading", text: "3. The DOM panel is in a stale state" },
+    { type: "paragraph", html: "Panels hold onto their own state. A DOM that was open when the feed dropped can keep displaying its last, single-level picture even after depth is flowing again. Removing that panel and dropping in a fresh one forces the ladder to rebuild against the current feed. This is the step that gets skipped most often, and it's why a subscription that's clearly active can still look broken." },
+    { type: "heading", text: "4. Wrong, expired, or thin contract loaded" },
+    { type: "paragraph", html: "Sometimes the depth is fine and the symbol is the problem. A continuous chart symbol, an expired month, or an illiquid back-month contract can show almost nothing in the ladder simply because there aren't many resting orders, or because that symbol doesn't carry tradable depth. If depth looks empty, load the current, actively traded front-month contract for a liquid instrument and check again before you assume the feed is broken." },
+    { type: "heading", text: "5. It's a prop or evaluation account" },
+    { type: "paragraph", html: "On a prop firm or evaluation account, you don't own the market-data relationship, the firm does. That means you usually can't self-subscribe to Level 2 from inside the platform the way a retail account holder can, and if depth isn't turned on, only the firm can enable it. Whether Level 2 is even included varies by firm and account type, so check your firm's current rules and reach out to their support rather than hunting for a subscribe button that isn't there for you." },
+    { type: "heading", text: "6. A genuine platform-side glitch" },
+    { type: "paragraph", html: "Then there's the case that started this whole guide: the subscription is confirmed active, you've restarted the session, you've re-added the DOM, and you've loaded a liquid front-month, and the ladder still shows exactly one level each way. When every common cause is ruled out, you're looking at something on the platform's side. That's not a setting you can fix, and the right move is to report it to support with specifics." },
+    { type: "heading", text: "How to Fix Missing DOM Depth: Step-by-Step" },
+    { type: "heading", text: "Confirm and renew your Level 2 subscription" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Application Settings", html: "Open <strong class='text-white'>Application Settings</strong> from the top of the Tradovate web platform." },
+        { title: "Find the Market Data section", html: "Go to the <strong class='text-white'>Subscriptions</strong> tab and find the <strong class='text-white'>Market Data</strong> section. (Older builds surface market data feeds under an <strong class='text-white'>Add-Ons</strong> area instead, confirm the exact label in your current version.)" },
+        { title: "Check and resubscribe if lapsed", html: "Check whether the <strong class='text-white'>Level 2</strong> feed for your exchange is listed as active for the current month. If it lapsed, click <strong class='text-white'>Subscribe</strong>, pick the exchange(s) you trade, review the monthly cost, and submit, then accept the terms to complete it." },
+        { title: "Confirm the renewal continues", html: "Keep in mind the feed is monthly and renews on the 1st, so if this keeps happening at month-end, make sure the renewal is set to continue." },
+      ],
+    },
+    { type: "heading", text: "Log out and log back in to activate it" },
+    { type: "paragraph", html: "A new or renewed feed usually needs a fresh session before the DOM starts receiving depth." },
+    {
+      type: "steps",
+      items: [
+        { title: "Fully log out", html: "Fully <strong class='text-white'>log out</strong> of the platform, don't just refresh a tab." },
+        { title: "Sign back in", html: "Sign back in and give the connection a moment to establish." },
+        { title: "Recheck the DOM", html: "Open a DOM and check whether the ladder is now populating with depth on both sides." },
+      ],
+    },
+    { type: "heading", text: "Re-add the DOM and load a liquid contract" },
+    { type: "paragraph", html: "Clear any stale panel state and point it at a symbol that actually carries depth." },
+    {
+      type: "steps",
+      items: [
+        { title: "Remove the existing DOM panel", html: "<strong class='text-white'>Remove the existing DOM panel</strong> from your workspace." },
+        { title: "Add a fresh DOM panel", html: "<strong class='text-white'>Add a fresh Depth of Market / SuperDOM panel</strong> so it rebuilds against the live feed." },
+        { title: "Load a liquid front-month contract", html: "Load the <strong class='text-white'>current front-month contract</strong> for a liquid instrument (for example, the active ES or NQ month) rather than a continuous or expired symbol." },
+        { title: "Confirm depth populates", html: "Watch whether the stacked bids and asks fill in, you should see up to roughly 10 levels each way." },
+      ],
+    },
+    { type: "heading", text: "For prop accounts, contact your firm" },
+    { type: "paragraph", html: "If you're on an evaluation or funded prop account, skip the self-subscribe steps." },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirm with your firm", html: "Confirm with your firm whether Level 2 depth is included on your account type, this varies by firm and account size, so check their current rules." },
+        { title: "Ask the firm to enable the feed", html: "Ask the firm's support to <strong class='text-white'>enable or fix the market depth feed</strong> on your account." },
+        { title: "Log out and re-add the DOM", html: "Once they confirm it's on, log out and back in and re-add the DOM as above." },
+      ],
+    },
+    { type: "heading", text: "Report a persistent single-level glitch to support" },
+    { type: "paragraph", html: "When you've done everything and the ladder is still flat, escalate." },
+    {
+      type: "steps",
+      items: [
+        { title: "Double-check the basics", html: "Double-check the subscription shows active for the current month and that you've restarted the session and re-added the DOM." },
+        { title: "Contact support", html: "<strong class='text-white'>Contact Tradovate support</strong> (or your prop firm, for evaluation accounts) and describe the exact symptom: full depth expected, only one level each way showing." },
+        { title: "Include symbol, time, and a screenshot", html: "Include the <strong class='text-white'>symbol, the time, and a screenshot</strong> of the collapsed DOM so they can trace it on their side." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "What it means", "Fix"],
+      rows: [
+        ["Depth vanished on the 1st of the month", "Level 2 subscription lapsed at month-end", "Resubscribe under Settings &gt; Subscriptions &gt; Market Data; confirm it renews monthly"],
+        ["Just resubscribed, still one level", "Session connected before the feed switched on", "Log out fully and log back in to activate the depth stream"],
+        ["Subscription active but DOM stays flat", "Stale DOM panel state", "Remove the DOM and add a fresh one so it rebuilds"],
+        ["Ladder looks empty on one symbol", "Continuous, expired, or thin contract", "Load the current liquid front-month contract"],
+        ["No subscribe option on a prop account", "The firm controls market data", "Ask the prop firm to enable Level 2 on your account"],
+        ["Only about 10 levels ever show", "Data-provider depth ceiling, not a bug", "Nothing to fix; more than ~10 levels isn't available"],
+        ["One level with everything correct", "Platform-side glitch", "Report to support with symbol, time, and a screenshot"],
+      ],
+    },
+    { type: "heading", text: "Don't Let a Blank Ladder Cost You the Trade" },
+    { type: "paragraph", html: "A collapsed DOM is worst at exactly the wrong moment, you're waiting on depth to time an entry and the ladder gives you nothing to read. If your strategy has a clear, rule-based trigger, you don't have to sit hostage to whether the depth feed is cooperating. PickMyTrade routes your entries and exits from the signal itself, so a flat ladder or a lapsed data feed doesn't strand you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signal-based execution</strong>, orders fire from your TradingView strategy the moment your condition triggers, whether or not the DOM is rendering depth.",
+        "<strong class='text-white'>Server-side routing</strong>, alerts route to Tradovate from PickMyTrade's servers, independent of what your local platform panels are doing.",
+        "<strong class='text-white'>Multi-account sync</strong>, the same entry and exit mirror across several Tradovate accounts at once, no per-ladder clicking.",
+        "<strong class='text-white'>Rate-limit-safe order flow</strong>, orders are spaced so nothing bounces off Tradovate's request limits.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie öffnen das DOM, um den Orderfluss zu lesen, und statt der gewohnten gestaffelten Leiter starrt Sie ein einzelnes Bid und ein einzelnes Ask an. Keine Tiefe, keine Warteschlangengrößen, die sich oberhalb und unterhalb des Marktes aufbauen, nur bestes Bid, bestes Ask und sonst nichts. Bei einem Kontrakt wie ES, der normalerweise eine volle Spalte stehender Orders zeigt, ist das irritierend, besonders wenn Sie für Level 2 bezahlen und sich bei Ihnen nichts geändert hat. Die gute Nachricht: Die meisten Fälle gehen auf eine von wenigen vorhersehbaren Ursachen zurück, und Sie können sie in ein paar Minuten beheben. Diese Anleitung führt Sie auf dem schnellsten Weg: das Level-2-Add-on bestätigen, die Aktivierung erzwingen, die Leiter neu hinzufügen und, falls sie trotz korrekter Einstellungen weiter auf eine Ebene zusammengefallen ist, den Fall an den Support übergeben, denn dieser letzte Fall liegt bei der Plattform, nicht bei Ihnen." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste bei fehlender DOM-Tiefe",
+      items: [
+        "<strong class='text-white'>Bestätigen Sie, dass Ihr Level-2-Abonnement für diesen Monat aktiv ist.</strong> Tiefendaten werden pro Kalendermonat abgerechnet und laufen am letzten Tag ab, ein Ablauf am 1. ist daher die häufigste Ursache.",
+        "<strong class='text-white'>Melden Sie sich ab und wieder an.</strong> Ein frisch erneuertes Abonnement greift oft erst, wenn Sie die Sitzung neu starten.",
+        "<strong class='text-white'>Entfernen Sie das DOM-Panel und fügen Sie ein neues hinzu.</strong> Ein veraltetes Panel kann weiterhin eine einzelne Ebene zeigen, selbst wenn der Feed wieder da ist.",
+        "<strong class='text-white'>Laden Sie einen liquiden Front-Month-Kontrakt.</strong> Fortlaufende oder abgelaufene Symbole und dünne Back-Months wirken leer, selbst wenn die Tiefe funktioniert.",
+        "<strong class='text-white'>Denken Sie daran, dass die Obergrenze bei etwa 10 Ebenen liegt.</strong> Mehr als etwa 10 oberhalb und unterhalb liefert der Daten-Feed nicht, deutlich weniger als 10 bedeutet jedoch, dass etwas nicht stimmt.",
+        "<strong class='text-white'>Bei einem Prop-/Evaluierungskonto wenden Sie sich an die Firma.</strong> Sie kontrolliert Ihre Marktdaten und muss daher Level 2 aktivieren oder reparieren.",
+        "<strong class='text-white'>Immer noch eine Ebene trotz korrekter Einstellungen? Melden Sie es dem Support.</strong> Das ist ein plattformseitiger Fehler und keine Einstellung, die Sie ändern können.",
+      ],
+    },
+    { type: "heading",text: "Was Level-2-Tiefe im DOM tatsächlich ist" },
+    { type: "paragraph",html: "Es hilft, genau zu benennen, was fehlt. Level-1-Daten sind die Spitze des Orderbuchs: das beste Bid, das beste Ask und der letzte gehandelte Preis. Das genügt, um Orders zu platzieren und auszuführen, und darauf laufen viele Kursfenster und Charts. Level 2, die Marktdaten-Tiefe, ist der Rest des Orderbuchs: der Stapel stehender Bids unterhalb des Marktes und stehender Asks oberhalb davon, mit der jeweiligen Größe auf jedem Preis. Das DOM (auch Leiter oder SuperDOM genannt) ist der eine Ort, an dem diese Tiefe tatsächlich dargestellt wird. Wenn Sie nur auf einen Chart oder eine Kurstafel schauen, würden Sie nie bemerken, dass Level 2 fehlt. Auf der Leiter fällt es sofort auf, sobald es wegfällt." },
+    { type: "paragraph",html: "&ldquo;Level 2 wird im DOM nicht angezeigt&rdquo; bedeutet also fast immer, dass die Leiter auf Level 1 zurückgefallen ist. Sie zeigt Ihnen weiterhin das beste Bid und Ask, diese Spitzenkursnotierung braucht das Tiefen-Add-on nie, doch die Spalten mit stehender Größe, die das DOM nützlich machen, sind auf eine einzige Zeile pro Seite zusammengefallen." },
+    { type: "paragraph",html: "Eines sollten Sie klarstellen, bevor Sie mit der Fehlersuche beginnen: Das DOM ist nicht dafür ausgelegt, unbegrenzte Tiefe anzuzeigen. Es stellt typischerweise etwa 10 Preisebenen oberhalb und unterhalb des aktuellen Preises dar, und diese Zahl wird vom vorgelagerten Marktdatenanbieter bestimmt, nicht von einem Regler in Ihren Einstellungen. Einige der liquidesten Kontrakte können tiefer als 10 anzeigen, während Micro-Kontrakte im Allgemeinen genau bei 10 gedeckelt sind. Das ist hier wichtig, weil die Lösung davon abhängt, was Sie sehen. Haben Sie etwa 10 Ebenen und wünschen sich 30, ist das eine Grenze des Daten-Feeds, die Sie nicht ändern können. Hatten Sie 10 und haben jetzt eine, ist das ein defektes Abonnement oder ein veraltetes Panel, und genau das behebt der Rest dieser Anleitung." },
+    { type: "heading",text: "Die häufigsten Ursachen für fehlende DOM-Tiefe im Jahr 2026" },
+    { type: "heading",text: "1. Das Level-2-Abonnement ist zum Monatsende ausgelaufen" },
+    { type: "paragraph",html: "Das ist das Erste, was Sie prüfen sollten, weil es am häufigsten und am heimtückischsten ist. Marktdaten-Tiefe ist ein kostenpflichtiges Add-on, und Börsendaten-Feeds werden nach Kalendermonat abgerechnet. Kaufen Sie Level 2 mitten im Monat, kaufen Sie es nur für diesen Monat, es läuft am letzten Tag ab, und die Gebühr wird am 1. des nächsten Monats erneuert. Feeds werden nicht anteilig berechnet, sodass die vollen Kosten zu Beginn jedes Monats anfallen, unabhängig davon, wann Sie erstmals abonniert haben. Wird diese Verlängerungszahlung nicht verbucht oder war das Abonnement schlicht nicht auf Fortsetzung eingestellt, fällt der Tiefen-Feed über Nacht weg und Ihr DOM zeigt am 1. nur eine Ebene pro Seite. Auf Ihrem Rechner hat sich nichts geändert, genau deshalb ist es verwirrend." },
+    { type: "heading",text: "2. Das Abonnement ist aktiv, aber die Sitzung hat es nicht übernommen" },
+    { type: "paragraph",html: "Selbst wenn das Abonnement tatsächlich aktiv ist, kann die laufende Sitzung, in der Sie sich befinden, verbunden worden sein, bevor der Tiefen-Feed eingeschaltet wurde. Die Aktivierung von Marktdaten erfolgt innerhalb einer offenen Sitzung nicht immer sofort, eine Verlängerung oder ein Neukauf erfordert häufig eine vollständige Ab- und Anmeldung, bevor das DOM den Tiefenstrom empfängt. Haben Sie gerade neu abonniert und die Leiter ist weiterhin flach, haben Sie die Sitzung wahrscheinlich noch nicht neu gestartet." },
+    { type: "heading",text: "3. Das DOM-Panel befindet sich in einem veralteten Zustand" },
+    { type: "paragraph",html: "Panels behalten ihren eigenen Zustand. Ein DOM, das offen war, als der Feed wegfiel, kann sein letztes Ein-Ebenen-Bild weiter anzeigen, selbst wenn die Tiefe wieder fließt. Das Entfernen dieses Panels und das Einfügen eines frischen zwingt die Leiter, sich gegen den aktuellen Feed neu aufzubauen. Das ist der Schritt, der am häufigsten übersprungen wird, und der Grund, warum ein eindeutig aktives Abonnement dennoch defekt aussehen kann." },
+    { type: "heading",text: "4. Falscher, abgelaufener oder dünner Kontrakt geladen" },
+    { type: "paragraph",html: "Manchmal ist die Tiefe in Ordnung und das Symbol das Problem. Ein fortlaufendes Chart-Symbol, ein abgelaufener Monat oder ein illiquider Back-Month-Kontrakt kann in der Leiter fast nichts zeigen, weil es einfach wenige stehende Orders gibt oder weil dieses Symbol keine handelbare Tiefe führt. Sieht die Tiefe leer aus, laden Sie den aktuellen, aktiv gehandelten Front-Month-Kontrakt eines liquiden Instruments und prüfen Sie erneut, bevor Sie annehmen, der Feed sei defekt." },
+    { type: "heading",text: "5. Es ist ein Prop- oder Evaluierungskonto" },
+    { type: "paragraph",html: "Bei einer Prop Firm oder einem Evaluierungskonto besitzen nicht Sie die Marktdaten-Beziehung, sondern die Firma. Das heißt, Sie können Level 2 in der Regel nicht selbst in der Plattform abonnieren, wie es ein Privatkunde kann, und wenn die Tiefe nicht eingeschaltet ist, kann nur die Firma sie aktivieren. Ob Level 2 überhaupt enthalten ist, hängt von Firma und Kontotyp ab. Prüfen Sie daher die aktuellen Regeln Ihrer Firma und wenden Sie sich an deren Support, statt nach einer Abonnieren-Schaltfläche zu suchen, die es für Sie nicht gibt." },
+    { type: "heading",text: "6. Ein echter plattformseitiger Fehler" },
+    { type: "paragraph",html: "Dann gibt es den Fall, der diese ganze Anleitung ausgelöst hat: Das Abonnement ist bestätigt aktiv, Sie haben die Sitzung neu gestartet, das DOM neu hinzugefügt und einen liquiden Front-Month geladen, und die Leiter zeigt dennoch genau eine Ebene pro Seite. Sind alle üblichen Ursachen ausgeschlossen, haben Sie es mit etwas auf Seiten der Plattform zu tun. Das ist keine Einstellung, die Sie beheben können, und der richtige Schritt ist, es dem Support mit konkreten Angaben zu melden." },
+    { type: "heading",text: "So beheben Sie fehlende DOM-Tiefe: Schritt für Schritt" },
+    { type: "heading",text: "Level-2-Abonnement bestätigen und verlängern" },
+    {
+      type: "steps",
+      items: [
+        { title: "Application Settings öffnen", html: "Öffnen Sie <strong class='text-white'>Application Settings</strong> am oberen Rand der Tradovate-Webplattform." },
+        { title: "Den Bereich Market Data finden", html: "Wechseln Sie zum Reiter <strong class='text-white'>Subscriptions</strong> und suchen Sie den Bereich <strong class='text-white'>Market Data</strong>. (Ältere Builds zeigen Marktdaten-Feeds stattdessen unter einem Bereich <strong class='text-white'>Add-Ons</strong> an, prüfen Sie die genaue Bezeichnung in Ihrer aktuellen Version.)" },
+        { title: "Prüfen und bei Ablauf neu abonnieren", html: "Prüfen Sie, ob der <strong class='text-white'>Level 2</strong>-Feed für Ihre Börse für den laufenden Monat als aktiv aufgeführt ist. Ist er abgelaufen, klicken Sie auf <strong class='text-white'>Subscribe</strong>, wählen Sie die Börse(n), die Sie handeln, prüfen Sie die monatlichen Kosten und senden Sie ab, akzeptieren Sie dann die Bedingungen, um den Vorgang abzuschließen." },
+        { title: "Bestätigen, dass die Verlängerung fortgesetzt wird", html: "Bedenken Sie, dass der Feed monatlich läuft und am 1. erneuert wird. Passiert das also immer wieder zum Monatsende, stellen Sie sicher, dass die Verlängerung auf Fortsetzung eingestellt ist." },
+      ],
+    },
+    { type: "heading",text: "Ab- und wieder anmelden, um es zu aktivieren" },
+    { type: "paragraph",html: "Ein neuer oder erneuerter Feed braucht meist eine frische Sitzung, bevor das DOM Tiefe empfängt." },
+    {
+      type: "steps",
+      items: [
+        { title: "Vollständig abmelden", html: "<strong class='text-white'>Melden Sie sich vollständig ab</strong>, aktualisieren Sie nicht nur einen Tab." },
+        { title: "Wieder anmelden", html: "Melden Sie sich wieder an und geben Sie der Verbindung einen Moment, sich aufzubauen." },
+        { title: "DOM erneut prüfen", html: "Öffnen Sie ein DOM und prüfen Sie, ob sich die Leiter jetzt auf beiden Seiten mit Tiefe füllt." },
+      ],
+    },
+    { type: "heading",text: "DOM neu hinzufügen und einen liquiden Kontrakt laden" },
+    { type: "paragraph",html: "Beseitigen Sie jeden veralteten Panel-Zustand und richten Sie das Panel auf ein Symbol aus, das tatsächlich Tiefe führt." },
+    {
+      type: "steps",
+      items: [
+        { title: "Vorhandenes DOM-Panel entfernen", html: "<strong class='text-white'>Entfernen Sie das vorhandene DOM-Panel</strong> aus Ihrem Workspace." },
+        { title: "Frisches DOM-Panel hinzufügen", html: "<strong class='text-white'>Fügen Sie ein frisches Depth of Market / SuperDOM-Panel hinzu</strong>, damit es sich gegen den Live-Feed neu aufbaut." },
+        { title: "Liquiden Front-Month-Kontrakt laden", html: "Laden Sie den <strong class='text-white'>aktuellen Front-Month-Kontrakt</strong> eines liquiden Instruments (zum Beispiel den aktiven ES- oder NQ-Monat) statt eines fortlaufenden oder abgelaufenen Symbols." },
+        { title: "Bestätigen, dass sich die Tiefe füllt", html: "Beobachten Sie, ob sich die gestaffelten Bids und Asks füllen, Sie sollten auf jeder Seite bis zu etwa 10 Ebenen sehen." },
+      ],
+    },
+    { type: "heading",text: "Bei Prop-Konten die Firma kontaktieren" },
+    { type: "paragraph",html: "Wenn Sie ein Evaluierungs- oder Funded-Prop-Konto haben, überspringen Sie die Schritte zum Selbst-Abonnieren." },
+    {
+      type: "steps",
+      items: [
+        { title: "Bei Ihrer Firma nachfragen", html: "Fragen Sie bei Ihrer Firma nach, ob Level-2-Tiefe für Ihren Kontotyp enthalten ist, das hängt von Firma und Kontogröße ab, prüfen Sie daher deren aktuelle Regeln." },
+        { title: "Die Firma bitten, den Feed zu aktivieren", html: "Bitten Sie den Support der Firma, den <strong class='text-white'>Marktdaten-Tiefen-Feed</strong> für Ihr Konto zu aktivieren oder zu reparieren." },
+        { title: "Abmelden und DOM neu hinzufügen", html: "Sobald die Firma bestätigt, dass er aktiv ist, melden Sie sich ab und wieder an und fügen Sie das DOM wie oben beschrieben neu hinzu." },
+      ],
+    },
+    { type: "heading",text: "Einen anhaltenden Ein-Ebenen-Fehler dem Support melden" },
+    { type: "paragraph",html: "Wenn Sie alles getan haben und die Leiter weiterhin flach ist, eskalieren Sie." },
+    {
+      type: "steps",
+      items: [
+        { title: "Grundlagen noch einmal prüfen", html: "Prüfen Sie nochmals, dass das Abonnement für den laufenden Monat als aktiv angezeigt wird und dass Sie die Sitzung neu gestartet und das DOM neu hinzugefügt haben." },
+        { title: "Support kontaktieren", html: "<strong class='text-white'>Kontaktieren Sie den Tradovate-Support</strong> (oder bei Evaluierungskonten Ihre Prop Firm) und beschreiben Sie das genaue Symptom: volle Tiefe erwartet, nur eine Ebene pro Seite sichtbar." },
+        { title: "Symbol, Uhrzeit und Screenshot beifügen", html: "Fügen Sie das <strong class='text-white'>Symbol, die Uhrzeit und einen Screenshot</strong> des zusammengefallenen DOM bei, damit der Support es auf seiner Seite nachvollziehen kann." },
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Symptom","Was es bedeutet","Lösung"], rows: [
+      ["Tiefe verschwand am 1. des Monats","Level-2-Abonnement ist zum Monatsende ausgelaufen","Unter Settings &gt; Subscriptions &gt; Market Data neu abonnieren; bestätigen, dass es monatlich verlängert wird"],
+      ["Gerade neu abonniert, weiterhin eine Ebene","Sitzung wurde verbunden, bevor der Feed eingeschaltet wurde","Vollständig ab- und wieder anmelden, um den Tiefenstrom zu aktivieren"],
+      ["Abonnement aktiv, aber DOM bleibt flach","Veralteter DOM-Panel-Zustand","DOM entfernen und ein frisches hinzufügen, damit es sich neu aufbaut"],
+      ["Leiter wirkt bei einem Symbol leer","Fortlaufender, abgelaufener oder dünner Kontrakt","Aktuellen liquiden Front-Month-Kontrakt laden"],
+      ["Keine Abonnieren-Option bei einem Prop-Konto","Die Firma kontrolliert die Marktdaten","Die Prop Firm bitten, Level 2 für Ihr Konto zu aktivieren"],
+      ["Es werden nie mehr als etwa 10 Ebenen angezeigt","Tiefenobergrenze des Datenanbieters, kein Fehler","Nichts zu beheben; mehr als ~10 Ebenen sind nicht verfügbar"],
+      ["Eine Ebene trotz korrekter Einstellungen","Plattformseitiger Fehler","Dem Support mit Symbol, Uhrzeit und Screenshot melden"],
+    ] },
+    { type: "heading",text: "Lassen Sie sich von einer leeren Leiter nicht den Trade kosten" },
+    { type: "paragraph",html: "Ein zusammengefallenes DOM trifft Sie genau im falschen Moment: Sie warten auf Tiefe, um einen Einstieg zu timen, und die Leiter gibt Ihnen nichts zu lesen. Hat Ihre Strategie einen klaren, regelbasierten Auslöser, müssen Sie nicht davon abhängig sein, ob der Tiefen-Feed mitspielt. PickMyTrade leitet Ihre Einstiege und Ausstiege direkt aus dem Signal, sodass eine flache Leiter oder ein ausgelaufener Daten-Feed Sie nicht strandet:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signalbasierte Ausführung</strong>, Orders werden aus Ihrer TradingView-Strategie ausgelöst, sobald Ihre Bedingung eintritt, unabhängig davon, ob das DOM Tiefe darstellt.",
+        "<strong class='text-white'>Serverseitiges Routing</strong>, Alerts werden von den Servern von PickMyTrade an Tradovate geleitet, unabhängig davon, was Ihre lokalen Plattform-Panels tun.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong>, derselbe Einstieg und Ausstieg wird gleichzeitig auf mehrere Tradovate-Konten gespiegelt, ohne Klicken pro Leiter.",
+        "<strong class='text-white'>Ratenlimit-sicherer Orderfluss</strong>, Orders werden so getaktet, dass nichts an den Anfragelimits von Tradovate abprallt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Abre el DOM para leer el flujo de órdenes y, en lugar de la escalera apilada a la que está acostumbrado, un único bid y un único ask le devuelven la mirada. Sin profundidad, sin tamaños de cola acumulándose por encima y por debajo del mercado, solo mejor bid, mejor ask y nada más. En un contrato como ES, que normalmente muestra una columna completa de órdenes en espera, resulta chocante, sobre todo si paga por Level 2 y nada ha cambiado por su parte. La buena noticia es que la mayoría de los casos se deben a una de unas pocas causas predecibles y puede resolverlas en un par de minutos. Esta guía recorre el camino más rápido: confirmar el complemento Level 2, forzar su activación, volver a añadir la escalera y, si sigue reducida a un nivel con todo correcto, pasárselo al soporte, porque ese último caso es de la plataforma, no suyo." },
+    {
+      type: "checklist",
+      heading: "Lista de comprobación rápida para la profundidad del DOM que falta",
+      items: [
+        "<strong class='text-white'>Confirme que su suscripción a Level 2 está activa este mes.</strong> Los datos de profundidad se facturan por mes natural y caducan el último día, por lo que un vencimiento el día 1 es la causa número uno.",
+        "<strong class='text-white'>Cierre sesión y vuelva a entrar.</strong> Una suscripción recién renovada a menudo no se activa hasta que reinicia la sesión.",
+        "<strong class='text-white'>Quite el panel del DOM y añada uno nuevo.</strong> Un panel obsoleto puede seguir mostrando un solo nivel incluso después de que el feed haya vuelto.",
+        "<strong class='text-white'>Cargue un contrato líquido del mes frontal.</strong> Los símbolos continuos o caducados y los meses posteriores poco líquidos parecen vacíos aunque la profundidad funcione.",
+        "<strong class='text-white'>Recuerde que el techo es de unos 10 niveles.</strong> El feed de datos no ofrece más de aproximadamente 10 por encima y por debajo, pero bastantes menos de 10 significa que algo falla.",
+        "<strong class='text-white'>En una cuenta de prop firm/evaluación, contacte con la firma.</strong> Ella controla sus datos de mercado, así que debe activar o reparar Level 2.",
+        "<strong class='text-white'>¿Sigue en un nivel con todo correcto? Infórmelo al soporte.</strong> Es un fallo del lado de la plataforma, no un ajuste que pueda cambiar.",
+      ],
+    },
+    { type: "heading",text: "Qué es realmente la profundidad Level 2 en el DOM" },
+    { type: "paragraph",html: "Conviene ser preciso sobre lo que falta. Los datos de Level 1 son la parte superior del libro de órdenes: el mejor bid, el mejor ask y el último precio negociado. Eso basta para colocar y ejecutar órdenes, y es lo que utilizan muchas ventanas de cotización y gráficos. Level 2, la profundidad de mercado, es el resto del libro: la pila de bids en espera por debajo del mercado y de asks en espera por encima, con el tamaño que hay en cada precio. El DOM (también llamado escalera o SuperDOM) es el único lugar donde esa profundidad se muestra realmente. Si solo mira un gráfico o un panel de cotizaciones, nunca notaría que Level 2 ha desaparecido. En la escalera es evidente en cuanto se pierde." },
+    { type: "paragraph",html: "Así que &ldquo;Level 2 no aparece en el DOM&rdquo; casi siempre significa que la escalera ha vuelto a Level 1. Sigue mostrándole el mejor bid y ask, esa cotización superior nunca necesita el complemento de profundidad, pero las columnas de tamaño en espera que hacen útil el DOM se han reducido a una sola fila en cada sentido." },
+    { type: "paragraph",html: "Una cosa que debe tener clara antes de empezar a depurar: el DOM no está diseñado para mostrar profundidad ilimitada. Normalmente muestra unos 10 niveles de precio por encima y por debajo del precio actual, y ese número lo fija el proveedor de datos de mercado de origen, no un control deslizante de sus ajustes. Unos pocos de los contratos más líquidos pueden mostrar más de 10, mientras que los contratos micro suelen estar limitados exactamente a 10. Esto importa porque la solución es distinta según lo que vea. Si tiene unos 10 niveles y quiere 30, es un límite del feed de datos que no puede cambiar. Si tenía 10 y ahora tiene uno, es una suscripción rota o un panel obsoleto, y eso es lo que resuelve el resto de esta guía." },
+    { type: "heading",text: "Principales causas de la profundidad del DOM que falta en 2026" },
+    { type: "heading",text: "1. La suscripción a Level 2 caducó a final de mes" },
+    { type: "paragraph",html: "Es lo primero que hay que comprobar porque es lo más común y es traicionero. La profundidad de mercado es un complemento de pago y los feeds de datos de las bolsas se facturan por mes natural. Cuando compra Level 2 a mitad de mes, lo compra solo para ese mes, caduca el último día y el cargo se renueva el día 1 del mes siguiente. Los feeds no se prorratean, así que el coste completo se aplica al comienzo de cada mes con independencia de cuándo se suscribió por primera vez. Si ese pago de renovación no se procesa, o la suscripción simplemente no estaba configurada para continuar, el feed de profundidad se corta de la noche a la mañana y su DOM amanece el día 1 mostrando un nivel en cada sentido. Nada cambió en su equipo, y por eso resulta confuso." },
+    { type: "heading",text: "2. La suscripción está activa pero la sesión no la ha recogido" },
+    { type: "paragraph",html: "Incluso cuando la suscripción está realmente activa, la sesión en vivo en la que se encuentra puede haberse conectado antes de que se activara el feed de profundidad. La activación de datos de mercado no siempre es instantánea dentro de una sesión abierta; una renovación o una compra nueva con frecuencia requiere un cierre de sesión y un inicio de sesión completos antes de que el DOM empiece a recibir el flujo de profundidad. Si acaba de volver a suscribirse y la escalera sigue plana, probablemente aún no ha reiniciado la sesión." },
+    { type: "heading",text: "3. El panel del DOM está en un estado obsoleto" },
+    { type: "paragraph",html: "Los paneles conservan su propio estado. Un DOM que estaba abierto cuando se cortó el feed puede seguir mostrando su última imagen de un solo nivel incluso cuando la profundidad vuelve a fluir. Quitar ese panel e insertar uno nuevo obliga a la escalera a reconstruirse con el feed actual. Es el paso que más se omite y por eso una suscripción claramente activa puede seguir pareciendo rota." },
+    { type: "heading",text: "4. Contrato equivocado, caducado o poco líquido cargado" },
+    { type: "paragraph",html: "A veces la profundidad está bien y el problema es el símbolo. Un símbolo continuo de gráfico, un mes caducado o un contrato de un mes posterior ilíquido pueden mostrar casi nada en la escalera simplemente porque hay pocas órdenes en espera, o porque ese símbolo no tiene profundidad negociable. Si la profundidad parece vacía, cargue el contrato del mes frontal actual y activamente negociado de un instrumento líquido y compruebe de nuevo antes de suponer que el feed está roto." },
+    { type: "heading",text: "5. Es una cuenta de prop firm o de evaluación" },
+    { type: "paragraph",html: "En una prop firm o cuenta de evaluación, usted no es el titular de la relación con los datos de mercado, lo es la firma. Eso significa que normalmente no puede suscribirse usted mismo a Level 2 desde la plataforma como lo haría un titular de cuenta minorista, y si la profundidad no está activada, solo la firma puede habilitarla. Que Level 2 esté incluido o no varía según la firma y el tipo de cuenta, así que consulte las reglas vigentes de su firma y contacte con su soporte en lugar de buscar un botón de suscripción que no existe para usted." },
+    { type: "heading",text: "6. Un fallo genuino del lado de la plataforma" },
+    { type: "paragraph",html: "Luego está el caso que originó esta guía: la suscripción está confirmada como activa, ha reiniciado la sesión, ha vuelto a añadir el DOM y ha cargado un mes frontal líquido, y la escalera sigue mostrando exactamente un nivel en cada sentido. Cuando se han descartado todas las causas comunes, se trata de algo del lado de la plataforma. No es un ajuste que pueda corregir, y lo correcto es informarlo al soporte con datos concretos." },
+    { type: "heading",text: "Cómo solucionar la profundidad del DOM que falta: paso a paso" },
+    { type: "heading",text: "Confirme y renueve su suscripción a Level 2" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abrir Application Settings", html: "Abra <strong class='text-white'>Application Settings</strong> en la parte superior de la plataforma web de Tradovate." },
+        { title: "Encontrar la sección Market Data", html: "Vaya a la pestaña <strong class='text-white'>Subscriptions</strong> y localice la sección <strong class='text-white'>Market Data</strong>. (Las versiones antiguas muestran los feeds de datos de mercado en un área <strong class='text-white'>Add-Ons</strong>; confirme la etiqueta exacta en su versión actual.)" },
+        { title: "Comprobar y volver a suscribirse si caducó", html: "Compruebe si el feed <strong class='text-white'>Level 2</strong> de su bolsa figura como activo para el mes en curso. Si caducó, haga clic en <strong class='text-white'>Subscribe</strong>, elija la(s) bolsa(s) en la(s) que opera, revise el coste mensual y envíe; luego acepte los términos para completarlo." },
+        { title: "Confirmar que la renovación continúa", html: "Tenga en cuenta que el feed es mensual y se renueva el día 1, así que si esto ocurre repetidamente a final de mes, asegúrese de que la renovación esté configurada para continuar." },
+      ],
+    },
+    { type: "heading",text: "Cierre sesión y vuelva a entrar para activarlo" },
+    { type: "paragraph",html: "Un feed nuevo o renovado suele necesitar una sesión nueva antes de que el DOM empiece a recibir profundidad." },
+    {
+      type: "steps",
+      items: [
+        { title: "Cerrar sesión por completo", html: "<strong class='text-white'>Cierre sesión</strong> por completo en la plataforma, no se limite a actualizar una pestaña." },
+        { title: "Volver a iniciar sesión", html: "Vuelva a iniciar sesión y dé un momento a que se establezca la conexión." },
+        { title: "Volver a comprobar el DOM", html: "Abra un DOM y compruebe si la escalera se llena ahora de profundidad en ambos lados." },
+      ],
+    },
+    { type: "heading",text: "Vuelva a añadir el DOM y cargue un contrato líquido" },
+    { type: "paragraph",html: "Borre cualquier estado obsoleto del panel y apúntelo a un símbolo que realmente tenga profundidad." },
+    {
+      type: "steps",
+      items: [
+        { title: "Quitar el panel del DOM existente", html: "<strong class='text-white'>Quite el panel del DOM existente</strong> de su espacio de trabajo." },
+        { title: "Añadir un panel de DOM nuevo", html: "<strong class='text-white'>Añada un panel Depth of Market / SuperDOM nuevo</strong> para que se reconstruya con el feed en vivo." },
+        { title: "Cargar un contrato líquido del mes frontal", html: "Cargue el <strong class='text-white'>contrato actual del mes frontal</strong> de un instrumento líquido (por ejemplo, el mes activo de ES o NQ) en lugar de un símbolo continuo o caducado." },
+        { title: "Confirmar que la profundidad se llena", html: "Observe si los bids y asks apilados se llenan; debería ver hasta unos 10 niveles en cada sentido." },
+      ],
+    },
+    { type: "heading",text: "En cuentas de prop firm, contacte con su firma" },
+    { type: "paragraph",html: "Si está en una cuenta de evaluación o financiada de una prop firm, omita los pasos de autosuscripción." },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirmar con su firma", html: "Confirme con su firma si la profundidad Level 2 está incluida en su tipo de cuenta; esto varía según la firma y el tamaño de la cuenta, así que consulte sus reglas vigentes." },
+        { title: "Pedir a la firma que active el feed", html: "Pida al soporte de la firma que <strong class='text-white'>active o repare el feed de profundidad de mercado</strong> en su cuenta." },
+        { title: "Cerrar sesión y volver a añadir el DOM", html: "Cuando confirmen que está activado, cierre sesión, vuelva a entrar y añada de nuevo el DOM como se indicó arriba." },
+      ],
+    },
+    { type: "heading",text: "Comunique al soporte un fallo persistente de un solo nivel" },
+    { type: "paragraph",html: "Cuando lo ha hecho todo y la escalera sigue plana, escale el caso." },
+    {
+      type: "steps",
+      items: [
+        { title: "Volver a comprobar lo básico", html: "Compruebe de nuevo que la suscripción figura como activa para el mes en curso y que ha reiniciado la sesión y vuelto a añadir el DOM." },
+        { title: "Contactar con el soporte", html: "<strong class='text-white'>Contacte con el soporte de Tradovate</strong> (o con su prop firm, en cuentas de evaluación) y describa el síntoma exacto: se espera profundidad completa, solo se muestra un nivel en cada sentido." },
+        { title: "Incluir símbolo, hora y una captura de pantalla", html: "Incluya el <strong class='text-white'>símbolo, la hora y una captura de pantalla</strong> del DOM reducido para que puedan rastrearlo por su lado." },
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma","Qué significa","Solución"], rows: [
+      ["La profundidad desapareció el día 1 del mes","La suscripción a Level 2 caducó a final de mes","Volver a suscribirse en Settings &gt; Subscriptions &gt; Market Data; confirmar que se renueva cada mes"],
+      ["Acabo de suscribirme y sigue un nivel","La sesión se conectó antes de que se activara el feed","Cerrar sesión por completo y volver a entrar para activar el flujo de profundidad"],
+      ["Suscripción activa pero el DOM sigue plano","Estado obsoleto del panel del DOM","Quitar el DOM y añadir uno nuevo para que se reconstruya"],
+      ["La escalera parece vacía en un símbolo","Contrato continuo, caducado o poco líquido","Cargar el contrato líquido actual del mes frontal"],
+      ["No hay opción de suscripción en una cuenta de prop firm","La firma controla los datos de mercado","Pedir a la prop firm que active Level 2 en su cuenta"],
+      ["Solo se muestran unos 10 niveles","Techo de profundidad del proveedor de datos, no es un error","Nada que corregir; no hay más de ~10 niveles disponibles"],
+      ["Un nivel con todo correcto","Fallo del lado de la plataforma","Informar al soporte con símbolo, hora y una captura de pantalla"],
+    ] },
+    { type: "heading",text: "No deje que una escalera en blanco le cueste la operación" },
+    { type: "paragraph",html: "Un DOM reducido llega en el peor momento: espera la profundidad para temporizar una entrada y la escalera no le da nada que leer. Si su estrategia tiene un disparador claro y basado en reglas, no tiene por qué depender de que el feed de profundidad coopere. PickMyTrade enruta sus entradas y salidas a partir de la propia señal, de modo que una escalera plana o un feed de datos caducado no le deja en tierra:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ejecución basada en señales</strong>, las órdenes se disparan desde su estrategia de TradingView en el momento en que se cumple su condición, muestre o no profundidad el DOM.",
+        "<strong class='text-white'>Enrutamiento del lado del servidor</strong>, las alertas se enrutan a Tradovate desde los servidores de PickMyTrade, con independencia de lo que hagan los paneles de su plataforma local.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, la misma entrada y salida se replican en varias cuentas de Tradovate a la vez, sin clics por escalera.",
+        "<strong class='text-white'>Flujo de órdenes seguro frente a límites de frecuencia</strong>, las órdenes se espacian para que nada rebote contra los límites de solicitudes de Tradovate.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous ouvrez le DOM pour lire le flux d'ordres et, au lieu de l'échelle empilée à laquelle vous êtes habitué, un seul bid et un seul ask vous fixent. Pas de profondeur, pas de tailles de file qui s'accumulent au-dessus et en dessous du marché, juste le meilleur bid, le meilleur ask et rien d'autre. Sur un contrat comme ES, qui affiche normalement une colonne complète d'ordres en attente, c'est déconcertant, surtout si vous payez pour Level 2 et que rien n'a changé de votre côté. La bonne nouvelle est que la plupart des cas remontent à l'une de quelques causes prévisibles que vous pouvez écarter en quelques minutes. Ce guide suit le chemin le plus rapide : confirmer le module complémentaire Level 2, forcer son activation, rajouter l'échelle et, si elle reste réduite à un niveau alors que tout est correct, passer la main au support, car ce dernier cas relève de la plateforme, pas de vous." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide pour une profondeur DOM manquante",
+      items: [
+        "<strong class='text-white'>Vérifiez que votre abonnement Level 2 est actif pour ce mois.</strong> Les données de profondeur sont facturées par mois calendaire et expirent le dernier jour ; une expiration le 1er est donc la cause numéro un.",
+        "<strong class='text-white'>Déconnectez-vous puis reconnectez-vous.</strong> Un abonnement fraîchement renouvelé ne prend souvent effet qu'après le redémarrage de la session.",
+        "<strong class='text-white'>Retirez le panneau DOM et ajoutez-en un nouveau.</strong> Un panneau périmé peut continuer d'afficher un seul niveau même après le retour du flux.",
+        "<strong class='text-white'>Chargez un contrat liquide du mois rapproché.</strong> Les symboles continus ou expirés et les échéances éloignées peu liquides paraissent vides même si la profondeur fonctionne.",
+        "<strong class='text-white'>Rappelez-vous que le plafond est d'environ 10 niveaux.</strong> Le flux de données n'offre pas plus d'environ 10 niveaux au-dessus et en dessous, mais bien moins de 10 signifie qu'il y a un problème.",
+        "<strong class='text-white'>Sur un compte de prop firm/d'évaluation, contactez la firme.</strong> Elle contrôle vos données de marché ; c'est donc à elle d'activer ou de réparer Level 2.",
+        "<strong class='text-white'>Toujours un niveau alors que tout est correct ? Signalez-le au support.</strong> C'est un défaut côté plateforme, pas un réglage que vous pouvez modifier.",
+      ],
+    },
+    { type: "heading",text: "Ce qu'est réellement la profondeur Level 2 dans le DOM" },
+    { type: "paragraph",html: "Il est utile d'être précis sur ce qui manque. Les données Level 1 sont le haut du carnet d'ordres : le meilleur bid, le meilleur ask et le dernier prix échangé. Cela suffit pour placer et exécuter des ordres, et c'est ce sur quoi fonctionnent de nombreuses fenêtres de cotation et de nombreux graphiques. Level 2, la profondeur de marché, est le reste du carnet : la pile de bids en attente sous le marché et d'asks en attente au-dessus, avec la taille présente à chaque prix. Le DOM (aussi appelé échelle ou SuperDOM) est le seul endroit où cette profondeur s'affiche réellement. Si vous ne regardez qu'un graphique ou un tableau de cotations, vous ne remarqueriez jamais que Level 2 a disparu. Sur l'échelle, c'est évident dès qu'il tombe." },
+    { type: "paragraph",html: "Ainsi, &ldquo;Level 2 ne s'affiche pas dans le DOM&rdquo; signifie presque toujours que l'échelle est retombée sur Level 1. Elle continue de vous montrer le meilleur bid et le meilleur ask, cette cotation du haut du carnet n'a jamais besoin du module de profondeur, mais les colonnes de taille en attente qui rendent le DOM utile se sont réduites à une seule ligne dans chaque sens." },
+    { type: "paragraph",html: "Une chose à clarifier avant de commencer le dépannage : le DOM n'est pas conçu pour afficher une profondeur illimitée. Il affiche généralement environ 10 niveaux de prix au-dessus et en dessous du prix actuel, et ce nombre est fixé par le fournisseur de données de marché en amont, pas par un curseur dans vos réglages. Quelques-uns des contrats les plus liquides peuvent afficher plus de 10 niveaux, tandis que les contrats micro sont généralement plafonnés à 10. Cela compte ici car la solution diffère selon ce que vous voyez. Si vous avez environ 10 niveaux et en voulez 30, c'est une limite du flux de données que vous ne pouvez pas changer. Si vous aviez 10 niveaux et n'en avez plus qu'un, c'est un abonnement défaillant ou un panneau périmé, et c'est ce que le reste de ce guide règle." },
+    { type: "heading",text: "Principales causes d'une profondeur DOM manquante en 2026" },
+    { type: "heading",text: "1. L'abonnement Level 2 a expiré en fin de mois" },
+    { type: "paragraph",html: "C'est la première chose à vérifier, car c'est la plus courante et la plus sournoise. La profondeur de marché est un module complémentaire payant, et les flux de données des bourses sont facturés par mois calendaire. Lorsque vous achetez Level 2 en milieu de mois, vous l'achetez pour ce mois seulement, il expire le dernier jour et le prélèvement est renouvelé le 1er du mois suivant. Les flux ne sont pas calculés au prorata ; le coût complet tombe donc au début de chaque mois quelle que soit la date de votre première souscription. Si ce paiement de renouvellement n'aboutit pas, ou si l'abonnement n'était simplement pas configuré pour continuer, le flux de profondeur tombe du jour au lendemain et votre DOM se réveille le 1er en n'affichant qu'un niveau dans chaque sens. Rien n'a changé sur votre machine, ce qui explique précisément la confusion." },
+    { type: "heading",text: "2. L'abonnement est actif mais la session ne l'a pas pris en compte" },
+    { type: "paragraph",html: "Même lorsque l'abonnement est réellement actif, la session en direct dans laquelle vous vous trouvez peut s'être connectée avant l'activation du flux de profondeur. L'activation des données de marché n'est pas toujours instantanée dans une session ouverte ; un renouvellement ou un achat récent nécessite fréquemment une déconnexion et une reconnexion complètes avant que le DOM ne commence à recevoir le flux de profondeur. Si vous venez de vous réabonner et que l'échelle est toujours plate, vous n'avez probablement pas encore redémarré la session." },
+    { type: "heading",text: "3. Le panneau DOM est dans un état périmé" },
+    { type: "paragraph",html: "Les panneaux conservent leur propre état. Un DOM qui était ouvert lorsque le flux est tombé peut continuer d'afficher sa dernière image à un seul niveau même une fois la profondeur revenue. Retirer ce panneau et en insérer un nouveau force l'échelle à se reconstruire sur le flux actuel. C'est l'étape la plus souvent oubliée, et c'est pourquoi un abonnement clairement actif peut tout de même sembler défaillant." },
+    { type: "heading",text: "4. Mauvais contrat, contrat expiré ou peu liquide chargé" },
+    { type: "paragraph",html: "Parfois la profondeur est correcte et c'est le symbole qui pose problème. Un symbole de graphique continu, une échéance expirée ou un contrat d'échéance éloignée illiquide peut n'afficher presque rien dans l'échelle simplement parce qu'il y a peu d'ordres en attente, ou parce que ce symbole ne porte pas de profondeur négociable. Si la profondeur paraît vide, chargez le contrat actuel du mois rapproché, activement négocié, d'un instrument liquide et vérifiez de nouveau avant de supposer que le flux est défaillant." },
+    { type: "heading",text: "5. C'est un compte de prop firm ou d'évaluation" },
+    { type: "paragraph",html: "Sur une prop firm ou un compte d'évaluation, ce n'est pas vous qui détenez la relation avec les données de marché, c'est la firme. Cela signifie que vous ne pouvez généralement pas vous abonner vous-même à Level 2 depuis la plateforme comme le ferait un titulaire de compte particulier, et que si la profondeur n'est pas activée, seule la firme peut l'activer. L'inclusion de Level 2 varie selon la firme et le type de compte ; vérifiez donc les règles en vigueur de votre firme et contactez son support plutôt que de chercher un bouton d'abonnement qui n'existe pas pour vous." },
+    { type: "heading",text: "6. Un véritable défaut côté plateforme" },
+    { type: "paragraph",html: "Reste le cas qui a motivé tout ce guide : l'abonnement est confirmé actif, vous avez redémarré la session, rajouté le DOM et chargé un mois rapproché liquide, et l'échelle n'affiche toujours qu'un seul niveau dans chaque sens. Quand toutes les causes courantes sont écartées, vous avez affaire à quelque chose du côté de la plateforme. Ce n'est pas un réglage que vous pouvez corriger, et la bonne démarche est de le signaler au support avec des éléments précis." },
+    { type: "heading",text: "Comment corriger une profondeur DOM manquante : étape par étape" },
+    { type: "heading",text: "Vérifier et renouveler votre abonnement Level 2" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrir Application Settings", html: "Ouvrez <strong class='text-white'>Application Settings</strong> en haut de la plateforme web Tradovate." },
+        { title: "Trouver la section Market Data", html: "Allez dans l'onglet <strong class='text-white'>Subscriptions</strong> et repérez la section <strong class='text-white'>Market Data</strong>. (Les anciennes versions présentent les flux de données de marché dans une zone <strong class='text-white'>Add-Ons</strong> ; vérifiez le libellé exact dans votre version actuelle.)" },
+        { title: "Vérifier et se réabonner en cas d'expiration", html: "Vérifiez si le flux <strong class='text-white'>Level 2</strong> de votre bourse est indiqué comme actif pour le mois en cours. S'il a expiré, cliquez sur <strong class='text-white'>Subscribe</strong>, choisissez la ou les bourses que vous tradez, vérifiez le coût mensuel et validez, puis acceptez les conditions pour terminer." },
+        { title: "Confirmer que le renouvellement se poursuit", html: "N'oubliez pas que le flux est mensuel et se renouvelle le 1er ; si cela se reproduit en fin de mois, assurez-vous que le renouvellement est configuré pour continuer." },
+      ],
+    },
+    { type: "heading",text: "Se déconnecter puis se reconnecter pour l'activer" },
+    { type: "paragraph",html: "Un flux nouveau ou renouvelé nécessite généralement une nouvelle session avant que le DOM ne commence à recevoir la profondeur." },
+    {
+      type: "steps",
+      items: [
+        { title: "Se déconnecter complètement", html: "<strong class='text-white'>Déconnectez-vous</strong> complètement de la plateforme, ne vous contentez pas d'actualiser un onglet." },
+        { title: "Se reconnecter", html: "Reconnectez-vous et laissez un instant à la connexion pour s'établir." },
+        { title: "Revérifier le DOM", html: "Ouvrez un DOM et vérifiez si l'échelle se remplit maintenant de profondeur des deux côtés." },
+      ],
+    },
+    { type: "heading",text: "Rajouter le DOM et charger un contrat liquide" },
+    { type: "paragraph",html: "Effacez tout état de panneau périmé et orientez-le vers un symbole qui porte réellement de la profondeur." },
+    {
+      type: "steps",
+      items: [
+        { title: "Retirer le panneau DOM existant", html: "<strong class='text-white'>Retirez le panneau DOM existant</strong> de votre espace de travail." },
+        { title: "Ajouter un nouveau panneau DOM", html: "<strong class='text-white'>Ajoutez un nouveau panneau Depth of Market / SuperDOM</strong> afin qu'il se reconstruise sur le flux en direct." },
+        { title: "Charger un contrat liquide du mois rapproché", html: "Chargez le <strong class='text-white'>contrat actuel du mois rapproché</strong> d'un instrument liquide (par exemple, le mois actif d'ES ou de NQ) plutôt qu'un symbole continu ou expiré." },
+        { title: "Confirmer que la profondeur se remplit", html: "Observez si les bids et asks empilés se remplissent ; vous devriez voir jusqu'à environ 10 niveaux dans chaque sens." },
+      ],
+    },
+    { type: "heading",text: "Pour les comptes de prop firm, contactez votre firme" },
+    { type: "paragraph",html: "Si vous êtes sur un compte d'évaluation ou financé d'une prop firm, passez les étapes d'abonnement autonome." },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirmer auprès de votre firme", html: "Vérifiez auprès de votre firme si la profondeur Level 2 est incluse dans votre type de compte ; cela varie selon la firme et la taille du compte, consultez donc ses règles en vigueur." },
+        { title: "Demander à la firme d'activer le flux", html: "Demandez au support de la firme d'<strong class='text-white'>activer ou de réparer le flux de profondeur de marché</strong> sur votre compte." },
+        { title: "Se déconnecter et rajouter le DOM", html: "Une fois qu'elle confirme qu'il est activé, déconnectez-vous puis reconnectez-vous et rajoutez le DOM comme ci-dessus." },
+      ],
+    },
+    { type: "heading",text: "Signaler au support un défaut persistant à un seul niveau" },
+    { type: "paragraph",html: "Lorsque vous avez tout fait et que l'échelle reste plate, escaladez." },
+    {
+      type: "steps",
+      items: [
+        { title: "Revérifier les bases", html: "Vérifiez de nouveau que l'abonnement est indiqué comme actif pour le mois en cours et que vous avez redémarré la session et rajouté le DOM." },
+        { title: "Contacter le support", html: "<strong class='text-white'>Contactez le support Tradovate</strong> (ou votre prop firm, pour les comptes d'évaluation) et décrivez le symptôme exact : profondeur complète attendue, un seul niveau dans chaque sens affiché." },
+        { title: "Inclure le symbole, l'heure et une capture d'écran", html: "Joignez le <strong class='text-white'>symbole, l'heure et une capture d'écran</strong> du DOM réduit afin qu'ils puissent le tracer de leur côté." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme","Ce que cela signifie","Solution"], rows: [
+      ["La profondeur a disparu le 1er du mois","L'abonnement Level 2 a expiré en fin de mois","Se réabonner dans Settings &gt; Subscriptions &gt; Market Data ; vérifier qu'il se renouvelle chaque mois"],
+      ["Vient de se réabonner, toujours un niveau","La session s'est connectée avant l'activation du flux","Se déconnecter complètement puis se reconnecter pour activer le flux de profondeur"],
+      ["Abonnement actif mais le DOM reste plat","État de panneau DOM périmé","Retirer le DOM et en ajouter un nouveau pour qu'il se reconstruise"],
+      ["L'échelle paraît vide sur un symbole","Contrat continu, expiré ou peu liquide","Charger le contrat liquide actuel du mois rapproché"],
+      ["Aucune option d'abonnement sur un compte de prop firm","La firme contrôle les données de marché","Demander à la prop firm d'activer Level 2 sur votre compte"],
+      ["Seulement environ 10 niveaux s'affichent","Plafond de profondeur du fournisseur de données, pas un bug","Rien à corriger ; plus d'environ 10 niveaux n'est pas disponible"],
+      ["Un niveau alors que tout est correct","Défaut côté plateforme","Signaler au support avec symbole, heure et capture d'écran"],
+    ] },
+    { type: "heading",text: "Ne laissez pas une échelle vide vous coûter le trade" },
+    { type: "paragraph",html: "Un DOM réduit tombe au pire moment : vous attendez la profondeur pour caler une entrée et l'échelle ne vous donne rien à lire. Si votre stratégie a un déclencheur clair et fondé sur des règles, vous n'avez pas à dépendre de la coopération du flux de profondeur. PickMyTrade achemine vos entrées et vos sorties à partir du signal lui-même, de sorte qu'une échelle plate ou un flux de données expiré ne vous laisse pas en plan :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Exécution basée sur le signal</strong>, les ordres partent de votre stratégie TradingView dès que votre condition se déclenche, que le DOM affiche ou non de la profondeur.",
+        "<strong class='text-white'>Acheminement côté serveur</strong>, les alertes sont acheminées vers Tradovate depuis les serveurs de PickMyTrade, indépendamment de ce que font les panneaux de votre plateforme locale.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, la même entrée et la même sortie sont répliquées sur plusieurs comptes Tradovate à la fois, sans clics par échelle.",
+        "<strong class='text-white'>Flux d'ordres respectueux des limites de débit</strong>, les ordres sont espacés pour que rien ne se heurte aux limites de requêtes de Tradovate.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Apre il DOM per leggere l'order flow e, invece della ladder impilata cui è abituato, un solo bid e un solo ask Le restituiscono lo sguardo. Nessuna profondità, nessuna dimensione di coda che si accumula sopra e sotto il mercato, solo miglior bid, miglior ask e nient'altro. Su un contratto come ES, che normalmente mostra un'intera colonna di ordini in attesa, è spiazzante, soprattutto se paga per Level 2 e da parte Sua non è cambiato nulla. La buona notizia è che la maggior parte dei casi risale a una di poche cause prevedibili e può risolverle in un paio di minuti. Questa guida percorre la via più rapida: confermare il componente aggiuntivo Level 2, forzarne l'attivazione, aggiungere di nuovo la ladder e, se resta ridotta a un livello con tutto corretto, passare la questione al supporto, perché quest'ultimo caso è della piattaforma, non Suo." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per la profondità del DOM mancante",
+      items: [
+        "<strong class='text-white'>Confermi che il Suo abbonamento a Level 2 è attivo per questo mese.</strong> I dati di profondità sono fatturati per mese di calendario e scadono l'ultimo giorno, quindi una scadenza il 1° è la causa numero uno.",
+        "<strong class='text-white'>Si disconnetta e si riconnetta.</strong> Un abbonamento appena rinnovato spesso non entra in vigore finché non riavvia la sessione.",
+        "<strong class='text-white'>Rimuova il pannello DOM e ne aggiunga uno nuovo.</strong> Un pannello obsoleto può continuare a mostrare un solo livello anche dopo il ritorno del feed.",
+        "<strong class='text-white'>Carichi un contratto liquido del mese più vicino.</strong> I simboli continui o scaduti e i mesi lontani poco liquidi sembrano vuoti anche se la profondità funziona.",
+        "<strong class='text-white'>Ricordi che il tetto è di circa 10 livelli.</strong> Il feed di dati non fornisce più di circa 10 livelli sopra e sotto, ma molti meno di 10 significa che qualcosa non va.",
+        "<strong class='text-white'>Su un conto di prop firm/valutazione, contatti la società.</strong> Sono loro a controllare i Suoi dati di mercato, quindi devono abilitare o riparare Level 2.",
+        "<strong class='text-white'>Ancora un livello con tutto corretto? Lo segnali al supporto.</strong> È un difetto lato piattaforma, non un'impostazione che può modificare.",
+      ],
+    },
+    { type: "heading",text: "Che cos'è davvero la profondità Level 2 nel DOM" },
+    { type: "paragraph",html: "Aiuta essere precisi su ciò che manca. I dati Level 1 sono la parte alta del book: il miglior bid, il miglior ask e l'ultimo prezzo negoziato. Basta per inserire ed eseguire ordini ed è ciò su cui girano molte finestre di quotazione e grafici. Level 2, la profondità di mercato, è il resto del book: la pila di bid in attesa sotto il mercato e di ask in attesa sopra, con la quantità presente a ciascun prezzo. Il DOM (chiamato anche ladder o SuperDOM) è l'unico posto in cui quella profondità viene effettivamente mostrata. Se guarda solo un grafico o una lavagna di quotazioni, non noterebbe mai che Level 2 è sparito. Sulla ladder è evidente nel momento in cui cade." },
+    { type: "paragraph",html: "Quindi &ldquo;Level 2 non compare nel DOM&rdquo; significa quasi sempre che la ladder è ricaduta su Level 1. Continua a mostrarLe il miglior bid e ask, quella quotazione in cima al book non ha mai bisogno del componente aggiuntivo di profondità, ma le colonne di quantità in attesa che rendono utile il DOM si sono ridotte a una sola riga per lato." },
+    { type: "paragraph",html: "Una cosa da chiarire prima di iniziare a risolvere i problemi: il DOM non è progettato per mostrare una profondità illimitata. Mostra tipicamente circa 10 livelli di prezzo sopra e sotto il prezzo corrente, e quel numero è stabilito dal fornitore di dati di mercato a monte, non da un cursore nelle Sue impostazioni. Alcuni dei contratti più liquidi possono mostrare più di 10 livelli, mentre i contratti micro sono in genere limitati esattamente a 10. Questo conta perché la soluzione cambia a seconda di ciò che vede. Se ha circa 10 livelli e ne vuole 30, è un limite del feed di dati che non può cambiare. Se ne aveva 10 e ora ne ha uno, è un abbonamento rotto o un pannello obsoleto, ed è ciò che il resto di questa guida risolve." },
+    { type: "heading",text: "Cause principali della profondità del DOM mancante nel 2026" },
+    { type: "heading",text: "1. L'abbonamento a Level 2 è scaduto a fine mese" },
+    { type: "paragraph",html: "È la prima cosa da controllare perché è la più comune ed è subdola. La profondità di mercato è un componente aggiuntivo a pagamento e i feed di dati delle borse sono fatturati per mese di calendario. Quando acquista Level 2 a metà mese, lo acquista solo per quel mese, scade l'ultimo giorno e l'addebito si rinnova il 1° del mese successivo. I feed non sono calcolati pro rata, quindi il costo pieno scatta all'inizio di ogni mese indipendentemente da quando si è abbonato la prima volta. Se quel pagamento di rinnovo non va a buon fine, o l'abbonamento semplicemente non era impostato per continuare, il feed di profondità cade da un giorno all'altro e il Suo DOM si risveglia il 1° mostrando un livello per lato. Sulla Sua macchina non è cambiato nulla, ed è esattamente per questo che è confuso." },
+    { type: "heading",text: "2. L'abbonamento è attivo ma la sessione non l'ha recepito" },
+    { type: "paragraph",html: "Anche quando l'abbonamento è davvero attivo, la sessione in tempo reale in cui si trova può essersi connessa prima che il feed di profondità si attivasse. L'attivazione dei dati di mercato non è sempre istantanea all'interno di una sessione aperta; un rinnovo o un acquisto recente richiede di frequente una disconnessione e un accesso completi prima che il DOM inizi a ricevere il flusso di profondità. Se si è appena riabbonato e la ladder è ancora piatta, probabilmente non ha ancora riavviato la sessione." },
+    { type: "heading",text: "3. Il pannello DOM è in uno stato obsoleto" },
+    { type: "paragraph",html: "I pannelli conservano il proprio stato. Un DOM che era aperto quando il feed è caduto può continuare a mostrare la sua ultima immagine a un solo livello anche dopo che la profondità ha ripreso a fluire. Rimuovere quel pannello e inserirne uno nuovo costringe la ladder a ricostruirsi sul feed corrente. È il passaggio che più spesso viene saltato, ed è per questo che un abbonamento chiaramente attivo può comunque sembrare rotto." },
+    { type: "heading",text: "4. Caricato un contratto sbagliato, scaduto o poco liquido" },
+    { type: "paragraph",html: "A volte la profondità è a posto e il problema è il simbolo. Un simbolo di grafico continuo, un mese scaduto o un contratto di un mese lontano illiquido possono mostrare quasi nulla nella ladder semplicemente perché ci sono pochi ordini in attesa, o perché quel simbolo non ha una profondità negoziabile. Se la profondità sembra vuota, carichi l'attuale contratto del mese più vicino, attivamente negoziato, di uno strumento liquido e ricontrolli prima di presumere che il feed sia rotto." },
+    { type: "heading",text: "5. È un conto di prop firm o di valutazione" },
+    { type: "paragraph",html: "Su una prop firm o un conto di valutazione, non è Lei a detenere il rapporto sui dati di mercato, ma la società. Ciò significa che di solito non può abbonarsi autonomamente a Level 2 dall'interno della piattaforma come farebbe un titolare di conto retail e, se la profondità non è attivata, solo la società può abilitarla. Che Level 2 sia incluso o meno varia a seconda della società e del tipo di conto, quindi controlli le regole attuali della Sua società e si rivolga al loro supporto anziché cercare un pulsante di abbonamento che per Lei non esiste." },
+    { type: "heading",text: "6. Un vero difetto lato piattaforma" },
+    { type: "paragraph",html: "Poi c'è il caso che ha dato origine a tutta questa guida: l'abbonamento è confermato attivo, ha riavviato la sessione, ha aggiunto di nuovo il DOM e ha caricato un mese vicino liquido, e la ladder mostra ancora esattamente un livello per lato. Quando tutte le cause comuni sono escluse, si tratta di qualcosa dal lato della piattaforma. Non è un'impostazione che può correggere, e la mossa giusta è segnalarlo al supporto con dati specifici." },
+    { type: "heading",text: "Come risolvere la profondità del DOM mancante: passo dopo passo" },
+    { type: "heading",text: "Confermi e rinnovi il Suo abbonamento a Level 2" },
+    {
+      type: "steps",
+      items: [
+        { title: "Aprire Application Settings", html: "Apra <strong class='text-white'>Application Settings</strong> nella parte superiore della piattaforma web di Tradovate." },
+        { title: "Trovare la sezione Market Data", html: "Vada alla scheda <strong class='text-white'>Subscriptions</strong> e trovi la sezione <strong class='text-white'>Market Data</strong>. (Le build più vecchie mostrano i feed di dati di mercato in un'area <strong class='text-white'>Add-Ons</strong>; confermi l'etichetta esatta nella Sua versione attuale.)" },
+        { title: "Controllare e riabbonarsi se scaduto", html: "Controlli se il feed <strong class='text-white'>Level 2</strong> della Sua borsa risulta attivo per il mese in corso. Se è scaduto, faccia clic su <strong class='text-white'>Subscribe</strong>, scelga la o le borse su cui opera, verifichi il costo mensile e confermi, poi accetti i termini per completare." },
+        { title: "Confermare che il rinnovo prosegue", html: "Tenga presente che il feed è mensile e si rinnova il 1°, quindi se questo continua a ripetersi a fine mese, si assicuri che il rinnovo sia impostato per continuare." },
+      ],
+    },
+    { type: "heading",text: "Si disconnetta e si riconnetta per attivarlo" },
+    { type: "paragraph",html: "Un feed nuovo o rinnovato di solito richiede una nuova sessione prima che il DOM inizi a ricevere la profondità." },
+    {
+      type: "steps",
+      items: [
+        { title: "Disconnettersi completamente", html: "<strong class='text-white'>Esca</strong> completamente dalla piattaforma, non si limiti ad aggiornare una scheda." },
+        { title: "Riaccedere", html: "Acceda di nuovo e conceda alla connessione un momento per stabilirsi." },
+        { title: "Ricontrollare il DOM", html: "Apra un DOM e verifichi se la ladder ora si riempie di profondità su entrambi i lati." },
+      ],
+    },
+    { type: "heading",text: "Aggiunga di nuovo il DOM e carichi un contratto liquido" },
+    { type: "paragraph",html: "Cancelli qualsiasi stato obsoleto del pannello e lo punti su un simbolo che abbia davvero profondità." },
+    {
+      type: "steps",
+      items: [
+        { title: "Rimuovere il pannello DOM esistente", html: "<strong class='text-white'>Rimuova il pannello DOM esistente</strong> dal Suo workspace." },
+        { title: "Aggiungere un nuovo pannello DOM", html: "<strong class='text-white'>Aggiunga un nuovo pannello Depth of Market / SuperDOM</strong> in modo che si ricostruisca sul feed in tempo reale." },
+        { title: "Caricare un contratto liquido del mese più vicino", html: "Carichi il <strong class='text-white'>contratto attuale del mese più vicino</strong> di uno strumento liquido (ad esempio, il mese attivo di ES o NQ) anziché un simbolo continuo o scaduto." },
+        { title: "Confermare che la profondità si riempie", html: "Osservi se i bid e gli ask impilati si riempiono, dovrebbe vedere fino a circa 10 livelli per lato." },
+      ],
+    },
+    { type: "heading",text: "Per i conti prop, contatti la Sua società" },
+    { type: "paragraph",html: "Se ha un conto di valutazione o finanziato di una prop firm, salti i passaggi di abbonamento autonomo." },
+    {
+      type: "steps",
+      items: [
+        { title: "Confermare con la Sua società", html: "Confermi con la Sua società se la profondità Level 2 è inclusa nel Suo tipo di conto, questo varia a seconda della società e della dimensione del conto, quindi controlli le loro regole attuali." },
+        { title: "Chiedere alla società di abilitare il feed", html: "Chieda al supporto della società di <strong class='text-white'>abilitare o riparare il feed di profondità di mercato</strong> sul Suo account." },
+        { title: "Disconnettersi e aggiungere di nuovo il DOM", html: "Una volta che confermano che è attivo, si disconnetta e si riconnetta e aggiunga di nuovo il DOM come sopra." },
+      ],
+    },
+    { type: "heading",text: "Segnali al supporto un difetto persistente a un solo livello" },
+    { type: "paragraph",html: "Quando ha fatto tutto e la ladder è ancora piatta, passi all'escalation." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ricontrollare le basi", html: "Ricontrolli che l'abbonamento risulti attivo per il mese in corso e che abbia riavviato la sessione e aggiunto di nuovo il DOM." },
+        { title: "Contattare il supporto", html: "<strong class='text-white'>Contatti il supporto di Tradovate</strong> (o la Sua prop firm, per i conti di valutazione) e descriva il sintomo esatto: profondità completa attesa, un solo livello per lato visibile." },
+        { title: "Includere simbolo, orario e uno screenshot", html: "Includa il <strong class='text-white'>simbolo, l'orario e uno screenshot</strong> del DOM ridotto in modo che possano rintracciarlo dal loro lato." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo","Che cosa significa","Soluzione"], rows: [
+      ["La profondità è sparita il 1° del mese","L'abbonamento a Level 2 è scaduto a fine mese","Riabbonarsi in Settings &gt; Subscriptions &gt; Market Data; confermare che si rinnovi mensilmente"],
+      ["Appena riabbonato, ancora un livello","La sessione si è connessa prima che il feed si attivasse","Disconnettersi completamente e riaccedere per attivare il flusso di profondità"],
+      ["Abbonamento attivo ma il DOM resta piatto","Stato obsoleto del pannello DOM","Rimuovere il DOM e aggiungerne uno nuovo in modo che si ricostruisca"],
+      ["La ladder sembra vuota su un simbolo","Contratto continuo, scaduto o poco liquido","Caricare l'attuale contratto liquido del mese più vicino"],
+      ["Nessuna opzione di abbonamento su un conto prop","La società controlla i dati di mercato","Chiedere alla prop firm di abilitare Level 2 sul Suo account"],
+      ["Vengono mostrati sempre solo circa 10 livelli","Tetto di profondità del fornitore di dati, non un bug","Niente da correggere; più di ~10 livelli non sono disponibili"],
+      ["Un livello con tutto corretto","Difetto lato piattaforma","Segnalare al supporto con simbolo, orario e uno screenshot"],
+    ] },
+    { type: "heading",text: "Non lasci che una ladder vuota Le costi il trade" },
+    { type: "paragraph",html: "Un DOM ridotto capita proprio nel momento sbagliato: attende la profondità per scegliere i tempi di un ingresso e la ladder non Le dà nulla da leggere. Se la Sua strategia ha un trigger chiaro e basato su regole, non deve restare in ostaggio del fatto che il feed di profondità collabori. PickMyTrade instrada i Suoi ingressi e le Sue uscite dal segnale stesso, così una ladder piatta o un feed di dati scaduto non La lascia a piedi:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Esecuzione basata sul segnale</strong>, gli ordini partono dalla Sua strategia di TradingView nel momento in cui la Sua condizione si attiva, che il DOM mostri o meno la profondità.",
+        "<strong class='text-white'>Instradamento lato server</strong>, gli alert vengono instradati verso Tradovate dai server di PickMyTrade, indipendentemente da ciò che fanno i pannelli della Sua piattaforma locale.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, lo stesso ingresso e la stessa uscita vengono replicati su più account Tradovate contemporaneamente, senza clic per ogni ladder.",
+        "<strong class='text-white'>Flusso di ordini sicuro rispetto ai limiti di frequenza</strong>, gli ordini sono distanziati in modo che nulla rimbalzi contro i limiti di richieste di Tradovate.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Without Waiting on the Ladder", de: "Handeln Sie, ohne auf die Leiter zu warten", es: "Opere sin esperar a la escalera", fr: "Tradez sans attendre l'échelle", it: "Faccia trading senza attendere la ladder" },
+  ctaText: { en: "PickMyTrade fires your entries and exits from the signal itself, so a missing depth feed never costs you the trade.", de: "PickMyTrade löst Ihre Einstiege und Ausstiege direkt aus dem Signal aus, sodass ein fehlender Tiefen-Feed Sie nie den Trade kostet.", es: "PickMyTrade ejecuta sus entradas y salidas a partir de la propia señal, de modo que un feed de profundidad ausente nunca le cuesta la operación.", fr: "PickMyTrade déclenche vos entrées et vos sorties à partir du signal lui-même ; un flux de profondeur manquant ne vous coûte donc jamais le trade.", it: "PickMyTrade attiva i Suoi ingressi e le Sue uscite dal segnale stesso, così un feed di profondità mancante non Le costa mai il trade." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does my Tradovate DOM only show one level of depth?", a: "The most common reason is that your Level 2 (market depth) subscription lapsed at the end of the month, so the ladder falls back to Level 1, best bid and best ask only. Confirm the subscription is active for the current month, log out and back in, and re-add the DOM. If it stays on a single level with an active subscription and the correct contract loaded, that points to a platform-side glitch worth reporting to support." },
+    { q: "Do I need a paid subscription to see Level 2 depth on the Tradovate DOM?", a: "Yes. Level 1 data shows the best bid, best ask, and last trade. Level 2 (market depth) is what fills the stacked price ladder in the DOM, and it's a separate paid add-on billed per exchange. Without it the DOM can only display one level each way." },
+    { q: "Why did my Level 2 data stop working on the 1st of the month?", a: "Market data subscriptions are billed by calendar month and are not prorated. A feed you buy mid-month expires on the last day of that month, and the charge renews on the 1st. If a payment doesn't go through, the depth feed drops and the DOM collapses to a single level until the subscription is active again." },
+    { q: "How many levels of depth does the Tradovate DOM show?", a: "The DOM typically shows about 10 price levels above and below the current price. That ceiling comes from the upstream data provider, not a setting you can raise. A few of the most liquid contracts can show deeper, while micro contracts are generally limited to those 10 levels. If you're seeing far fewer than 10, that's the problem to fix, not the cap itself." },
+    { q: "I have a prop firm evaluation account and Level 2 won't turn on. What do I do?", a: "On a prop or evaluation account, the firm controls market data, not you. You usually can't self-subscribe to Level 2 from inside the platform. Contact the prop firm's support and ask them to enable or fix the market depth feed on your account." },
+    { q: "Does re-adding the DOM fix missing Level 2 depth?", a: "Sometimes. Removing the DOM panel and adding a fresh one clears a stale panel state and forces the ladder to rebuild against the live feed. Do it after you've confirmed the subscription is active and you've logged out and back in, so the fresh panel loads with the depth feed already switched on." },
+    { q: "When should I contact Tradovate support about missing depth?", a: "When your Level 2 subscription is confirmed active for the current month, you've logged out and back in, re-added the DOM, and loaded a liquid front-month contract, but the ladder still shows only one level each way. That combination rules out the common causes and points to a platform-side issue. Send support the symbol, the time, and a screenshot of the collapsed DOM." },
+  ], de: [
+    { q: "Warum zeigt mein Tradovate-DOM nur eine Tiefenebene an?", a: "Der häufigste Grund ist, dass Ihr Level-2-Abonnement (Marktdaten-Tiefe) zum Monatsende ausgelaufen ist, sodass die Leiter auf Level 1 zurückfällt, also nur bestes Bid und bestes Ask. Prüfen Sie, ob das Abonnement für den laufenden Monat aktiv ist, melden Sie sich ab und wieder an und fügen Sie das DOM erneut hinzu. Bleibt es trotz aktivem Abonnement und geladenem korrektem Kontrakt bei einer einzigen Ebene, deutet das auf einen plattformseitigen Fehler hin, den Sie dem Support melden sollten." },
+    { q: "Brauche ich ein kostenpflichtiges Abonnement, um Level-2-Tiefe im Tradovate-DOM zu sehen?", a: "Ja. Level-1-Daten zeigen das beste Bid, das beste Ask und den letzten Trade. Level 2 (Marktdaten-Tiefe) füllt die gestaffelte Preisleiter im DOM und ist ein separates, kostenpflichtiges Add-on, das pro Börse abgerechnet wird. Ohne es kann das DOM in jede Richtung nur eine Ebene anzeigen." },
+    { q: "Warum ist meine Level-2-Datenanzeige am 1. des Monats ausgefallen?", a: "Marktdaten-Abonnements werden nach Kalendermonat abgerechnet und nicht anteilig berechnet. Ein Feed, den Sie mitten im Monat kaufen, läuft am letzten Tag dieses Monats ab, und die Gebühr wird am 1. erneuert. Wird eine Zahlung nicht verbucht, fällt der Tiefen-Feed weg und das DOM fällt auf eine Ebene zusammen, bis das Abonnement wieder aktiv ist." },
+    { q: "Wie viele Tiefenebenen zeigt das Tradovate-DOM an?", a: "Das DOM zeigt typischerweise etwa 10 Preisebenen oberhalb und unterhalb des aktuellen Preises. Diese Obergrenze stammt vom vorgelagerten Datenanbieter und ist keine Einstellung, die Sie erhöhen können. Einige der liquidesten Kontrakte können tiefer anzeigen, während Micro-Kontrakte im Allgemeinen auf diese 10 Ebenen begrenzt sind. Sehen Sie deutlich weniger als 10, ist das das Problem, das Sie beheben sollten, nicht die Obergrenze selbst." },
+    { q: "Ich habe ein Prop-Firm-Evaluierungskonto und Level 2 lässt sich nicht aktivieren. Was tun?", a: "Bei einem Prop- oder Evaluierungskonto kontrolliert die Firma die Marktdaten, nicht Sie. In der Regel können Sie Level 2 nicht selbst in der Plattform abonnieren. Wenden Sie sich an den Support der Prop Firm und bitten Sie darum, den Marktdaten-Tiefen-Feed für Ihr Konto zu aktivieren oder zu reparieren." },
+    { q: "Behebt das erneute Hinzufügen des DOM die fehlende Level-2-Tiefe?", a: "Manchmal. Das Entfernen des DOM-Panels und das Hinzufügen eines neuen beseitigt einen veralteten Panel-Zustand und zwingt die Leiter, sich neu gegen den Live-Feed aufzubauen. Tun Sie es, nachdem Sie bestätigt haben, dass das Abonnement aktiv ist, und sich ab- und wieder angemeldet haben, damit das neue Panel mit bereits aktivem Tiefen-Feed lädt." },
+    { q: "Wann sollte ich den Tradovate-Support wegen fehlender Tiefe kontaktieren?", a: "Wenn Ihr Level-2-Abonnement für den laufenden Monat als aktiv bestätigt ist, Sie sich ab- und wieder angemeldet, das DOM erneut hinzugefügt und einen liquiden Front-Month-Kontrakt geladen haben, die Leiter aber weiterhin nur eine Ebene pro Seite zeigt. Diese Kombination schließt die üblichen Ursachen aus und deutet auf ein plattformseitiges Problem hin. Senden Sie dem Support das Symbol, die Uhrzeit und einen Screenshot des zusammengefallenen DOM." },
+  ], es: [
+    { q: "¿Por qué mi DOM de Tradovate solo muestra un nivel de profundidad?", a: "La razón más común es que su suscripción a Level 2 (profundidad de mercado) caducó a final de mes, por lo que la escalera vuelve a Level 1, solo mejor bid y mejor ask. Confirme que la suscripción está activa para el mes en curso, cierre sesión y vuelva a entrar, y añada de nuevo el DOM. Si sigue en un solo nivel con una suscripción activa y el contrato correcto cargado, eso apunta a un fallo del lado de la plataforma que conviene comunicar al soporte." },
+    { q: "¿Necesito una suscripción de pago para ver la profundidad Level 2 en el DOM de Tradovate?", a: "Sí. Los datos de Level 1 muestran el mejor bid, el mejor ask y la última operación. Level 2 (profundidad de mercado) es lo que llena la escalera de precios apilada en el DOM, y es un complemento de pago aparte que se factura por bolsa. Sin él, el DOM solo puede mostrar un nivel en cada sentido." },
+    { q: "¿Por qué dejaron de funcionar mis datos de Level 2 el día 1 del mes?", a: "Las suscripciones de datos de mercado se facturan por mes natural y no se prorratean. Un feed que compra a mitad de mes caduca el último día de ese mes, y el cargo se renueva el día 1. Si un pago no se procesa, el feed de profundidad se corta y el DOM se reduce a un solo nivel hasta que la suscripción vuelva a estar activa." },
+    { q: "¿Cuántos niveles de profundidad muestra el DOM de Tradovate?", a: "El DOM suele mostrar unos 10 niveles de precio por encima y por debajo del precio actual. Ese techo procede del proveedor de datos de origen, no es un ajuste que pueda aumentar. Algunos de los contratos más líquidos pueden mostrar más, mientras que los contratos micro suelen estar limitados a esos 10 niveles. Si ve bastantes menos de 10, ese es el problema que hay que corregir, no el tope en sí." },
+    { q: "Tengo una cuenta de evaluación de una prop firm y Level 2 no se activa. ¿Qué hago?", a: "En una cuenta de prop firm o de evaluación, la firma controla los datos de mercado, no usted. Normalmente no puede suscribirse usted mismo a Level 2 desde la plataforma. Contacte con el soporte de la prop firm y pídale que active o repare el feed de profundidad de mercado en su cuenta." },
+    { q: "¿Volver a añadir el DOM soluciona la profundidad Level 2 que falta?", a: "A veces. Quitar el panel del DOM y añadir uno nuevo borra un estado de panel obsoleto y obliga a la escalera a reconstruirse con el feed en vivo. Hágalo después de confirmar que la suscripción está activa y de haber cerrado sesión y vuelto a entrar, para que el panel nuevo cargue con el feed de profundidad ya activado." },
+    { q: "¿Cuándo debo contactar con el soporte de Tradovate por la profundidad que falta?", a: "Cuando su suscripción a Level 2 está confirmada como activa para el mes en curso, ha cerrado sesión y vuelto a entrar, ha vuelto a añadir el DOM y ha cargado un contrato líquido del mes frontal, pero la escalera sigue mostrando solo un nivel en cada sentido. Esa combinación descarta las causas comunes y apunta a un problema del lado de la plataforma. Envíe al soporte el símbolo, la hora y una captura de pantalla del DOM reducido." },
+  ], fr: [
+    { q: "Pourquoi mon DOM Tradovate n'affiche-t-il qu'un seul niveau de profondeur ?", a: "La raison la plus courante est que votre abonnement Level 2 (profondeur de marché) a expiré en fin de mois ; l'échelle retombe alors sur Level 1, meilleur bid et meilleur ask seulement. Vérifiez que l'abonnement est actif pour le mois en cours, déconnectez-vous puis reconnectez-vous et rajoutez le DOM. S'il reste sur un seul niveau avec un abonnement actif et le bon contrat chargé, cela indique un défaut côté plateforme qu'il vaut la peine de signaler au support." },
+    { q: "Ai-je besoin d'un abonnement payant pour voir la profondeur Level 2 dans le DOM de Tradovate ?", a: "Oui. Les données Level 1 affichent le meilleur bid, le meilleur ask et le dernier échange. Level 2 (profondeur de marché) est ce qui remplit l'échelle de prix empilée du DOM, et c'est un module complémentaire payant distinct, facturé par bourse. Sans lui, le DOM ne peut afficher qu'un niveau dans chaque sens." },
+    { q: "Pourquoi mes données Level 2 ont-elles cessé de fonctionner le 1er du mois ?", a: "Les abonnements aux données de marché sont facturés par mois calendaire et ne sont pas calculés au prorata. Un flux acheté en milieu de mois expire le dernier jour de ce mois, et le prélèvement est renouvelé le 1er. Si un paiement n'aboutit pas, le flux de profondeur tombe et le DOM se réduit à un seul niveau jusqu'à ce que l'abonnement soit de nouveau actif." },
+    { q: "Combien de niveaux de profondeur le DOM de Tradovate affiche-t-il ?", a: "Le DOM affiche généralement environ 10 niveaux de prix au-dessus et en dessous du prix actuel. Ce plafond vient du fournisseur de données en amont, ce n'est pas un réglage que vous pouvez relever. Quelques-uns des contrats les plus liquides peuvent afficher plus, tandis que les contrats micro sont généralement limités à ces 10 niveaux. Si vous en voyez bien moins de 10, c'est ce problème qu'il faut corriger, pas le plafond lui-même." },
+    { q: "J'ai un compte d'évaluation de prop firm et Level 2 ne s'active pas. Que faire ?", a: "Sur un compte de prop firm ou d'évaluation, c'est la firme qui contrôle les données de marché, pas vous. Vous ne pouvez généralement pas vous abonner vous-même à Level 2 depuis la plateforme. Contactez le support de la prop firm et demandez-lui d'activer ou de réparer le flux de profondeur de marché sur votre compte." },
+    { q: "Rajouter le DOM règle-t-il la profondeur Level 2 manquante ?", a: "Parfois. Retirer le panneau DOM et en ajouter un nouveau efface un état de panneau périmé et force l'échelle à se reconstruire sur le flux en direct. Faites-le après avoir confirmé que l'abonnement est actif et vous être déconnecté puis reconnecté, afin que le nouveau panneau se charge avec le flux de profondeur déjà activé." },
+    { q: "Quand dois-je contacter le support Tradovate au sujet d'une profondeur manquante ?", a: "Lorsque votre abonnement Level 2 est confirmé actif pour le mois en cours, que vous vous êtes déconnecté puis reconnecté, que vous avez rajouté le DOM et chargé un contrat liquide du mois rapproché, mais que l'échelle n'affiche toujours qu'un seul niveau dans chaque sens. Cette combinaison écarte les causes courantes et indique un problème côté plateforme. Envoyez au support le symbole, l'heure et une capture d'écran du DOM réduit." },
+  ], it: [
+    { q: "Perché il mio DOM di Tradovate mostra un solo livello di profondità?", a: "Il motivo più comune è che il Suo abbonamento a Level 2 (profondità di mercato) è scaduto a fine mese, quindi la ladder ricade su Level 1, solo miglior bid e miglior ask. Verifichi che l'abbonamento sia attivo per il mese in corso, si disconnetta e si riconnetta e aggiunga di nuovo il DOM. Se resta su un solo livello con un abbonamento attivo e il contratto corretto caricato, ciò indica un difetto lato piattaforma che vale la pena segnalare al supporto." },
+    { q: "Ho bisogno di un abbonamento a pagamento per vedere la profondità Level 2 nel DOM di Tradovate?", a: "Sì. I dati Level 1 mostrano il miglior bid, il miglior ask e l'ultimo scambio. Level 2 (profondità di mercato) è ciò che riempie la ladder dei prezzi impilata nel DOM, ed è un componente aggiuntivo a pagamento distinto, fatturato per borsa. Senza di esso il DOM può mostrare un solo livello per lato." },
+    { q: "Perché i miei dati Level 2 hanno smesso di funzionare il 1° del mese?", a: "Gli abbonamenti ai dati di mercato sono fatturati per mese di calendario e non sono calcolati pro rata. Un feed acquistato a metà mese scade l'ultimo giorno di quel mese e l'addebito si rinnova il 1°. Se un pagamento non va a buon fine, il feed di profondità cade e il DOM si riduce a un solo livello finché l'abbonamento non è di nuovo attivo." },
+    { q: "Quanti livelli di profondità mostra il DOM di Tradovate?", a: "Il DOM mostra tipicamente circa 10 livelli di prezzo sopra e sotto il prezzo corrente. Quel tetto proviene dal fornitore di dati a monte, non è un'impostazione che può aumentare. Alcuni dei contratti più liquidi possono mostrare di più, mentre i contratti micro sono generalmente limitati a quei 10 livelli. Se ne vede molti meno di 10, è quello il problema da risolvere, non il tetto in sé." },
+    { q: "Ho un conto di valutazione di una prop firm e Level 2 non si attiva. Che cosa faccio?", a: "Su un conto di prop firm o di valutazione sono la società a controllare i dati di mercato, non Lei. Di solito non può abbonarsi autonomamente a Level 2 dall'interno della piattaforma. Contatti il supporto della prop firm e chieda di abilitare o riparare il feed di profondità di mercato sul Suo account." },
+    { q: "Aggiungere di nuovo il DOM risolve la profondità Level 2 mancante?", a: "A volte. Rimuovere il pannello DOM e aggiungerne uno nuovo cancella uno stato del pannello obsoleto e costringe la ladder a ricostruirsi sul feed in tempo reale. Lo faccia dopo aver confermato che l'abbonamento è attivo e di essersi disconnesso e riconnesso, in modo che il nuovo pannello si carichi con il feed di profondità già attivo." },
+    { q: "Quando devo contattare il supporto di Tradovate per la profondità mancante?", a: "Quando il Suo abbonamento a Level 2 è confermato attivo per il mese in corso, si è disconnesso e riconnesso, ha aggiunto di nuovo il DOM e ha caricato un contratto liquido del mese più vicino, ma la ladder mostra ancora un solo livello per lato. Quella combinazione esclude le cause comuni e indica un problema lato piattaforma. Invii al supporto il simbolo, l'orario e uno screenshot del DOM ridotto." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird weder von diesen unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit. Prüfen Sie den aktuellen Ablauf daher stets in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc. ou à Bookmap, ni approuvée ou parrainée par ces derniers. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-10",
+  dateModified: "2026-07-10",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

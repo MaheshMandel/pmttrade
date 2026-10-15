@@ -1,0 +1,534 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "pnl-differs-desktop-vs-pulse";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate P&L Differs: Desktop LAST vs Pulse Bid/Ask";
+const META_DESCRIPTION =
+  "Desktop and mobile P&L don't match? Desktop marks open P&L to LAST, mobile to bid/ask. Trust bid/ask for the real exit value on illiquid options.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-P&L weicht ab: Desktop LAST vs. Pulse Bid/Ask", es: "El P&L de Tradovate difiere: LAST en escritorio vs. Bid/Ask en Pulse", fr: "P&L Tradovate différent : LAST sur le bureau vs Bid/Ask sur Pulse", it: "P&L Tradovate diverso: LAST su desktop vs Bid/Ask su Pulse" },
+  dek: { en: "Desktop says you're down forty bucks; Pulse shows a bigger loss on the same position. Nothing synced wrong, here's why the two apps disagree and which number to trust before you exit.", de: "Auf dem Desktop liegen Sie vierzig Dollar im Minus, Pulse zeigt für dieselbe Position einen größeren Verlust. Nichts ist falsch synchronisiert – hier erfahren Sie, warum die beiden Apps abweichen und welcher Zahl Sie vor dem Ausstieg trauen sollten.", es: "El escritorio dice que va perdiendo cuarenta dólares; Pulse muestra una pérdida mayor en la misma posición. Nada se sincronizó mal: aquí le explicamos por qué las dos apps no coinciden y en qué cifra confiar antes de salir.", fr: "Le bureau indique que vous perdez quarante dollars ; Pulse affiche une perte plus importante sur la même position. Rien n'est mal synchronisé : voici pourquoi les deux applications divergent et quel chiffre croire avant de sortir.", it: "Il desktop dice che sta perdendo quaranta dollari; Pulse mostra una perdita maggiore sulla stessa posizione. Nulla si è sincronizzato male: ecco perché le due app non concordano e di quale numero fidarsi prima di uscire." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You've got a position open, glance at the desktop platform, and it says you're down forty bucks. Then you pull out your phone, open Pulse, and the same position shows a bigger loss. Nothing synced wrong, nobody moved the market between glances, and yet the two numbers don't agree. Before you file a support ticket or start doubting your fills, here's the short version: this is a <strong class='text-white'>Tradovate P&amp;L difference between the desktop app and the Pulse mobile app</strong>, and it comes down to which price each one uses to value a live position. The desktop marks your open P&amp;L to the <em>last traded price</em>. Pulse marks it to the <em>bid/ask</em>. On a tight market you'll never notice. On an illiquid option with a wide spread, the desktop figure can quietly understate what the trade is really worth if you had to get out right now. This guide shows you why it happens, which number to trust, and how to read the real exit value." },
+    {
+      type: "checklist",
+      heading: "Quick Answer: Which P&L to Trust",
+      items: [
+        "<strong class='text-white'>Trust the bid/ask value for exit decisions</strong>, Pulse marks open P&amp;L to the bid/ask, which is what you'd actually get filled at, so it reflects real liquidation value.",
+        "<strong class='text-white'>Treat the desktop number as a rough mark</strong>, it's based on the last trade, which can sit on the favorable side of the spread and flatter the position.",
+        "<strong class='text-white'>Neither app is broken</strong>, this is a by-design valuation difference, not a sync bug or a wrong number.",
+        "<strong class='text-white'>It only affects open P&amp;L</strong>, once you close, realized P&amp;L is identical on both apps because it's based on your actual fill.",
+        "<strong class='text-white'>The gap widens on illiquid contracts</strong>, options on futures, far strikes, and thin markets. On ES or NQ the two agree.",
+        "<strong class='text-white'>Cross-check the DOM</strong>, read the live bid and ask, value a long at the bid and a short at the ask, and you've got the truthful exit figure.",
+      ],
+    },
+    { type: "heading", text: "What “LAST vs Bid/Ask” P&L Actually Means" },
+    { type: "paragraph", html: "Open P&amp;L (also called unrealized P&amp;L) is an estimate. Your entry price is fixed, but the “current price” side of the calculation is a moving target, and there's more than one honest way to pick it. That's the whole story here. Both Tradovate apps take your entry, apply the contract's point value and your size, and subtract it from a current mark. They just disagree on what “current” means." },
+    { type: "paragraph", html: "The <strong class='text-white'>desktop platform uses the last traded price</strong>, the price at which the most recent transaction printed. It's the number most people picture when they think “the price.” The <strong class='text-white'>Pulse mobile app uses the bid/ask</strong>, the live quotes showing what buyers are willing to pay and what sellers are asking. For a contract that trades constantly, the last price and the bid/ask are basically on top of each other, separated by a single tick at most, and both marks land in the same place." },
+    { type: "paragraph", html: "The split opens up when the market gets thin. In a quiet order book, one aggressive order can drag the last price to one side and leave it there, because nothing else trades. Meanwhile the resting bid and ask tell a more current story about where you could actually do business. Value your position off that stale last print and you get a number that looks fine on screen but wouldn't survive contact with a real exit order." },
+    { type: "heading", text: "Why Your Tradovate P&L Differs Across Apps" },
+    { type: "heading", text: "1. Desktop marks open positions to the last trade" },
+    { type: "paragraph", html: "On the desktop platform, the open P&amp;L on your position is driven by the last traded price of the contract. When that contract is trading actively, this is perfectly reasonable, the last print is a fair proxy for fair value. The catch is that the last trade tells you where <em>someone else</em> did business a moment ago, not where <em>you</em> can do business now. If the last fill happened to hit the ask, a long position marked to that price looks better than the price you'd realize selling into the bid." },
+    { type: "heading", text: "2. Pulse marks the same position to bid/ask" },
+    { type: "paragraph", html: "Pulse takes the more conservative, execution-honest route. It values a long at the bid, the price a buyer is standing ready to pay you, and a short at the ask, the price a seller is offering. That's the actual liquidation value: hit the button to flatten and this is roughly where you fill. It's why the Pulse number often reads worse than desktop on a wide spread. It isn't being pessimistic; it's being literal about what the market will give you." },
+    { type: "heading", text: "3. Illiquid options and wide spreads blow the gap open" },
+    { type: "paragraph", html: "This is where the difference goes from academic to painful. Options on futures, deep out-of-the-money strikes, far-dated contracts, and any thin market can carry a spread that's several ticks, sometimes a large percentage of the option's value. Picture a contract with a $0.75 bid and a $1.00 ask. Buy at $1.00, and if you turned around and sold immediately into the $0.75 bid, you're out 25% before the market moves a hair. Desktop, marking to a last trade that printed up near $1.00, shows you roughly flat. Pulse, marking to the $0.75 bid, shows the quarter-point you'd actually eat. Same position, same instant, two very different-looking screens, and the last-trade mark almost always lands on the favorable side of where you'd truly get filled." },
+    { type: "heading", text: "4. Stale or delayed quotes can distort either number" },
+    { type: "paragraph", html: "Both marks are only as good as the data feeding them. If your market data is delayed, not subscribed, or lagging, the “current” price on one or both apps can be out of date, which widens the apparent gap for reasons that have nothing to do with LAST vs bid/ask. Before you conclude it's the valuation method, confirm you're on live, real-time data on the device that looks off. A delayed feed on one app and a live feed on the other will make two correct methods look even further apart than they are." },
+    { type: "heading", text: "5. It's open P&L only, realized P&L always agrees" },
+    { type: "paragraph", html: "Here's the reassuring part. This entire difference lives in <em>unrealized</em> P&amp;L on an open position. The moment you close, your realized result is computed from your actual fill price, and that fill is the same regardless of which app you were staring at. So the two apps can disagree all day while a trade is live, then snap to the exact same realized number once it's closed. If your closed-trade history matches between desktop and Pulse, nothing is wrong, you were just watching two different open-position estimates." },
+    { type: "heading", text: "How to Read the Right P&L Number: Step-by-Step" },
+    { type: "heading", text: "Step 1: Decide what you're actually asking" },
+    { type: "paragraph", html: "Get clear on the question first, because it changes which number matters:" },
+    {
+      type: "list",
+      items: [
+        "If you're asking <strong class='text-white'>“what will I net if I flatten right now?”</strong>, that's a liquidation-value question, and the bid/ask figure (Pulse) is the honest answer.",
+        "If you're asking <strong class='text-white'>“where did the contract last trade?”</strong>, that's the last-price mark on desktop, useful for a quick pulse-check on a liquid instrument.",
+        "For managing risk and planning exits on anything thin, default to the bid/ask value. It's the one that survives an actual order.",
+      ],
+    },
+    { type: "heading", text: "Step 2: Cross-check the live bid and ask on the DOM" },
+    { type: "paragraph", html: "You don't have to switch to your phone to get the truthful number. Pull up the depth-of-market ladder or the quote for the contract on desktop and read the live quotes directly:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the DOM or quote panel", html: "Open the DOM (or the quote panel) for the contract you're holding." },
+        { title: "Compare bid, ask, and last", html: "Note the current <strong class='text-white'>bid</strong> and <strong class='text-white'>ask</strong>, and how far the <strong class='text-white'>last</strong> print sits from them. A wide gap between them is your warning sign that the desktop P&amp;L is marking to a price you can't actually exit at." },
+        { title: "Re-price the position manually", html: "Value a <strong class='text-white'>long</strong> at the bid and a <strong class='text-white'>short</strong> at the ask. That re-creates the same realistic figure Pulse is showing you, right there on desktop." },
+      ],
+    },
+    { type: "heading", text: "Step 3: Use the bid/ask value for exit and risk decisions" },
+    { type: "paragraph", html: "Once you can see both marks, use them for what each is good for:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Base exit and stop decisions on the bid/ask value.</strong> If you'd be forced out at the bid, size and manage the trade against that number, not the friendlier last-price mark.",
+        "<strong class='text-white'>Confirm your data is live</strong> on the device you're trusting. A delayed feed makes any mark unreliable, make sure the contract isn't showing delayed or unsubscribed before you act on its P&amp;L.",
+        "<strong class='text-white'>Don't chase the discrepancy as a bug.</strong> It won't “fix,” because nothing is broken. Reconcile it once you close: realized P&amp;L will match on both apps, every time.",
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["What you see", "What it means", "What to do"],
+      rows: [
+        ["Desktop shows a smaller loss than Pulse on the same position", "Desktop marks to last; Pulse marks to the bid you'd exit at", "Trust the bid/ask value for real exit worth"],
+        ["Numbers match on ES/NQ but split on options", "Tight vs wide spread, last and bid/ask only diverge when thin", "Expect it; use bid/ask on illiquid contracts"],
+        ["Open P&L differs, closed trades match", "Only unrealized P&L uses different marks", "Nothing to fix, realized P&L is fill-based"],
+        ["Gap looks huge and quotes seem frozen", "Delayed or unsubscribed market data on one device", "Confirm live real-time data before acting"],
+        ["Desktop P&L “flatters” a long position", "Last trade printed near the ask, above the bid", "Re-price the long at the current bid"],
+        ["Short shows worse on Pulse than desktop", "Pulse marks the short to the ask you'd buy back at", "Value the short at the ask, not the last print"],
+        ["You want the true number on desktop", "Desktop P&L display uses last, but the DOM shows bid/ask", "Read bid/ask off the DOM and re-price manually"],
+      ],
+    },
+    { type: "heading", text: "Trade Cleaner Exits with PickMyTrade" },
+    { type: "paragraph", html: "The desktop-vs-Pulse gap matters most at one moment, the exit, and that's exactly where eyeballing a possibly-misleading open P&amp;L number costs you. PickMyTrade sits between your TradingView alerts and Tradovate so your exits fire on defined price levels instead of a P&amp;L readout you have to second-guess:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Rule-based stops and targets</strong>, brackets attach to real price levels, so you're not deciding to bail off a last-trade mark that's flattering the position.",
+        "<strong class='text-white'>Consistent order routing</strong>, every alert lands with a validated symbol and size, so your fills are clean and your P&amp;L reconciles later without surprises.",
+        "<strong class='text-white'>Multi-account sync</strong>, the same exit mirrors across every connected account, so no single screen's open-P&amp;L quirk drives an inconsistent decision.",
+        "<strong class='text-white'>Works with your live data</strong>, automation runs off the price action, not a delayed or stale mark on one device.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie haben eine Position offen, werfen einen Blick auf die Desktop-Plattform, und dort liegen Sie vierzig Dollar im Minus. Dann holen Sie Ihr Handy heraus, öffnen Pulse, und dieselbe Position zeigt einen größeren Verlust. Nichts ist falsch synchronisiert, niemand hat den Markt zwischen den beiden Blicken bewegt – und trotzdem stimmen die beiden Zahlen nicht überein. Bevor Sie ein Support-Ticket eröffnen oder an Ihren Ausführungen zweifeln, die Kurzfassung: Dies ist ein <strong class='text-white'>Tradovate-P&amp;L-Unterschied zwischen der Desktop-App und der mobilen Pulse-App</strong>, und er hängt davon ab, welchen Kurs jede App zur Bewertung einer laufenden Position verwendet. Der Desktop bewertet Ihr offenes P&amp;L zum <em>letzten gehandelten Kurs</em>. Pulse bewertet es zum <em>Bid/Ask</em>. In einem engen Markt fällt das nie auf. Bei einer illiquiden Option mit großem Spread kann die Desktop-Zahl unbemerkt unterschätzen, was der Trade wirklich wert ist, wenn Sie sofort aussteigen müssten. Diese Anleitung zeigt Ihnen, warum das passiert, welcher Zahl Sie trauen sollten und wie Sie den tatsächlichen Ausstiegswert ablesen." },
+    {
+      type: "checklist",
+      heading: "Kurzantwort: Welchem P&L Sie trauen sollten",
+      items: [
+        "<strong class='text-white'>Vertrauen Sie dem Bid/Ask-Wert für Ausstiegsentscheidungen</strong>, Pulse bewertet das offene P&amp;L zum Bid/Ask, also zu dem Kurs, zu dem Sie tatsächlich ausgeführt würden, und spiegelt damit den realen Liquidationswert wider.",
+        "<strong class='text-white'>Betrachten Sie die Desktop-Zahl als grobe Bewertung</strong>, sie basiert auf dem letzten Handel, der auf der günstigeren Seite des Spreads liegen und die Position beschönigen kann.",
+        "<strong class='text-white'>Keine der Apps ist defekt</strong>, es handelt sich um einen bewussten Bewertungsunterschied, nicht um einen Synchronisationsfehler oder eine falsche Zahl.",
+        "<strong class='text-white'>Es betrifft nur das offene P&amp;L</strong>, nach dem Schließen ist das realisierte P&amp;L in beiden Apps identisch, weil es auf Ihrer tatsächlichen Ausführung beruht.",
+        "<strong class='text-white'>Die Differenz wächst bei illiquiden Kontrakten</strong>, Optionen auf Futures, weit entfernte Strikes und dünne Märkte. Bei ES oder NQ stimmen beide überein.",
+        "<strong class='text-white'>Prüfen Sie das DOM</strong>, lesen Sie den aktuellen Bid und Ask ab, bewerten Sie eine Long-Position zum Bid und eine Short-Position zum Ask, und Sie haben den wahrheitsgetreuen Ausstiegswert.",
+      ],
+    },
+    { type: "heading",text: "Was „LAST vs. Bid/Ask“-P&L tatsächlich bedeutet" },
+    { type: "paragraph",html: "Das offene P&amp;L (auch nicht realisiertes P&amp;L genannt) ist eine Schätzung. Ihr Einstiegskurs steht fest, doch der „aktuelle Kurs“ in der Berechnung ist ein bewegliches Ziel, und es gibt mehr als eine ehrliche Möglichkeit, ihn zu wählen. Das ist die ganze Geschichte. Beide Tradovate-Apps nehmen Ihren Einstieg, wenden den Punktwert des Kontrakts und Ihre Positionsgröße an und ziehen das Ergebnis von einer aktuellen Bewertung ab. Sie sind sich nur uneinig darüber, was „aktuell“ bedeutet." },
+    { type: "paragraph",html: "Die <strong class='text-white'>Desktop-Plattform verwendet den letzten gehandelten Kurs</strong>, den Preis, zu dem die jüngste Transaktion zustande kam. Das ist die Zahl, die die meisten sich vorstellen, wenn sie an „den Kurs“ denken. Die <strong class='text-white'>mobile Pulse-App verwendet Bid/Ask</strong>, die Live-Kurse, die zeigen, was Käufer zu zahlen bereit sind und was Verkäufer verlangen. Bei einem Kontrakt, der ständig gehandelt wird, liegen der letzte Kurs und Bid/Ask praktisch übereinander, höchstens einen Tick voneinander entfernt, und beide Bewertungen landen am selben Punkt." },
+    { type: "paragraph",html: "Die Abweichung entsteht, wenn der Markt dünn wird. In einem ruhigen Orderbuch kann eine einzige aggressive Order den letzten Kurs auf eine Seite ziehen und dort belassen, weil sonst nichts gehandelt wird. Der stehende Bid und Ask erzählen währenddessen eine aktuellere Geschichte darüber, wo Sie tatsächlich handeln könnten. Bewerten Sie Ihre Position anhand dieses veralteten letzten Kurses, erhalten Sie eine Zahl, die auf dem Bildschirm gut aussieht, aber den Kontakt mit einer echten Ausstiegsorder nicht überstehen würde." },
+    { type: "heading",text: "Warum Ihr Tradovate-P&L zwischen den Apps abweicht" },
+    { type: "heading",text: "1. Der Desktop bewertet offene Positionen zum letzten Handel" },
+    { type: "paragraph",html: "Auf der Desktop-Plattform wird das offene P&amp;L Ihrer Position vom letzten gehandelten Kurs des Kontrakts bestimmt. Wird der Kontrakt aktiv gehandelt, ist das völlig vernünftig, denn der letzte Kurs ist ein guter Näherungswert für den fairen Wert. Der Haken: Der letzte Handel sagt Ihnen, wo <em>jemand anderes</em> vor einem Moment gehandelt hat, nicht wo <em>Sie</em> jetzt handeln können. Wurde die letzte Ausführung am Ask abgeschlossen, sieht eine zu diesem Kurs bewertete Long-Position besser aus als der Kurs, den Sie beim Verkauf in den Bid tatsächlich erzielen würden." },
+    { type: "heading",text: "2. Pulse bewertet dieselbe Position zum Bid/Ask" },
+    { type: "paragraph",html: "Pulse wählt den konservativeren, ausführungsnahen Weg. Eine Long-Position wird zum Bid bewertet, dem Preis, den ein Käufer Ihnen zu zahlen bereit ist, eine Short-Position zum Ask, dem Preis, den ein Verkäufer verlangt. Das ist der tatsächliche Liquidationswert: Drücken Sie den Button zum Glattstellen, und etwa hier werden Sie ausgeführt. Deshalb wirkt die Pulse-Zahl bei einem großen Spread oft schlechter als die des Desktops. Pulse ist nicht pessimistisch, sondern wörtlich genommen ehrlich darüber, was der Markt Ihnen gibt." },
+    { type: "heading",text: "3. Illiquide Optionen und große Spreads öffnen die Lücke" },
+    { type: "paragraph",html: "Hier wird der Unterschied von akademisch zu schmerzhaft. Optionen auf Futures, weit aus dem Geld liegende Strikes, weit entfernte Fälligkeiten und jeder dünne Markt können einen Spread von mehreren Ticks haben, mitunter einen großen Prozentsatz des Optionswerts. Stellen Sie sich einen Kontrakt mit einem Bid von $0.75 und einem Ask von $1.00 vor. Sie kaufen zu $1.00, und wenn Sie sofort in den Bid von $0.75 verkaufen würden, liegen Sie 25% im Minus, bevor sich der Markt auch nur bewegt hat. Der Desktop, der zu einem letzten Handel nahe $1.00 bewertet, zeigt Ihnen ungefähr null. Pulse, das zum Bid von $0.75 bewertet, zeigt die Viertelpunkt-Differenz, die Sie tatsächlich hinnehmen müssten. Dieselbe Position, derselbe Moment, zwei sehr unterschiedlich aussehende Bildschirme – und die Bewertung zum letzten Handel liegt fast immer auf der günstigeren Seite dessen, wo Sie tatsächlich ausgeführt würden." },
+    { type: "heading",text: "4. Veraltete oder verzögerte Kurse können jede der beiden Zahlen verzerren" },
+    { type: "paragraph",html: "Beide Bewertungen sind nur so gut wie die Daten, die sie speisen. Sind Ihre Marktdaten verzögert, nicht abonniert oder hinken sie hinterher, kann der „aktuelle“ Kurs in einer oder beiden Apps veraltet sein, was die scheinbare Differenz aus Gründen vergrößert, die nichts mit LAST vs. Bid/Ask zu tun haben. Bevor Sie schlussfolgern, dass es an der Bewertungsmethode liegt, prüfen Sie, ob Sie auf dem Gerät, das abweicht, Live-Echtzeitdaten verwenden. Ein verzögerter Feed in der einen App und ein Live-Feed in der anderen lassen zwei korrekte Methoden noch weiter auseinanderliegend aussehen, als sie es sind." },
+    { type: "heading",text: "5. Nur das offene P&L, das realisierte P&L stimmt immer überein" },
+    { type: "paragraph",html: "Hier der beruhigende Teil. Diese gesamte Differenz betrifft das <em>nicht realisierte</em> P&amp;L einer offenen Position. Sobald Sie schließen, wird Ihr realisiertes Ergebnis aus Ihrem tatsächlichen Ausführungspreis berechnet, und dieser ist derselbe, egal auf welche App Sie geschaut haben. Die beiden Apps können also den ganzen Tag abweichen, solange ein Trade läuft, und springen nach dem Schließen auf exakt dieselbe realisierte Zahl. Stimmt Ihr Verlauf geschlossener Trades zwischen Desktop und Pulse überein, ist nichts falsch – Sie haben lediglich zwei unterschiedliche Schätzungen der offenen Position beobachtet." },
+    { type: "heading",text: "So lesen Sie die richtige P&L-Zahl ab: Schritt für Schritt" },
+    { type: "heading",text: "Schritt 1: Klären Sie, was Sie eigentlich fragen" },
+    { type: "paragraph",html: "Machen Sie sich zuerst klar, welche Frage Sie stellen, denn sie bestimmt, welche Zahl zählt:" },
+    {
+      type: "list",
+      items: [
+        "Fragen Sie <strong class='text-white'>„Was erhalte ich netto, wenn ich jetzt glattstelle?“</strong>, ist das eine Frage nach dem Liquidationswert, und der Bid/Ask-Wert (Pulse) ist die ehrliche Antwort.",
+        "Fragen Sie <strong class='text-white'>„Wo wurde der Kontrakt zuletzt gehandelt?“</strong>, ist das die Bewertung zum letzten Kurs auf dem Desktop, nützlich für einen schnellen Check bei einem liquiden Instrument.",
+        "Für Risikomanagement und Ausstiegsplanung bei allem, was dünn gehandelt wird, verwenden Sie standardmäßig den Bid/Ask-Wert. Er ist derjenige, der einer echten Order standhält.",
+      ],
+    },
+    { type: "heading",text: "Schritt 2: Prüfen Sie Bid und Ask im DOM gegen" },
+    { type: "paragraph",html: "Sie müssen nicht zum Handy wechseln, um die wahrheitsgetreue Zahl zu erhalten. Öffnen Sie auf dem Desktop die Depth-of-Market-Leiter oder die Kursanzeige des Kontrakts und lesen Sie die Live-Kurse direkt ab:" },
+    {
+      type: "steps",
+      items: [
+        { title: "DOM oder Kursfenster öffnen", html: "Öffnen Sie das DOM (oder das Kursfenster) für den Kontrakt, den Sie halten." },
+        { title: "Bid, Ask und Last vergleichen", html: "Notieren Sie den aktuellen <strong class='text-white'>Bid</strong> und <strong class='text-white'>Ask</strong> und wie weit der letzte Kurs (<strong class='text-white'>Last</strong>) davon entfernt liegt. Eine große Lücke zwischen ihnen ist Ihr Warnsignal, dass das Desktop-P&amp;L zu einem Kurs bewertet wird, zu dem Sie nicht tatsächlich aussteigen können." },
+        { title: "Position manuell neu bewerten", html: "Bewerten Sie eine <strong class='text-white'>Long-Position</strong> zum Bid und eine <strong class='text-white'>Short-Position</strong> zum Ask. So erhalten Sie direkt auf dem Desktop denselben realistischen Wert, den Pulse Ihnen anzeigt." },
+      ],
+    },
+    { type: "heading",text: "Schritt 3: Verwenden Sie den Bid/Ask-Wert für Ausstiegs- und Risikoentscheidungen" },
+    { type: "paragraph",html: "Wenn Sie beide Bewertungen sehen können, nutzen Sie sie für das, wofür jede taugt:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Stützen Sie Ausstiegs- und Stop-Entscheidungen auf den Bid/Ask-Wert.</strong> Wenn Sie zum Bid aussteigen müssten, dimensionieren und steuern Sie den Trade an dieser Zahl, nicht an der freundlicheren Bewertung zum letzten Kurs.",
+        "<strong class='text-white'>Vergewissern Sie sich, dass Ihre Daten live sind</strong>, auf dem Gerät, dem Sie vertrauen. Ein verzögerter Feed macht jede Bewertung unzuverlässig; stellen Sie sicher, dass der Kontrakt nicht verzögert oder nicht abonniert angezeigt wird, bevor Sie nach seinem P&amp;L handeln.",
+        "<strong class='text-white'>Jagen Sie der Abweichung nicht als Fehler hinterher.</strong> Sie wird sich nicht „beheben“, weil nichts defekt ist. Gleichen Sie sie nach dem Schließen ab: Das realisierte P&amp;L stimmt in beiden Apps jedes Mal überein.",
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Was Sie sehen","Was es bedeutet","Was zu tun ist"], rows: [
+      ["Der Desktop zeigt für dieselbe Position einen kleineren Verlust als Pulse","Der Desktop bewertet zum letzten Kurs; Pulse zum Bid, zu dem Sie aussteigen würden","Vertrauen Sie dem Bid/Ask-Wert für den realen Ausstiegswert"],
+      ["Zahlen stimmen bei ES/NQ überein, weichen aber bei Optionen ab","Enger vs. großer Spread, Last und Bid/Ask weichen nur bei dünnem Handel ab","Das ist zu erwarten; verwenden Sie bei illiquiden Kontrakten Bid/Ask"],
+      ["Offenes P&L weicht ab, geschlossene Trades stimmen überein","Nur das nicht realisierte P&L verwendet unterschiedliche Bewertungen","Nichts zu beheben, das realisierte P&L basiert auf der Ausführung"],
+      ["Die Lücke wirkt riesig und die Kurse scheinen eingefroren","Verzögerte oder nicht abonnierte Marktdaten auf einem Gerät","Bestätigen Sie Live-Echtzeitdaten, bevor Sie handeln"],
+      ["Das Desktop-P&L „beschönigt“ eine Long-Position","Der letzte Handel wurde nahe am Ask ausgeführt, über dem Bid","Bewerten Sie die Long-Position zum aktuellen Bid neu"],
+      ["Short-Position zeigt in Pulse ein schlechteres Ergebnis als auf dem Desktop","Pulse bewertet die Short-Position zum Ask, zu dem Sie zurückkaufen würden","Bewerten Sie die Short-Position zum Ask, nicht zum letzten Kurs"],
+      ["Sie möchten die wahre Zahl auf dem Desktop","Die P&L-Anzeige des Desktops verwendet Last, das DOM zeigt aber Bid/Ask","Lesen Sie Bid/Ask im DOM ab und bewerten Sie manuell neu"],
+    ] },
+    { type: "heading",text: "Saubere Ausstiege mit PickMyTrade" },
+    { type: "paragraph",html: "Die Lücke zwischen Desktop und Pulse ist in einem Moment am wichtigsten: beim Ausstieg, und genau dort kostet es Sie etwas, ein möglicherweise irreführendes offenes P&amp;L nach Augenmaß zu beurteilen. PickMyTrade sitzt zwischen Ihren TradingView-Alerts und Tradovate, damit Ihre Ausstiege an definierten Preisniveaus ausgelöst werden – statt an einer P&amp;L-Anzeige, die Sie erst anzweifeln müssen:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Regelbasierte Stops und Ziele</strong>, Brackets werden an echten Preisniveaus angelegt, sodass Sie nicht aufgrund einer schmeichelhaften Bewertung zum letzten Kurs entscheiden, auszusteigen.",
+        "<strong class='text-white'>Konsistentes Order-Routing</strong>, jeder Alert kommt mit validiertem Symbol und validierter Größe an, sodass Ihre Ausführungen sauber sind und Ihr P&amp;L sich später ohne Überraschungen abgleichen lässt.",
+        "<strong class='text-white'>Multi-Account-Synchronisation</strong>, derselbe Ausstieg wird auf alle verbundenen Konten gespiegelt, sodass die P&amp;L-Eigenheit eines einzelnen Bildschirms keine uneinheitliche Entscheidung auslöst.",
+        "<strong class='text-white'>Funktioniert mit Ihren Live-Daten</strong>, die Automatisierung läuft über die Kursbewegung, nicht über eine verzögerte oder veraltete Bewertung auf einem Gerät.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Tiene una posición abierta, echa un vistazo a la plataforma de escritorio y le dice que va perdiendo cuarenta dólares. Luego saca el móvil, abre Pulse y la misma posición muestra una pérdida mayor. Nada se sincronizó mal, nadie movió el mercado entre una mirada y otra, y aun así las dos cifras no coinciden. Antes de abrir un ticket de soporte o de dudar de sus ejecuciones, le damos la versión corta: se trata de una <strong class='text-white'>diferencia de P&amp;L de Tradovate entre la app de escritorio y la app móvil Pulse</strong>, y depende del precio que cada una usa para valorar una posición en vivo. El escritorio valora su P&amp;L abierto al <em>último precio negociado</em>. Pulse lo valora al <em>bid/ask</em>. En un mercado ajustado nunca lo notará. En una opción ilíquida con un spread amplio, la cifra del escritorio puede subestimar sin avisar lo que vale realmente la operación si tuviera que salir ahora mismo. Esta guía le muestra por qué ocurre, en qué cifra confiar y cómo leer el valor de salida real." },
+    {
+      type: "checklist",
+      heading: "Respuesta rápida: en qué P&L confiar",
+      items: [
+        "<strong class='text-white'>Confíe en el valor bid/ask para decidir salidas</strong>, Pulse valora el P&amp;L abierto al bid/ask, que es el precio al que realmente se le ejecutaría, por lo que refleja el valor real de liquidación.",
+        "<strong class='text-white'>Trate la cifra del escritorio como una valoración aproximada</strong>, se basa en la última operación, que puede quedar en el lado favorable del spread y embellecer la posición.",
+        "<strong class='text-white'>Ninguna de las apps está rota</strong>, es una diferencia de valoración intencionada, no un error de sincronización ni una cifra errónea.",
+        "<strong class='text-white'>Solo afecta al P&amp;L abierto</strong>, una vez que cierra, el P&amp;L realizado es idéntico en ambas apps porque se basa en su ejecución real.",
+        "<strong class='text-white'>La diferencia crece en contratos ilíquidos</strong>, opciones sobre futuros, strikes lejanos y mercados poco profundos. En ES o NQ las dos coinciden.",
+        "<strong class='text-white'>Contraste con el DOM</strong>, lea el bid y el ask en vivo, valore una posición larga al bid y una corta al ask, y tendrá la cifra de salida veraz.",
+      ],
+    },
+    { type: "heading",text: "Qué significa realmente el P&L «LAST vs. Bid/Ask»" },
+    { type: "paragraph",html: "El P&amp;L abierto (también llamado P&amp;L no realizado) es una estimación. Su precio de entrada es fijo, pero el «precio actual» del cálculo es un blanco móvil, y hay más de una manera honesta de elegirlo. Esa es toda la historia. Ambas apps de Tradovate toman su entrada, aplican el valor del punto del contrato y su tamaño, y lo restan de una valoración actual. Simplemente discrepan en lo que significa «actual»." },
+    { type: "paragraph",html: "La <strong class='text-white'>plataforma de escritorio usa el último precio negociado</strong>, el precio al que se cruzó la transacción más reciente. Es la cifra en la que piensa la mayoría cuando se imagina «el precio». La <strong class='text-white'>app móvil Pulse usa el bid/ask</strong>, las cotizaciones en vivo que muestran lo que los compradores están dispuestos a pagar y lo que piden los vendedores. En un contrato que se negocia constantemente, el último precio y el bid/ask están prácticamente superpuestos, separados como mucho por un tick, y ambas valoraciones coinciden." },
+    { type: "paragraph",html: "La divergencia aparece cuando el mercado se vuelve poco profundo. En un libro de órdenes tranquilo, una sola orden agresiva puede arrastrar el último precio hacia un lado y dejarlo ahí, porque no se negocia nada más. Mientras tanto, el bid y el ask en reposo cuentan una historia más actual de dónde podría realmente operar. Si valora su posición con ese último precio obsoleto, obtiene una cifra que se ve bien en pantalla pero que no sobreviviría al contacto con una orden de salida real." },
+    { type: "heading",text: "Por qué su P&L de Tradovate difiere entre apps" },
+    { type: "heading",text: "1. El escritorio valora las posiciones abiertas al último precio" },
+    { type: "paragraph",html: "En la plataforma de escritorio, el P&amp;L abierto de su posición depende del último precio negociado del contrato. Cuando ese contrato se negocia con actividad, es perfectamente razonable: el último cruce es una buena aproximación del valor justo. El inconveniente es que la última operación indica dónde operó <em>otra persona</em> hace un momento, no dónde puede operar <em>usted</em> ahora. Si la última ejecución golpeó el ask, una posición larga valorada a ese precio se ve mejor que el precio que obtendría vendiendo al bid." },
+    { type: "heading",text: "2. Pulse valora la misma posición al bid/ask" },
+    { type: "paragraph",html: "Pulse toma el camino más conservador y fiel a la ejecución. Valora una posición larga al bid, el precio que un comprador está dispuesto a pagarle, y una corta al ask, el precio que ofrece un vendedor. Ese es el valor real de liquidación: si pulsa el botón para cerrar, aproximadamente aquí se ejecuta. Por eso la cifra de Pulse suele verse peor que la del escritorio con un spread amplio. No es pesimista; simplemente es literal sobre lo que el mercado le ofrece." },
+    { type: "heading",text: "3. Las opciones ilíquidas y los spreads amplios abren la brecha" },
+    { type: "paragraph",html: "Aquí es donde la diferencia pasa de ser académica a ser dolorosa. Las opciones sobre futuros, los strikes muy fuera del dinero, los contratos de vencimiento lejano y cualquier mercado poco profundo pueden tener un spread de varios ticks, a veces un gran porcentaje del valor de la opción. Imagine un contrato con un bid de $0.75 y un ask de $1.00. Compra a $1.00 y, si diera la vuelta y vendiera de inmediato al bid de $0.75, perdería un 25% antes de que el mercado se mueva un pelo. El escritorio, que valora a una última operación cercana a $1.00, le muestra aproximadamente cero. Pulse, que valora al bid de $0.75, muestra el cuarto de punto que realmente asumiría. La misma posición, el mismo instante, dos pantallas de aspecto muy distinto, y la valoración a la última operación casi siempre cae en el lado favorable de donde de verdad le ejecutarían." },
+    { type: "heading",text: "4. Las cotizaciones obsoletas o retrasadas pueden distorsionar cualquiera de las dos cifras" },
+    { type: "paragraph",html: "Ambas valoraciones son tan buenas como los datos que las alimentan. Si sus datos de mercado están retrasados, sin suscripción o con latencia, el precio «actual» de una o ambas apps puede estar desactualizado, lo que amplía la diferencia aparente por motivos que nada tienen que ver con LAST vs. bid/ask. Antes de concluir que se trata del método de valoración, confirme que está recibiendo datos en vivo y en tiempo real en el dispositivo que le parece raro. Un feed retrasado en una app y uno en vivo en la otra harán que dos métodos correctos parezcan aún más distantes de lo que son." },
+    { type: "heading",text: "5. Es solo P&L abierto; el P&L realizado siempre coincide" },
+    { type: "paragraph",html: "Aquí viene lo tranquilizador. Toda esta diferencia vive en el P&amp;L <em>no realizado</em> de una posición abierta. En cuanto cierra, su resultado realizado se calcula a partir de su precio de ejecución real, y esa ejecución es la misma sin importar en qué app estuviera mirando. Así, las dos apps pueden discrepar todo el día mientras la operación está viva y luego coincidir en la misma cifra realizada una vez cerrada. Si el historial de operaciones cerradas coincide entre el escritorio y Pulse, no hay nada mal: solo estaba viendo dos estimaciones distintas de la posición abierta." },
+    { type: "heading",text: "Cómo leer la cifra de P&L correcta: paso a paso" },
+    { type: "heading",text: "Paso 1: Decida qué está preguntando realmente" },
+    { type: "paragraph",html: "Primero tenga claro cuál es la pregunta, porque cambia qué cifra importa:" },
+    {
+      type: "list",
+      items: [
+        "Si pregunta <strong class='text-white'>«¿cuánto obtendré en neto si cierro ahora?»</strong>, es una pregunta sobre el valor de liquidación, y la cifra bid/ask (Pulse) es la respuesta honesta.",
+        "Si pregunta <strong class='text-white'>«¿dónde se negoció el contrato por última vez?»</strong>, es la valoración al último precio del escritorio, útil para una comprobación rápida en un instrumento líquido.",
+        "Para gestionar el riesgo y planificar salidas en cualquier cosa poco profunda, use por defecto el valor bid/ask. Es el que resiste una orden real.",
+      ],
+    },
+    { type: "heading",text: "Paso 2: Contraste el bid y el ask en vivo en el DOM" },
+    { type: "paragraph",html: "No necesita cambiar al móvil para obtener la cifra veraz. Abra en el escritorio la escalera de profundidad de mercado o la cotización del contrato y lea directamente las cotizaciones en vivo:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra el DOM o el panel de cotización", html: "Abra el DOM (o el panel de cotización) del contrato que mantiene." },
+        { title: "Compare bid, ask y último", html: "Anote el <strong class='text-white'>bid</strong> y el <strong class='text-white'>ask</strong> actuales, y a qué distancia queda de ellos el último precio (<strong class='text-white'>last</strong>). Una brecha amplia entre ellos es su señal de alerta de que el P&amp;L del escritorio se valora a un precio al que en realidad no puede salir." },
+        { title: "Revalore la posición manualmente", html: "Valore una <strong class='text-white'>posición larga</strong> al bid y una <strong class='text-white'>corta</strong> al ask. Eso reproduce, justo ahí en el escritorio, la misma cifra realista que le muestra Pulse." },
+      ],
+    },
+    { type: "heading",text: "Paso 3: Use el valor bid/ask para decisiones de salida y de riesgo" },
+    { type: "paragraph",html: "Una vez que pueda ver ambas valoraciones, utilice cada una para lo que sirve:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Base sus decisiones de salida y de stop en el valor bid/ask.</strong> Si se viera forzado a salir al bid, dimensione y gestione la operación según esa cifra, no según la valoración más amable al último precio.",
+        "<strong class='text-white'>Confirme que sus datos están en vivo</strong> en el dispositivo en el que confía. Un feed retrasado hace poco fiable cualquier valoración; asegúrese de que el contrato no aparezca retrasado ni sin suscripción antes de actuar según su P&amp;L.",
+        "<strong class='text-white'>No persiga la discrepancia como si fuera un error.</strong> No se «arreglará», porque nada está roto. Cuádrela una vez que cierre: el P&amp;L realizado coincidirá en ambas apps, siempre.",
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Qué ve","Qué significa","Qué hacer"], rows: [
+      ["El escritorio muestra una pérdida menor que Pulse en la misma posición","El escritorio valora al último precio; Pulse valora al bid al que saldría","Confíe en el valor bid/ask para el valor real de salida"],
+      ["Las cifras coinciden en ES/NQ pero divergen en opciones","Spread estrecho vs. amplio; el último precio y el bid/ask solo divergen cuando hay poca profundidad","Es lo esperado; use bid/ask en contratos ilíquidos"],
+      ["El P&L abierto difiere, las operaciones cerradas coinciden","Solo el P&L no realizado usa valoraciones distintas","No hay nada que arreglar, el P&L realizado se basa en la ejecución"],
+      ["La brecha parece enorme y las cotizaciones parecen congeladas","Datos de mercado retrasados o sin suscripción en un dispositivo","Confirme datos en vivo y en tiempo real antes de actuar"],
+      ["El P&L del escritorio «favorece» una posición larga","La última operación se cruzó cerca del ask, por encima del bid","Revalore la posición larga al bid actual"],
+      ["La corta se ve peor en Pulse que en el escritorio","Pulse valora la corta al ask al que recompraría","Valore la corta al ask, no al último precio"],
+      ["Quiere la cifra real en el escritorio","El P&L del escritorio usa el último precio, pero el DOM muestra bid/ask","Lea bid/ask en el DOM y revalore manualmente"],
+    ] },
+    { type: "heading",text: "Salidas más limpias con PickMyTrade" },
+    { type: "paragraph",html: "La diferencia entre escritorio y Pulse importa sobre todo en un momento, la salida, y justo ahí es donde fiarse a ojo de un P&amp;L abierto posiblemente engañoso le cuesta dinero. PickMyTrade se sitúa entre sus alertas de TradingView y Tradovate para que sus salidas se ejecuten en niveles de precio definidos, en lugar de en una lectura de P&amp;L que usted tiene que poner en duda:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Stops y objetivos basados en reglas</strong>, los brackets se asocian a niveles de precio reales, de modo que no decide abandonar a partir de una valoración al último precio que favorece a la posición.",
+        "<strong class='text-white'>Enrutamiento de órdenes consistente</strong>, cada alerta llega con símbolo y tamaño validados, de modo que sus ejecuciones son limpias y su P&amp;L se concilia después sin sorpresas.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, la misma salida se replica en todas las cuentas conectadas, de modo que la rareza del P&amp;L abierto de una sola pantalla no provoque una decisión incoherente.",
+        "<strong class='text-white'>Funciona con sus datos en vivo</strong>, la automatización se basa en la acción del precio, no en una valoración retrasada u obsoleta en un solo dispositivo.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous avez une position ouverte, vous jetez un œil à la plateforme de bureau, et elle indique que vous perdez quarante dollars. Puis vous sortez votre téléphone, ouvrez Pulse, et la même position affiche une perte plus importante. Rien n'est mal synchronisé, personne n'a bougé le marché entre vos deux coups d'œil, et pourtant les deux chiffres ne concordent pas. Avant d'ouvrir un ticket de support ou de douter de vos exécutions, voici la version courte : il s'agit d'une <strong class='text-white'>différence de P&amp;L Tradovate entre l'application de bureau et l'application mobile Pulse</strong>, et elle tient au prix que chacune utilise pour valoriser une position en cours. Le bureau valorise votre P&amp;L ouvert au <em>dernier prix négocié</em>. Pulse le valorise au <em>bid/ask</em>. Sur un marché serré, vous ne le remarquerez jamais. Sur une option illiquide avec un large spread, le chiffre du bureau peut discrètement sous-estimer ce que vaut réellement le trade si vous deviez sortir tout de suite. Ce guide vous explique pourquoi cela se produit, quel chiffre croire et comment lire la vraie valeur de sortie." },
+    {
+      type: "checklist",
+      heading: "Réponse rapide : quel P&L croire",
+      items: [
+        "<strong class='text-white'>Fiez-vous à la valeur bid/ask pour vos décisions de sortie</strong>, Pulse valorise le P&amp;L ouvert au bid/ask, soit le prix auquel vous seriez réellement exécuté, et reflète donc la vraie valeur de liquidation.",
+        "<strong class='text-white'>Considérez le chiffre du bureau comme une valorisation approximative</strong>, il repose sur la dernière transaction, qui peut se situer du côté favorable du spread et flatter la position.",
+        "<strong class='text-white'>Aucune des deux applications n'est défaillante</strong>, il s'agit d'une différence de valorisation voulue, pas d'un bogue de synchronisation ni d'un chiffre erroné.",
+        "<strong class='text-white'>Cela n'affecte que le P&amp;L ouvert</strong>, une fois la position clôturée, le P&amp;L réalisé est identique dans les deux applications car il repose sur votre exécution réelle.",
+        "<strong class='text-white'>L'écart se creuse sur les contrats illiquides</strong>, options sur contrats à terme, strikes éloignés et marchés peu profonds. Sur ES ou NQ, les deux concordent.",
+        "<strong class='text-white'>Recoupez avec le DOM</strong>, lisez le bid et l'ask en direct, valorisez une position longue au bid et une position courte à l'ask, et vous obtenez le chiffre de sortie fidèle.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie réellement le P&L « LAST vs Bid/Ask »" },
+    { type: "paragraph",html: "Le P&amp;L ouvert (aussi appelé P&amp;L latent ou non réalisé) est une estimation. Votre prix d'entrée est fixe, mais le « prix actuel » du calcul est une cible mouvante, et il existe plus d'une façon honnête de le choisir. C'est toute l'histoire. Les deux applications Tradovate prennent votre entrée, appliquent la valeur du point du contrat et votre taille, puis la soustraient d'une valorisation actuelle. Elles ne s'accordent simplement pas sur ce que signifie « actuel »." },
+    { type: "paragraph",html: "La <strong class='text-white'>plateforme de bureau utilise le dernier prix négocié</strong>, le prix auquel la transaction la plus récente s'est imprimée. C'est le chiffre que la plupart des gens imaginent quand ils pensent à « le prix ». L'<strong class='text-white'>application mobile Pulse utilise le bid/ask</strong>, les cotations en direct qui montrent ce que les acheteurs sont prêts à payer et ce que les vendeurs demandent. Pour un contrat qui se négocie en permanence, le dernier prix et le bid/ask sont pratiquement superposés, séparés d'un tick tout au plus, et les deux valorisations tombent au même endroit." },
+    { type: "paragraph",html: "L'écart apparaît quand le marché devient peu profond. Dans un carnet d'ordres calme, un seul ordre agressif peut tirer le dernier prix d'un côté et l'y laisser, car rien d'autre ne se négocie. Pendant ce temps, le bid et l'ask en attente racontent une histoire plus actuelle de l'endroit où vous pourriez réellement traiter. Valorisez votre position sur ce dernier prix périmé et vous obtenez un chiffre qui a bonne allure à l'écran mais ne survivrait pas au contact d'un véritable ordre de sortie." },
+    { type: "heading",text: "Pourquoi votre P&L Tradovate diffère d'une application à l'autre" },
+    { type: "heading",text: "1. Le bureau valorise les positions ouvertes au dernier prix" },
+    { type: "paragraph",html: "Sur la plateforme de bureau, le P&amp;L ouvert de votre position est piloté par le dernier prix négocié du contrat. Lorsque ce contrat se négocie activement, c'est parfaitement raisonnable : la dernière impression est une bonne approximation de la juste valeur. Le hic est que la dernière transaction vous dit où <em>quelqu'un d'autre</em> a traité il y a un instant, pas où <em>vous</em> pouvez traiter maintenant. Si la dernière exécution a frappé l'ask, une position longue valorisée à ce prix paraît meilleure que le prix que vous obtiendriez en vendant au bid." },
+    { type: "heading",text: "2. Pulse valorise la même position au bid/ask" },
+    { type: "paragraph",html: "Pulse emprunte la voie la plus prudente et la plus fidèle à l'exécution. Il valorise une position longue au bid, le prix qu'un acheteur est prêt à vous payer, et une position courte à l'ask, le prix qu'un vendeur propose. C'est la valeur de liquidation réelle : appuyez sur le bouton pour clôturer et c'est à peu près là que vous serez exécuté. C'est pourquoi le chiffre de Pulse paraît souvent pire que celui du bureau sur un large spread. Il n'est pas pessimiste ; il est littéralement fidèle à ce que le marché vous offre." },
+    { type: "heading",text: "3. Les options illiquides et les larges spreads font éclater l'écart" },
+    { type: "paragraph",html: "C'est là que la différence passe de théorique à douloureuse. Les options sur contrats à terme, les strikes très hors de la monnaie, les contrats à échéance lointaine et tout marché peu profond peuvent avoir un spread de plusieurs ticks, parfois un pourcentage important de la valeur de l'option. Imaginez un contrat avec un bid à $0.75 et un ask à $1.00. Vous achetez à $1.00 et, si vous revendiez immédiatement au bid de $0.75, vous perdez 25% avant même que le marché ne bouge d'un poil. Le bureau, qui valorise à une dernière transaction imprimée près de $1.00, vous montre à peu près zéro. Pulse, qui valorise au bid de $0.75, montre le quart de point que vous encaisseriez réellement. Même position, même instant, deux écrans très différents, et la valorisation au dernier prix tombe presque toujours du côté favorable de l'endroit où vous seriez réellement exécuté." },
+    { type: "heading",text: "4. Des cotations périmées ou retardées peuvent fausser l'un ou l'autre chiffre" },
+    { type: "paragraph",html: "Les deux valorisations ne valent que ce que valent les données qui les alimentent. Si vos données de marché sont retardées, non souscrites ou en décalage, le prix « actuel » d'une des applications, voire des deux, peut être périmé, ce qui élargit l'écart apparent pour des raisons sans rapport avec LAST vs bid/ask. Avant de conclure qu'il s'agit de la méthode de valorisation, vérifiez que vous recevez des données en temps réel sur l'appareil qui paraît décalé. Un flux retardé sur une application et un flux en direct sur l'autre feront paraître deux méthodes correctes encore plus éloignées qu'elles ne le sont." },
+    { type: "heading",text: "5. Il ne s'agit que du P&L ouvert, le P&L réalisé concorde toujours" },
+    { type: "paragraph",html: "Voici la partie rassurante. Toute cette différence réside dans le P&amp;L <em>non réalisé</em> d'une position ouverte. Dès que vous clôturez, votre résultat réalisé est calculé à partir de votre prix d'exécution réel, et cette exécution est la même quelle que soit l'application que vous regardiez. Les deux applications peuvent donc diverger toute la journée tant qu'un trade est en cours, puis s'aligner sur exactement le même chiffre réalisé une fois clôturé. Si votre historique de trades clôturés concorde entre le bureau et Pulse, rien n'est anormal : vous regardiez simplement deux estimations différentes de la position ouverte." },
+    { type: "heading",text: "Comment lire le bon chiffre de P&L : pas à pas" },
+    { type: "heading",text: "Étape 1 : Précisez ce que vous demandez réellement" },
+    { type: "paragraph",html: "Clarifiez d'abord la question, car elle détermine quel chiffre compte :" },
+    {
+      type: "list",
+      items: [
+        "Si vous demandez <strong class='text-white'>« combien vais-je encaisser net si je clôture maintenant ? »</strong>, c'est une question de valeur de liquidation, et la valeur bid/ask (Pulse) est la réponse honnête.",
+        "Si vous demandez <strong class='text-white'>« où le contrat a-t-il été négocié en dernier ? »</strong>, c'est la valorisation au dernier prix du bureau, utile pour un coup d'œil rapide sur un instrument liquide.",
+        "Pour gérer le risque et planifier vos sorties sur tout ce qui est peu profond, utilisez par défaut la valeur bid/ask. C'est celle qui résiste à un ordre réel.",
+      ],
+    },
+    { type: "heading",text: "Étape 2 : Recoupez le bid et l'ask en direct dans le DOM" },
+    { type: "paragraph",html: "Vous n'avez pas besoin de passer sur votre téléphone pour obtenir le chiffre fidèle. Ouvrez l'échelle de profondeur de marché ou la cotation du contrat sur le bureau et lisez directement les cotations en direct :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrir le DOM ou le panneau de cotation", html: "Ouvrez le DOM (ou le panneau de cotation) du contrat que vous détenez." },
+        { title: "Comparer bid, ask et dernier prix", html: "Notez le <strong class='text-white'>bid</strong> et l'<strong class='text-white'>ask</strong> actuels, ainsi que l'écart du dernier prix (<strong class='text-white'>last</strong>) par rapport à eux. Un grand écart entre eux est votre signal d'alerte : le P&amp;L du bureau est valorisé à un prix auquel vous ne pouvez pas réellement sortir." },
+        { title: "Revaloriser la position manuellement", html: "Valorisez une <strong class='text-white'>position longue</strong> au bid et une <strong class='text-white'>position courte</strong> à l'ask. Vous retrouvez ainsi, directement sur le bureau, le même chiffre réaliste que Pulse vous affiche." },
+      ],
+    },
+    { type: "heading",text: "Étape 3 : Utilisez la valeur bid/ask pour vos décisions de sortie et de risque" },
+    { type: "paragraph",html: "Une fois que vous voyez les deux valorisations, servez-vous de chacune pour ce qu'elle fait de mieux :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Fondez vos décisions de sortie et de stop sur la valeur bid/ask.</strong> Si vous deviez sortir au bid, dimensionnez et gérez le trade par rapport à ce chiffre, pas par rapport à la valorisation plus flatteuse au dernier prix.",
+        "<strong class='text-white'>Vérifiez que vos données sont en direct</strong> sur l'appareil auquel vous vous fiez. Un flux retardé rend toute valorisation peu fiable ; assurez-vous que le contrat n'est ni retardé ni non souscrit avant d'agir sur son P&amp;L.",
+        "<strong class='text-white'>Ne poursuivez pas l'écart comme un bogue.</strong> Il ne sera pas « corrigé », car rien n'est cassé. Rapprochez-le après la clôture : le P&amp;L réalisé concordera dans les deux applications, à chaque fois.",
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Ce que vous voyez","Ce que cela signifie","Que faire"], rows: [
+      ["Le bureau affiche une perte plus faible que Pulse sur la même position","Le bureau valorise au dernier prix ; Pulse au bid auquel vous sortiriez","Fiez-vous à la valeur bid/ask pour la vraie valeur de sortie"],
+      ["Les chiffres concordent sur ES/NQ mais divergent sur les options","Spread serré vs large : le dernier prix et le bid/ask ne divergent que sur un marché peu profond","C'est normal ; utilisez le bid/ask sur les contrats illiquides"],
+      ["Le P&L ouvert diffère, les trades clôturés concordent","Seul le P&L non réalisé utilise des valorisations différentes","Rien à corriger, le P&L réalisé repose sur l'exécution"],
+      ["L'écart paraît énorme et les cotations semblent figées","Données de marché retardées ou non souscrites sur un appareil","Vérifiez les données en temps réel avant d'agir"],
+      ["Le P&L du bureau « flatte » une position longue","La dernière transaction s'est imprimée près de l'ask, au-dessus du bid","Revalorisez la position longue au bid actuel"],
+      ["La position courte paraît pire sur Pulse que sur le bureau","Pulse valorise la position courte à l'ask auquel vous la rachèteriez","Valorisez la position courte à l'ask, pas au dernier prix"],
+      ["Vous voulez le vrai chiffre sur le bureau","L'affichage P&L du bureau utilise le dernier prix, mais le DOM montre le bid/ask","Lisez le bid/ask dans le DOM et revalorisez manuellement"],
+    ] },
+    { type: "heading",text: "Des sorties plus propres avec PickMyTrade" },
+    { type: "paragraph",html: "L'écart entre bureau et Pulse compte surtout à un moment précis, la sortie, et c'est exactement là que se fier à l'œil à un P&amp;L ouvert potentiellement trompeur vous coûte cher. PickMyTrade s'intercale entre vos alertes TradingView et Tradovate pour que vos sorties se déclenchent à des niveaux de prix définis plutôt que sur un affichage de P&amp;L dont vous devez douter :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Stops et objectifs basés sur des règles</strong>, les brackets s'attachent à de vrais niveaux de prix, de sorte que vous ne décidez pas de renoncer à partir d'une valorisation au dernier prix qui flatte la position.",
+        "<strong class='text-white'>Routage d'ordres cohérent</strong>, chaque alerte arrive avec un symbole et une taille validés, vos exécutions sont donc propres et votre P&amp;L se rapproche ensuite sans surprise.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, la même sortie est répliquée sur tous les comptes connectés, de sorte que la particularité du P&amp;L ouvert d'un seul écran ne dicte pas une décision incohérente.",
+        "<strong class='text-white'>Fonctionne avec vos données en direct</strong>, l'automatisation s'appuie sur l'évolution du prix, pas sur une valorisation retardée ou périmée sur un seul appareil.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Ha una posizione aperta, dà un'occhiata alla piattaforma desktop e questa dice che sta perdendo quaranta dollari. Poi prende il telefono, apre Pulse e la stessa posizione mostra una perdita maggiore. Nulla si è sincronizzato male, nessuno ha mosso il mercato tra le due occhiate, eppure i due numeri non concordano. Prima di aprire un ticket di supporto o di dubitare delle Sue esecuzioni, ecco la versione breve: si tratta di una <strong class='text-white'>differenza di P&amp;L di Tradovate tra l'app desktop e l'app mobile Pulse</strong>, e dipende dal prezzo che ciascuna usa per valutare una posizione in corso. Il desktop valuta il Suo P&amp;L aperto all'<em>ultimo prezzo negoziato</em>. Pulse lo valuta al <em>bid/ask</em>. In un mercato stretto non se ne accorgerà mai. Su un'opzione illiquida con uno spread ampio, il numero del desktop può sottostimare silenziosamente quanto vale davvero il trade se dovesse uscire adesso. Questa guida Le mostra perché succede, di quale numero fidarsi e come leggere il vero valore di uscita." },
+    {
+      type: "checklist",
+      heading: "Risposta rapida: di quale P&L fidarsi",
+      items: [
+        "<strong class='text-white'>Si fidi del valore bid/ask per le decisioni di uscita</strong>, Pulse valuta il P&amp;L aperto al bid/ask, cioè al prezzo a cui verrebbe realmente eseguito, quindi riflette il reale valore di liquidazione.",
+        "<strong class='text-white'>Consideri il numero del desktop una valutazione approssimativa</strong>, si basa sull'ultima operazione, che può trovarsi sul lato favorevole dello spread e gonfiare la posizione.",
+        "<strong class='text-white'>Nessuna delle due app è difettosa</strong>, è una differenza di valutazione voluta, non un bug di sincronizzazione né un numero sbagliato.",
+        "<strong class='text-white'>Riguarda solo il P&amp;L aperto</strong>, una volta chiusa la posizione, il P&amp;L realizzato è identico su entrambe le app perché si basa sulla Sua esecuzione effettiva.",
+        "<strong class='text-white'>Il divario si allarga sui contratti illiquidi</strong>, opzioni su future, strike lontani e mercati sottili. Su ES o NQ le due app concordano.",
+        "<strong class='text-white'>Verifichi sul DOM</strong>, legga bid e ask in tempo reale, valuti una long al bid e una short all'ask, e avrà il valore di uscita veritiero.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significa davvero il P&L «LAST vs Bid/Ask»" },
+    { type: "paragraph",html: "Il P&amp;L aperto (detto anche P&amp;L non realizzato) è una stima. Il Suo prezzo di ingresso è fisso, ma il «prezzo corrente» del calcolo è un bersaglio mobile, e c'è più di un modo onesto di sceglierlo. È tutta qui la questione. Entrambe le app di Tradovate prendono il Suo ingresso, applicano il valore del punto del contratto e la Sua dimensione, e lo sottraggono da una valutazione corrente. Semplicemente non concordano su cosa significhi «corrente»." },
+    { type: "paragraph",html: "La <strong class='text-white'>piattaforma desktop usa l'ultimo prezzo negoziato</strong>, il prezzo a cui è stata stampata la transazione più recente. È il numero che la maggior parte delle persone immagina quando pensa a «il prezzo». L'<strong class='text-white'>app mobile Pulse usa il bid/ask</strong>, le quotazioni in tempo reale che mostrano quanto i compratori sono disposti a pagare e quanto chiedono i venditori. Per un contratto che viene negoziato di continuo, l'ultimo prezzo e il bid/ask sono sostanzialmente sovrapposti, separati al massimo da un tick, ed entrambe le valutazioni arrivano nello stesso punto." },
+    { type: "paragraph",html: "La divergenza si apre quando il mercato si assottiglia. In un order book tranquillo, un solo ordine aggressivo può trascinare l'ultimo prezzo da un lato e lasciarlo lì, perché nient'altro viene negoziato. Nel frattempo, bid e ask in attesa raccontano una storia più aggiornata su dove potrebbe davvero operare. Se valuta la Sua posizione su quell'ultima stampa ormai vecchia, ottiene un numero che sullo schermo sembra a posto ma non reggerebbe il contatto con un vero ordine di uscita." },
+    { type: "heading",text: "Perché il Suo P&L di Tradovate differisce tra le app" },
+    { type: "heading",text: "1. Il desktop valuta le posizioni aperte all'ultima operazione" },
+    { type: "paragraph",html: "Sulla piattaforma desktop, il P&amp;L aperto della Sua posizione è determinato dall'ultimo prezzo negoziato del contratto. Quando quel contratto è negoziato attivamente, è perfettamente ragionevole: l'ultima stampa è un buon indicatore del valore equo. Il problema è che l'ultima operazione Le dice dove <em>qualcun altro</em> ha operato un attimo fa, non dove <em>Lei</em> può operare adesso. Se l'ultima esecuzione ha colpito l'ask, una posizione long valutata a quel prezzo appare migliore del prezzo che realizzerebbe vendendo sul bid." },
+    { type: "heading",text: "2. Pulse valuta la stessa posizione al bid/ask" },
+    { type: "paragraph",html: "Pulse sceglie la strada più prudente e fedele all'esecuzione. Valuta una long al bid, il prezzo che un compratore è pronto a pagarLe, e una short all'ask, il prezzo offerto da un venditore. È il vero valore di liquidazione: prema il pulsante per chiudere e circa qui verrà eseguito. Ecco perché il numero di Pulse appare spesso peggiore di quello del desktop con uno spread ampio. Non è pessimista; è semplicemente letterale su ciò che il mercato Le offre." },
+    { type: "heading",text: "3. Opzioni illiquide e spread ampi spalancano il divario" },
+    { type: "paragraph",html: "È qui che la differenza passa da accademica a dolorosa. Opzioni su future, strike molto out-of-the-money, contratti a scadenza lontana e qualsiasi mercato sottile possono avere uno spread di diversi tick, a volte una grande percentuale del valore dell'opzione. Immagini un contratto con un bid di $0.75 e un ask di $1.00. Acquista a $1.00 e, se subito rivendesse sul bid di $0.75, perderebbe il 25% prima ancora che il mercato si muova di un millimetro. Il desktop, valutando a un'ultima operazione stampata vicino a $1.00, Le mostra più o meno zero. Pulse, valutando al bid di $0.75, mostra il quarto di punto che subirebbe davvero. Stessa posizione, stesso istante, due schermate molto diverse, e la valutazione all'ultima operazione cade quasi sempre sul lato favorevole rispetto a dove verrebbe davvero eseguito." },
+    { type: "heading",text: "4. Quotazioni vecchie o ritardate possono distorcere l'uno o l'altro numero" },
+    { type: "paragraph",html: "Entrambe le valutazioni valgono quanto i dati che le alimentano. Se i Suoi dati di mercato sono ritardati, non sottoscritti o in ritardo, il prezzo «corrente» su una o su entrambe le app può essere obsoleto, il che amplia il divario apparente per ragioni che non hanno nulla a che fare con LAST vs bid/ask. Prima di concludere che dipende dal metodo di valutazione, verifichi di ricevere dati in tempo reale sul dispositivo che sembra sfasato. Un feed ritardato su un'app e uno in tempo reale sull'altra faranno sembrare due metodi corretti ancora più distanti di quanto siano." },
+    { type: "heading",text: "5. Riguarda solo il P&L aperto, il P&L realizzato concorda sempre" },
+    { type: "paragraph",html: "Ecco la parte rassicurante. Tutta questa differenza vive nel P&amp;L <em>non realizzato</em> di una posizione aperta. Nel momento in cui chiude, il Suo risultato realizzato viene calcolato dal prezzo di esecuzione effettivo, e quell'esecuzione è la stessa a prescindere dall'app che stava guardando. Le due app possono quindi divergere tutto il giorno mentre un trade è aperto, e poi allinearsi esattamente sullo stesso numero realizzato una volta chiuso. Se lo storico dei trade chiusi coincide tra desktop e Pulse, non c'è nulla di sbagliato: stava solo guardando due diverse stime della posizione aperta." },
+    { type: "heading",text: "Come leggere il numero di P&L giusto: passo dopo passo" },
+    { type: "heading",text: "Passo 1: Stabilisca che cosa sta davvero chiedendo" },
+    { type: "paragraph",html: "Chiarisca prima la domanda, perché cambia quale numero conta:" },
+    {
+      type: "list",
+      items: [
+        "Se chiede <strong class='text-white'>«quanto incasserò netto se chiudo adesso?»</strong>, è una domanda sul valore di liquidazione, e il valore bid/ask (Pulse) è la risposta onesta.",
+        "Se chiede <strong class='text-white'>«a quanto è stato negoziato l'ultima volta il contratto?»</strong>, è la valutazione all'ultimo prezzo sul desktop, utile per un controllo rapido su uno strumento liquido.",
+        "Per gestire il rischio e pianificare le uscite su qualsiasi cosa sia sottile, usi per impostazione predefinita il valore bid/ask. È quello che sopravvive a un ordine reale.",
+      ],
+    },
+    { type: "heading",text: "Passo 2: Verifichi bid e ask in tempo reale sul DOM" },
+    { type: "paragraph",html: "Non deve passare al telefono per ottenere il numero veritiero. Apra sul desktop la scala di profondità di mercato o la quotazione del contratto e legga direttamente le quotazioni in tempo reale:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra il DOM o il pannello delle quotazioni", html: "Apra il DOM (o il pannello delle quotazioni) del contratto che detiene." },
+        { title: "Confronti bid, ask e ultimo prezzo", html: "Annoti <strong class='text-white'>bid</strong> e <strong class='text-white'>ask</strong> correnti e quanto l'ultima stampa (<strong class='text-white'>last</strong>) dista da essi. Un grande divario tra loro è il Suo segnale d'allarme: il P&amp;L del desktop è valutato a un prezzo al quale non può davvero uscire." },
+        { title: "Rivaluti la posizione manualmente", html: "Valuti una <strong class='text-white'>long</strong> al bid e una <strong class='text-white'>short</strong> all'ask. Otterrà così, direttamente sul desktop, lo stesso valore realistico che Le mostra Pulse." },
+      ],
+    },
+    { type: "heading",text: "Passo 3: Usi il valore bid/ask per le decisioni di uscita e di rischio" },
+    { type: "paragraph",html: "Una volta che vede entrambe le valutazioni, le usi per ciò per cui ciascuna è adatta:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Basi le decisioni di uscita e di stop sul valore bid/ask.</strong> Se dovesse uscire al bid, dimensioni e gestisca il trade su quel numero, non sulla valutazione più benevola all'ultimo prezzo.",
+        "<strong class='text-white'>Verifichi che i dati siano in tempo reale</strong> sul dispositivo di cui si fida. Un feed ritardato rende inaffidabile qualsiasi valutazione; si assicuri che il contratto non risulti ritardato o non sottoscritto prima di agire sul suo P&amp;L.",
+        "<strong class='text-white'>Non rincorra la discrepanza come se fosse un bug.</strong> Non verrà «corretta», perché nulla è rotto. La riconcili dopo la chiusura: il P&amp;L realizzato coinciderà su entrambe le app, ogni volta.",
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Che cosa vede","Che cosa significa","Che cosa fare"], rows: [
+      ["Il desktop mostra una perdita minore di Pulse sulla stessa posizione","Il desktop valuta all'ultimo prezzo; Pulse al bid al quale uscirebbe","Si fidi del valore bid/ask per il reale valore di uscita"],
+      ["I numeri coincidono su ES/NQ ma divergono sulle opzioni","Spread stretto vs ampio: ultimo prezzo e bid/ask divergono solo quando il mercato è sottile","È previsto; usi il bid/ask sui contratti illiquidi"],
+      ["Il P&L aperto differisce, i trade chiusi coincidono","Solo il P&L non realizzato usa valutazioni diverse","Nulla da correggere, il P&L realizzato si basa sull'esecuzione"],
+      ["Il divario sembra enorme e le quotazioni paiono ferme","Dati di mercato ritardati o non sottoscritti su un dispositivo","Confermi di avere dati in tempo reale prima di agire"],
+      ["Il P&L del desktop «gonfia» una posizione long","L'ultima operazione è stata stampata vicino all'ask, sopra il bid","Rivaluti la long al bid corrente"],
+      ["La short appare peggiore su Pulse che sul desktop","Pulse valuta la short all'ask al quale la ricomprerebbe","Valuti la short all'ask, non all'ultima stampa"],
+      ["Vuole il numero reale sul desktop","La visualizzazione P&L del desktop usa l'ultimo prezzo, ma il DOM mostra bid/ask","Legga bid/ask sul DOM e rivaluti manualmente"],
+    ] },
+    { type: "heading",text: "Uscite più pulite con PickMyTrade" },
+    { type: "paragraph",html: "Il divario tra desktop e Pulse conta soprattutto in un momento, l'uscita, ed è esattamente lì che valutare a occhio un P&amp;L aperto potenzialmente fuorviante Le costa caro. PickMyTrade si colloca tra i Suoi alert di TradingView e Tradovate, così le Sue uscite scattano a livelli di prezzo definiti anziché su una lettura del P&amp;L di cui deve dubitare:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Stop e target basati su regole</strong>, i bracket si agganciano a veri livelli di prezzo, quindi non decide di mollare sulla base di una valutazione all'ultimo prezzo che gonfia la posizione.",
+        "<strong class='text-white'>Instradamento ordini coerente</strong>, ogni alert arriva con simbolo e quantità validati, così le Sue esecuzioni sono pulite e il P&amp;L si riconcilia in seguito senza sorprese.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, la stessa uscita viene replicata su tutti gli account collegati, così la stranezza del P&amp;L aperto di un singolo schermo non guida una decisione incoerente.",
+        "<strong class='text-white'>Funziona con i Suoi dati in tempo reale</strong>, l'automazione si basa sull'andamento del prezzo, non su una valutazione ritardata o obsoleta su un solo dispositivo.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Automate Exits Off Price, Not a Misleading P&L", de: "Automatisieren Sie Ausstiege über den Kurs, nicht über ein irreführendes P&L", es: "Automatice las salidas según el precio, no según un P&L engañoso", fr: "Automatisez vos sorties sur le prix, pas sur un P&L trompeur", it: "Automatizzi le uscite sul prezzo, non su un P&L fuorviante" },
+  ctaText: { en: "Route TradingView alerts straight to Tradovate so your exits fire on defined price levels instead of a P&L readout you have to second-guess.", de: "Leiten Sie TradingView-Alerts direkt an Tradovate weiter, damit Ihre Ausstiege an definierten Preisniveaus ausgelöst werden – statt an einer P&L-Anzeige, die Sie erst anzweifeln müssen.", es: "Envíe las alertas de TradingView directamente a Tradovate para que sus salidas se ejecuten en niveles de precio definidos, en lugar de en una lectura de P&L que usted tiene que poner en duda.", fr: "Acheminez vos alertes TradingView directement vers Tradovate pour que vos sorties se déclenchent à des niveaux de prix définis plutôt que sur un affichage de P&L dont vous devez douter.", it: "Inoltri gli alert di TradingView direttamente a Tradovate, così le Sue uscite scattano a livelli di prezzo definiti anziché su una lettura del P&L di cui deve dubitare." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why is my Tradovate P&L different on desktop and mobile?", a: "The two apps value your open position differently. The desktop platform marks open P&L to the last traded price, while the Pulse mobile app marks it to the current bid/ask. On a liquid contract those prices sit within a tick of each other, so the numbers agree. On an illiquid contract with a wide spread, they can diverge noticeably." },
+    { q: "Which Tradovate P&L number should I trust, desktop or Pulse?", a: "For deciding what a position is worth if you exit right now, trust the bid/ask-based figure shown in Pulse. You close a long by selling into the bid and cover a short by buying the offer, so the bid/ask value reflects what you'd actually receive. The last-trade mark on desktop can sit on the favorable side of that." },
+    { q: "Is one of the Tradovate apps broken or showing wrong P&L?", a: "No. Neither app is broken and this isn't a sync error. Both numbers are computed correctly from live data; they just use different reference prices for an open position. It's a by-design valuation difference, not a bug." },
+    { q: "Why does the last-price P&L look better than the bid/ask P&L?", a: "Because your true exit price is the far side of the spread from where a trade just printed. A long exits at the bid, which is below the ask where the last trade may have filled, so a last-based mark flatters the position. On a wide spread that gap is real money the desktop number isn't showing you." },
+    { q: "Why do I only see the difference on some contracts, not on ES or NQ?", a: "Highly liquid front-month futures like ES and NQ have a one-tick spread, so last, bid, and ask are essentially the same price and both apps agree. The gap shows up on illiquid instruments such as options on futures, deep out-of-the-money strikes, far-dated contracts, and thin markets where the bid/ask spread is wide." },
+    { q: "Will my realized P&L differ between the apps after I close?", a: "No. Realized P&L is based on your actual fill prices, which are the same no matter which app you view them in. The desktop-vs-Pulse difference only affects open (unrealized) P&L on a live position. Once the trade is closed, both apps show the identical realized result." },
+    { q: "How can I see the true exit value on the desktop platform?", a: "Pull up the DOM or quote for the contract and read the live bid and ask. For a long, value the position at the bid; for a short, value it at the ask. That gives you the same realistic exit figure Pulse uses, without relying on the last-trade mark on the desktop P&L display." },
+  ], de: [
+    { q: "Warum unterscheidet sich mein Tradovate-P&L auf Desktop und Mobilgerät?", a: "Die beiden Apps bewerten Ihre offene Position unterschiedlich. Die Desktop-Plattform bewertet das offene P&L zum letzten gehandelten Kurs, während die mobile Pulse-App es zum aktuellen Bid/Ask bewertet. Bei einem liquiden Kontrakt liegen diese Kurse höchstens einen Tick auseinander, sodass die Zahlen übereinstimmen. Bei einem illiquiden Kontrakt mit großem Spread können sie spürbar voneinander abweichen." },
+    { q: "Welcher Tradovate-P&L-Zahl sollte ich vertrauen, Desktop oder Pulse?", a: "Um zu beurteilen, was eine Position wert ist, wenn Sie jetzt aussteigen, vertrauen Sie dem auf Bid/Ask basierenden Wert in Pulse. Eine Long-Position schließen Sie, indem Sie in den Bid verkaufen, eine Short-Position, indem Sie zum Ask kaufen – der Bid/Ask-Wert zeigt also, was Sie tatsächlich erhalten würden. Die Bewertung zum letzten Kurs auf dem Desktop kann auf der günstigeren Seite davon liegen." },
+    { q: "Ist eine der Tradovate-Apps defekt oder zeigt ein falsches P&L an?", a: "Nein. Keine der Apps ist defekt, und es handelt sich nicht um einen Synchronisationsfehler. Beide Zahlen werden korrekt aus Live-Daten berechnet; sie verwenden lediglich unterschiedliche Referenzkurse für eine offene Position. Es ist ein bewusster Unterschied in der Bewertung, kein Fehler." },
+    { q: "Warum sieht das P&L auf Basis des letzten Kurses besser aus als das P&L auf Basis von Bid/Ask?", a: "Weil Ihr tatsächlicher Ausstiegskurs auf der gegenüberliegenden Seite des Spreads liegt als der Kurs, zu dem zuletzt ein Handel stattfand. Eine Long-Position wird zum Bid geschlossen, der unter dem Ask liegt, an dem der letzte Handel möglicherweise ausgeführt wurde – eine Bewertung zum letzten Kurs schmeichelt der Position also. Bei einem großen Spread ist diese Differenz echtes Geld, das die Desktop-Zahl Ihnen nicht anzeigt." },
+    { q: "Warum sehe ich den Unterschied nur bei manchen Kontrakten, nicht bei ES oder NQ?", a: "Hochliquide Front-Month-Futures wie ES und NQ haben einen Spread von einem Tick, sodass Last, Bid und Ask praktisch identisch sind und beide Apps übereinstimmen. Die Differenz zeigt sich bei illiquiden Instrumenten wie Optionen auf Futures, weit aus dem Geld liegenden Strikes, weit entfernten Fälligkeiten und dünnen Märkten, in denen der Bid/Ask-Spread groß ist." },
+    { q: "Weicht mein realisiertes P&L nach dem Schließen zwischen den Apps ab?", a: "Nein. Das realisierte P&L basiert auf Ihren tatsächlichen Ausführungspreisen, die unabhängig davon gleich sind, in welcher App Sie sie ansehen. Der Unterschied zwischen Desktop und Pulse betrifft nur das offene (nicht realisierte) P&L einer laufenden Position. Sobald der Trade geschlossen ist, zeigen beide Apps exakt dasselbe realisierte Ergebnis." },
+    { q: "Wie kann ich den tatsächlichen Ausstiegswert auf der Desktop-Plattform sehen?", a: "Öffnen Sie das DOM oder die Kursanzeige des Kontrakts und lesen Sie den aktuellen Bid und Ask ab. Bewerten Sie eine Long-Position zum Bid und eine Short-Position zum Ask. So erhalten Sie denselben realistischen Ausstiegswert, den Pulse verwendet, ohne sich auf die Bewertung zum letzten Kurs in der P&L-Anzeige des Desktops zu verlassen." },
+  ], es: [
+    { q: "¿Por qué mi P&L de Tradovate es diferente en el escritorio y en el móvil?", a: "Las dos apps valoran su posición abierta de forma distinta. La plataforma de escritorio valora el P&L abierto al último precio negociado, mientras que la app móvil Pulse lo valora al bid/ask actual. En un contrato líquido esos precios están a un tick de distancia como máximo, así que las cifras coinciden. En un contrato ilíquido con un spread amplio, pueden divergir de forma notable." },
+    { q: "¿En qué cifra de P&L de Tradovate debo confiar, la del escritorio o la de Pulse?", a: "Para decidir cuánto vale una posición si sale ahora mismo, confíe en la cifra basada en bid/ask que muestra Pulse. Una posición larga se cierra vendiendo al bid y una corta se cubre comprando al ask, de modo que el valor bid/ask refleja lo que realmente recibiría. La valoración al último precio en el escritorio puede quedar en el lado favorable de esa cifra." },
+    { q: "¿Alguna de las apps de Tradovate está rota o muestra un P&L incorrecto?", a: "No. Ninguna de las apps está rota y no se trata de un error de sincronización. Ambas cifras se calculan correctamente a partir de datos en vivo; simplemente usan precios de referencia distintos para una posición abierta. Es una diferencia de valoración intencionada, no un fallo." },
+    { q: "¿Por qué el P&L al último precio se ve mejor que el P&L al bid/ask?", a: "Porque su precio de salida real está en el lado opuesto del spread respecto de donde acaba de cruzarse una operación. Una posición larga sale al bid, que está por debajo del ask al que pudo ejecutarse la última operación, así que una valoración al último precio favorece a la posición. Con un spread amplio, esa diferencia es dinero real que la cifra del escritorio no le está mostrando." },
+    { q: "¿Por qué solo veo la diferencia en algunos contratos y no en ES ni NQ?", a: "Los futuros líquidos del primer vencimiento, como ES y NQ, tienen un spread de un tick, por lo que el último precio, el bid y el ask son prácticamente el mismo y ambas apps coinciden. La diferencia aparece en instrumentos ilíquidos como opciones sobre futuros, strikes muy fuera del dinero, contratos de vencimiento lejano y mercados poco profundos donde el spread bid/ask es amplio." },
+    { q: "¿Diferirá mi P&L realizado entre las apps después de cerrar?", a: "No. El P&L realizado se basa en sus precios de ejecución reales, que son los mismos sin importar en qué app los consulte. La diferencia entre escritorio y Pulse solo afecta al P&L abierto (no realizado) de una posición en curso. Una vez cerrada la operación, ambas apps muestran exactamente el mismo resultado realizado." },
+    { q: "¿Cómo puedo ver el valor real de salida en la plataforma de escritorio?", a: "Abra el DOM o la cotización del contrato y lea el bid y el ask en vivo. En una posición larga, valórela al bid; en una corta, al ask. Eso le da la misma cifra de salida realista que usa Pulse, sin depender de la valoración al último precio que muestra el P&L del escritorio." },
+  ], fr: [
+    { q: "Pourquoi mon P&L Tradovate est-il différent sur le bureau et sur mobile ?", a: "Les deux applications valorisent votre position ouverte différemment. La plateforme de bureau valorise le P&L ouvert au dernier prix négocié, tandis que l'application mobile Pulse le valorise au bid/ask actuel. Sur un contrat liquide, ces prix sont à un tick l'un de l'autre au plus, donc les chiffres concordent. Sur un contrat illiquide avec un large spread, ils peuvent diverger sensiblement." },
+    { q: "Quel chiffre de P&L Tradovate dois-je croire, celui du bureau ou celui de Pulse ?", a: "Pour savoir ce que vaut une position si vous sortez maintenant, fiez-vous à la valeur basée sur le bid/ask affichée dans Pulse. Vous clôturez une position longue en vendant au bid et vous couvrez une position courte en achetant à l'ask : la valeur bid/ask reflète donc ce que vous recevriez réellement. La valorisation au dernier prix sur le bureau peut se situer du côté favorable de ce chiffre." },
+    { q: "L'une des applications Tradovate est-elle défaillante ou affiche-t-elle un P&L erroné ?", a: "Non. Aucune des deux applications n'est défaillante et il ne s'agit pas d'une erreur de synchronisation. Les deux chiffres sont calculés correctement à partir de données en direct ; ils utilisent simplement des prix de référence différents pour une position ouverte. C'est une différence de valorisation voulue, pas un bogue." },
+    { q: "Pourquoi le P&L au dernier prix paraît-il meilleur que le P&L au bid/ask ?", a: "Parce que votre vrai prix de sortie se trouve de l'autre côté du spread par rapport à l'endroit où une transaction vient de s'imprimer. Une position longue sort au bid, qui est inférieur à l'ask auquel la dernière transaction a pu être exécutée ; une valorisation au dernier prix flatte donc la position. Sur un large spread, cet écart représente de l'argent réel que le chiffre du bureau ne vous montre pas." },
+    { q: "Pourquoi ne vois-je la différence que sur certains contrats, pas sur ES ou NQ ?", a: "Les contrats à terme très liquides de l'échéance la plus proche, comme ES et NQ, ont un spread d'un tick ; le dernier prix, le bid et l'ask sont donc pratiquement identiques et les deux applications concordent. L'écart apparaît sur les instruments illiquides tels que les options sur contrats à terme, les strikes très hors de la monnaie, les contrats à échéance lointaine et les marchés peu profonds où le spread bid/ask est large." },
+    { q: "Mon P&L réalisé différera-t-il entre les applications après la clôture ?", a: "Non. Le P&L réalisé repose sur vos prix d'exécution réels, qui sont les mêmes quelle que soit l'application dans laquelle vous les consultez. La différence entre bureau et Pulse n'affecte que le P&L ouvert (non réalisé) d'une position en cours. Une fois le trade clôturé, les deux applications affichent exactement le même résultat réalisé." },
+    { q: "Comment voir la vraie valeur de sortie sur la plateforme de bureau ?", a: "Ouvrez le DOM ou la cotation du contrat et lisez le bid et l'ask en direct. Pour une position longue, valorisez-la au bid ; pour une position courte, à l'ask. Vous obtenez ainsi le même chiffre de sortie réaliste que celui utilisé par Pulse, sans vous fier à la valorisation au dernier prix de l'affichage P&L du bureau." },
+  ], it: [
+    { q: "Perché il mio P&L di Tradovate è diverso su desktop e su mobile?", a: "Le due app valutano la Sua posizione aperta in modo diverso. La piattaforma desktop valuta il P&L aperto all'ultimo prezzo negoziato, mentre l'app mobile Pulse lo valuta al bid/ask corrente. Su un contratto liquido questi prezzi distano al massimo un tick, quindi i numeri coincidono. Su un contratto illiquido con uno spread ampio possono divergere in modo evidente." },
+    { q: "Di quale numero di P&L di Tradovate devo fidarmi, desktop o Pulse?", a: "Per capire quanto vale una posizione se esce adesso, si fidi del valore basato su bid/ask mostrato in Pulse. Una posizione long si chiude vendendo sul bid e una short si copre acquistando all'ask, quindi il valore bid/ask riflette ciò che riceverebbe davvero. La valutazione all'ultimo prezzo sul desktop può trovarsi sul lato favorevole rispetto a quel valore." },
+    { q: "Una delle app di Tradovate è difettosa o mostra un P&L sbagliato?", a: "No. Nessuna delle due app è difettosa e non si tratta di un errore di sincronizzazione. Entrambi i numeri sono calcolati correttamente da dati in tempo reale; usano semplicemente prezzi di riferimento diversi per una posizione aperta. È una differenza di valutazione voluta, non un bug." },
+    { q: "Perché il P&L all'ultimo prezzo sembra migliore di quello al bid/ask?", a: "Perché il Suo vero prezzo di uscita si trova sul lato opposto dello spread rispetto a dove è appena stata stampata un'operazione. Una posizione long esce al bid, che è inferiore all'ask a cui potrebbe essere stata eseguita l'ultima operazione, quindi una valutazione all'ultimo prezzo gonfia la posizione. Con uno spread ampio, quella differenza è denaro reale che il numero del desktop non Le mostra." },
+    { q: "Perché vedo la differenza solo su alcuni contratti e non su ES o NQ?", a: "I future front-month molto liquidi come ES e NQ hanno uno spread di un tick, quindi ultimo prezzo, bid e ask sono sostanzialmente lo stesso prezzo ed entrambe le app concordano. Il divario compare su strumenti illiquidi come opzioni su future, strike molto out-of-the-money, contratti a scadenza lontana e mercati sottili in cui lo spread bid/ask è ampio." },
+    { q: "Il mio P&L realizzato differirà tra le app dopo la chiusura?", a: "No. Il P&L realizzato si basa sui Suoi prezzi di esecuzione effettivi, che sono gli stessi indipendentemente dall'app in cui li visualizza. La differenza tra desktop e Pulse riguarda solo il P&L aperto (non realizzato) di una posizione in corso. Una volta chiuso il trade, entrambe le app mostrano esattamente lo stesso risultato realizzato." },
+    { q: "Come posso vedere il vero valore di uscita sulla piattaforma desktop?", a: "Apra il DOM o la quotazione del contratto e legga bid e ask in tempo reale. Per una posizione long, la valuti al bid; per una short, all'ask. Otterrà lo stesso valore di uscita realistico usato da Pulse, senza affidarsi alla valutazione all'ultimo prezzo mostrata dal P&L del desktop." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc.; sie wird von Tradovate, Inc. weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par celle-ci. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; confirmez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né approvata o sponsorizzata da essa. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

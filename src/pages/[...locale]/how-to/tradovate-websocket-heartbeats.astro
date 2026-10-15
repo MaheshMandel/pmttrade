@@ -1,0 +1,249 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-websocket-heartbeats";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Keep the Tradovate WebSocket Alive With Heartbeats";
+const META_DESCRIPTION =
+  "Keep a Tradovate WebSocket alive by sending 2.5-second heartbeat frames and reconnecting on drops, so your live data and order stream stay connected.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate-WebSocket mit Heartbeats am Leben halten", es: "Mantenga activo el WebSocket de Tradovate con heartbeats", fr: "Garder le WebSocket Tradovate actif avec des heartbeats", it: "Mantenere attivo il WebSocket di Tradovate con gli heartbeat" },
+  dek: { en: "A Tradovate WebSocket isn't set-and-forget. Go quiet for a few seconds and the server cuts the line. The cure is a heartbeat, a tiny frame you send every 2.5 seconds to prove you're still listening.", de: "Ein Tradovate-WebSocket ist nichts, was man einmal einrichtet und vergisst. Schweigen Sie ein paar Sekunden lang, und der Server kappt die Leitung. Die Lösung ist ein Heartbeat: ein winziger Frame, den Sie alle 2.5 Sekunden senden, um zu zeigen, dass Sie noch zuhören.", es: "Un WebSocket de Tradovate no es de los que se configuran y se olvidan. Si guarda silencio unos segundos, el servidor corta la línea. La solución es un heartbeat: un pequeño frame que envía cada 2.5 segundos para demostrar que sigue escuchando.", fr: "Un WebSocket Tradovate n'est pas un outil que l'on configure puis que l'on oublie. Restez silencieux quelques secondes et le serveur coupe la ligne. La solution est un heartbeat : une toute petite trame que vous envoyez toutes les 2.5 secondes pour prouver que vous êtes toujours à l'écoute.", it: "Un WebSocket di Tradovate non si configura una volta per tutte. Se resta in silenzio per qualche secondo, il server interrompe la linea. La soluzione è un heartbeat: un minuscolo frame che invia ogni 2.5 secondi per dimostrare che è ancora in ascolto." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "A Tradovate WebSocket is the fast lane for quotes, fills, and DOM updates, one open connection instead of hammering the REST API for every tick. But it isn't set-and-forget. Go quiet for a few seconds and the server assumes your client wandered off, so it cuts the line. The cure is a heartbeat: a tiny frame you send every 2.5 seconds to prove you're still listening. Here's the full handshake, plus how to keep the socket up for hours without babysitting it." },
+    { type: "heading", text: "How the Tradovate Socket Talks" },
+    { type: "paragraph", html: "Every message on the socket is a <strong class='text-white'>frame</strong>, a single prefix character followed by an array of JSON. You only need to recognize four of them:" },
+    {
+      type: "table",
+      headers: ["Prefix", "Frame", "What it means"],
+      rows: [
+        ["o", "Open", "Sent once, right after the socket opens. This is your cue to authorize."],
+        ["h", "Heartbeat", "The server's own keep-alive. It skips these while it's actively streaming data to you."],
+        ["a", "Array", "The real payload: quotes, fills, and position and order events as JSON."],
+        ["c", "Close", "The connection is shutting down, run your cleanup and reconnect logic."],
+      ],
+    },
+    { type: "paragraph", html: "Your job: react to <code>o</code> by authorizing, read the <code>a</code> frames, and keep a steady heartbeat going so the server never thinks you've gone dark." },
+    { type: "heading", text: "Keep the WebSocket Alive: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the Socket and Wait for the \"o\" Frame", html: "Connect to the right endpoint first. The trading socket lives at <code>wss://demo.tradovateapi.com/v1/websocket</code> in the demo environment and <code>wss://live.tradovateapi.com/v1/websocket</code> for a funded account. Market data rides its own socket, <code>wss://md.tradovateapi.com/v1/websocket</code> for the live feed, or the <code>md-demo</code> host for the simulated one. The instant the connection opens, the server sends a lone <code>o</code>. Don't send anything before you see it." },
+        { title: "Authorize the Session", html: "As soon as that <code>o</code> lands, send your access token as the very first frame. The format is the request name, a request id, a blank query line, then the token as the body: <code>authorize\\n0\\n\\n{yourAccessToken}</code>. A <code>200</code> back means you're authenticated and the data can start flowing. Need a token? Grab one first through Tradovate API access, and if it expires mid-session, renew it before it lapses." },
+        { title: "Send a [] Heartbeat Every 2.5 Seconds", html: "This is the whole ballgame. Every <strong class='text-white'>2.5 seconds</strong>, send a frame whose text is exactly <code>[]</code>, an empty array, nothing more. As long as those heartbeats keep landing, the server holds the socket open. Let the gap stretch and it drops you. One thing that throws people: the server stops sending its own <code>h</code> frames while it's actively pushing data at you. That's normal, silence from the server side is no reason to stop your own heartbeats." },
+        { title: "Don't Trust setInterval in a Browser Tab", html: "Here's the trap that bites most browser apps. Background the tab and Chrome throttles <code>setInterval</code> and <code>setTimeout</code> to save power. Your clean 2.5-second beat stretches to ten, thirty, even sixty seconds, and the socket quietly dies while you're reading email in another tab. Move the timer off the main thread: run the heartbeat inside a <strong class='text-white'>Web Worker</strong>, which doesn't get throttled the same way when the tab loses focus. Running the connection in a <strong class='text-white'>Node.js</strong> process avoids it entirely, there's no inactive tab to throttle. A lighter trick is to fire heartbeats off incoming traffic, sending one whenever more than 2.5 seconds have passed since the last, but that only holds up while data keeps flowing." },
+        { title: "Detect a Dead Socket and Reconnect", html: "Even a flawless heartbeat won't survive dropped Wi-Fi or a server restart. Listen for the socket's <code>close</code> event, and treat a long stretch of silence from the server as a dead line too. When either fires, reconnect and re-authorize from scratch. Back off between attempts instead of hammering, start around one second and double the wait up to a cap near a minute, so a reconnect storm doesn't trip Tradovate's rate limits while you're already down. Once you're back, resubscribe to the quotes and events you were watching; the fresh socket starts blank." },
+      ],
+    },
+    { type: "heading", text: "The Authorize Frame and Heartbeat Frame" },
+    { type: "quote", html: "<code>// First frame after the \"o\" open frame:</code><br><code>authorize</code><br><code>0</code><br><code></code><br><code>{yourAccessToken}</code><br><br><code>// Sent every 2.5 seconds while connected:</code><br><code>[]</code>" },
+    { type: "heading", text: "Three Habits That Keep It Boring" },
+    { type: "paragraph", html: "Boring is the goal with a market-data feed. Keep the heartbeat on its own reliable timer, log every close code so you can tell a network blip from an auth failure, and always resubscribe after a reconnect. Get those three right and the socket will run through a full session without you thinking about it." },
+    { type: "heading", text: "Automate This with PickMyTrade" },
+    { type: "paragraph", html: "Don't want to build heartbeats, workers, and reconnect logic yourself? Let PickMyTrade keep the live connection to Tradovate up while it routes your TradingView alerts straight to your account." },
+  ], de: [
+    { type: "paragraph",html: "Ein Tradovate-WebSocket ist die Überholspur für Kurse, Fills und DOM-Updates: eine einzige offene Verbindung, statt für jeden Tick die REST-API zu bombardieren. Aber er ist nichts zum Einrichten und Vergessen. Wenn Sie ein paar Sekunden lang still sind, nimmt der Server an, dass Ihr Client sich verabschiedet hat, und kappt die Leitung. Die Lösung ist ein Heartbeat: ein winziger Frame, den Sie alle 2.5 Sekunden senden, um zu beweisen, dass Sie noch zuhören. Hier ist der komplette Handshake, dazu die Anleitung, wie Sie den Socket stundenlang ohne Aufsicht am Laufen halten." },
+    { type: "heading",text: "Wie der Tradovate-Socket kommuniziert" },
+    { type: "paragraph",html: "Jede Nachricht auf dem Socket ist ein <strong class='text-white'>Frame</strong>: ein einzelnes Präfixzeichen, gefolgt von einem JSON-Array. Sie müssen nur vier davon erkennen:" },
+    { type: "table", headers: ["Präfix","Frame-Typ","Bedeutung"], rows: [
+      ["o","Öffnen","Wird einmalig direkt nach dem Öffnen des Sockets gesendet. Das ist Ihr Signal zur Autorisierung."],
+      ["h","Herzschlag","Das eigene Keep-alive des Servers. Er lässt diese aus, solange er aktiv Daten an Sie streamt."],
+      ["a","Datenarray","Die eigentliche Nutzlast: Kurse, Fills sowie Positions- und Order-Ereignisse als JSON."],
+      ["c","Schließen","Die Verbindung wird beendet. Führen Sie Ihre Aufräumroutine und Ihre Reconnect-Logik aus."],
+    ] },
+    { type: "paragraph",html: "Ihre Aufgabe: Reagieren Sie auf <code>o</code> mit der Autorisierung, lesen Sie die <code>a</code>-Frames und halten Sie einen gleichmäßigen Heartbeat aufrecht, damit der Server nie denkt, Sie seien verstummt." },
+    { type: "heading",text: "WebSocket am Leben halten: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Socket öffnen und auf den „o“-Frame warten", html: "Verbinden Sie sich zuerst mit dem richtigen Endpunkt. Der Trading-Socket liegt in der Demo-Umgebung unter <code>wss://demo.tradovateapi.com/v1/websocket</code> und für ein Live-Konto mit Guthaben unter <code>wss://live.tradovateapi.com/v1/websocket</code>. Marktdaten laufen über einen eigenen Socket: <code>wss://md.tradovateapi.com/v1/websocket</code> für den Live-Feed oder der <code>md-demo</code>-Host für den simulierten. Sobald die Verbindung offen ist, sendet der Server ein einzelnes <code>o</code>. Senden Sie nichts, bevor Sie es sehen." },
+        { title: "Sitzung autorisieren", html: "Sobald dieses <code>o</code> eintrifft, senden Sie Ihr Access-Token als allerersten Frame. Das Format lautet: Anfragename, Anfrage-ID, eine leere Query-Zeile, dann das Token als Body: <code>authorize\\n0\\n\\n{yourAccessToken}</code>. Eine <code>200</code> als Antwort bedeutet, dass Sie authentifiziert sind und die Daten fließen können. Brauchen Sie ein Token? Holen Sie sich zuerst eines über den Tradovate-API-Zugang, und erneuern Sie es, bevor es mitten in der Sitzung abläuft." },
+        { title: "Alle 2.5 Sekunden einen []-Heartbeat senden", html: "Darauf kommt es an. Senden Sie alle <strong class='text-white'>2.5 Sekunden</strong> einen Frame mit exakt dem Text <code>[]</code>, einem leeren Array, nicht mehr. Solange diese Heartbeats ankommen, hält der Server den Socket offen. Wird die Pause länger, trennt er Sie. Eine Sache bringt viele aus dem Konzept: Der Server sendet keine eigenen <code>h</code>-Frames mehr, solange er aktiv Daten an Sie schickt. Das ist normal; Stille von der Serverseite ist kein Grund, Ihre eigenen Heartbeats einzustellen." },
+        { title: "Vertrauen Sie setInterval in einem Browser-Tab nicht", html: "Das ist die Falle, in die die meisten Browser-Apps tappen. Schicken Sie den Tab in den Hintergrund, drosselt Chrome <code>setInterval</code> und <code>setTimeout</code>, um Strom zu sparen. Ihr sauberer 2.5-Sekunden-Takt dehnt sich auf zehn, dreißig, sogar sechzig Sekunden, und der Socket stirbt unbemerkt, während Sie in einem anderen Tab E-Mails lesen. Verlagern Sie den Timer vom Main-Thread: Führen Sie den Heartbeat in einem <strong class='text-white'>Web Worker</strong> aus, der beim Fokusverlust des Tabs nicht in gleicher Weise gedrosselt wird. Wenn Sie die Verbindung in einem <strong class='text-white'>Node.js</strong>-Prozess betreiben, entfällt das Problem komplett, denn es gibt keinen inaktiven Tab, der gedrosselt werden könnte. Ein leichterer Trick besteht darin, Heartbeats durch eingehenden Datenverkehr auszulösen und jedes Mal einen zu senden, wenn seit dem letzten mehr als 2.5 Sekunden vergangen sind; das funktioniert aber nur, solange Daten fließen." },
+        { title: "Einen toten Socket erkennen und neu verbinden", html: "Selbst ein einwandfreier Heartbeat übersteht weder ausgefallenes WLAN noch einen Server-Neustart. Achten Sie auf das <code>close</code>-Ereignis des Sockets und werten Sie auch eine lange Stille vom Server als tote Leitung. Wenn eines von beiden eintritt, verbinden Sie sich neu und autorisieren von vorn. Warten Sie zwischen den Versuchen mit Backoff, statt in Dauerschleife anzufragen: Beginnen Sie bei etwa einer Sekunde und verdoppeln Sie die Wartezeit bis zu einer Obergrenze von rund einer Minute, damit ein Reconnect-Sturm nicht die Rate-Limits von Tradovate auslöst, während Sie ohnehin offline sind. Sobald Sie wieder verbunden sind, abonnieren Sie die Kurse und Ereignisse erneut, die Sie beobachtet haben; der neue Socket startet leer." },
+      ],
+    },
+    { type: "heading",text: "Der Authorize-Frame und der Heartbeat-Frame" },
+    { type: "quote",html: "<code>// Erster Frame nach dem „o“-Open-Frame:</code><br><code>authorize</code><br><code>0</code><br><code></code><br><code>{yourAccessToken}</code><br><br><code>// Wird alle 2.5 Sekunden gesendet, solange die Verbindung besteht:</code><br><code>[]</code>" },
+    { type: "heading",text: "Drei Gewohnheiten, die es langweilig halten" },
+    { type: "paragraph",html: "Langweilig ist bei einem Marktdaten-Feed das Ziel. Geben Sie dem Heartbeat einen eigenen, zuverlässigen Timer, protokollieren Sie jeden Close-Code, damit Sie einen Netzwerkaussetzer von einem Authentifizierungsfehler unterscheiden können, und abonnieren Sie nach jedem Reconnect stets neu. Wenn Sie diese drei Dinge richtig machen, läuft der Socket durch eine komplette Sitzung, ohne dass Sie daran denken müssen." },
+    { type: "heading",text: "Automatisieren Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Sie möchten Heartbeats, Worker und Reconnect-Logik nicht selbst bauen? Lassen Sie PickMyTrade die Live-Verbindung zu Tradovate aufrechterhalten, während es Ihre TradingView-Alerts direkt an Ihr Konto weiterleitet." },
+  ], es: [
+    { type: "paragraph",html: "Un WebSocket de Tradovate es el carril rápido para cotizaciones, ejecuciones y actualizaciones del DOM: una sola conexión abierta en lugar de bombardear la API REST con cada tick. Pero no es de configurar y olvidar. Si guarda silencio unos segundos, el servidor asume que su cliente se ha marchado y corta la línea. La solución es un heartbeat: un pequeño frame que envía cada 2.5 segundos para demostrar que sigue escuchando. Aquí tiene el handshake completo, además de cómo mantener el socket activo durante horas sin tener que vigilarlo." },
+    { type: "heading",text: "Cómo se comunica el socket de Tradovate" },
+    { type: "paragraph",html: "Cada mensaje del socket es un <strong class='text-white'>frame</strong>: un único carácter de prefijo seguido de un array de JSON. Solo necesita reconocer cuatro:" },
+    { type: "table", headers: ["Prefijo","Trama","Qué significa"], rows: [
+      ["o","Apertura","Se envía una sola vez, justo después de abrirse el socket. Es su señal para autorizar."],
+      ["h","Latido","El keep-alive propio del servidor. Lo omite mientras le está enviando datos de forma activa."],
+      ["a","Matriz","La carga útil real: cotizaciones, ejecuciones y eventos de posiciones y órdenes en JSON."],
+      ["c","Cierre","La conexión se está cerrando; ejecute su limpieza y su lógica de reconexión."],
+    ] },
+    { type: "paragraph",html: "Su tarea: reaccionar a <code>o</code> autorizando, leer los frames <code>a</code> y mantener un heartbeat constante para que el servidor nunca crea que se ha quedado a oscuras." },
+    { type: "heading",text: "Mantener activo el WebSocket: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra el socket y espere el frame «o»", html: "Conéctese primero al endpoint correcto. El socket de trading está en <code>wss://demo.tradovateapi.com/v1/websocket</code> en el entorno demo y en <code>wss://live.tradovateapi.com/v1/websocket</code> para una cuenta con fondos. Los datos de mercado van por su propio socket: <code>wss://md.tradovateapi.com/v1/websocket</code> para el feed en vivo, o el host <code>md-demo</code> para el simulado. En cuanto se abre la conexión, el servidor envía una sola <code>o</code>. No envíe nada antes de verla." },
+        { title: "Autorice la sesión", html: "Tan pronto como llegue esa <code>o</code>, envíe su token de acceso como primer frame. El formato es el nombre de la solicitud, un id de solicitud, una línea de consulta en blanco y después el token como cuerpo: <code>authorize\\n0\\n\\n{yourAccessToken}</code>. Una respuesta <code>200</code> significa que está autenticado y los datos pueden empezar a fluir. ¿Necesita un token? Obtenga uno primero a través del acceso a la API de Tradovate y, si caduca a mitad de sesión, renuévelo antes de que expire." },
+        { title: "Envíe un heartbeat [] cada 2.5 segundos", html: "Esto es lo esencial. Cada <strong class='text-white'>2.5 segundos</strong>, envíe un frame cuyo texto sea exactamente <code>[]</code>, un array vacío, nada más. Mientras esos heartbeats sigan llegando, el servidor mantiene el socket abierto. Si el intervalo se alarga, lo desconecta. Una cosa que confunde a muchos: el servidor deja de enviar sus propios frames <code>h</code> mientras le está enviando datos de forma activa. Es normal; el silencio del lado del servidor no es motivo para dejar de enviar sus propios heartbeats." },
+        { title: "No confíe en setInterval en una pestaña del navegador", html: "Esta es la trampa en la que caen la mayoría de las aplicaciones de navegador. Si pasa la pestaña a segundo plano, Chrome limita <code>setInterval</code> y <code>setTimeout</code> para ahorrar energía. Su limpio ritmo de 2.5 segundos se estira a diez, treinta, incluso sesenta segundos, y el socket muere en silencio mientras usted lee el correo en otra pestaña. Saque el temporizador del hilo principal: ejecute el heartbeat dentro de un <strong class='text-white'>Web Worker</strong>, que no se limita de la misma manera cuando la pestaña pierde el foco. Ejecutar la conexión en un proceso de <strong class='text-white'>Node.js</strong> lo evita por completo, porque no hay ninguna pestaña inactiva que limitar. Un truco más ligero es disparar los heartbeats a partir del tráfico entrante, enviando uno cada vez que hayan pasado más de 2.5 segundos desde el último, pero eso solo funciona mientras sigan llegando datos." },
+        { title: "Detecte un socket muerto y reconecte", html: "Ni siquiera un heartbeat impecable sobrevive a una caída del Wi-Fi o a un reinicio del servidor. Escuche el evento <code>close</code> del socket y considere también una línea muerta un largo periodo de silencio del servidor. Cuando se dispare cualquiera de los dos, reconecte y vuelva a autorizar desde cero. Espere entre intentos en lugar de insistir sin pausa: empiece en torno a un segundo y duplique la espera hasta un tope cercano a un minuto, para que una tormenta de reconexiones no active los límites de frecuencia de Tradovate cuando ya está desconectado. Una vez de vuelta, vuelva a suscribirse a las cotizaciones y eventos que seguía; el nuevo socket empieza en blanco." },
+      ],
+    },
+    { type: "heading",text: "El frame authorize y el frame de heartbeat" },
+    { type: "quote",html: "<code>// Primer frame tras el frame de apertura «o»:</code><br><code>authorize</code><br><code>0</code><br><code></code><br><code>{yourAccessToken}</code><br><br><code>// Se envía cada 2.5 segundos mientras hay conexión:</code><br><code>[]</code>" },
+    { type: "heading",text: "Tres hábitos para que todo sea aburrido" },
+    { type: "paragraph",html: "Con un feed de datos de mercado, lo aburrido es el objetivo. Mantenga el heartbeat en su propio temporizador fiable, registre cada código de cierre para distinguir un corte de red de un fallo de autenticación y vuelva a suscribirse siempre tras una reconexión. Si acierta con esos tres puntos, el socket aguantará una sesión completa sin que tenga que pensar en él." },
+    { type: "heading",text: "Automatice esto con PickMyTrade" },
+    { type: "paragraph",html: "¿No quiere construir usted mismo heartbeats, workers y lógica de reconexión? Deje que PickMyTrade mantenga la conexión en vivo con Tradovate mientras envía sus alertas de TradingView directamente a su cuenta." },
+  ], fr: [
+    { type: "paragraph",html: "Un WebSocket Tradovate est la voie rapide pour les cotations, les exécutions et les mises à jour du DOM : une seule connexion ouverte au lieu de solliciter l'API REST à chaque tick. Mais il ne se configure pas une fois pour toutes. Restez silencieux quelques secondes et le serveur suppose que votre client s'est éclipsé, puis coupe la ligne. La solution est un heartbeat : une toute petite trame que vous envoyez toutes les 2.5 secondes pour prouver que vous êtes toujours à l'écoute. Voici le handshake complet, ainsi que la manière de garder le socket actif pendant des heures sans le surveiller." },
+    { type: "heading",text: "Comment le socket Tradovate communique" },
+    { type: "paragraph",html: "Chaque message sur le socket est une <strong class='text-white'>trame</strong> : un seul caractère de préfixe suivi d'un tableau JSON. Vous n'avez besoin de reconnaître que quatre d'entre elles :" },
+    { type: "table", headers: ["Préfixe","Trame","Signification"], rows: [
+      ["o","Ouverture","Envoyée une seule fois, juste après l'ouverture du socket. C'est votre signal pour vous autoriser."],
+      ["h","Battement","Le keep-alive propre au serveur. Il les omet tant qu'il vous diffuse activement des données."],
+      ["a","Tableau","La charge utile réelle : cotations, exécutions et événements de positions et d'ordres au format JSON."],
+      ["c","Fermeture","La connexion se ferme ; lancez votre nettoyage et votre logique de reconnexion."],
+    ] },
+    { type: "paragraph",html: "Votre rôle : réagir à <code>o</code> en vous autorisant, lire les trames <code>a</code> et maintenir un heartbeat régulier pour que le serveur ne vous croie jamais muet." },
+    { type: "heading",text: "Garder le WebSocket actif : pas à pas" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrir le socket et attendre la trame « o »", html: "Connectez-vous d'abord au bon point d'accès. Le socket de trading se trouve à l'adresse <code>wss://demo.tradovateapi.com/v1/websocket</code> dans l'environnement démo et <code>wss://live.tradovateapi.com/v1/websocket</code> pour un compte financé. Les données de marché passent par leur propre socket : <code>wss://md.tradovateapi.com/v1/websocket</code> pour le flux en direct, ou l'hôte <code>md-demo</code> pour le flux simulé. Dès que la connexion s'ouvre, le serveur envoie un simple <code>o</code>. N'envoyez rien avant de l'avoir vu." },
+        { title: "Autoriser la session", html: "Dès que ce <code>o</code> arrive, envoyez votre jeton d'accès comme toute première trame. Le format est le nom de la requête, un identifiant de requête, une ligne de requête vide, puis le jeton comme corps : <code>authorize\\n0\\n\\n{yourAccessToken}</code>. Une réponse <code>200</code> signifie que vous êtes authentifié et que les données peuvent commencer à circuler. Besoin d'un jeton ? Obtenez-en un d'abord via l'accès à l'API Tradovate, et s'il expire en cours de session, renouvelez-le avant son expiration." },
+        { title: "Envoyer un heartbeat [] toutes les 2.5 secondes", html: "C'est tout l'enjeu. Toutes les <strong class='text-white'>2.5 secondes</strong>, envoyez une trame dont le texte est exactement <code>[]</code>, un tableau vide, rien de plus. Tant que ces heartbeats arrivent, le serveur garde le socket ouvert. Laissez l'écart s'étirer et il vous déconnecte. Un point qui déroute : le serveur cesse d'envoyer ses propres trames <code>h</code> tant qu'il vous pousse activement des données. C'est normal ; le silence côté serveur n'est pas une raison d'arrêter vos propres heartbeats." },
+        { title: "Ne vous fiez pas à setInterval dans un onglet de navigateur", html: "Voici le piège dans lequel tombent la plupart des applications de navigateur. Passez l'onglet en arrière-plan et Chrome bride <code>setInterval</code> et <code>setTimeout</code> pour économiser l'énergie. Votre cadence nette de 2.5 secondes s'étire à dix, trente, voire soixante secondes, et le socket meurt discrètement pendant que vous lisez vos e-mails dans un autre onglet. Sortez le minuteur du thread principal : exécutez le heartbeat dans un <strong class='text-white'>Web Worker</strong>, qui n'est pas bridé de la même manière lorsque l'onglet perd le focus. Exécuter la connexion dans un processus <strong class='text-white'>Node.js</strong> règle le problème d'emblée, puisqu'il n'y a aucun onglet inactif à brider. Une astuce plus légère consiste à déclencher les heartbeats à partir du trafic entrant, en en envoyant un chaque fois que plus de 2.5 secondes se sont écoulées depuis le dernier, mais cela ne tient que tant que les données continuent d'arriver." },
+        { title: "Détecter un socket mort et se reconnecter", html: "Même un heartbeat irréprochable ne survivra pas à une coupure Wi-Fi ou à un redémarrage du serveur. Écoutez l'événement <code>close</code> du socket et considérez aussi un long silence du serveur comme une ligne morte. Quand l'un des deux se produit, reconnectez-vous et réautorisez-vous depuis le début. Espacez les tentatives au lieu d'insister : commencez autour d'une seconde et doublez l'attente jusqu'à un plafond proche d'une minute, afin qu'une rafale de reconnexions ne déclenche pas les limites de débit de Tradovate alors que vous êtes déjà hors ligne. Une fois reconnecté, réabonnez-vous aux cotations et aux événements que vous suiviez ; le nouveau socket repart vierge." },
+      ],
+    },
+    { type: "heading",text: "La trame authorize et la trame de heartbeat" },
+    { type: "quote",html: "<code>// Première trame après la trame d'ouverture « o » :</code><br><code>authorize</code><br><code>0</code><br><code></code><br><code>{yourAccessToken}</code><br><br><code>// Envoyée toutes les 2.5 secondes tant que la connexion est active :</code><br><code>[]</code>" },
+    { type: "heading",text: "Trois habitudes pour que tout reste banal" },
+    { type: "paragraph",html: "Avec un flux de données de marché, l'objectif est que tout soit banal. Donnez au heartbeat son propre minuteur fiable, consignez chaque code de fermeture pour distinguer une coupure réseau d'un échec d'authentification, et réabonnez-vous toujours après une reconnexion. Maîtrisez ces trois points et le socket tiendra une séance entière sans que vous ayez à y penser." },
+    { type: "heading",text: "Automatisez cela avec PickMyTrade" },
+    { type: "paragraph",html: "Vous ne voulez pas développer vous-même les heartbeats, les workers et la logique de reconnexion ? Laissez PickMyTrade maintenir la connexion en direct avec Tradovate tout en acheminant vos alertes TradingView directement vers votre compte." },
+  ], it: [
+    { type: "paragraph",html: "Un WebSocket di Tradovate è la corsia veloce per quotazioni, esecuzioni e aggiornamenti del DOM: una sola connessione aperta invece di martellare l'API REST a ogni tick. Ma non si configura e si dimentica. Se resta in silenzio per qualche secondo, il server presume che il Suo client si sia allontanato e interrompe la linea. La soluzione è un heartbeat: un minuscolo frame che invia ogni 2.5 secondi per dimostrare che è ancora in ascolto. Ecco l'handshake completo, più il modo per mantenere attivo il socket per ore senza doverlo sorvegliare." },
+    { type: "heading",text: "Come comunica il socket di Tradovate" },
+    { type: "paragraph",html: "Ogni messaggio sul socket è un <strong class='text-white'>frame</strong>: un singolo carattere di prefisso seguito da un array JSON. Le basta riconoscerne quattro:" },
+    { type: "table", headers: ["Prefisso","Tipo di frame","Che cosa significa"], rows: [
+      ["o","Apertura","Inviato una sola volta, subito dopo l'apertura del socket. È il Suo segnale per autorizzare."],
+      ["h","Battito","Il keep-alive del server stesso. Lo salta mentre Le sta trasmettendo attivamente dei dati."],
+      ["a","Matrice","Il payload vero e proprio: quotazioni, esecuzioni ed eventi di posizioni e ordini in JSON."],
+      ["c","Chiusura","La connessione si sta chiudendo: esegua la pulizia e la logica di riconnessione."],
+    ] },
+    { type: "paragraph",html: "Il Suo compito: reagire a <code>o</code> autorizzando, leggere i frame <code>a</code> e mantenere un heartbeat costante in modo che il server non pensi mai che Lei sia scomparso." },
+    { type: "heading",text: "Mantenere attivo il WebSocket: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra il socket e attenda il frame «o»", html: "Si colleghi prima all'endpoint giusto. Il socket di trading si trova su <code>wss://demo.tradovateapi.com/v1/websocket</code> nell'ambiente demo e su <code>wss://live.tradovateapi.com/v1/websocket</code> per un conto finanziato. I dati di mercato viaggiano su un socket dedicato: <code>wss://md.tradovateapi.com/v1/websocket</code> per il feed live, oppure l'host <code>md-demo</code> per quello simulato. Appena la connessione si apre, il server invia un singolo <code>o</code>. Non invii nulla prima di averlo visto." },
+        { title: "Autorizzi la sessione", html: "Non appena arriva quell'<code>o</code>, invii il Suo access token come primissimo frame. Il formato è il nome della richiesta, un id della richiesta, una riga di query vuota e poi il token come corpo: <code>authorize\\n0\\n\\n{yourAccessToken}</code>. Una risposta <code>200</code> significa che è autenticato e i dati possono iniziare a fluire. Le serve un token? Ne ottenga uno prima tramite l'accesso API di Tradovate e, se scade a metà sessione, lo rinnovi prima che scada." },
+        { title: "Invii un heartbeat [] ogni 2.5 secondi", html: "Questo è il punto cruciale. Ogni <strong class='text-white'>2.5 secondi</strong> invii un frame il cui testo è esattamente <code>[]</code>, un array vuoto, nient'altro. Finché questi heartbeat continuano ad arrivare, il server tiene aperto il socket. Se l'intervallo si allunga, la disconnette. Una cosa che spiazza molti: il server smette di inviare i propri frame <code>h</code> mentre Le sta trasmettendo attivamente dei dati. È normale; il silenzio dal lato server non è un motivo per smettere di inviare i Suoi heartbeat." },
+        { title: "Non si fidi di setInterval in una scheda del browser", html: "Questa è la trappola in cui cadono la maggior parte delle app per browser. Se mette la scheda in background, Chrome limita <code>setInterval</code> e <code>setTimeout</code> per risparmiare energia. Il Suo ritmo pulito di 2.5 secondi si allunga a dieci, trenta, persino sessanta secondi, e il socket muore silenziosamente mentre legge la posta in un'altra scheda. Sposti il timer fuori dal thread principale: esegua l'heartbeat dentro un <strong class='text-white'>Web Worker</strong>, che non viene limitato allo stesso modo quando la scheda perde il focus. Eseguire la connessione in un processo <strong class='text-white'>Node.js</strong> evita il problema del tutto, perché non c'è alcuna scheda inattiva da limitare. Un trucco più leggero è far partire gli heartbeat in base al traffico in entrata, inviandone uno ogni volta che sono passati più di 2.5 secondi dall'ultimo, ma regge solo finché i dati continuano ad arrivare." },
+        { title: "Rilevi un socket morto e si riconnetta", html: "Nemmeno un heartbeat impeccabile sopravvive a una caduta del Wi-Fi o a un riavvio del server. Resti in ascolto dell'evento <code>close</code> del socket e consideri una linea morta anche un lungo silenzio da parte del server. Quando si verifica uno dei due casi, si riconnetta e autorizzi di nuovo da zero. Inserisca un backoff tra i tentativi invece di insistere: parta da circa un secondo e raddoppi l'attesa fino a un tetto vicino a un minuto, così una tempesta di riconnessioni non fa scattare i limiti di frequenza di Tradovate mentre è già offline. Una volta tornato online, si iscriva di nuovo alle quotazioni e agli eventi che stava seguendo; il nuovo socket parte vuoto." },
+      ],
+    },
+    { type: "heading",text: "Il frame authorize e il frame heartbeat" },
+    { type: "quote",html: "<code>// Primo frame dopo il frame di apertura «o»:</code><br><code>authorize</code><br><code>0</code><br><code></code><br><code>{yourAccessToken}</code><br><br><code>// Inviato ogni 2.5 secondi mentre la connessione è attiva:</code><br><code>[]</code>" },
+    { type: "heading",text: "Tre abitudini per mantenere tutto noioso" },
+    { type: "paragraph",html: "Con un feed di dati di mercato, la noia è l'obiettivo. Tenga l'heartbeat su un timer dedicato e affidabile, registri ogni codice di chiusura per distinguere un calo di rete da un errore di autenticazione e si iscriva sempre di nuovo dopo una riconnessione. Se rispetta questi tre punti, il socket reggerà un'intera sessione senza che Lei debba pensarci." },
+    { type: "heading",text: "Automatizzi tutto questo con PickMyTrade" },
+    { type: "paragraph",html: "Non vuole costruire da solo heartbeat, worker e logica di riconnessione? Lasci che PickMyTrade mantenga attiva la connessione live con Tradovate mentre instrada i Suoi alert di TradingView direttamente al Suo conto." },
+  ] },
+  ctaHeading: { en: "Skip the Heartbeat Plumbing", de: "Verzichten Sie auf die Heartbeat-Installation", es: "Olvídese de la fontanería del heartbeat", fr: "Oubliez la plomberie des heartbeats", it: "Eviti l'impianto degli heartbeat" },
+  ctaText: { en: "Let PickMyTrade keep the live connection to Tradovate up while it routes your TradingView alerts straight to your account.", de: "Lassen Sie PickMyTrade die Live-Verbindung zu Tradovate aufrechterhalten, während es Ihre TradingView-Alerts direkt an Ihr Konto weiterleitet.", es: "Deje que PickMyTrade mantenga la conexión en vivo con Tradovate mientras envía sus alertas de TradingView directamente a su cuenta.", fr: "Laissez PickMyTrade maintenir la connexion en direct avec Tradovate tout en acheminant vos alertes TradingView directement vers votre compte.", it: "Lasci che PickMyTrade mantenga attiva la connessione live con Tradovate mentre instrada i Suoi alert di TradingView direttamente al Suo conto." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Foire aux questions", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "How often does Tradovate need a WebSocket heartbeat?", a: "Every 2.5 seconds. Send a frame whose text is [] on that cadence and the server keeps the connection open; let the gap grow and it closes the socket." },
+    { q: "What does the [] heartbeat frame actually contain?", a: "Nothing but an empty JSON array as text. It carries no data, its only job is to tell the server your client is still alive." },
+    { q: "Why does my WebSocket drop when I switch browser tabs?", a: "Browsers throttle setInterval and setTimeout in background tabs, so your heartbeat falls behind and the server times you out. Run the timer in a Web Worker or a Node.js process to avoid it." },
+  ], de: [
+    { q: "Wie oft braucht Tradovate einen WebSocket-Heartbeat?", a: "Alle 2.5 Sekunden. Senden Sie in diesem Takt einen Frame mit dem Text [], und der Server hält die Verbindung offen; lassen Sie die Pause länger werden, schließt er den Socket." },
+    { q: "Was enthält der []-Heartbeat-Frame eigentlich?", a: "Nichts außer einem leeren JSON-Array als Text. Er transportiert keine Daten; seine einzige Aufgabe ist es, dem Server mitzuteilen, dass Ihr Client noch aktiv ist." },
+    { q: "Warum bricht mein WebSocket ab, wenn ich den Browser-Tab wechsle?", a: "Browser drosseln setInterval und setTimeout in Hintergrund-Tabs, sodass Ihr Heartbeat ins Hintertreffen gerät und der Server die Verbindung wegen Zeitüberschreitung trennt. Führen Sie den Timer in einem Web Worker oder einem Node.js-Prozess aus, um das zu vermeiden." },
+  ], es: [
+    { q: "¿Con qué frecuencia necesita Tradovate un heartbeat de WebSocket?", a: "Cada 2.5 segundos. Envíe un frame cuyo texto sea [] con ese ritmo y el servidor mantendrá la conexión abierta; si deja crecer el intervalo, cerrará el socket." },
+    { q: "¿Qué contiene realmente el frame de heartbeat []?", a: "Nada más que un array JSON vacío como texto. No transporta datos; su única función es indicar al servidor que su cliente sigue activo." },
+    { q: "¿Por qué se cae mi WebSocket cuando cambio de pestaña del navegador?", a: "Los navegadores limitan setInterval y setTimeout en las pestañas en segundo plano, por lo que su heartbeat se retrasa y el servidor lo desconecta por tiempo de espera. Ejecute el temporizador en un Web Worker o en un proceso de Node.js para evitarlo." },
+  ], fr: [
+    { q: "À quelle fréquence Tradovate exige-t-il un heartbeat WebSocket ?", a: "Toutes les 2.5 secondes. Envoyez à ce rythme une trame dont le texte est [] et le serveur maintient la connexion ouverte ; laissez l'écart s'allonger et il ferme le socket." },
+    { q: "Que contient réellement la trame de heartbeat [] ?", a: "Rien d'autre qu'un tableau JSON vide sous forme de texte. Elle ne transporte aucune donnée ; son seul rôle est d'indiquer au serveur que votre client est toujours en vie." },
+    { q: "Pourquoi mon WebSocket se coupe-t-il quand je change d'onglet du navigateur ?", a: "Les navigateurs brident setInterval et setTimeout dans les onglets en arrière-plan : votre heartbeat prend du retard et le serveur met fin à la connexion pour dépassement de délai. Exécutez le minuteur dans un Web Worker ou dans un processus Node.js pour l'éviter." },
+  ], it: [
+    { q: "Ogni quanto Tradovate richiede un heartbeat WebSocket?", a: "Ogni 2.5 secondi. Invii a quel ritmo un frame il cui testo è [] e il server mantiene aperta la connessione; se lascia crescere l'intervallo, chiude il socket." },
+    { q: "Che cosa contiene davvero il frame heartbeat []?", a: "Nient'altro che un array JSON vuoto come testo. Non trasporta dati; il suo unico compito è comunicare al server che il Suo client è ancora attivo." },
+    { q: "Perché il mio WebSocket cade quando cambio scheda del browser?", a: "I browser limitano setInterval e setTimeout nelle schede in background, quindi il Suo heartbeat resta indietro e il server la disconnette per timeout. Esegua il timer in un Web Worker o in un processo Node.js per evitarlo." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von Tradovate, Inc. unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit. Prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante, non affiliée à Tradovate, Inc., ni approuvée ou parrainée par celle-ci. « Tradovate » ainsi que tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur sur la plateforme et dans la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, d'investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. «Tradovate» e tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

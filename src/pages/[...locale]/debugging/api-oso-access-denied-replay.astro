@@ -1,0 +1,450 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-oso-access-denied-replay";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate OSO 'Access Denied' in Market Replay";
+const META_DESCRIPTION =
+  "Tradovate OSO 'Access is denied' in Market Replay? Pull the access token from demo or live auth and route every call through the replay WebSocket.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate OSO: 'Zugriff verweigert' im Market Replay", es: "OSO de Tradovate: 'Acceso denegado' en Market Replay", fr: "OSO Tradovate : 'Accès refusé' dans Market Replay", it: "OSO Tradovate: 'Accesso negato' in Market Replay" },
+  dek: { en: "The identical OSO bracket that fires cleanly in demo comes back Access is denied in Market Replay. Replay authenticates differently, and the denial almost always traces to how the token reached the replay socket.", de: "Dieselbe OSO-Bracket-Order, die in der Demo einwandfrei ausgelöst wird, liefert im Market Replay Access is denied zurück. Replay authentifiziert sich anders, und die Ablehnung lässt sich fast immer darauf zurückführen, wie das Token beim Replay-Socket ankam.", es: "El mismo bracket OSO que se ejecuta sin problemas en la demo devuelve Access is denied en Market Replay. Replay se autentica de forma diferente, y la denegación casi siempre se debe a cómo llegó el token al socket de replay.", fr: "Le même bracket OSO qui se déclenche sans problème en démo revient avec Access is denied dans Market Replay. Replay s'authentifie différemment, et le refus provient presque toujours de la façon dont le token a été transmis au socket de replay.", it: "Lo stesso bracket OSO che si attiva senza problemi in demo restituisce Access is denied in Market Replay. Replay si autentica in modo diverso, e il rifiuto quasi sempre dipende da come il token è arrivato al socket di replay." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You've got an OSO bracket firing cleanly in demo. Same code, same contract, same body, you point it at Market Replay to backtest a session, and Tradovate hands you <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>. Nothing changed on your side except the environment, so it feels like a permissions bug. It isn't. Replay authenticates differently from demo and live, and the &ldquo;denied&rdquo; almost always traces back to one thing: the token was never presented to the replay socket correctly, or the order is aimed at an account the replay session doesn't own. Get the auth flow right and the OSO that works in demo works in Replay too. Here's exactly what's happening and how to fix it." },
+    { type: "quote", html: "<strong class='text-white'>Short version:</strong> Replay has no auth endpoint of its own, posting to <code>replay.tradovateapi.com/v1/auth/accessTokenRequest</code> just 404s. Request the access token from the <code>demo</code> (or <code>live</code>) auth endpoint, open <code>wss://replay.tradovateapi.com/v1/websocket</code>, send an <code>authorize</code> frame with that token, then route every call, including your OSO, through that same socket against the account the replay session created." },
+    { type: "heading", text: "What the Error Looks Like" },
+    { type: "paragraph", html: "The tell is that the request body is byte-for-byte identical to one that works. Fire the OSO in demo and you get back a clean set of order ids:" },
+    {
+      type: "list",
+      items: [
+        "<code>{\"orderId\":3696709628,\"oso1Id\":3696709629,\"oso2Id\":3696709630}</code>",
+      ],
+    },
+    { type: "paragraph", html: "Send the same payload in Replay and instead of ids you get the denial:" },
+    {
+      type: "list",
+      items: [
+        "<code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>",
+      ],
+    },
+    { type: "paragraph", html: "The contract is valid for the replay window (say <code>MNQM2</code> during a session that covers it), the token authenticated, and you can even pull account data. Only the order placement is refused. That pattern, everything reads fine, the write is denied, is the fingerprint of an authorization-scope problem, not a bad credential." },
+    { type: "heading", text: "Why Market Replay Throws \"Access Is Denied\"" },
+    { type: "paragraph", html: "Two design quirks of the replay environment cause almost all of these denials." },
+    { type: "heading", text: "Replay Has No HTTP Auth Endpoint" },
+    { type: "paragraph", html: "On demo and live you're used to a REST world: you POST to <code>auth/accessTokenRequest</code>, get a token, then POST orders to <code>order/placeOrder</code> over HTTPS. The replay host doesn't work that way. There is no <code>auth/accessTokenRequest</code> on <code>replay.tradovateapi.com</code>, so a POST to <code>https://replay.tradovateapi.com/v1/auth/accessTokenRequest</code> returns a <code>404 Not Found</code>. People see that 404, assume the endpoint moved, and start guessing URLs, when the real answer is that replay never had one." },
+    { type: "paragraph", html: "The token still comes from the normal auth endpoints. You then carry it to the replay <em>WebSocket</em> and authorize there. Everything after that, market data subscriptions, clock control, and order placement, travels as framed messages over that one socket. If your OSO is still going out over HTTPS while your token lives on the socket, Tradovate has no authorized session to attach the order to, and you get &ldquo;Access is denied.&rdquo;" },
+    { type: "heading", text: "Every Replay Session Builds a Fresh, Throwaway Account" },
+    { type: "paragraph", html: "Replay isn't trading your demo or live account. When you call <code>replay/initializeClock</code>, Tradovate starts a session and creates a brand-new replay account seeded with the <code>initialBalance</code> you pass. That account exists only for the session and is discarded when the session ends. Only one replay session runs per user at a time, and calling <code>initializeClock</code> again resets whatever was running." },
+    { type: "paragraph", html: "Here's the catch that produces denials: your OSO has to target <em>that</em> replay account, the one the current session just minted, not your demo account id, not your live account id, and not a stale id from a session you already reset. Aim the order at the wrong account and Tradovate refuses it with the same terse string." },
+    { type: "heading", text: "The Fix, Step by Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Request the token from demo or live auth (never replay)", html: "Authenticate against a real environment endpoint and keep the returned <code>accessToken</code>: sim/backtest work uses <code>https://demo.tradovateapi.com/v1/auth/accessTokenRequest</code>; live-credentialed work uses <code>https://live.tradovateapi.com/v1/auth/accessTokenRequest</code>. Send the full credential set your environment expects, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code>, and, especially on live, a stable <code>deviceId</code>. Do not POST anything to a <code>replay.tradovateapi.com</code> auth path; that's the 404 trap." },
+        { title: "Open the replay socket and authorize with that token", html: "Connect to <code>wss://replay.tradovateapi.com/v1/websocket</code>. Tradovate opens the stream with a single-character open frame, the letter <code>o</code>. As soon as you see it, send the authorize frame using the token from Step 1: <code>authorize\\n{id}\\n\\n{accessToken}</code>. That newline-delimited shape, endpoint, request id, blank line, body, is how every replay message is framed. A successful authorize is what actually grants your session the right to place orders on the socket. Skip it, and even a perfectly valid token leaves you unauthorized for order placement." },
+        { title: "Initialize the clock and capture the session's account", html: "With the socket authorized, set up the replay session by sending <code>replay/initializeClock</code> with your window and speed: <code>{\"startTimestamp\":\"2019-08-26T16:43:00.000Z\",\"speed\":100,\"initialBalance\":51000}</code>. <code>speed</code> is a percentage (roughly 0–400), and <code>initialBalance</code> funds the temporary replay account. Once the clock is running, resolve the account tied to this session and hold onto its numeric id. This is the account your OSO must reference in <code>accountId</code> / <code>accountSpec</code>, not the id you'd use in demo or live." },
+        { title: "Send the OSO through the replay socket, against that account", html: "Now place the bracket as a WebSocket frame on the same authorized socket, using the replay session's account: <code>order/placeorder\\n{id}\\n\\n{orderBodyJson}</code>. Keep the OSO body the same one that works in demo, but swap in the replay account id you captured in Step 3. When the account and the authorize step line up, the response flips from <code>failureText</code> back to real <code>orderId</code> / <code>oso1Id</code> / <code>oso2Id</code> values." },
+        { title: "Keep the token and socket alive", html: "Access tokens are short-lived, figure on roughly 80 to 90 minutes. A long replay run can outlast the token, and when it lapses mid-session the next order reads as a denial. Send periodic heartbeat frames to keep the socket from idling out, and renew the token before it expires rather than after. Treat a sudden &ldquo;Access is denied&rdquo; partway through a working session as a probable expiry, not a fresh permissions bug." },
+      ],
+    },
+    { type: "heading", text: "Still Getting \"Access Is Denied\"? Work This Checklist" },
+    { type: "paragraph", html: "If the auth flow is right and the OSO still won't place, run these in order:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Account id mismatch</strong>, confirm the order targets the replay session's account, not a demo/live id or a stale id from a session you already reset with a newer initializeClock.",
+        "<strong class='text-white'>API key permissions</strong>, the key you authenticated with must have <strong class='text-white'>Orders</strong> granted, not set to denied. A read-only key authenticates and lists accounts but is blocked the moment it tries to place an order.",
+        "<strong class='text-white'>Device id on live</strong>, if you're minting the token from the live host, supply a stable, approved deviceId. Demo is lenient about this; live is not, and the credentials differ between the two.",
+        "<strong class='text-white'>Authorize frame skipped</strong>, make sure you actually sent authorize after the o open frame and got a success back before any order goes out.",
+        "<strong class='text-white'>One-session limit</strong>, remember only one replay session runs per user. If another session is live (from the UI or a previous run), your new one may be resetting it out from under you.",
+        "<strong class='text-white'>Contract window</strong>, the symbol has to be valid for the replay date, so use the contract that was the active front month during your startTimestamp, not today's front month.",
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Cause", "Fix"],
+      rows: [
+        ["404 on the replay auth URL", "Replay has no HTTP auth endpoint", "Get the token from demo/live auth/accessTokenRequest, then authorize the replay socket"],
+        ["OSO returns {\"failureText\":\"Access is denied\"}", "Socket never authorized, or order aimed at the wrong account", "Send the authorize frame after o; target the replay session's account"],
+        ["Works in demo, denied in Replay", "Order still going over HTTPS instead of the socket", "Send order/placeorder as a framed message on the replay WebSocket"],
+        ["Timeout or denial right after initializeClock", "Using an old account from a reset session", "Re-resolve and use the account tied to the current session"],
+        ["A working session suddenly denies orders", "Access token expired mid-run", "Heartbeat the socket and renew the token before ~80–90 min"],
+        ["Denied only when authenticating on live", "Missing/unapproved deviceId or denied Orders permission", "Supply a stable approved device id; grant the key Orders access"],
+      ],
+    },
+    { type: "heading", text: "Where PickMyTrade Fits" },
+    { type: "paragraph", html: "Hand-wiring the demo-token-to-replay-socket dance is where most of these denials come from, one missed <code>authorize</code> frame or one wrong account id and the whole session refuses orders. If your goal is to run a strategy against Tradovate from TradingView alerts rather than to babysit WebSocket frames, PickMyTrade brokers the connection for you: it manages the token, targets the right account, and flags automated orders correctly so bracket entries route without you debugging JSON at the open." },
+  ], de: [
+    { type: "paragraph", html: "Sie haben eine OSO-Bracket-Order, die in der Demo einwandfrei auslöst. Gleicher Code, gleicher Kontrakt, gleicher Body, Sie richten sie auf Market Replay, um eine Session zurückzutesten, und Tradovate liefert Ihnen <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>. Auf Ihrer Seite hat sich außer der Umgebung nichts geändert, also fühlt es sich wie ein Berechtigungsfehler an. Ist es aber nicht. Replay authentifiziert sich anders als Demo und Live, und &ldquo;abgelehnt&rdquo; lässt sich fast immer auf eines zurückführen: Das Token wurde dem Replay-Socket nicht korrekt übergeben, oder die Order zielt auf ein Konto, das der Replay-Session nicht gehört. Bringen Sie den Auth-Ablauf in Ordnung, und die OSO, die in der Demo funktioniert, funktioniert auch im Replay. Hier ist genau, was passiert und wie Sie es beheben." },
+    { type: "quote", html: "<strong class='text-white'>Kurzfassung:</strong> Replay hat keinen eigenen Auth-Endpoint, ein POST an <code>replay.tradovateapi.com/v1/auth/accessTokenRequest</code> liefert nur einen 404. Fordern Sie das Access Token vom <code>demo</code>- (oder <code>live</code>-) Auth-Endpoint an, öffnen Sie <code>wss://replay.tradovateapi.com/v1/websocket</code>, senden Sie einen <code>authorize</code>-Frame mit diesem Token, und leiten Sie danach jeden Aufruf, einschließlich Ihrer OSO, über dasselbe Socket gegen das Konto, das die Replay-Session erstellt hat." },
+    { type: "heading", text: "Wie der Fehler aussieht" },
+    { type: "paragraph", html: "Das Erkennungsmerkmal: Der Request-Body ist byte-für-byte identisch mit einem, der funktioniert. Lösen Sie die OSO in der Demo aus, erhalten Sie einen sauberen Satz Order-IDs zurück:" },
+    {
+      type: "list",
+      items: [
+        "<code>{\"orderId\":3696709628,\"oso1Id\":3696709629,\"oso2Id\":3696709630}</code>",
+      ],
+    },
+    { type: "paragraph", html: "Senden Sie dieselbe Payload im Replay, erhalten Sie statt IDs die Ablehnung:" },
+    {
+      type: "list",
+      items: [
+        "<code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>",
+      ],
+    },
+    { type: "paragraph", html: "Der Kontrakt ist für das Replay-Fenster gültig (etwa <code>MNQM2</code> während einer Session, die es abdeckt), das Token wurde authentifiziert, und Sie können sogar Kontodaten abrufen. Nur die Orderplatzierung wird verweigert. Dieses Muster, alles liest sich einwandfrei, das Schreiben wird verweigert, ist der Fingerabdruck eines Autorisierungs-Scope-Problems, nicht eines fehlerhaften Credentials." },
+    { type: "heading", text: "Warum Market Replay \"Access Is Denied\" wirft" },
+    { type: "paragraph", html: "Zwei Design-Eigenheiten der Replay-Umgebung verursachen fast alle diese Ablehnungen." },
+    { type: "heading", text: "Replay hat keinen HTTP-Auth-Endpoint" },
+    { type: "paragraph", html: "Bei Demo und Live sind Sie eine REST-Welt gewohnt: Sie senden ein POST an <code>auth/accessTokenRequest</code>, erhalten ein Token, und senden dann Orders per POST an <code>order/placeOrder</code> über HTTPS. Der Replay-Host funktioniert nicht so. Es gibt kein <code>auth/accessTokenRequest</code> auf <code>replay.tradovateapi.com</code>, also liefert ein POST an <code>https://replay.tradovateapi.com/v1/auth/accessTokenRequest</code> einen <code>404 Not Found</code>. Leute sehen diesen 404, nehmen an, der Endpoint sei verschoben worden, und beginnen, URLs zu erraten, obwohl die eigentliche Antwort ist, dass Replay nie einen hatte." },
+    { type: "paragraph", html: "Das Token kommt weiterhin von den normalen Auth-Endpoints. Sie übertragen es dann zum Replay-<em>WebSocket</em> und autorisieren dort. Alles danach, Marktdaten-Abonnements, Clock-Steuerung und Orderplatzierung, läuft als geframte Nachrichten über dieses eine Socket. Wenn Ihre OSO weiterhin per HTTPS hinausgeht, während Ihr Token auf dem Socket lebt, hat Tradovate keine autorisierte Session, der die Order zugeordnet werden kann, und Sie erhalten &ldquo;Access is denied.&rdquo;" },
+    { type: "heading", text: "Jede Replay-Session baut ein frisches Wegwerf-Konto" },
+    { type: "paragraph", html: "Replay handelt nicht mit Ihrem Demo- oder Live-Konto. Wenn Sie <code>replay/initializeClock</code> aufrufen, startet Tradovate eine Session und erstellt ein brandneues Replay-Konto, ausgestattet mit dem <code>initialBalance</code>, den Sie übergeben. Dieses Konto existiert nur für die Session und wird verworfen, wenn die Session endet. Pro Benutzer läuft nur eine Replay-Session gleichzeitig, und ein erneuter Aufruf von <code>initializeClock</code> setzt zurück, was gerade lief." },
+    { type: "paragraph", html: "Hier ist der Haken, der Ablehnungen erzeugt: Ihre OSO muss auf <em>dieses</em> Replay-Konto zielen, das, das die aktuelle Session gerade geprägt hat, nicht Ihre Demo-Konto-ID, nicht Ihre Live-Konto-ID und nicht eine veraltete ID aus einer Session, die Sie bereits zurückgesetzt haben. Zielen Sie die Order auf das falsche Konto, verweigert Tradovate sie mit derselben knappen Zeichenkette." },
+    { type: "heading", text: "Die Lösung, Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Token von Demo- oder Live-Auth anfordern (niemals Replay)", html: "Authentifizieren Sie sich gegen einen echten Umgebungs-Endpoint und behalten Sie das zurückgegebene <code>accessToken</code>: Sim-/Backtest-Arbeit nutzt <code>https://demo.tradovateapi.com/v1/auth/accessTokenRequest</code>; Arbeit mit Live-Credentials nutzt <code>https://live.tradovateapi.com/v1/auth/accessTokenRequest</code>. Senden Sie den vollständigen Credential-Satz, den Ihre Umgebung erwartet, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code>, und, besonders auf Live, eine stabile <code>deviceId</code>. Senden Sie kein POST an einen <code>replay.tradovateapi.com</code>-Auth-Pfad; das ist die 404-Falle." },
+        { title: "Replay-Socket öffnen und mit diesem Token autorisieren", html: "Verbinden Sie sich mit <code>wss://replay.tradovateapi.com/v1/websocket</code>. Tradovate öffnet den Stream mit einem einzelnen Zeichen als Open-Frame, dem Buchstaben <code>o</code>. Sobald Sie ihn sehen, senden Sie den Authorize-Frame mit dem Token aus Schritt 1: <code>authorize\\n{id}\\n\\n{accessToken}</code>. Diese durch Zeilenumbrüche getrennte Form, Endpoint, Request-ID, Leerzeile, Body, ist, wie jede Replay-Nachricht geframt wird. Ein erfolgreicher Authorize gewährt Ihrer Session erst das Recht, Orders über das Socket zu platzieren. Überspringen Sie ihn, bleibt selbst ein perfekt gültiges Token für die Orderplatzierung nicht autorisiert." },
+        { title: "Clock initialisieren und das Konto der Session erfassen", html: "Mit autorisiertem Socket richten Sie die Replay-Session ein, indem Sie <code>replay/initializeClock</code> mit Ihrem Fenster und Ihrer Geschwindigkeit senden: <code>{\"startTimestamp\":\"2019-08-26T16:43:00.000Z\",\"speed\":100,\"initialBalance\":51000}</code>. <code>speed</code> ist ein Prozentsatz (etwa 0–400), und <code>initialBalance</code> finanziert das temporäre Replay-Konto. Sobald die Clock läuft, lösen Sie das mit dieser Session verknüpfte Konto auf und merken sich dessen numerische ID. Dies ist das Konto, auf das Ihre OSO in <code>accountId</code> / <code>accountSpec</code> verweisen muss, nicht die ID, die Sie in Demo oder Live verwenden würden." },
+        { title: "OSO über das Replay-Socket senden, gegen dieses Konto", html: "Platzieren Sie die Bracket-Order nun als WebSocket-Frame auf demselben autorisierten Socket, unter Verwendung des Kontos der Replay-Session: <code>order/placeorder\\n{id}\\n\\n{orderBodyJson}</code>. Behalten Sie denselben OSO-Body bei, der in der Demo funktioniert, tauschen Sie aber die in Schritt 3 erfasste Replay-Konto-ID ein. Stimmen Konto und Autorisierungsschritt überein, wechselt die Antwort von <code>failureText</code> zurück zu echten <code>orderId</code> / <code>oso1Id</code> / <code>oso2Id</code>-Werten." },
+        { title: "Token und Socket am Leben halten", html: "Access Tokens sind kurzlebig, rechnen Sie mit etwa 80 bis 90 Minuten. Ein langer Replay-Lauf kann das Token überdauern, und wenn es mitten in der Session verfällt, liest sich die nächste Order als Ablehnung. Senden Sie regelmäßige Heartbeat-Frames, damit das Socket nicht in den Leerlauf geht, und erneuern Sie das Token, bevor es abläuft, nicht danach. Behandeln Sie ein plötzliches &ldquo;Access is denied&rdquo; mitten in einer funktionierenden Session als wahrscheinlichen Ablauf, nicht als neuen Berechtigungsfehler." },
+      ],
+    },
+    { type: "heading", text: "Immer noch \"Access Is Denied\"? Diese Checkliste abarbeiten" },
+    { type: "paragraph", html: "Wenn der Auth-Ablauf stimmt und die OSO sich immer noch nicht platzieren lässt, gehen Sie diese Punkte der Reihe nach durch:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Konto-ID-Mismatch</strong>, prüfen Sie, ob die Order auf das Konto der Replay-Session zielt, nicht auf eine Demo-/Live-ID oder eine veraltete ID aus einer Session, die Sie bereits mit einem neueren initializeClock zurückgesetzt haben.",
+        "<strong class='text-white'>API-Key-Berechtigungen</strong>, der Key, mit dem Sie sich authentifiziert haben, muss <strong class='text-white'>Orders</strong> gewährt haben, nicht auf verweigert gesetzt sein. Ein Nur-Lese-Key authentifiziert sich und listet Konten auf, wird aber blockiert, sobald er versucht, eine Order zu platzieren.",
+        "<strong class='text-white'>Device-ID auf Live</strong>, wenn Sie das Token vom Live-Host prägen, liefern Sie eine stabile, genehmigte deviceId. Demo ist hierbei nachsichtig; Live nicht, und die Credentials unterscheiden sich zwischen beiden.",
+        "<strong class='text-white'>Authorize-Frame übersprungen</strong>, stellen Sie sicher, dass Sie authorize tatsächlich nach dem o-Open-Frame gesendet haben und einen Erfolg zurückerhalten haben, bevor eine Order hinausgeht.",
+        "<strong class='text-white'>Ein-Session-Limit</strong>, denken Sie daran, dass nur eine Replay-Session pro Benutzer läuft. Wenn eine andere Session aktiv ist (aus der UI oder einem vorherigen Lauf), setzt Ihre neue diese möglicherweise unter Ihnen zurück.",
+        "<strong class='text-white'>Kontrakt-Fenster</strong>, das Symbol muss für das Replay-Datum gültig sein, verwenden Sie also den Kontrakt, der während Ihres startTimestamp der aktive Frontmonat war, nicht den heutigen Frontmonat.",
+      ],
+    },
+    { type: "heading", text: "Troubleshooting-Tabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Ursache", "Lösung"],
+      rows: [
+        ["404 bei der Replay-Auth-URL", "Replay hat keinen HTTP-Auth-Endpoint", "Token von demo/live auth/accessTokenRequest holen, dann das Replay-Socket autorisieren"],
+        ["OSO liefert {\"failureText\":\"Access is denied\"}", "Socket nie autorisiert, oder Order auf falsches Konto gerichtet", "Authorize-Frame nach o senden; auf das Konto der Replay-Session zielen"],
+        ["Funktioniert in Demo, abgelehnt in Replay", "Order geht weiterhin per HTTPS statt über das Socket", "order/placeorder als geframte Nachricht auf dem Replay-WebSocket senden"],
+        ["Timeout oder Ablehnung direkt nach initializeClock", "Verwendung eines alten Kontos aus einer zurückgesetzten Session", "Konto der aktuellen Session neu auflösen und verwenden"],
+        ["Eine funktionierende Session verweigert plötzlich Orders", "Access Token mitten im Lauf abgelaufen", "Socket per Heartbeat am Leben halten und Token vor ~80–90 Min erneuern"],
+        ["Nur bei Authentifizierung auf Live abgelehnt", "Fehlende/nicht genehmigte deviceId oder verweigerte Orders-Berechtigung", "Stabile genehmigte Device-ID liefern; dem Key Orders-Zugriff gewähren"],
+      ],
+    },
+    { type: "heading", text: "Wo PickMyTrade ansetzt" },
+    { type: "paragraph", html: "Der manuelle Aufbau des Demo-Token-zu-Replay-Socket-Tanzes ist die Quelle der meisten dieser Ablehnungen, ein übersehener <code>authorize</code>-Frame oder eine falsche Konto-ID, und die ganze Session verweigert Orders. Wenn Ihr Ziel ist, eine Strategie über TradingView-Alerts gegen Tradovate laufen zu lassen, statt WebSocket-Frames zu hüten, vermittelt PickMyTrade die Verbindung für Sie: Es verwaltet das Token, zielt auf das richtige Konto und markiert automatisierte Orders korrekt, sodass Bracket-Entries routen, ohne dass Sie beim Opening JSON debuggen müssen." },
+  ], es: [
+    { type: "paragraph", html: "Tiene un bracket OSO que se dispara sin problemas en la demo. Mismo código, mismo contrato, mismo body, lo apunta a Market Replay para hacer backtest de una sesión, y Tradovate le devuelve <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>. Nada cambió de su lado excepto el entorno, así que parece un error de permisos. No lo es. Replay se autentica de forma distinta a demo y live, y el &ldquo;denegado&rdquo; casi siempre se debe a una sola cosa: el token nunca se presentó correctamente al socket de replay, o la orden apunta a una cuenta que la sesión de replay no posee. Corrija el flujo de autenticación y el OSO que funciona en demo funcionará también en Replay. Esto es exactamente lo que ocurre y cómo solucionarlo." },
+    { type: "quote", html: "<strong class='text-white'>Versión breve:</strong> Replay no tiene un endpoint de autenticación propio, hacer POST a <code>replay.tradovateapi.com/v1/auth/accessTokenRequest</code> solo devuelve 404. Solicite el access token en el endpoint de autenticación de <code>demo</code> (o <code>live</code>), abra <code>wss://replay.tradovateapi.com/v1/websocket</code>, envíe un frame <code>authorize</code> con ese token y, a partir de ahí, dirija cada llamada, incluido su OSO, a través de ese mismo socket contra la cuenta que creó la sesión de replay." },
+    { type: "heading", text: "Cómo se ve el error" },
+    { type: "paragraph", html: "La señal es que el body de la solicitud es idéntico byte a byte al de una que funciona. Dispare el OSO en demo y obtendrá un conjunto limpio de IDs de orden:" },
+    {
+      type: "list",
+      items: [
+        "<code>{\"orderId\":3696709628,\"oso1Id\":3696709629,\"oso2Id\":3696709630}</code>",
+      ],
+    },
+    { type: "paragraph", html: "Envíe el mismo payload en Replay y, en lugar de IDs, obtendrá la denegación:" },
+    {
+      type: "list",
+      items: [
+        "<code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>",
+      ],
+    },
+    { type: "paragraph", html: "El contrato es válido para la ventana de replay (por ejemplo, <code>MNQM2</code> durante una sesión que la cubre), el token se autenticó y hasta puede obtener datos de la cuenta. Solo se rechaza la colocación de la orden. Ese patrón, todo se lee bien, la escritura se deniega, es la huella de un problema de alcance de autorización, no de una credencial incorrecta." },
+    { type: "heading", text: "Por qué Market Replay devuelve \"Access Is Denied\"" },
+    { type: "paragraph", html: "Dos particularidades de diseño del entorno de replay provocan casi todas estas denegaciones." },
+    { type: "heading", text: "Replay no tiene endpoint de autenticación HTTP" },
+    { type: "paragraph", html: "En demo y live está acostumbrado a un mundo REST: hace POST a <code>auth/accessTokenRequest</code>, obtiene un token y luego envía órdenes por POST a <code>order/placeOrder</code> por HTTPS. El host de replay no funciona así. No existe <code>auth/accessTokenRequest</code> en <code>replay.tradovateapi.com</code>, así que un POST a <code>https://replay.tradovateapi.com/v1/auth/accessTokenRequest</code> devuelve <code>404 Not Found</code>. La gente ve ese 404, asume que el endpoint se movió y empieza a adivinar URLs, cuando la respuesta real es que replay nunca tuvo uno." },
+    { type: "paragraph", html: "El token sigue proviniendo de los endpoints de autenticación normales. Luego lo lleva al <em>WebSocket</em> de replay y se autoriza allí. Todo lo que sigue, suscripciones de datos de mercado, control del reloj y colocación de órdenes, viaja como mensajes enmarcados por ese único socket. Si su OSO todavía sale por HTTPS mientras su token vive en el socket, Tradovate no tiene ninguna sesión autorizada a la que asociar la orden, y obtiene &ldquo;Access is denied.&rdquo;" },
+    { type: "heading", text: "Cada sesión de replay crea una cuenta nueva y desechable" },
+    { type: "paragraph", html: "Replay no opera con su cuenta de demo ni de live. Cuando llama a <code>replay/initializeClock</code>, Tradovate inicia una sesión y crea una cuenta de replay completamente nueva, financiada con el <code>initialBalance</code> que envía. Esa cuenta existe solo durante la sesión y se descarta cuando esta termina. Solo se ejecuta una sesión de replay por usuario a la vez, y volver a llamar a <code>initializeClock</code> reinicia lo que estuviera en curso." },
+    { type: "paragraph", html: "Aquí está la trampa que produce las denegaciones: su OSO debe apuntar a <em>esa</em> cuenta de replay, la que la sesión actual acaba de crear, no al id de su cuenta de demo, no al id de su cuenta de live, ni a un id obsoleto de una sesión que ya reinició. Apunte la orden a la cuenta equivocada y Tradovate la rechazará con la misma cadena escueta." },
+    { type: "heading", text: "La solución, paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Solicite el token en la autenticación de demo o live (nunca en replay)", html: "Autentíquese contra un endpoint de entorno real y conserve el <code>accessToken</code> devuelto: el trabajo de sim/backtest usa <code>https://demo.tradovateapi.com/v1/auth/accessTokenRequest</code>; el trabajo con credenciales live usa <code>https://live.tradovateapi.com/v1/auth/accessTokenRequest</code>. Envíe el conjunto completo de credenciales que su entorno espera, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code>, y, especialmente en live, un <code>deviceId</code> estable. No haga POST a ninguna ruta de autenticación de <code>replay.tradovateapi.com</code>; esa es la trampa del 404." },
+        { title: "Abra el socket de replay y autorícese con ese token", html: "Conéctese a <code>wss://replay.tradovateapi.com/v1/websocket</code>. Tradovate abre el stream con un frame de apertura de un solo carácter, la letra <code>o</code>. En cuanto lo vea, envíe el frame de autorización usando el token del paso 1: <code>authorize\\n{id}\\n\\n{accessToken}</code>. Esa forma delimitada por saltos de línea, endpoint, id de solicitud, línea en blanco, body, es cómo se enmarca cada mensaje de replay. Una autorización exitosa es lo que realmente concede a su sesión el derecho a colocar órdenes en el socket. Sáltesela, y hasta un token perfectamente válido dejará la colocación de órdenes sin autorizar." },
+        { title: "Inicialice el reloj y capture la cuenta de la sesión", html: "Con el socket autorizado, configure la sesión de replay enviando <code>replay/initializeClock</code> con su ventana y velocidad: <code>{\"startTimestamp\":\"2019-08-26T16:43:00.000Z\",\"speed\":100,\"initialBalance\":51000}</code>. <code>speed</code> es un porcentaje (aproximadamente 0–400), e <code>initialBalance</code> financia la cuenta de replay temporal. Una vez que el reloj esté en marcha, resuelva la cuenta asociada a esta sesión y guarde su id numérico. Esta es la cuenta a la que su OSO debe referirse en <code>accountId</code> / <code>accountSpec</code>, no el id que usaría en demo o live." },
+        { title: "Envíe el OSO a través del socket de replay, contra esa cuenta", html: "Ahora coloque el bracket como un frame de WebSocket en el mismo socket autorizado, usando la cuenta de la sesión de replay: <code>order/placeorder\\n{id}\\n\\n{orderBodyJson}</code>. Mantenga el mismo body de OSO que funciona en demo, pero sustituya el id de cuenta de replay capturado en el paso 3. Cuando la cuenta y el paso de autorización coinciden, la respuesta pasa de <code>failureText</code> a valores reales de <code>orderId</code> / <code>oso1Id</code> / <code>oso2Id</code>." },
+        { title: "Mantenga vivo el token y el socket", html: "Los access tokens tienen una vida corta, cuente con aproximadamente 80 a 90 minutos. Una ejecución de replay larga puede superar la duración del token, y cuando caduca a mitad de sesión, la siguiente orden se lee como una denegación. Envíe frames de heartbeat periódicos para que el socket no quede inactivo, y renueve el token antes de que caduque, no después. Trate un &ldquo;Access is denied&rdquo; repentino en medio de una sesión que funcionaba como una probable caducidad, no como un nuevo error de permisos." },
+      ],
+    },
+    { type: "heading", text: "¿Sigue obteniendo \"Access Is Denied\"? Revise esta lista de verificación" },
+    { type: "paragraph", html: "Si el flujo de autenticación es correcto y el OSO aún no se coloca, revise esto en orden:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Discrepancia de id de cuenta</strong>, confirme que la orden apunta a la cuenta de la sesión de replay, no a un id de demo/live ni a un id obsoleto de una sesión que ya reinició con un initializeClock más reciente.",
+        "<strong class='text-white'>Permisos de la API key</strong>, la key con la que se autenticó debe tener <strong class='text-white'>Orders</strong> concedido, no denegado. Una key de solo lectura se autentica y lista cuentas, pero se bloquea en cuanto intenta colocar una orden.",
+        "<strong class='text-white'>Device id en live</strong>, si está generando el token desde el host de live, proporcione un deviceId estable y aprobado. Demo es permisivo en esto; live no, y las credenciales difieren entre ambos.",
+        "<strong class='text-white'>Frame de autorización omitido</strong>, asegúrese de haber enviado realmente authorize después del frame de apertura o y de haber recibido éxito antes de enviar cualquier orden.",
+        "<strong class='text-white'>Límite de una sesión</strong>, recuerde que solo se ejecuta una sesión de replay por usuario. Si otra sesión está activa (desde la interfaz o una ejecución anterior), la suya nueva podría estar reiniciándola sin que usted lo note.",
+        "<strong class='text-white'>Ventana del contrato</strong>, el símbolo debe ser válido para la fecha de replay, así que use el contrato que era el front month activo durante su startTimestamp, no el front month de hoy.",
+      ],
+    },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Causa", "Solución"],
+      rows: [
+        ["404 en la URL de autenticación de replay", "Replay no tiene endpoint de autenticación HTTP", "Obtenga el token de demo/live auth/accessTokenRequest y luego autorice el socket de replay"],
+        ["OSO devuelve {\"failureText\":\"Access is denied\"}", "El socket nunca se autorizó, o la orden apunta a la cuenta equivocada", "Envíe el frame de autorización después de o; apunte a la cuenta de la sesión de replay"],
+        ["Funciona en demo, denegado en Replay", "La orden sigue yendo por HTTPS en lugar del socket", "Envíe order/placeorder como un mensaje enmarcado en el WebSocket de replay"],
+        ["Timeout o denegación justo después de initializeClock", "Uso de una cuenta antigua de una sesión reiniciada", "Vuelva a resolver y use la cuenta asociada a la sesión actual"],
+        ["Una sesión que funcionaba de pronto deniega órdenes", "El access token caducó a mitad de la ejecución", "Envíe heartbeat al socket y renueve el token antes de ~80–90 min"],
+        ["Denegado solo al autenticarse en live", "deviceId faltante/no aprobado o permiso de Orders denegado", "Proporcione un device id estable y aprobado; conceda a la key el acceso a Orders"],
+      ],
+    },
+    { type: "heading", text: "Dónde encaja PickMyTrade" },
+    { type: "paragraph", html: "Cablear a mano la danza de token de demo a socket de replay es de donde proviene la mayoría de estas denegaciones, un frame <code>authorize</code> olvidado o un id de cuenta equivocado y toda la sesión rechaza órdenes. Si su objetivo es ejecutar una estrategia contra Tradovate desde alertas de TradingView en lugar de cuidar frames de WebSocket, PickMyTrade gestiona la conexión por usted: administra el token, apunta a la cuenta correcta y marca las órdenes automatizadas correctamente para que las entradas bracket se enruten sin que tenga que depurar JSON en la apertura." },
+  ], fr: [
+    { type: "paragraph", html: "Vous avez un bracket OSO qui se déclenche sans problème en démo. Même code, même contrat, même body, vous le pointez vers Market Replay pour backtester une session, et Tradovate vous renvoie <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>. Rien n'a changé de votre côté à part l'environnement, donc cela ressemble à un bug de permissions. Ce n'en est pas un. Replay s'authentifie différemment de démo et live, et le &laquo;refus&raquo; provient presque toujours d'une seule chose : le token n'a jamais été correctement présenté au socket de replay, ou l'ordre vise un compte que la session de replay ne possède pas. Corrigez le flux d'authentification et l'OSO qui fonctionne en démo fonctionnera aussi en Replay. Voici exactement ce qui se passe et comment le corriger." },
+    { type: "quote", html: "<strong class='text-white'>Version courte :</strong> Replay n'a pas d'endpoint d'authentification propre, un POST vers <code>replay.tradovateapi.com/v1/auth/accessTokenRequest</code> renvoie simplement un 404. Demandez l'access token à l'endpoint d'authentification <code>demo</code> (ou <code>live</code>), ouvrez <code>wss://replay.tradovateapi.com/v1/websocket</code>, envoyez un frame <code>authorize</code> avec ce token, puis routez chaque appel, y compris votre OSO, via ce même socket, contre le compte que la session de replay a créé." },
+    { type: "heading", text: "À quoi ressemble l'erreur" },
+    { type: "paragraph", html: "L'indice, c'est que le body de la requête est identique octet pour octet à celui qui fonctionne. Déclenchez l'OSO en démo et vous obtenez un ensemble propre d'ID d'ordre :" },
+    {
+      type: "list",
+      items: [
+        "<code>{\"orderId\":3696709628,\"oso1Id\":3696709629,\"oso2Id\":3696709630}</code>",
+      ],
+    },
+    { type: "paragraph", html: "Envoyez le même payload dans Replay et, au lieu des ID, vous obtenez le refus :" },
+    {
+      type: "list",
+      items: [
+        "<code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>",
+      ],
+    },
+    { type: "paragraph", html: "Le contrat est valide pour la fenêtre de replay (disons <code>MNQM2</code> pendant une session qui la couvre), le token s'est authentifié, et vous pouvez même récupérer les données du compte. Seul le placement de l'ordre est refusé. Ce schéma, tout se lit correctement, l'écriture est refusée, est la signature d'un problème de portée d'autorisation, pas d'un identifiant incorrect." },
+    { type: "heading", text: "Pourquoi Market Replay renvoie \"Access Is Denied\"" },
+    { type: "paragraph", html: "Deux particularités de conception de l'environnement de replay causent presque tous ces refus." },
+    { type: "heading", text: "Replay n'a pas d'endpoint d'authentification HTTP" },
+    { type: "paragraph", html: "En démo et en live, vous êtes habitué à un monde REST : vous faites un POST vers <code>auth/accessTokenRequest</code>, obtenez un token, puis envoyez les ordres par POST vers <code>order/placeOrder</code> en HTTPS. L'hôte de replay ne fonctionne pas ainsi. Il n'y a pas de <code>auth/accessTokenRequest</code> sur <code>replay.tradovateapi.com</code>, donc un POST vers <code>https://replay.tradovateapi.com/v1/auth/accessTokenRequest</code> renvoie un <code>404 Not Found</code>. Les gens voient ce 404, supposent que l'endpoint a été déplacé, et se mettent à deviner des URL, alors que la vraie réponse est que replay n'en a jamais eu." },
+    { type: "paragraph", html: "Le token provient toujours des endpoints d'authentification normaux. Vous le transportez ensuite vers le <em>WebSocket</em> de replay et vous autorisez à cet endroit. Tout ce qui suit, abonnements aux données de marché, contrôle de l'horloge et placement d'ordres, transite sous forme de messages encadrés sur ce socket unique. Si votre OSO continue à partir en HTTPS pendant que votre token vit sur le socket, Tradovate n'a aucune session autorisée à laquelle rattacher l'ordre, et vous obtenez &laquo;Access is denied.&raquo;" },
+    { type: "heading", text: "Chaque session de replay crée un compte jetable tout neuf" },
+    { type: "paragraph", html: "Replay ne négocie pas avec votre compte démo ou live. Quand vous appelez <code>replay/initializeClock</code>, Tradovate démarre une session et crée un tout nouveau compte de replay alimenté avec l'<code>initialBalance</code> que vous transmettez. Ce compte n'existe que pour la session et est abandonné quand celle-ci se termine. Une seule session de replay tourne par utilisateur à la fois, et rappeler <code>initializeClock</code> réinitialise ce qui était en cours." },
+    { type: "paragraph", html: "Voici le piège qui produit les refus : votre OSO doit viser <em>ce</em> compte de replay, celui que la session actuelle vient tout juste de créer, pas l'id de votre compte démo, pas l'id de votre compte live, et pas un id périmé d'une session que vous avez déjà réinitialisée. Visez le mauvais compte avec l'ordre et Tradovate le refusera avec la même chaîne laconique." },
+    { type: "heading", text: "La solution, étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Demandez le token à l'authentification demo ou live (jamais replay)", html: "Authentifiez-vous auprès d'un vrai endpoint d'environnement et conservez l'<code>accessToken</code> renvoyé : le travail sim/backtest utilise <code>https://demo.tradovateapi.com/v1/auth/accessTokenRequest</code> ; le travail avec des identifiants live utilise <code>https://live.tradovateapi.com/v1/auth/accessTokenRequest</code>. Envoyez le jeu complet d'identifiants que votre environnement attend, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code>, et, surtout en live, un <code>deviceId</code> stable. Ne faites de POST vers aucun chemin d'authentification <code>replay.tradovateapi.com</code> ; c'est le piège du 404." },
+        { title: "Ouvrez le socket de replay et autorisez-vous avec ce token", html: "Connectez-vous à <code>wss://replay.tradovateapi.com/v1/websocket</code>. Tradovate ouvre le flux avec un frame d'ouverture d'un seul caractère, la lettre <code>o</code>. Dès que vous le voyez, envoyez le frame authorize en utilisant le token de l'étape 1 : <code>authorize\\n{id}\\n\\n{accessToken}</code>. Cette forme délimitée par des sauts de ligne, endpoint, id de requête, ligne vide, body, est la façon dont chaque message de replay est encadré. Un authorize réussi est ce qui accorde réellement à votre session le droit de placer des ordres sur le socket. Sautez-le, et même un token parfaitement valide laisse le placement d'ordres non autorisé." },
+        { title: "Initialisez l'horloge et capturez le compte de la session", html: "Le socket étant autorisé, configurez la session de replay en envoyant <code>replay/initializeClock</code> avec votre fenêtre et votre vitesse : <code>{\"startTimestamp\":\"2019-08-26T16:43:00.000Z\",\"speed\":100,\"initialBalance\":51000}</code>. <code>speed</code> est un pourcentage (environ 0–400), et <code>initialBalance</code> finance le compte de replay temporaire. Une fois l'horloge lancée, résolvez le compte rattaché à cette session et conservez son id numérique. C'est le compte que votre OSO doit référencer dans <code>accountId</code> / <code>accountSpec</code>, pas l'id que vous utiliseriez en démo ou en live." },
+        { title: "Envoyez l'OSO via le socket de replay, contre ce compte", html: "Placez maintenant le bracket comme un frame WebSocket sur le même socket autorisé, en utilisant le compte de la session de replay : <code>order/placeorder\\n{id}\\n\\n{orderBodyJson}</code>. Gardez le même body OSO qui fonctionne en démo, mais remplacez-y l'id de compte de replay capturé à l'étape 3. Quand le compte et l'étape d'autorisation concordent, la réponse passe de <code>failureText</code> à de vraies valeurs <code>orderId</code> / <code>oso1Id</code> / <code>oso2Id</code>." },
+        { title: "Gardez le token et le socket actifs", html: "Les access tokens ont une durée de vie courte, comptez sur environ 80 à 90 minutes. Une longue session de replay peut dépasser la durée du token, et quand il expire en cours de session, l'ordre suivant se lit comme un refus. Envoyez des frames de heartbeat périodiques pour éviter que le socket ne devienne inactif, et renouvelez le token avant qu'il n'expire, pas après. Traitez un &laquo;Access is denied&raquo; soudain au milieu d'une session qui fonctionnait comme une expiration probable, pas comme un nouveau bug de permissions." },
+      ],
+    },
+    { type: "heading", text: "Toujours \"Access Is Denied\" ? Passez cette checklist en revue" },
+    { type: "paragraph", html: "Si le flux d'authentification est correct et que l'OSO ne se place toujours pas, vérifiez ceci dans l'ordre :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Décalage d'id de compte</strong>, confirmez que l'ordre vise le compte de la session de replay, pas un id démo/live ni un id périmé d'une session déjà réinitialisée avec un initializeClock plus récent.",
+        "<strong class='text-white'>Permissions de la clé API</strong>, la clé avec laquelle vous vous êtes authentifié doit avoir <strong class='text-white'>Orders</strong> accordé, pas refusé. Une clé en lecture seule s'authentifie et liste les comptes mais est bloquée dès qu'elle tente de placer un ordre.",
+        "<strong class='text-white'>Device id en live</strong>, si vous générez le token depuis l'hôte live, fournissez un deviceId stable et approuvé. Démo est tolérant à ce sujet ; live ne l'est pas, et les identifiants diffèrent entre les deux.",
+        "<strong class='text-white'>Frame authorize sauté</strong>, assurez-vous d'avoir réellement envoyé authorize après le frame d'ouverture o et d'avoir reçu un succès avant qu'un ordre ne parte.",
+        "<strong class='text-white'>Limite d'une seule session</strong>, rappelez-vous qu'une seule session de replay tourne par utilisateur. Si une autre session est active (depuis l'interface ou une exécution précédente), votre nouvelle session pourrait être en train de la réinitialiser sans que vous le sachiez.",
+        "<strong class='text-white'>Fenêtre du contrat</strong>, le symbole doit être valide pour la date de replay, utilisez donc le contrat qui était le front month actif pendant votre startTimestamp, pas le front month d'aujourd'hui.",
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Cause", "Solution"],
+      rows: [
+        ["404 sur l'URL d'authentification replay", "Replay n'a pas d'endpoint d'authentification HTTP", "Obtenez le token via demo/live auth/accessTokenRequest, puis autorisez le socket de replay"],
+        ["OSO renvoie {\"failureText\":\"Access is denied\"}", "Socket jamais autorisé, ou ordre visant le mauvais compte", "Envoyez le frame authorize après o ; visez le compte de la session de replay"],
+        ["Fonctionne en démo, refusé en Replay", "L'ordre passe encore par HTTPS au lieu du socket", "Envoyez order/placeorder comme message encadré sur le WebSocket de replay"],
+        ["Timeout ou refus juste après initializeClock", "Utilisation d'un ancien compte d'une session réinitialisée", "Résolvez à nouveau et utilisez le compte rattaché à la session actuelle"],
+        ["Une session qui fonctionnait refuse soudain les ordres", "Access token expiré en cours d'exécution", "Envoyez des heartbeats au socket et renouvelez le token avant ~80–90 min"],
+        ["Refusé uniquement lors de l'authentification en live", "deviceId manquant/non approuvé ou permission Orders refusée", "Fournissez un device id stable approuvé ; accordez l'accès Orders à la clé"],
+      ],
+    },
+    { type: "heading", text: "Où PickMyTrade intervient" },
+    { type: "paragraph", html: "Câbler à la main la danse token démo vers socket replay est l'origine de la plupart de ces refus, un frame <code>authorize</code> oublié ou un mauvais id de compte, et toute la session refuse les ordres. Si votre objectif est de faire tourner une stratégie contre Tradovate à partir d'alertes TradingView plutôt que de surveiller des frames WebSocket, PickMyTrade gère la connexion pour vous : il gère le token, cible le bon compte et marque correctement les ordres automatisés pour que les entrées bracket se routent sans que vous ayez à déboguer du JSON à l'ouverture." },
+  ], it: [
+    { type: "paragraph", html: "Avete un bracket OSO che si attiva senza problemi in demo. Stesso codice, stesso contratto, stesso body, lo puntate su Market Replay per fare il backtest di una sessione, e Tradovate vi restituisce <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>. Dal vostro lato non è cambiato nulla tranne l'ambiente, quindi sembra un bug di permessi. Non lo è. Replay si autentica in modo diverso da demo e live, e il &ldquo;negato&rdquo; quasi sempre si riconduce a una cosa sola: il token non è mai stato presentato correttamente al socket di replay, oppure l'ordine punta a un account che la sessione di replay non possiede. Sistemate il flusso di autenticazione e l'OSO che funziona in demo funzionerà anche in Replay. Ecco esattamente cosa succede e come risolverlo." },
+    { type: "quote", html: "<strong class='text-white'>Versione breve:</strong> Replay non ha un proprio endpoint di autenticazione, una POST a <code>replay.tradovateapi.com/v1/auth/accessTokenRequest</code> restituisce semplicemente 404. Richiedete l'access token all'endpoint di autenticazione <code>demo</code> (o <code>live</code>), aprite <code>wss://replay.tradovateapi.com/v1/websocket</code>, inviate un frame <code>authorize</code> con quel token, quindi instradate ogni chiamata, compreso il vostro OSO, attraverso lo stesso socket contro l'account che la sessione di replay ha creato." },
+    { type: "heading", text: "Come si presenta l'errore" },
+    { type: "paragraph", html: "Il segnale è che il body della richiesta è identico byte per byte a uno che funziona. Attivate l'OSO in demo e ottenete un set pulito di id ordine:" },
+    {
+      type: "list",
+      items: [
+        "<code>{\"orderId\":3696709628,\"oso1Id\":3696709629,\"oso2Id\":3696709630}</code>",
+      ],
+    },
+    { type: "paragraph", html: "Inviate lo stesso payload in Replay e, invece degli id, ottenete il rifiuto:" },
+    {
+      type: "list",
+      items: [
+        "<code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>",
+      ],
+    },
+    { type: "paragraph", html: "Il contratto è valido per la finestra di replay (diciamo <code>MNQM2</code> durante una sessione che la copre), il token si è autenticato, e potete persino recuperare i dati dell'account. Solo il piazzamento dell'ordine viene rifiutato. Questo schema, tutto si legge correttamente, la scrittura viene negata, è l'impronta di un problema di scope di autorizzazione, non di una credenziale errata." },
+    { type: "heading", text: "Perché Market Replay restituisce \"Access Is Denied\"" },
+    { type: "paragraph", html: "Due particolarità di progettazione dell'ambiente di replay causano quasi tutti questi rifiuti." },
+    { type: "heading", text: "Replay non ha un endpoint di autenticazione HTTP" },
+    { type: "paragraph", html: "In demo e live siete abituati a un mondo REST: fate una POST a <code>auth/accessTokenRequest</code>, ottenete un token, poi inviate gli ordini con POST a <code>order/placeOrder</code> su HTTPS. L'host di replay non funziona così. Non esiste <code>auth/accessTokenRequest</code> su <code>replay.tradovateapi.com</code>, quindi una POST a <code>https://replay.tradovateapi.com/v1/auth/accessTokenRequest</code> restituisce un <code>404 Not Found</code>. Le persone vedono quel 404, presumono che l'endpoint sia stato spostato, e iniziano a indovinare URL, quando la vera risposta è che replay non ne ha mai avuto uno." },
+    { type: "paragraph", html: "Il token continua ad arrivare dagli endpoint di autenticazione normali. Poi lo portate al <em>WebSocket</em> di replay e vi autorizzate lì. Tutto ciò che segue, sottoscrizioni ai dati di mercato, controllo dell'orologio e piazzamento ordini, viaggia come messaggi incorniciati su quell'unico socket. Se il vostro OSO continua a partire via HTTPS mentre il vostro token vive sul socket, Tradovate non ha alcuna sessione autorizzata a cui associare l'ordine, e ottenete &ldquo;Access is denied.&rdquo;" },
+    { type: "heading", text: "Ogni sessione di replay crea un account nuovo e usa e getta" },
+    { type: "paragraph", html: "Replay non opera sul vostro account demo o live. Quando chiamate <code>replay/initializeClock</code>, Tradovate avvia una sessione e crea un account di replay del tutto nuovo, alimentato con l'<code>initialBalance</code> che passate. Quell'account esiste solo per la sessione e viene scartato quando questa termina. Per ogni utente gira una sola sessione di replay alla volta, e richiamare <code>initializeClock</code> resetta ciò che era in corso." },
+    { type: "paragraph", html: "Ecco la trappola che produce i rifiuti: il vostro OSO deve puntare a <em>quell'</em> account di replay, quello che la sessione attuale ha appena creato, non l'id del vostro account demo, non l'id del vostro account live, e non un id obsoleto di una sessione che avete già resettato. Puntate l'ordine sull'account sbagliato e Tradovate lo rifiuterà con la stessa stringa laconica." },
+    { type: "heading", text: "La soluzione, passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Richiedete il token dall'autenticazione demo o live (mai da replay)", html: "Autenticatevi contro un endpoint di ambiente reale e conservate l'<code>accessToken</code> restituito: il lavoro sim/backtest usa <code>https://demo.tradovateapi.com/v1/auth/accessTokenRequest</code>; il lavoro con credenziali live usa <code>https://live.tradovateapi.com/v1/auth/accessTokenRequest</code>. Inviate il set completo di credenziali che il vostro ambiente si aspetta, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code>, e, soprattutto su live, un <code>deviceId</code> stabile. Non inviate POST a nessun percorso di autenticazione <code>replay.tradovateapi.com</code>; quella è la trappola del 404." },
+        { title: "Aprite il socket di replay e autorizzatevi con quel token", html: "Connettetevi a <code>wss://replay.tradovateapi.com/v1/websocket</code>. Tradovate apre lo stream con un frame di apertura a un solo carattere, la lettera <code>o</code>. Non appena lo vedete, inviate il frame authorize usando il token dello step 1: <code>authorize\\n{id}\\n\\n{accessToken}</code>. Questa forma delimitata da a capo, endpoint, id richiesta, riga vuota, body, è il modo in cui ogni messaggio di replay viene incorniciato. Un authorize riuscito è ciò che concede effettivamente alla vostra sessione il diritto di piazzare ordini sul socket. Saltatelo, e anche un token perfettamente valido lascia il piazzamento ordini non autorizzato." },
+        { title: "Inizializzate l'orologio e catturate l'account della sessione", html: "Con il socket autorizzato, impostate la sessione di replay inviando <code>replay/initializeClock</code> con la vostra finestra e velocità: <code>{\"startTimestamp\":\"2019-08-26T16:43:00.000Z\",\"speed\":100,\"initialBalance\":51000}</code>. <code>speed</code> è una percentuale (circa 0–400), e <code>initialBalance</code> finanzia l'account di replay temporaneo. Una volta che l'orologio è in funzione, risolvete l'account legato a questa sessione e conservatene l'id numerico. Questo è l'account a cui il vostro OSO deve fare riferimento in <code>accountId</code> / <code>accountSpec</code>, non l'id che usereste in demo o live." },
+        { title: "Inviate l'OSO attraverso il socket di replay, contro quell'account", html: "Ora piazzate il bracket come frame WebSocket sullo stesso socket autorizzato, usando l'account della sessione di replay: <code>order/placeorder\\n{id}\\n\\n{orderBodyJson}</code>. Mantenete lo stesso body OSO che funziona in demo, ma sostituite l'id account di replay catturato allo step 3. Quando l'account e lo step di autorizzazione corrispondono, la risposta passa da <code>failureText</code> a valori reali di <code>orderId</code> / <code>oso1Id</code> / <code>oso2Id</code>." },
+        { title: "Mantenete attivi token e socket", html: "Gli access token hanno una vita breve, contate su circa 80-90 minuti. Un'esecuzione di replay lunga può superare la durata del token, e quando scade a metà sessione, l'ordine successivo si legge come un rifiuto. Inviate frame di heartbeat periodici per evitare che il socket resti inattivo, e rinnovate il token prima che scada, non dopo. Trattate un improvviso &ldquo;Access is denied&rdquo; nel mezzo di una sessione funzionante come una probabile scadenza, non come un nuovo bug di permessi." },
+      ],
+    },
+    { type: "heading", text: "Ricevete ancora \"Access Is Denied\"? Seguite questa checklist" },
+    { type: "paragraph", html: "Se il flusso di autenticazione è corretto e l'OSO ancora non si piazza, controllate questi punti in ordine:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Discrepanza nell'id account</strong>, confermate che l'ordine punta all'account della sessione di replay, non a un id demo/live o a un id obsoleto di una sessione già resettata con un initializeClock più recente.",
+        "<strong class='text-white'>Permessi della API key</strong>, la chiave con cui vi siete autenticati deve avere <strong class='text-white'>Orders</strong> concesso, non negato. Una chiave di sola lettura si autentica ed elenca gli account, ma viene bloccata non appena tenta di piazzare un ordine.",
+        "<strong class='text-white'>Device id su live</strong>, se state generando il token dall'host live, fornite un deviceId stabile e approvato. Demo è permissivo su questo; live no, e le credenziali differiscono tra i due.",
+        "<strong class='text-white'>Frame authorize saltato</strong>, assicuratevi di aver effettivamente inviato authorize dopo il frame di apertura o e di aver ricevuto un successo prima che qualsiasi ordine parta.",
+        "<strong class='text-white'>Limite di una sessione</strong>, ricordate che gira una sola sessione di replay per utente. Se un'altra sessione è attiva (dall'interfaccia o da un'esecuzione precedente), la vostra nuova potrebbe resettarla a vostra insaputa.",
+        "<strong class='text-white'>Finestra del contratto</strong>, il simbolo deve essere valido per la data di replay, quindi usate il contratto che era il front month attivo durante il vostro startTimestamp, non il front month odierno.",
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Causa", "Soluzione"],
+      rows: [
+        ["404 sull'URL di autenticazione replay", "Replay non ha un endpoint di autenticazione HTTP", "Ottenete il token da demo/live auth/accessTokenRequest, poi autorizzate il socket di replay"],
+        ["OSO restituisce {\"failureText\":\"Access is denied\"}", "Socket mai autorizzato, o ordine puntato sull'account sbagliato", "Inviate il frame authorize dopo o; puntate all'account della sessione di replay"],
+        ["Funziona in demo, negato in Replay", "L'ordine passa ancora via HTTPS invece che sul socket", "Inviate order/placeorder come messaggio incorniciato sul WebSocket di replay"],
+        ["Timeout o rifiuto subito dopo initializeClock", "Uso di un account vecchio da una sessione resettata", "Ri-risolvete e usate l'account legato alla sessione attuale"],
+        ["Una sessione funzionante rifiuta improvvisamente gli ordini", "Access token scaduto a metà esecuzione", "Fate heartbeat del socket e rinnovate il token prima di ~80-90 min"],
+        ["Negato solo autenticandosi su live", "deviceId mancante/non approvato o permesso Orders negato", "Fornite un device id stabile approvato; concedete alla chiave l'accesso Orders"],
+      ],
+    },
+    { type: "heading", text: "Dove si inserisce PickMyTrade" },
+    { type: "paragraph", html: "Cablare manualmente la danza dal token demo al socket di replay è da dove provengono la maggior parte di questi rifiuti, un frame <code>authorize</code> mancato o un id account sbagliato e l'intera sessione rifiuta gli ordini. Se il vostro obiettivo è eseguire una strategia contro Tradovate a partire da alert TradingView invece di sorvegliare i frame WebSocket, PickMyTrade gestisce la connessione per voi: gestisce il token, punta all'account giusto e contrassegna correttamente gli ordini automatizzati in modo che gli ingressi bracket vengano instradati senza che dobbiate debuggare JSON all'apertura." },
+  ] },
+  ctaHeading: { en: "Route Brackets Without Touching the API", de: "Brackets routen, ohne die API anzufassen", es: "Enrute brackets sin tocar la API", fr: "Routez vos brackets sans toucher à l'API", it: "Instradate i bracket senza toccare l'API" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts and route brackets to Tradovate without touching the API.", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion, verknüpfen Sie Ihre Alerts und routen Sie Brackets zu Tradovate, ohne die API anzufassen.", es: "Comience su prueba gratuita de 5 días, vincule sus alertas y enrute brackets a Tradovate sin tocar la API.", fr: "Démarrez votre essai gratuit de 5 jours, liez vos alertes et routez vos brackets vers Tradovate sans toucher à l'API.", it: "Iniziate la vostra prova gratuita di 5 giorni, collegate i vostri alert e instradate i bracket verso Tradovate senza toccare l'API." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Iniziate la vostra prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does an OSO order work in demo but fail with \"Access is denied\" in Market Replay?", a: "Demo and Replay are different environments with different plumbing. In Replay the token has to be minted from the demo or live auth endpoint and then presented over the replay WebSocket with an authorize frame. Skip that authorize step, or send the order against an account the session doesn't own, and the identical body that succeeds in demo comes back with failureText \"Access is denied\"." },
+    { q: "Why does the replay access-token endpoint return a 404?", a: "There is no auth endpoint on the replay host. Posting to https://replay.tradovateapi.com/v1/auth/accessTokenRequest returns 404 by design. Request the access token from https://demo.tradovateapi.com/v1/auth/accessTokenRequest or the live equivalent, then reuse that token to authorize the replay WebSocket." },
+    { q: "Do I place replay orders over HTTP or through the WebSocket?", a: "Through the WebSocket. Once you're authorized on wss://replay.tradovateapi.com/v1/websocket, every call, including order/placeOrder, is sent as a framed message like order/placeorder\\n{id}\\n\\n{body}. HTTP calls to the replay host won't route your replay orders." },
+    { q: "What is initializeClock and why does using the wrong account cause errors?", a: "replay/initializeClock starts a replay session and creates a throwaway replay account that's funded for the session and discarded when it ends. Only one replay session exists per user at a time, and a new initializeClock resets the previous one. Orders must target the account tied to the current session, a stale or demo/live account id produces access-denied or timeout errors." },
+    { q: "Do access tokens expire during a replay session?", a: "Yes. Tradovate access tokens are short-lived, roughly 80 to 90 minutes. Keep the socket alive with periodic heartbeat frames and renew the token before it lapses so a mid-session expiry doesn't masquerade as a denial." },
+    { q: "Does device id matter for Market Replay?", a: "It can, especially when you authenticate against live instead of demo. Live enforces a stable, approved deviceId supplied at authentication, and the credentials differ between demo and live. If Replay works off a demo token but fails off a live one, check the device id and confirm the API key's Orders permission is granted, not denied." },
+  ], de: [
+    { q: "Warum funktioniert eine OSO-Order in der Demo, schlägt aber im Market Replay mit \"Access is denied\" fehl?", a: "Demo und Replay sind unterschiedliche Umgebungen mit unterschiedlicher Verkabelung. Im Replay muss das Token vom Demo- oder Live-Auth-Endpoint geprägt und dann über das Replay-WebSocket mit einem Authorize-Frame präsentiert werden. Überspringen Sie diesen Authorize-Schritt, oder senden Sie die Order gegen ein Konto, das der Session nicht gehört, kommt derselbe Body, der in der Demo erfolgreich ist, mit failureText \"Access is denied\" zurück." },
+    { q: "Warum liefert der Replay-Access-Token-Endpoint einen 404?", a: "Es gibt keinen Auth-Endpoint auf dem Replay-Host. Ein POST an https://replay.tradovateapi.com/v1/auth/accessTokenRequest liefert absichtlich 404. Fordern Sie das Access Token von https://demo.tradovateapi.com/v1/auth/accessTokenRequest oder dem Live-Äquivalent an und verwenden Sie dieses Token dann, um das Replay-WebSocket zu autorisieren." },
+    { q: "Platziere ich Replay-Orders per HTTP oder über das WebSocket?", a: "Über das WebSocket. Sobald Sie auf wss://replay.tradovateapi.com/v1/websocket autorisiert sind, wird jeder Aufruf, einschließlich order/placeOrder, als geframte Nachricht wie order/placeorder\\n{id}\\n\\n{body} gesendet. HTTP-Aufrufe an den Replay-Host routen Ihre Replay-Orders nicht." },
+    { q: "Was ist initializeClock, und warum verursacht das falsche Konto Fehler?", a: "replay/initializeClock startet eine Replay-Session und erstellt ein Wegwerf-Replay-Konto, das für die Session finanziert und bei deren Ende verworfen wird. Pro Benutzer existiert nur eine Replay-Session gleichzeitig, und ein neues initializeClock setzt die vorherige zurück. Orders müssen auf das mit der aktuellen Session verknüpfte Konto zielen, eine veraltete oder Demo-/Live-Konto-ID erzeugt Access-denied- oder Timeout-Fehler." },
+    { q: "Laufen Access Tokens während einer Replay-Session ab?", a: "Ja. Tradovate-Access-Tokens sind kurzlebig, etwa 80 bis 90 Minuten. Halten Sie das Socket mit regelmäßigen Heartbeat-Frames am Leben und erneuern Sie das Token, bevor es abläuft, damit ein Ablauf mitten in der Session nicht als Ablehnung erscheint." },
+    { q: "Spielt die Device-ID für Market Replay eine Rolle?", a: "Das kann sie, besonders wenn Sie sich gegen Live statt gegen Demo authentifizieren. Live erzwingt eine stabile, genehmigte deviceId bei der Authentifizierung, und die Credentials unterscheiden sich zwischen Demo und Live. Funktioniert Replay mit einem Demo-Token, schlägt aber mit einem Live-Token fehl, prüfen Sie die Device-ID und bestätigen Sie, dass die Orders-Berechtigung des API-Keys gewährt und nicht verweigert ist." },
+  ], es: [
+    { q: "¿Por qué una orden OSO funciona en demo pero falla con \"Access is denied\" en Market Replay?", a: "Demo y Replay son entornos distintos con conexiones distintas. En Replay, el token debe generarse en el endpoint de autenticación de demo o live y luego presentarse a través del WebSocket de replay con un frame authorize. Si se omite ese paso de autorización, o se envía la orden contra una cuenta que la sesión no posee, el mismo body que tiene éxito en demo vuelve con failureText \"Access is denied\"." },
+    { q: "¿Por qué el endpoint de access token de replay devuelve un 404?", a: "No hay endpoint de autenticación en el host de replay. Hacer POST a https://replay.tradovateapi.com/v1/auth/accessTokenRequest devuelve 404 por diseño. Solicite el access token en https://demo.tradovateapi.com/v1/auth/accessTokenRequest o el equivalente de live, y luego reutilice ese token para autorizar el WebSocket de replay." },
+    { q: "¿Coloco las órdenes de replay por HTTP o a través del WebSocket?", a: "A través del WebSocket. Una vez autorizado en wss://replay.tradovateapi.com/v1/websocket, cada llamada, incluida order/placeOrder, se envía como un mensaje enmarcado como order/placeorder\\n{id}\\n\\n{body}. Las llamadas HTTP al host de replay no enrutarán sus órdenes de replay." },
+    { q: "¿Qué es initializeClock, y por qué usar la cuenta equivocada causa errores?", a: "replay/initializeClock inicia una sesión de replay y crea una cuenta de replay desechable que se financia para la sesión y se descarta cuando termina. Solo existe una sesión de replay por usuario a la vez, y un nuevo initializeClock reinicia la anterior. Las órdenes deben apuntar a la cuenta asociada a la sesión actual; un id de cuenta obsoleto o de demo/live produce errores de acceso denegado o timeout." },
+    { q: "¿Los access tokens caducan durante una sesión de replay?", a: "Sí. Los access tokens de Tradovate tienen una vida corta, aproximadamente entre 80 y 90 minutos. Mantenga el socket activo con frames de heartbeat periódicos y renueve el token antes de que caduque para que una caducidad a mitad de sesión no se confunda con una denegación." },
+    { q: "¿Importa el device id para Market Replay?", a: "Puede importar, especialmente cuando se autentica contra live en lugar de demo. Live exige un deviceId estable y aprobado proporcionado en la autenticación, y las credenciales difieren entre demo y live. Si Replay funciona con un token de demo pero falla con uno de live, revise el device id y confirme que el permiso Orders de la API key esté concedido, no denegado." },
+  ], fr: [
+    { q: "Pourquoi un ordre OSO fonctionne-t-il en démo mais échoue-t-il avec \"Access is denied\" dans Market Replay ?", a: "Démo et Replay sont des environnements différents avec une plomberie différente. Dans Replay, le token doit être généré depuis l'endpoint d'authentification demo ou live, puis présenté via le WebSocket de replay avec un frame authorize. Sautez cette étape d'authorization, ou envoyez l'ordre contre un compte que la session ne possède pas, et le même body qui réussit en démo revient avec failureText \"Access is denied\"." },
+    { q: "Pourquoi l'endpoint d'access token de replay renvoie-t-il un 404 ?", a: "Il n'y a pas d'endpoint d'authentification sur l'hôte de replay. Un POST vers https://replay.tradovateapi.com/v1/auth/accessTokenRequest renvoie 404 par conception. Demandez l'access token via https://demo.tradovateapi.com/v1/auth/accessTokenRequest ou l'équivalent live, puis réutilisez ce token pour autoriser le WebSocket de replay." },
+    { q: "Est-ce que je place les ordres de replay en HTTP ou via le WebSocket ?", a: "Via le WebSocket. Une fois autorisé sur wss://replay.tradovateapi.com/v1/websocket, chaque appel, y compris order/placeOrder, est envoyé comme un message encadré du type order/placeorder\\n{id}\\n\\n{body}. Les appels HTTP vers l'hôte de replay ne routeront pas vos ordres de replay." },
+    { q: "Qu'est-ce qu'initializeClock, et pourquoi utiliser le mauvais compte cause-t-il des erreurs ?", a: "replay/initializeClock démarre une session de replay et crée un compte de replay jetable, financé pour la session et abandonné à la fin de celle-ci. Une seule session de replay existe par utilisateur à la fois, et un nouvel initializeClock réinitialise la précédente. Les ordres doivent viser le compte rattaché à la session actuelle ; un id de compte périmé ou démo/live produit des erreurs d'accès refusé ou de timeout." },
+    { q: "Les access tokens expirent-ils pendant une session de replay ?", a: "Oui. Les access tokens Tradovate ont une durée de vie courte, environ 80 à 90 minutes. Gardez le socket actif avec des frames de heartbeat périodiques et renouvelez le token avant qu'il n'expire, pour qu'une expiration en cours de session ne se fasse pas passer pour un refus." },
+    { q: "Le device id compte-t-il pour Market Replay ?", a: "Cela peut être le cas, surtout lorsque vous vous authentifiez contre live plutôt que demo. Live impose un deviceId stable et approuvé fourni lors de l'authentification, et les identifiants diffèrent entre demo et live. Si Replay fonctionne avec un token démo mais échoue avec un token live, vérifiez le device id et confirmez que la permission Orders de la clé API est accordée, pas refusée." },
+  ], it: [
+    { q: "Perché un ordine OSO funziona in demo ma fallisce con \"Access is denied\" in Market Replay?", a: "Demo e Replay sono ambienti diversi con un'infrastruttura diversa. In Replay il token deve essere generato dall'endpoint di autenticazione demo o live e poi presentato tramite il WebSocket di replay con un frame authorize. Saltate quello step di autorizzazione, oppure inviate l'ordine contro un account che la sessione non possiede, e lo stesso body che ha successo in demo torna con failureText \"Access is denied\"." },
+    { q: "Perché l'endpoint dell'access token di replay restituisce un 404?", a: "Non esiste un endpoint di autenticazione sull'host di replay. Una POST a https://replay.tradovateapi.com/v1/auth/accessTokenRequest restituisce 404 per progettazione. Richiedete l'access token a https://demo.tradovateapi.com/v1/auth/accessTokenRequest o all'equivalente live, quindi riutilizzate quel token per autorizzare il WebSocket di replay." },
+    { q: "Piazzo gli ordini di replay via HTTP o tramite il WebSocket?", a: "Tramite il WebSocket. Una volta autorizzati su wss://replay.tradovateapi.com/v1/websocket, ogni chiamata, incluso order/placeOrder, viene inviata come messaggio incorniciato tipo order/placeorder\\n{id}\\n\\n{body}. Le chiamate HTTP verso l'host di replay non instraderanno i vostri ordini di replay." },
+    { q: "Cos'è initializeClock, e perché usare l'account sbagliato causa errori?", a: "replay/initializeClock avvia una sessione di replay e crea un account di replay usa e getta, finanziato per la sessione e scartato al suo termine. Esiste una sola sessione di replay per utente alla volta, e un nuovo initializeClock resetta quella precedente. Gli ordini devono puntare all'account legato alla sessione attuale; un id account obsoleto o demo/live produce errori di accesso negato o timeout." },
+    { q: "Gli access token scadono durante una sessione di replay?", a: "Sì. Gli access token di Tradovate hanno una vita breve, circa 80-90 minuti. Mantenete attivo il socket con frame di heartbeat periodici e rinnovate il token prima che scada, così una scadenza a metà sessione non si mascheri da rifiuto." },
+    { q: "Il device id conta per Market Replay?", a: "Può contare, specialmente quando vi autenticate contro live invece che demo. Live impone un deviceId stabile e approvato fornito in fase di autenticazione, e le credenziali differiscono tra demo e live. Se Replay funziona con un token demo ma fallisce con uno live, controllate il device id e confermate che il permesso Orders della API key sia concesso, non negato." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. und wird von diesem Unternehmen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -abläufe ändern sich im Laufe der Zeit, bestätigen Sie den aktuellen Prozess daher stets in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada con Tradovate, Inc., ni respaldada ni patrocinada por ella. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la plataforma y documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de futures et d'autres produits à effet de levier comporte un risque substantiel de perte et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou sponsorisée par elle. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione di terze parti indipendente e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e le procedure della piattaforma cambiano nel tempo, quindi confermate sempre il processo attuale sulla piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

@@ -1,0 +1,629 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "symbol-not-found-expired-contract";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate No Data / Symbol Not Found on Expired";
+const META_DESCRIPTION =
+  "Tradovate No Data or Symbol Not Found? Your contract expired, roll to the current front-month symbol to restore live quotes and place orders again.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate „No Data“ / „Symbol Not Found“ bei abgelaufenem Kontrakt", es: "Tradovate “No Data” / “Symbol Not Found” con contrato vencido", fr: "Tradovate « No Data » / « Symbol Not Found » sur un contrat expiré", it: "Tradovate “No Data” / “Symbol Not Found” su contratto scaduto" },
+  dek: { en: "No candles, no bid/ask, just a No Data placeholder where price should be. Nine times out of ten you're looking at a futures contract that already expired, here's how to read the code and roll to the live one.", de: "Keine Kerzen, kein Bid/Ask, nur ein Platzhalter „No Data“ dort, wo der Kurs stehen sollte. In neun von zehn Fällen handelt es sich um einen Futures-Kontrakt, der bereits abgelaufen ist. So lesen Sie den Code und wechseln zum aktiven Kontrakt.", es: "Sin velas, sin bid/ask, solo un marcador “No Data” donde debería estar el precio. Nueve de cada diez veces se trata de un contrato de futuros que ya venció; aquí le explicamos cómo leer el código y pasar al contrato vigente.", fr: "Pas de bougies, pas de bid/ask, juste un espace réservé « No Data » là où le prix devrait être. Neuf fois sur dix, il s'agit d'un contrat à terme déjà expiré ; voici comment lire le code et passer au contrat actif.", it: "Nessuna candela, nessun bid/ask, solo un segnaposto “No Data” dove dovrebbe esserci il prezzo. Nove volte su dieci si tratta di un contratto future già scaduto: ecco come leggere il codice e passare a quello attivo." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You pull up ES or NQ to trade the open, and the chart is empty. No candles, no bid/ask, just a &ldquo;No Data&rdquo; placeholder or a blunt &ldquo;Symbol Not Found&rdquo; message sitting where price should be. Before you blame your Wi-Fi or a Tradovate outage, check the symbol. Nine times out of ten this is neither: you're looking at a futures contract that has already expired. Expired contracts stop trading, stop printing quotes, and drop off the live feed, so a code that worked fine last quarter now hands you nothing." },
+    { type: "paragraph", html: "The same root cause shows up wearing different labels, &ldquo;No Data,&rdquo; &ldquo;Symbol Not Found,&rdquo; a blank chart, &ldquo;no quote available,&rdquo; or an order that simply refuses to route. Every one of them clears the second you roll forward to the live front-month contract. Here's why it happens, how to switch to the correct active symbol, and how to keep an expiring contract from ambushing your automation next quarter." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for No Data / Symbol Not Found",
+      items: [
+        "<strong class='text-white'>Read the month and year code in your symbol.</strong> <code>ESZ5</code> means December 2025. If that quarter has passed, the contract is dead.",
+        "<strong class='text-white'>Roll forward to the front-month contract.</strong> Search the root symbol (<code>ES</code>, <code>NQ</code>, <code>CL</code>) and pick the nearest active expiration.",
+        "<strong class='text-white'>Stop hard-coding old contract codes</strong> in charts, watchlists, and alerts, they don't auto-update.",
+        "<strong class='text-white'>Chart with the continuous/front-month symbol,</strong> but confirm your platform maps it to a live tradable contract before you send an order.",
+        "<strong class='text-white'>Verify your real-time market-data subscription and signed agreements.</strong> An expired contract shows no data, but so does a lapsed feed.",
+        "<strong class='text-white'>On a prop or eval account, confirm the firm has enabled data.</strong> Evaluation accounts usually can't self-subscribe.",
+      ],
+    },
+    { type: "heading", text: "What “No Data / Symbol Not Found” Means in Tradovate" },
+    { type: "paragraph", html: "Every futures contract has a finite life. It gets listed, it trades for a set stretch, and then it hits its expiration date and settles, after which it no longer trades and no longer receives quotes. Request an expired contract and there's simply no live market behind it, so Tradovate has nothing to plot. That's why the symptom reads as &ldquo;No Data,&rdquo; a blank chart, or &ldquo;Symbol Not Found&rdquo; instead of an error about your account. The platform loaded fine. The instrument you asked for is just no longer alive." },
+    { type: "paragraph", html: "This is a different animal from a blacked-out platform or a lost login. Your account, balance, orders, and positions are all intact on Tradovate's servers, the problem is the <em>symbol</em>, not the session. Charts for an expired or nearly-expired contract can look blank, frozen, or show gaps and stray bars around the rollover date, because volume and liquidity already walked over to the next contract month. Fix the symbol and the data snaps right back." },
+    { type: "paragraph", html: "The key to reading, and fixing, this is knowing how a Tradovate futures symbol is built. It's the instrument root, then a one-letter month code, then the year: <code>ES</code> + <code>Z</code> (December) + <code>5</code> (2025) = <code>ESZ5</code>, the E-mini S&amp;P 500 expiring December 2025. The month codes are standardized across every CME-listed product:" },
+    {
+      type: "list",
+      items: [
+        "January <strong class='text-white'>F</strong>, February <strong class='text-white'>G</strong>, March <strong class='text-white'>H</strong>, April <strong class='text-white'>J</strong>",
+        "May <strong class='text-white'>K</strong>, June <strong class='text-white'>M</strong>, July <strong class='text-white'>N</strong>, August <strong class='text-white'>Q</strong>",
+        "September <strong class='text-white'>U</strong>, October <strong class='text-white'>V</strong>, November <strong class='text-white'>X</strong>, December <strong class='text-white'>Z</strong>",
+      ],
+    },
+    { type: "paragraph", html: "The letters I, L, and O are skipped so nobody mistakes them for numbers. One more wrinkle: some platforms show a single-digit year (<code>ESZ5</code>) and others a two-digit year (<code>ESZ25</code>), so check which format your Tradovate environment uses. Once you can read the code, a single glance tells you whether the contract in front of you is current or long dead." },
+    { type: "heading", text: "Top Causes of No Data / Symbol Not Found" },
+    { type: "heading", text: "1. The contract has simply expired" },
+    { type: "paragraph", html: "This is the number-one cause, full stop. Equity-index futures like ES and NQ roll on a quarterly cycle, March, June, September, December, while energies, metals, and agriculturals roll monthly or on their own schedules. Once a contract clears its expiration, it stops trading and stops feeding data. If your chart or watchlist still points at last quarter's code, refreshing it a hundred times won't bring anything back." },
+    { type: "heading", text: "2. You hard-coded an old month/year code" },
+    { type: "paragraph", html: "Charts, watchlists, DOM panels, and TradingView alerts that reference a specific dated contract, say <code>NQH5</code>, do <strong class='text-white'>not</strong> roll themselves. They keep pointing at that exact contract forever. The moment it expires, everything wired to that code goes silent: the chart, the alert, the automation, all of it. This is the most common way traders &ldquo;lose&rdquo; data without touching a single setting on their end." },
+    { type: "heading", text: "3. A continuous symbol hasn't rolled, or isn't tradable" },
+    { type: "paragraph", html: "Continuous symbols such as <code>NQ1!</code> are a charting convenience that stitch the front contract together across rollovers. Tradovate flips a continuous contract to the new month based on volume, it rolls when the next contract's trading volume overtakes the expiring one, not on a fixed calendar date. Handy for charts. But a continuous symbol isn't always a valid <em>order</em> symbol: fire an order on a continuous or wrongly mapped code and it can bounce with a symbol or &ldquo;non-tradable&rdquo; error even while the chart looks perfectly fine." },
+    { type: "heading", text: "4. Your position is in the expiring contract near its roll" },
+    { type: "paragraph", html: "If you're already holding the old contract as it approaches expiry, Tradovate can drop that instrument into a liquidation-only state. You can close the position, but new orders on it get rejected because the exchange is winding the contract down. The chart may still draw thin, gappy data while the quotes dry up, which reads like a half-dead symbol." },
+    { type: "heading", text: "5. No live data, expired contract or lapsed subscription" },
+    { type: "paragraph", html: "An expired contract and a missing market-data subscription throw the <em>same</em> visible symptom: no quotes. So before you assume it's the symbol, confirm a real-time data feed is actually running. On personal accounts that means an active exchange market-data subscription with the data agreements signed. On prop or evaluation accounts, data is usually provisioned by the firm, not something you flip on yourself." },
+    { type: "heading", text: "How to Fix No Data / Symbol Not Found: Step-by-Step" },
+    { type: "paragraph", html: "Work through these in order. In most cases the first fix, rolling to the live contract, is all you'll need." },
+    { type: "heading", text: "Fixing an expired contract: roll to the front month" },
+    {
+      type: "steps",
+      items: [
+        { title: "Search the root symbol", html: "In the Tradovate symbol search or instrument selector, type the <strong class='text-white'>root symbol only</strong>, <code>ES</code>, <code>NQ</code>, <code>CL</code>, <code>GC</code>, and so on, instead of a dated code." },
+        { title: "Pick the front-month contract", html: "Look at the list of available expirations and pick the <strong class='text-white'>front-month</strong> contract: the nearest expiration that's actively trading, the one carrying the most volume. Tradovate flags the current front contract for you." },
+        { title: "Confirm the code is live", html: "Read the month/year code to confirm it's live. In mid-2026, for example, an ES front month would carry a <code>M6</code> (June 2026) or <code>U6</code> (September 2026) code depending on where you are in the roll, never a past quarter." },
+        { title: "Load the contract", html: "Select that contract to load it into your chart and order panel. Live quotes and candles should appear immediately." },
+      ],
+    },
+    { type: "heading", text: "Fixing hard-coded symbols in charts, alerts, and automation" },
+    {
+      type: "steps",
+      items: [
+        { title: "Re-select the front month everywhere", html: "Open each <strong class='text-white'>chart, watchlist, and DOM</strong> that still shows no data and re-select the current front-month contract in place of the old dated code." },
+        { title: "Update alerts and strategies", html: "In <strong class='text-white'>TradingView</strong>, or any external alert source wired to Tradovate, edit the alerts and strategies that reference an expired contract and repoint them at the active symbol. Alerts don't roll themselves." },
+        { title: "Save the workspace and set a reminder", html: "Save your updated <strong class='text-white'>workspace</strong> so the corrected symbols reload next session, and set a reminder to do this again each roll period." },
+      ],
+    },
+    { type: "heading", text: "Fixing a near-expiry position stuck in liquidation-only" },
+    {
+      type: "steps",
+      items: [
+        { title: "Flatten the expiring contract", html: "If new orders on your current instrument keep getting rejected as the contract nears expiry, <strong class='text-white'>close (flatten) the position in the expiring contract</strong> first." },
+        { title: "Re-enter on the new front month", html: "Re-open your intended position in the <strong class='text-white'>new front-month</strong> contract you selected above, so you're trading the live, fully liquid market." },
+        { title: "Roll a few days early next time", html: "From here on, roll a few days before expiry rather than on the last day. Timing and roll notices vary by platform and firm, so don't count on a last-minute warning." },
+      ],
+    },
+    { type: "heading", text: "Fixing a genuine data-feed problem" },
+    {
+      type: "steps",
+      items: [
+        { title: "Check the front month too", html: "If the front-month contract <em>also</em> shows no data, the issue is your feed, not the symbol. Confirm your <strong class='text-white'>real-time market-data subscription</strong> is active and your exchange <strong class='text-white'>data agreements</strong> are signed. Fees and packages vary by exchange and plan, so check Tradovate's current market-data pricing." },
+        { title: "Log out and back in", html: "Log out and back in after any data change so entitlements refresh." },
+        { title: "Ask the firm on a prop account", html: "On a <strong class='text-white'>prop or evaluation account</strong>, contact the firm to enable or repair market data, evaluation accounts typically can't self-subscribe through Tradovate." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom / message", "What it means", "First fix"],
+      rows: [
+        ["&ldquo;No Data&rdquo; on the chart", "Symbol points at an expired contract", "Roll to the current front-month contract"],
+        ["&ldquo;Symbol Not Found&rdquo;", "The dated code no longer resolves to a live contract", "Search the root symbol and pick the active expiration"],
+        ["&ldquo;No quote available&rdquo;", "No live market behind the symbol (expired or unsubscribed)", "Confirm front-month plus an active data subscription"],
+        ["Chart blank / gappy near roll date", "Liquidity has moved to the next month", "Switch chart and orders to the new front month"],
+        ["Order rejected on a continuous symbol (e.g. <code>NQ1!</code>)", "Continuous code isn't a valid order symbol", "Trade the explicit front-month contract instead"],
+        ["New orders rejected on your held contract near expiry", "Contract in liquidation-only wind-down", "Flatten the old contract, re-enter the new one"],
+        ["Front month also shows no data", "Market-data feed lapsed or not enabled", "Verify subscription/agreements; on prop accounts, ask the firm"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "Rolling contracts is exactly the kind of housekeeping that's easy to forget until a dead symbol costs you a trade at the open. PickMyTrade keeps your TradingView-to-Tradovate automation pointed at a valid, tradable contract, so an expired code doesn't quietly break your entries and exits." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Symbol Validation</strong>, checks the order symbol before routing, so a stale or non-tradable contract code gets caught instead of firing into the void.",
+        "<strong class='text-white'>Front-Month Mapping</strong>, resolves your alert to the current active contract, so you're not hand-editing dated codes every roll.",
+        "<strong class='text-white'>Entitlement &amp; Data Checks</strong>, respects your data-agreement and subscription state, so orders don't route into a symbol with no live feed.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors the corrected order across every connected account, so one missed roll doesn't desync the rest.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie rufen ES oder NQ für die Eröffnung auf, und der Chart ist leer. Keine Kerzen, kein Bid/Ask, nur ein Platzhalter &ldquo;No Data&rdquo; oder eine nüchterne Meldung &ldquo;Symbol Not Found&rdquo; dort, wo der Kurs stehen sollte. Bevor Sie Ihr WLAN oder einen Tradovate-Ausfall verantwortlich machen, prüfen Sie das Symbol. In neun von zehn Fällen ist es weder das eine noch das andere: Sie sehen einen Futures-Kontrakt, der bereits abgelaufen ist. Abgelaufene Kontrakte werden nicht mehr gehandelt, liefern keine Kurse mehr und verschwinden aus dem Live-Feed, sodass ein Code, der letztes Quartal noch funktionierte, Ihnen jetzt nichts mehr liefert." },
+    { type: "paragraph",html: "Dieselbe Ursache zeigt sich unter verschiedenen Bezeichnungen: &ldquo;No Data&rdquo;, &ldquo;Symbol Not Found&rdquo;, ein leerer Chart, &ldquo;no quote available&rdquo; oder eine Order, die sich einfach nicht routen lässt. Jede davon verschwindet in dem Moment, in dem Sie zum aktiven Front-Month-Kontrakt weiterrollen. Hier erfahren Sie, warum das passiert, wie Sie zum richtigen aktiven Symbol wechseln und wie Sie verhindern, dass ein auslaufender Kontrakt Ihre Automatisierung im nächsten Quartal überrascht." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste bei „No Data“ / „Symbol Not Found“",
+      items: [
+        "<strong class='text-white'>Lesen Sie den Monats- und Jahrescode in Ihrem Symbol.</strong> <code>ESZ5</code> bedeutet Dezember 2025. Ist dieses Quartal vorbei, ist der Kontrakt tot.",
+        "<strong class='text-white'>Rollen Sie zum Front-Month-Kontrakt weiter.</strong> Suchen Sie das Root-Symbol (<code>ES</code>, <code>NQ</code>, <code>CL</code>) und wählen Sie den nächsten aktiven Verfall.",
+        "<strong class='text-white'>Hinterlegen Sie keine alten Kontraktcodes mehr fest</strong> in Charts, Watchlists und Alerts, sie aktualisieren sich nicht automatisch.",
+        "<strong class='text-white'>Charten Sie mit dem fortlaufenden bzw. Front-Month-Symbol,</strong> prüfen Sie aber, ob Ihre Plattform es einem aktiven, handelbaren Kontrakt zuordnet, bevor Sie eine Order senden.",
+        "<strong class='text-white'>Prüfen Sie Ihr Echtzeit-Marktdaten-Abonnement und die unterzeichneten Vereinbarungen.</strong> Ein abgelaufener Kontrakt zeigt keine Daten, ein ausgelaufener Feed aber ebenso.",
+        "<strong class='text-white'>Bestätigen Sie bei Prop- oder Evaluierungskonten, dass die Firma die Daten freigeschaltet hat.</strong> Evaluierungskonten können sich in der Regel nicht selbst abonnieren.",
+      ],
+    },
+    { type: "heading",text: "Was „No Data / Symbol Not Found“ in Tradovate bedeutet" },
+    { type: "paragraph",html: "Jeder Futures-Kontrakt hat eine begrenzte Lebensdauer. Er wird gelistet, über einen festgelegten Zeitraum gehandelt und erreicht dann sein Verfallsdatum und wird abgerechnet, danach wird er nicht mehr gehandelt und erhält keine Kurse mehr. Wenn Sie einen abgelaufenen Kontrakt anfordern, steht schlicht kein Live-Markt dahinter, sodass Tradovate nichts darstellen kann. Deshalb lautet das Symptom &ldquo;No Data&rdquo;, ein leerer Chart oder &ldquo;Symbol Not Found&rdquo; statt einer Fehlermeldung zu Ihrem Konto. Die Plattform wurde einwandfrei geladen. Das angeforderte Instrument existiert nur nicht mehr." },
+    { type: "paragraph",html: "Das ist etwas anderes als eine ausgefallene Plattform oder ein verlorener Login. Ihr Konto, Guthaben, Orders und Positionen sind auf den Servern von Tradovate alle intakt; das Problem ist das <em>Symbol</em>, nicht die Sitzung. Charts eines abgelaufenen oder fast abgelaufenen Kontrakts können rund um das Rollover-Datum leer oder eingefroren wirken oder Lücken und vereinzelte Balken zeigen, weil Volumen und Liquidität bereits zum nächsten Kontraktmonat gewandert sind. Korrigieren Sie das Symbol, und die Daten sind sofort wieder da." },
+    { type: "paragraph",html: "Der Schlüssel zum Lesen und Beheben liegt darin zu wissen, wie ein Tradovate-Futures-Symbol aufgebaut ist. Es besteht aus dem Instrument-Root, einem einbuchstabigen Monatscode und dem Jahr: <code>ES</code> + <code>Z</code> (Dezember) + <code>5</code> (2025) = <code>ESZ5</code>, der E-mini S&amp;P 500 mit Verfall im Dezember 2025. Die Monatscodes sind für alle an der CME gelisteten Produkte standardisiert:" },
+    {
+      type: "list",
+      items: [
+        "Januar <strong class='text-white'>F</strong>, Februar <strong class='text-white'>G</strong>, März <strong class='text-white'>H</strong>, April <strong class='text-white'>J</strong>",
+        "Mai <strong class='text-white'>K</strong>, Juni <strong class='text-white'>M</strong>, Juli <strong class='text-white'>N</strong>, August <strong class='text-white'>Q</strong>",
+        "September <strong class='text-white'>U</strong>, Oktober <strong class='text-white'>V</strong>, November <strong class='text-white'>X</strong>, Dezember <strong class='text-white'>Z</strong>",
+      ],
+    },
+    { type: "paragraph",html: "Die Buchstaben I, L und O werden ausgelassen, damit niemand sie mit Zahlen verwechselt. Noch eine Besonderheit: Manche Plattformen zeigen ein einstelliges Jahr (<code>ESZ5</code>), andere ein zweistelliges (<code>ESZ25</code>); prüfen Sie daher, welches Format Ihre Tradovate-Umgebung verwendet. Sobald Sie den Code lesen können, verrät ein Blick, ob der Kontrakt vor Ihnen aktuell oder längst tot ist." },
+    { type: "heading",text: "Die häufigsten Ursachen für „No Data / Symbol Not Found“" },
+    { type: "heading",text: "1. Der Kontrakt ist schlicht abgelaufen" },
+    { type: "paragraph",html: "Das ist die Ursache Nummer eins, ohne Wenn und Aber. Aktienindex-Futures wie ES und NQ rollen im Quartalszyklus, März, Juni, September, Dezember, während Energie-, Metall- und Agrarprodukte monatlich oder nach eigenem Zeitplan rollen. Sobald ein Kontrakt seinen Verfall hinter sich hat, wird er nicht mehr gehandelt und liefert keine Daten mehr. Verweist Ihr Chart oder Ihre Watchlist noch auf den Code des letzten Quartals, bringt Sie auch hundertmaliges Aktualisieren nicht weiter." },
+    { type: "heading",text: "2. Sie haben einen alten Monats-/Jahrescode fest hinterlegt" },
+    { type: "paragraph",html: "Charts, Watchlists, DOM-Panels und TradingView-Alerts, die einen bestimmten datierten Kontrakt referenzieren, etwa <code>NQH5</code>, rollen <strong class='text-white'>nicht</strong> von selbst. Sie verweisen für immer auf genau diesen Kontrakt. In dem Moment, in dem er abläuft, wird alles still, was an diesen Code gebunden ist: der Chart, der Alert, die Automatisierung, alles. So &ldquo;verlieren&rdquo; Trader am häufigsten Daten, ohne dass sie eine einzige Einstellung verändert hätten." },
+    { type: "heading",text: "3. Ein fortlaufendes Symbol wurde nicht gerollt oder ist nicht handelbar" },
+    { type: "paragraph",html: "Fortlaufende Symbole wie <code>NQ1!</code> sind eine Chart-Annehmlichkeit, die den Front-Kontrakt über Rollovers hinweg aneinanderfügt. Tradovate stellt einen fortlaufenden Kontrakt anhand des Volumens auf den neuen Monat um: Er rollt, wenn das Handelsvolumen des nächsten Kontrakts das des auslaufenden übersteigt, nicht an einem festen Kalendertag. Praktisch für Charts. Doch ein fortlaufendes Symbol ist nicht immer ein gültiges <em>Order</em>-Symbol: Senden Sie eine Order auf einen fortlaufenden oder falsch zugeordneten Code, kann sie mit einem Symbol- oder &ldquo;non-tradable&rdquo;-Fehler zurückprallen, selbst wenn der Chart völlig in Ordnung aussieht." },
+    { type: "heading",text: "4. Ihre Position liegt im auslaufenden Kontrakt kurz vor dem Roll" },
+    { type: "paragraph",html: "Halten Sie den alten Kontrakt bereits, während er sich dem Verfall nähert, kann Tradovate dieses Instrument in einen Zustand „nur Glattstellung“ versetzen. Sie können die Position schließen, aber neue Orders darauf werden abgelehnt, weil die Börse den Kontrakt abwickelt. Der Chart zeichnet möglicherweise noch dünne, lückenhafte Daten, während die Kurse versiegen, was wie ein halb totes Symbol wirkt." },
+    { type: "heading",text: "5. Keine Live-Daten, abgelaufener Kontrakt oder ausgelaufenes Abonnement" },
+    { type: "paragraph",html: "Ein abgelaufener Kontrakt und ein fehlendes Marktdaten-Abonnement führen zum <em>gleichen</em> sichtbaren Symptom: keine Kurse. Bevor Sie also annehmen, dass es am Symbol liegt, prüfen Sie, ob tatsächlich ein Echtzeit-Datenfeed läuft. Bei privaten Konten bedeutet das ein aktives Börsen-Marktdaten-Abonnement mit unterzeichneten Datenvereinbarungen. Bei Prop- oder Evaluierungskonten werden die Daten in der Regel von der Firma bereitgestellt, nicht von Ihnen selbst aktiviert." },
+    { type: "heading",text: "So beheben Sie „No Data / Symbol Not Found“: Schritt für Schritt" },
+    { type: "paragraph",html: "Gehen Sie diese Schritte der Reihe nach durch. In den meisten Fällen genügt bereits die erste Lösung, das Rollen zum aktiven Kontrakt." },
+    { type: "heading",text: "Abgelaufenen Kontrakt beheben: zum Front Month rollen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Root-Symbol suchen", html: "Geben Sie in der Tradovate-Symbolsuche oder im Instrumentenwähler <strong class='text-white'>nur das Root-Symbol</strong> ein, <code>ES</code>, <code>NQ</code>, <code>CL</code>, <code>GC</code> und so weiter, statt eines datierten Codes." },
+        { title: "Front-Month-Kontrakt wählen", html: "Sehen Sie sich die Liste der verfügbaren Verfälle an und wählen Sie den <strong class='text-white'>Front-Month</strong>-Kontrakt: den nächsten aktiv gehandelten Verfall, den mit dem meisten Volumen. Tradovate kennzeichnet den aktuellen Front-Kontrakt für Sie." },
+        { title: "Prüfen, ob der Code aktiv ist", html: "Lesen Sie den Monats-/Jahrescode, um zu bestätigen, dass er aktiv ist. Mitte 2026 würde ein ES-Front-Month beispielsweise je nach Stand des Rolls einen Code <code>M6</code> (Juni 2026) oder <code>U6</code> (September 2026) tragen, niemals ein vergangenes Quartal." },
+        { title: "Kontrakt laden", html: "Wählen Sie diesen Kontrakt aus, um ihn in Ihren Chart und das Order-Panel zu laden. Live-Kurse und Kerzen sollten sofort erscheinen." },
+      ],
+    },
+    { type: "heading",text: "Fest hinterlegte Symbole in Charts, Alerts und Automatisierung beheben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Front Month überall neu auswählen", html: "Öffnen Sie jeden <strong class='text-white'>Chart, jede Watchlist und jedes DOM</strong>, die noch keine Daten zeigen, und wählen Sie anstelle des alten datierten Codes den aktuellen Front-Month-Kontrakt neu aus." },
+        { title: "Alerts und Strategien aktualisieren", html: "Bearbeiten Sie in <strong class='text-white'>TradingView</strong> oder jeder anderen mit Tradovate verbundenen externen Alert-Quelle die Alerts und Strategien, die einen abgelaufenen Kontrakt referenzieren, und richten Sie sie auf das aktive Symbol aus. Alerts rollen nicht von selbst." },
+        { title: "Workspace speichern und Erinnerung setzen", html: "Speichern Sie Ihren aktualisierten <strong class='text-white'>Workspace</strong>, damit die korrigierten Symbole in der nächsten Sitzung wieder geladen werden, und setzen Sie sich eine Erinnerung, dies in jeder Roll-Periode zu wiederholen." },
+      ],
+    },
+    { type: "heading",text: "Eine kurz vor Verfall festhängende Position im Zustand „nur Glattstellung“ beheben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Auslaufenden Kontrakt glattstellen", html: "Werden neue Orders auf Ihr aktuelles Instrument kurz vor dem Verfall immer wieder abgelehnt, <strong class='text-white'>schließen (flatten) Sie zuerst die Position im auslaufenden Kontrakt</strong>." },
+        { title: "Im neuen Front Month wieder einsteigen", html: "Eröffnen Sie Ihre beabsichtigte Position erneut im oben gewählten <strong class='text-white'>neuen Front-Month</strong>-Kontrakt, damit Sie den aktiven, voll liquiden Markt handeln." },
+        { title: "Beim nächsten Mal einige Tage früher rollen", html: "Rollen Sie künftig einige Tage vor dem Verfall statt am letzten Tag. Zeitpunkt und Roll-Hinweise unterscheiden sich je nach Plattform und Firma; verlassen Sie sich also nicht auf eine Warnung in letzter Minute." },
+      ],
+    },
+    { type: "heading",text: "Ein echtes Datenfeed-Problem beheben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Auch den Front Month prüfen", html: "Zeigt der Front-Month-Kontrakt <em>ebenfalls</em> keine Daten, liegt das Problem an Ihrem Feed, nicht am Symbol. Prüfen Sie, ob Ihr <strong class='text-white'>Echtzeit-Marktdaten-Abonnement</strong> aktiv und Ihre Börsen-<strong class='text-white'>Datenvereinbarungen</strong> unterzeichnet sind. Gebühren und Pakete unterscheiden sich je nach Börse und Tarif; prüfen Sie daher die aktuellen Marktdaten-Preise von Tradovate." },
+        { title: "Abmelden und wieder anmelden", html: "Melden Sie sich nach jeder Datenänderung ab und wieder an, damit sich die Berechtigungen aktualisieren." },
+        { title: "Bei Prop-Konto die Firma fragen", html: "Wenden Sie sich bei einem <strong class='text-white'>Prop- oder Evaluierungskonto</strong> an die Firma, damit sie die Marktdaten aktiviert oder repariert; Evaluierungskonten können sich über Tradovate in der Regel nicht selbst abonnieren." },
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Symptom / Meldung","Bedeutung","Erste Lösung"], rows: [
+      ["&ldquo;No Data&rdquo; im Chart","Das Symbol verweist auf einen abgelaufenen Kontrakt","Zum aktuellen Front-Month-Kontrakt rollen"],
+      ["&ldquo;Symbol Not Found&rdquo;","Der datierte Code führt nicht mehr zu einem aktiven Kontrakt","Root-Symbol suchen und den aktiven Verfall wählen"],
+      ["&ldquo;No quote available&rdquo;","Kein Live-Markt hinter dem Symbol (abgelaufen oder nicht abonniert)","Front Month plus aktives Daten-Abonnement bestätigen"],
+      ["Chart leer / lückenhaft nahe dem Roll-Datum","Die Liquidität ist in den nächsten Monat gewandert","Chart und Orders auf den neuen Front Month umstellen"],
+      ["Order auf einem fortlaufenden Symbol abgelehnt (z. B. <code>NQ1!</code>)","Der fortlaufende Code ist kein gültiges Order-Symbol","Stattdessen den expliziten Front-Month-Kontrakt handeln"],
+      ["Neue Orders auf Ihrem gehaltenen Kontrakt kurz vor Verfall abgelehnt","Kontrakt in der Abwicklung „nur Glattstellung“","Alten Kontrakt glattstellen, im neuen wieder einsteigen"],
+      ["Auch der Front Month zeigt keine Daten","Marktdaten-Feed ausgelaufen oder nicht aktiviert","Abonnement/Vereinbarungen prüfen; bei Prop-Konten die Firma fragen"],
+    ] },
+    { type: "heading",text: "Vorbeugen mit PickMyTrade" },
+    { type: "paragraph",html: "Das Rollen von Kontrakten ist genau die Art von Haushaltsarbeit, die man leicht vergisst, bis ein totes Symbol Sie bei der Eröffnung einen Trade kostet. PickMyTrade hält Ihre Automatisierung von TradingView zu Tradovate auf einen gültigen, handelbaren Kontrakt ausgerichtet, damit ein abgelaufener Code nicht unbemerkt Ihre Ein- und Ausstiege stört." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Symbolvalidierung</strong>, prüft das Order-Symbol vor dem Routing, sodass ein veralteter oder nicht handelbarer Kontraktcode erkannt wird, statt ins Leere zu feuern.",
+        "<strong class='text-white'>Front-Month-Zuordnung</strong>, löst Ihren Alert auf den aktuell aktiven Kontrakt auf, damit Sie datierte Codes nicht bei jedem Roll von Hand bearbeiten müssen.",
+        "<strong class='text-white'>Berechtigungs- &amp; Datenprüfungen</strong>, berücksichtigen Ihre Datenvereinbarung und den Abonnementstatus, damit Orders nicht in ein Symbol ohne Live-Feed geroutet werden.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong>, spiegelt die korrigierte Order auf alle verbundenen Konten, damit ein verpasster Roll nicht den Rest aus dem Takt bringt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Abre ES o NQ para operar la apertura y el gráfico está vacío. Sin velas, sin bid/ask, solo un marcador &ldquo;No Data&rdquo; o un seco mensaje &ldquo;Symbol Not Found&rdquo; donde debería estar el precio. Antes de culpar a su Wi-Fi o a una caída de Tradovate, revise el símbolo. Nueve de cada diez veces no es ni lo uno ni lo otro: está viendo un contrato de futuros que ya venció. Los contratos vencidos dejan de negociarse, dejan de emitir cotizaciones y desaparecen del feed en vivo, así que un código que funcionaba bien el trimestre pasado ahora no le devuelve nada." },
+    { type: "paragraph",html: "La misma causa raíz aparece con distintas etiquetas: &ldquo;No Data&rdquo;, &ldquo;Symbol Not Found&rdquo;, un gráfico en blanco, &ldquo;no quote available&rdquo; o una orden que sencillamente se niega a enrutarse. Todas desaparecen en el momento en que pasa al contrato vigente del mes más próximo. Aquí le explicamos por qué ocurre, cómo cambiar al símbolo activo correcto y cómo evitar que un contrato a punto de vencer sorprenda a su automatización el próximo trimestre." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para “No Data” / “Symbol Not Found”",
+      items: [
+        "<strong class='text-white'>Lea el código de mes y año de su símbolo.</strong> <code>ESZ5</code> significa diciembre de 2025. Si ese trimestre ya pasó, el contrato está muerto.",
+        "<strong class='text-white'>Pase al contrato del mes más próximo.</strong> Busque el símbolo raíz (<code>ES</code>, <code>NQ</code>, <code>CL</code>) y elija el vencimiento activo más cercano.",
+        "<strong class='text-white'>Deje de fijar códigos de contrato antiguos</strong> en gráficos, listas de seguimiento y alertas; no se actualizan solos.",
+        "<strong class='text-white'>Grafique con el símbolo continuo o del mes más próximo,</strong> pero confirme que su plataforma lo asigna a un contrato negociable y vigente antes de enviar una orden.",
+        "<strong class='text-white'>Verifique su suscripción de datos de mercado en tiempo real y los acuerdos firmados.</strong> Un contrato vencido no muestra datos, pero un feed caducado tampoco.",
+        "<strong class='text-white'>En una cuenta de prop firm o de evaluación, confirme que la firma ha activado los datos.</strong> Las cuentas de evaluación normalmente no pueden suscribirse por sí mismas.",
+      ],
+    },
+    { type: "heading",text: "Qué significa “No Data / Symbol Not Found” en Tradovate" },
+    { type: "paragraph",html: "Todo contrato de futuros tiene una vida finita. Se lista, se negocia durante un periodo fijo y luego llega a su fecha de vencimiento y se liquida, tras lo cual ya no se negocia ni recibe cotizaciones. Si solicita un contrato vencido, simplemente no hay un mercado en vivo detrás, así que Tradovate no tiene nada que dibujar. Por eso el síntoma aparece como &ldquo;No Data&rdquo;, un gráfico en blanco o &ldquo;Symbol Not Found&rdquo; en lugar de un error sobre su cuenta. La plataforma cargó bien. Es el instrumento que pidió el que ya no está vivo." },
+    { type: "paragraph",html: "Esto es distinto de una plataforma caída o de un inicio de sesión perdido. Su cuenta, saldo, órdenes y posiciones están intactos en los servidores de Tradovate; el problema es el <em>símbolo</em>, no la sesión. Los gráficos de un contrato vencido o a punto de vencer pueden verse en blanco, congelados o mostrar huecos y barras sueltas alrededor de la fecha de rollover, porque el volumen y la liquidez ya se han trasladado al siguiente mes de contrato. Corrija el símbolo y los datos vuelven de inmediato." },
+    { type: "paragraph",html: "La clave para leer y corregir esto es saber cómo se construye un símbolo de futuros de Tradovate. Es la raíz del instrumento, luego un código de mes de una letra y después el año: <code>ES</code> + <code>Z</code> (diciembre) + <code>5</code> (2025) = <code>ESZ5</code>, el E-mini S&amp;P 500 con vencimiento en diciembre de 2025. Los códigos de mes están estandarizados en todos los productos listados en CME:" },
+    {
+      type: "list",
+      items: [
+        "Enero <strong class='text-white'>F</strong>, febrero <strong class='text-white'>G</strong>, marzo <strong class='text-white'>H</strong>, abril <strong class='text-white'>J</strong>",
+        "Mayo <strong class='text-white'>K</strong>, junio <strong class='text-white'>M</strong>, julio <strong class='text-white'>N</strong>, agosto <strong class='text-white'>Q</strong>",
+        "Septiembre <strong class='text-white'>U</strong>, octubre <strong class='text-white'>V</strong>, noviembre <strong class='text-white'>X</strong>, diciembre <strong class='text-white'>Z</strong>",
+      ],
+    },
+    { type: "paragraph",html: "Las letras I, L y O se omiten para que nadie las confunda con números. Una complicación más: algunas plataformas muestran el año con un dígito (<code>ESZ5</code>) y otras con dos (<code>ESZ25</code>), así que compruebe qué formato usa su entorno de Tradovate. Una vez que sabe leer el código, un vistazo le dice si el contrato que tiene delante está vigente o muerto hace tiempo." },
+    { type: "heading",text: "Principales causas de “No Data / Symbol Not Found”" },
+    { type: "heading",text: "1. El contrato simplemente ha vencido" },
+    { type: "paragraph",html: "Esta es la causa número uno, sin discusión. Los futuros de índices bursátiles como ES y NQ se renuevan en ciclo trimestral, marzo, junio, septiembre y diciembre, mientras que los productos de energía, metales y agrícolas lo hacen mensualmente o según su propio calendario. Una vez que un contrato supera su vencimiento, deja de negociarse y de emitir datos. Si su gráfico o lista de seguimiento aún apunta al código del trimestre pasado, actualizarlo cien veces no recuperará nada." },
+    { type: "heading",text: "2. Fijó un código antiguo de mes/año" },
+    { type: "paragraph",html: "Los gráficos, listas de seguimiento, paneles DOM y alertas de TradingView que hacen referencia a un contrato con fecha concreta, por ejemplo <code>NQH5</code>, <strong class='text-white'>no</strong> se renuevan solos. Siguen apuntando a ese contrato exacto para siempre. En el momento en que vence, todo lo vinculado a ese código se queda en silencio: el gráfico, la alerta, la automatización, todo. Es la forma más común de &ldquo;perder&rdquo; datos sin tocar un solo ajuste por su parte." },
+    { type: "heading",text: "3. Un símbolo continuo no ha hecho el roll o no es negociable" },
+    { type: "paragraph",html: "Los símbolos continuos como <code>NQ1!</code> son una comodidad para graficar que une el contrato frontal a lo largo de los rollovers. Tradovate cambia un contrato continuo al nuevo mes según el volumen: el roll se produce cuando el volumen de negociación del siguiente contrato supera al del que vence, no en una fecha fija del calendario. Útil para gráficos. Pero un símbolo continuo no siempre es un símbolo de <em>orden</em> válido: si envía una orden con un código continuo o mal asignado, puede rebotar con un error de símbolo o de &ldquo;non-tradable&rdquo; aunque el gráfico se vea perfectamente bien." },
+    { type: "heading",text: "4. Su posición está en el contrato que vence, cerca de su roll" },
+    { type: "paragraph",html: "Si ya mantiene el contrato antiguo cuando se acerca su vencimiento, Tradovate puede poner ese instrumento en estado de solo liquidación. Puede cerrar la posición, pero las nuevas órdenes sobre él se rechazan porque la bolsa está liquidando el contrato. El gráfico aún puede dibujar datos escasos y con huecos mientras las cotizaciones se agotan, lo que parece un símbolo medio muerto." },
+    { type: "heading",text: "5. Sin datos en vivo: contrato vencido o suscripción caducada" },
+    { type: "paragraph",html: "Un contrato vencido y una suscripción de datos de mercado ausente producen el <em>mismo</em> síntoma visible: sin cotizaciones. Por eso, antes de asumir que es el símbolo, confirme que realmente hay un feed de datos en tiempo real en funcionamiento. En cuentas personales eso significa una suscripción activa de datos de mercado de la bolsa con los acuerdos de datos firmados. En cuentas de prop firm o de evaluación, los datos suelen proporcionarlos la firma, no algo que usted active por sí mismo." },
+    { type: "heading",text: "Cómo solucionar “No Data / Symbol Not Found”: paso a paso" },
+    { type: "paragraph",html: "Siga estos pasos en orden. En la mayoría de los casos, la primera solución, pasar al contrato vigente, es todo lo que necesitará." },
+    { type: "heading",text: "Solucionar un contrato vencido: pasar al front month" },
+    {
+      type: "steps",
+      items: [
+        { title: "Busque el símbolo raíz", html: "En la búsqueda de símbolos o el selector de instrumentos de Tradovate, escriba <strong class='text-white'>solo el símbolo raíz</strong>, <code>ES</code>, <code>NQ</code>, <code>CL</code>, <code>GC</code> y así sucesivamente, en lugar de un código con fecha." },
+        { title: "Elija el contrato del mes más próximo", html: "Revise la lista de vencimientos disponibles y elija el contrato del <strong class='text-white'>front month</strong>: el vencimiento más cercano que se negocia activamente, el que concentra más volumen. Tradovate marca por usted el contrato frontal actual." },
+        { title: "Confirme que el código está vigente", html: "Lea el código de mes/año para confirmar que está vigente. A mediados de 2026, por ejemplo, un front month de ES llevaría un código <code>M6</code> (junio de 2026) o <code>U6</code> (septiembre de 2026) según en qué punto del roll se encuentre, nunca un trimestre pasado." },
+        { title: "Cargue el contrato", html: "Seleccione ese contrato para cargarlo en su gráfico y panel de órdenes. Las cotizaciones en vivo y las velas deberían aparecer de inmediato." },
+      ],
+    },
+    { type: "heading",text: "Solucionar símbolos fijos en gráficos, alertas y automatización" },
+    {
+      type: "steps",
+      items: [
+        { title: "Vuelva a seleccionar el front month en todas partes", html: "Abra cada <strong class='text-white'>gráfico, lista de seguimiento y DOM</strong> que siga sin mostrar datos y vuelva a seleccionar el contrato del front month actual en lugar del antiguo código con fecha." },
+        { title: "Actualice alertas y estrategias", html: "En <strong class='text-white'>TradingView</strong>, o en cualquier fuente de alertas externa conectada a Tradovate, edite las alertas y estrategias que hacen referencia a un contrato vencido y reoriéntelas al símbolo activo. Las alertas no se renuevan solas." },
+        { title: "Guarde el espacio de trabajo y programe un recordatorio", html: "Guarde su <strong class='text-white'>espacio de trabajo</strong> actualizado para que los símbolos corregidos se recarguen en la próxima sesión y programe un recordatorio para repetirlo en cada periodo de roll." },
+      ],
+    },
+    { type: "heading",text: "Solucionar una posición cercana al vencimiento atascada en solo liquidación" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cierre el contrato que vence", html: "Si las nuevas órdenes sobre su instrumento actual siguen siendo rechazadas al acercarse el vencimiento, <strong class='text-white'>cierre (flatten) primero la posición en el contrato que vence</strong>." },
+        { title: "Vuelva a entrar en el nuevo front month", html: "Vuelva a abrir la posición prevista en el contrato del <strong class='text-white'>nuevo front month</strong> que seleccionó antes, para operar el mercado vigente y totalmente líquido." },
+        { title: "La próxima vez haga el roll unos días antes", html: "A partir de ahora, haga el roll unos días antes del vencimiento y no el último día. El momento y los avisos de roll varían según la plataforma y la firma, así que no cuente con una advertencia de última hora." },
+      ],
+    },
+    { type: "heading",text: "Solucionar un problema real del feed de datos" },
+    {
+      type: "steps",
+      items: [
+        { title: "Compruebe también el front month", html: "Si el contrato del front month <em>también</em> muestra sin datos, el problema es su feed, no el símbolo. Confirme que su <strong class='text-white'>suscripción de datos de mercado en tiempo real</strong> está activa y que sus <strong class='text-white'>acuerdos de datos</strong> de la bolsa están firmados. Las tarifas y paquetes varían según la bolsa y el plan, así que consulte los precios actuales de datos de mercado de Tradovate." },
+        { title: "Cierre sesión y vuelva a entrar", html: "Cierre sesión y vuelva a entrar tras cualquier cambio de datos para que se actualicen los permisos." },
+        { title: "Pregunte a la firma en una cuenta de prop firm", html: "En una <strong class='text-white'>cuenta de prop firm o de evaluación</strong>, contacte con la firma para que active o repare los datos de mercado; las cuentas de evaluación normalmente no pueden suscribirse por sí mismas a través de Tradovate." },
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma / mensaje","Qué significa","Primera solución"], rows: [
+      ["&ldquo;No Data&rdquo; en el gráfico","El símbolo apunta a un contrato vencido","Pase al contrato vigente del front month"],
+      ["&ldquo;Symbol Not Found&rdquo;","El código con fecha ya no corresponde a un contrato vigente","Busque el símbolo raíz y elija el vencimiento activo"],
+      ["&ldquo;No quote available&rdquo;","No hay mercado en vivo detrás del símbolo (vencido o sin suscripción)","Confirme el front month y una suscripción de datos activa"],
+      ["Gráfico en blanco / con huecos cerca del roll","La liquidez se ha trasladado al mes siguiente","Cambie el gráfico y las órdenes al nuevo front month"],
+      ["Orden rechazada en un símbolo continuo (p. ej. <code>NQ1!</code>)","El código continuo no es un símbolo de orden válido","Opere en su lugar el contrato explícito del front month"],
+      ["Nuevas órdenes rechazadas en su contrato cerca del vencimiento","Contrato en liquidación, solo cierre","Cierre el contrato antiguo y vuelva a entrar en el nuevo"],
+      ["El front month tampoco muestra datos","El feed de datos de mercado caducó o no está activado","Verifique suscripción/acuerdos; en cuentas de prop firm, pregunte a la firma"],
+    ] },
+    { type: "heading",text: "Prevéngalo con PickMyTrade" },
+    { type: "paragraph",html: "Hacer el roll de contratos es exactamente el tipo de tarea que es fácil olvidar hasta que un símbolo muerto le cuesta una operación en la apertura. PickMyTrade mantiene su automatización de TradingView a Tradovate apuntando a un contrato válido y negociable, para que un código vencido no estropee sigilosamente sus entradas y salidas." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validación de símbolo</strong>, comprueba el símbolo de la orden antes de enrutarla, de modo que un código de contrato obsoleto o no negociable se detecte en lugar de dispararse al vacío.",
+        "<strong class='text-white'>Asignación del front month</strong>, resuelve su alerta al contrato activo actual, para que no tenga que editar a mano los códigos con fecha en cada roll.",
+        "<strong class='text-white'>Comprobaciones de permisos y datos</strong>, respetan su acuerdo de datos y el estado de la suscripción, para que las órdenes no se enruten a un símbolo sin feed en vivo.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replica la orden corregida en todas las cuentas conectadas, para que un roll olvidado no desincronice al resto.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous ouvrez ES ou NQ pour trader l'ouverture, et le graphique est vide. Pas de bougies, pas de bid/ask, juste un espace réservé &ldquo;No Data&rdquo; ou un sec message &ldquo;Symbol Not Found&rdquo; là où le prix devrait être. Avant d'incriminer votre Wi-Fi ou une panne de Tradovate, vérifiez le symbole. Neuf fois sur dix, ce n'est ni l'un ni l'autre : vous regardez un contrat à terme déjà expiré. Les contrats expirés cessent de se négocier, cessent de diffuser des cotations et disparaissent du flux en direct ; un code qui fonctionnait très bien le trimestre dernier ne vous renvoie donc plus rien." },
+    { type: "paragraph",html: "La même cause racine se présente sous différentes étiquettes : &ldquo;No Data&rdquo;, &ldquo;Symbol Not Found&rdquo;, un graphique vide, &ldquo;no quote available&rdquo; ou un ordre qui refuse tout simplement de se router. Chacune disparaît dès que vous passez au contrat actif du front month. Voici pourquoi cela arrive, comment basculer vers le bon symbole actif et comment éviter qu'un contrat arrivant à échéance ne prenne votre automatisation au dépourvu le trimestre prochain." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour « No Data » / « Symbol Not Found »",
+      items: [
+        "<strong class='text-white'>Lisez le code de mois et d'année de votre symbole.</strong> <code>ESZ5</code> signifie décembre 2025. Si ce trimestre est passé, le contrat est mort.",
+        "<strong class='text-white'>Passez au contrat du front month.</strong> Recherchez le symbole racine (<code>ES</code>, <code>NQ</code>, <code>CL</code>) et choisissez l'échéance active la plus proche.",
+        "<strong class='text-white'>Cessez d'inscrire en dur d'anciens codes de contrat</strong> dans les graphiques, listes de suivi et alertes ; ils ne se mettent pas à jour automatiquement.",
+        "<strong class='text-white'>Affichez le graphique avec le symbole continu/du front month,</strong> mais confirmez que votre plateforme le fait correspondre à un contrat négociable actif avant d'envoyer un ordre.",
+        "<strong class='text-white'>Vérifiez votre abonnement aux données de marché en temps réel et vos accords signés.</strong> Un contrat expiré n'affiche aucune donnée, mais un flux échu non plus.",
+        "<strong class='text-white'>Sur un compte de prop firm ou d'évaluation, confirmez que la société a activé les données.</strong> Les comptes d'évaluation ne peuvent généralement pas s'abonner eux-mêmes.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « No Data / Symbol Not Found » dans Tradovate" },
+    { type: "paragraph",html: "Chaque contrat à terme a une durée de vie limitée. Il est coté, se négocie pendant une période donnée, puis atteint sa date d'expiration et se règle ; après quoi il ne se négocie plus et ne reçoit plus de cotations. Si vous demandez un contrat expiré, il n'y a tout simplement plus de marché en direct derrière, et Tradovate n'a rien à tracer. C'est pourquoi le symptôme apparaît sous la forme &ldquo;No Data&rdquo;, d'un graphique vide ou de &ldquo;Symbol Not Found&rdquo; plutôt que d'une erreur concernant votre compte. La plateforme s'est chargée normalement. C'est l'instrument demandé qui n'est simplement plus en vie." },
+    { type: "paragraph",html: "C'est un tout autre cas qu'une plateforme éteinte ou une connexion perdue. Votre compte, votre solde, vos ordres et vos positions sont tous intacts sur les serveurs de Tradovate ; le problème est le <em>symbole</em>, pas la session. Les graphiques d'un contrat expiré ou presque expiré peuvent sembler vides, figés ou présenter des trous et des barres isolées autour de la date de rollover, car le volume et la liquidité sont déjà passés au mois de contrat suivant. Corrigez le symbole et les données reviennent aussitôt." },
+    { type: "paragraph",html: "La clé pour lire et corriger cela est de savoir comment est construit un symbole de contrat à terme Tradovate. C'est la racine de l'instrument, puis un code de mois d'une lettre, puis l'année : <code>ES</code> + <code>Z</code> (décembre) + <code>5</code> (2025) = <code>ESZ5</code>, l'E-mini S&amp;P 500 arrivant à échéance en décembre 2025. Les codes de mois sont standardisés pour tous les produits cotés au CME :" },
+    {
+      type: "list",
+      items: [
+        "Janvier <strong class='text-white'>F</strong>, février <strong class='text-white'>G</strong>, mars <strong class='text-white'>H</strong>, avril <strong class='text-white'>J</strong>",
+        "Mai <strong class='text-white'>K</strong>, juin <strong class='text-white'>M</strong>, juillet <strong class='text-white'>N</strong>, août <strong class='text-white'>Q</strong>",
+        "Septembre <strong class='text-white'>U</strong>, octobre <strong class='text-white'>V</strong>, novembre <strong class='text-white'>X</strong>, décembre <strong class='text-white'>Z</strong>",
+      ],
+    },
+    { type: "paragraph",html: "Les lettres I, L et O sont omises pour que personne ne les confonde avec des chiffres. Autre subtilité : certaines plateformes affichent l'année sur un chiffre (<code>ESZ5</code>) et d'autres sur deux chiffres (<code>ESZ25</code>) ; vérifiez donc quel format utilise votre environnement Tradovate. Une fois que vous savez lire le code, un seul coup d'œil vous indique si le contrat devant vous est actif ou mort depuis longtemps." },
+    { type: "heading",text: "Principales causes de « No Data / Symbol Not Found »" },
+    { type: "heading",text: "1. Le contrat a tout simplement expiré" },
+    { type: "paragraph",html: "C'est la cause numéro un, sans discussion. Les contrats à terme sur indices actions comme ES et NQ suivent un cycle trimestriel, mars, juin, septembre, décembre, tandis que l'énergie, les métaux et les produits agricoles se renouvellent chaque mois ou selon leur propre calendrier. Une fois qu'un contrat a passé son échéance, il cesse de se négocier et de diffuser des données. Si votre graphique ou votre liste de suivi pointe encore vers le code du trimestre dernier, l'actualiser cent fois ne ramènera rien." },
+    { type: "heading",text: "2. Vous avez inscrit en dur un ancien code mois/année" },
+    { type: "paragraph",html: "Les graphiques, listes de suivi, panneaux DOM et alertes TradingView qui font référence à un contrat daté précis, par exemple <code>NQH5</code>, <strong class='text-white'>ne se renouvellent pas</strong> d'eux-mêmes. Ils continuent de pointer vers ce contrat exact pour toujours. Dès qu'il expire, tout ce qui est relié à ce code devient muet : le graphique, l'alerte, l'automatisation, tout. C'est la façon la plus courante dont les traders &ldquo;perdent&rdquo; des données sans toucher un seul réglage de leur côté." },
+    { type: "heading",text: "3. Un symbole continu n'a pas effectué son roll ou n'est pas négociable" },
+    { type: "paragraph",html: "Les symboles continus comme <code>NQ1!</code> sont une commodité graphique qui raccorde le contrat de tête lors des rollovers. Tradovate bascule un contrat continu sur le nouveau mois en fonction du volume : il roule lorsque le volume d'échanges du contrat suivant dépasse celui du contrat arrivant à échéance, et non à une date fixe du calendrier. Pratique pour les graphiques. Mais un symbole continu n'est pas toujours un symbole d'<em>ordre</em> valide : envoyez un ordre sur un code continu ou mal mappé et il peut être rejeté avec une erreur de symbole ou &ldquo;non-tradable&rdquo; alors même que le graphique semble parfait." },
+    { type: "heading",text: "4. Votre position est sur le contrat arrivant à échéance, près de son roll" },
+    { type: "paragraph",html: "Si vous détenez déjà l'ancien contrat à l'approche de son échéance, Tradovate peut placer cet instrument en état de liquidation seule. Vous pouvez clôturer la position, mais les nouveaux ordres sont rejetés car la bourse dénoue le contrat. Le graphique peut encore tracer des données clairsemées et lacunaires pendant que les cotations se tarissent, ce qui donne l'impression d'un symbole à moitié mort." },
+    { type: "heading",text: "5. Pas de données en direct : contrat expiré ou abonnement échu" },
+    { type: "paragraph",html: "Un contrat expiré et un abonnement aux données de marché manquant produisent le <em>même</em> symptôme visible : pas de cotations. Avant de supposer que c'est le symbole, confirmez donc qu'un flux de données en temps réel fonctionne réellement. Sur les comptes personnels, cela signifie un abonnement actif aux données de marché de la bourse avec les accords de données signés. Sur les comptes de prop firm ou d'évaluation, les données sont généralement fournies par la société, et non activées par vous-même." },
+    { type: "heading",text: "Comment corriger « No Data / Symbol Not Found » : pas à pas" },
+    { type: "paragraph",html: "Suivez ces étapes dans l'ordre. Dans la plupart des cas, la première solution, passer au contrat actif, suffit." },
+    { type: "heading",text: "Corriger un contrat expiré : passer au front month" },
+    {
+      type: "steps",
+      items: [
+        { title: "Recherchez le symbole racine", html: "Dans la recherche de symboles ou le sélecteur d'instruments de Tradovate, saisissez <strong class='text-white'>le symbole racine seul</strong>, <code>ES</code>, <code>NQ</code>, <code>CL</code>, <code>GC</code>, etc., plutôt qu'un code daté." },
+        { title: "Choisissez le contrat du front month", html: "Consultez la liste des échéances disponibles et choisissez le contrat du <strong class='text-white'>front month</strong> : l'échéance la plus proche activement négociée, celle qui porte le plus de volume. Tradovate signale pour vous le contrat de tête actuel." },
+        { title: "Confirmez que le code est actif", html: "Lisez le code mois/année pour confirmer qu'il est actif. À la mi-2026, par exemple, un front month ES porterait un code <code>M6</code> (juin 2026) ou <code>U6</code> (septembre 2026) selon l'avancement du roll, jamais un trimestre passé." },
+        { title: "Chargez le contrat", html: "Sélectionnez ce contrat pour le charger dans votre graphique et votre panneau d'ordres. Les cotations en direct et les bougies devraient apparaître immédiatement." },
+      ],
+    },
+    { type: "heading",text: "Corriger des symboles inscrits en dur dans les graphiques, alertes et l'automatisation" },
+    {
+      type: "steps",
+      items: [
+        { title: "Resélectionnez le front month partout", html: "Ouvrez chaque <strong class='text-white'>graphique, liste de suivi et DOM</strong> qui n'affiche toujours pas de données et resélectionnez le contrat du front month actuel à la place de l'ancien code daté." },
+        { title: "Mettez à jour les alertes et stratégies", html: "Dans <strong class='text-white'>TradingView</strong>, ou dans toute source d'alertes externe reliée à Tradovate, modifiez les alertes et stratégies qui font référence à un contrat expiré et repointez-les vers le symbole actif. Les alertes ne se renouvellent pas d'elles-mêmes." },
+        { title: "Enregistrez l'espace de travail et programmez un rappel", html: "Enregistrez votre <strong class='text-white'>espace de travail</strong> mis à jour afin que les symboles corrigés se rechargent à la prochaine session, et programmez un rappel pour recommencer à chaque période de roll." },
+      ],
+    },
+    { type: "heading",text: "Corriger une position proche de l'échéance bloquée en liquidation seule" },
+    {
+      type: "steps",
+      items: [
+        { title: "Aplatissez le contrat arrivant à échéance", html: "Si les nouveaux ordres sur votre instrument actuel continuent d'être rejetés à l'approche de l'échéance, <strong class='text-white'>clôturez (flatten) d'abord la position sur le contrat arrivant à échéance</strong>." },
+        { title: "Réentrez sur le nouveau front month", html: "Rouvrez la position souhaitée sur le contrat du <strong class='text-white'>nouveau front month</strong> sélectionné ci-dessus, afin de trader le marché actif et pleinement liquide." },
+        { title: "La prochaine fois, faites le roll quelques jours plus tôt", html: "Désormais, effectuez le roll quelques jours avant l'échéance plutôt que le dernier jour. Le calendrier et les avis de roll varient selon la plateforme et la société ; ne comptez donc pas sur un avertissement de dernière minute." },
+      ],
+    },
+    { type: "heading",text: "Corriger un véritable problème de flux de données" },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifiez aussi le front month", html: "Si le contrat du front month n'affiche <em>pas non plus</em> de données, le problème vient de votre flux, pas du symbole. Confirmez que votre <strong class='text-white'>abonnement aux données de marché en temps réel</strong> est actif et que vos <strong class='text-white'>accords de données</strong> de bourse sont signés. Les frais et les forfaits varient selon la bourse et l'offre ; consultez donc la tarification actuelle des données de marché de Tradovate." },
+        { title: "Déconnectez-vous puis reconnectez-vous", html: "Déconnectez-vous puis reconnectez-vous après toute modification de données afin que les autorisations se rafraîchissent." },
+        { title: "Interrogez la société sur un compte de prop firm", html: "Sur un <strong class='text-white'>compte de prop firm ou d'évaluation</strong>, contactez la société pour activer ou réparer les données de marché ; les comptes d'évaluation ne peuvent généralement pas s'abonner eux-mêmes via Tradovate." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme / message","Signification","Première solution"], rows: [
+      ["&ldquo;No Data&rdquo; sur le graphique","Le symbole pointe vers un contrat expiré","Passer au contrat actuel du front month"],
+      ["&ldquo;Symbol Not Found&rdquo;","Le code daté ne correspond plus à un contrat actif","Rechercher le symbole racine et choisir l'échéance active"],
+      ["&ldquo;No quote available&rdquo;","Aucun marché en direct derrière le symbole (expiré ou sans abonnement)","Confirmer le front month et un abonnement aux données actif"],
+      ["Graphique vide / lacunaire près de la date de roll","La liquidité est passée au mois suivant","Basculer le graphique et les ordres sur le nouveau front month"],
+      ["Ordre rejeté sur un symbole continu (p. ex. <code>NQ1!</code>)","Le code continu n'est pas un symbole d'ordre valide","Trader plutôt le contrat explicite du front month"],
+      ["Nouveaux ordres rejetés sur votre contrat détenu près de l'échéance","Contrat en dénouement, liquidation seule","Aplatir l'ancien contrat, réentrer sur le nouveau"],
+      ["Le front month n'affiche pas non plus de données","Flux de données de marché échu ou non activé","Vérifier abonnement/accords ; sur les comptes de prop firm, interroger la société"],
+    ] },
+    { type: "heading",text: "Prévenez cela avec PickMyTrade" },
+    { type: "paragraph",html: "Faire rouler les contrats est exactement le genre de tâche courante que l'on oublie facilement, jusqu'à ce qu'un symbole mort vous coûte un trade à l'ouverture. PickMyTrade maintient votre automatisation de TradingView vers Tradovate pointée sur un contrat valide et négociable, afin qu'un code expiré ne perturbe pas discrètement vos entrées et sorties." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validation du symbole</strong>, vérifie le symbole de l'ordre avant le routage, de sorte qu'un code de contrat périmé ou non négociable soit repéré au lieu de partir dans le vide.",
+        "<strong class='text-white'>Mappage du front month</strong>, résout votre alerte vers le contrat actif actuel, pour que vous n'ayez pas à modifier à la main des codes datés à chaque roll.",
+        "<strong class='text-white'>Contrôles d'autorisations et de données</strong>, respectent votre accord de données et l'état de l'abonnement, afin que les ordres ne soient pas routés vers un symbole sans flux en direct.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, reproduit l'ordre corrigé sur tous les comptes connectés, pour qu'un roll manqué ne désynchronise pas les autres.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Apre ES o NQ per operare all'apertura e il grafico è vuoto. Nessuna candela, nessun bid/ask, solo un segnaposto &ldquo;No Data&rdquo; o un secco messaggio &ldquo;Symbol Not Found&rdquo; dove dovrebbe esserci il prezzo. Prima di dare la colpa al suo Wi-Fi o a un'interruzione di Tradovate, controlli il simbolo. Nove volte su dieci non è né l'uno né l'altra: sta guardando un contratto future già scaduto. I contratti scaduti smettono di essere negoziati, smettono di fornire quotazioni e scompaiono dal feed in tempo reale, quindi un codice che funzionava benissimo il trimestre scorso ora non le restituisce nulla." },
+    { type: "paragraph",html: "La stessa causa di fondo si presenta con etichette diverse: &ldquo;No Data&rdquo;, &ldquo;Symbol Not Found&rdquo;, un grafico vuoto, &ldquo;no quote available&rdquo; o un ordine che semplicemente si rifiuta di essere instradato. Ognuna sparisce nell'istante in cui passa al contratto attivo del front month. Ecco perché succede, come passare al simbolo attivo corretto e come evitare che un contratto in scadenza colga di sorpresa la sua automazione il prossimo trimestre." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per “No Data” / “Symbol Not Found”",
+      items: [
+        "<strong class='text-white'>Legga il codice di mese e anno nel suo simbolo.</strong> <code>ESZ5</code> significa dicembre 2025. Se quel trimestre è passato, il contratto è morto.",
+        "<strong class='text-white'>Passi al contratto del front month.</strong> Cerchi il simbolo radice (<code>ES</code>, <code>NQ</code>, <code>CL</code>) e scelga la scadenza attiva più vicina.",
+        "<strong class='text-white'>Smetta di inserire in modo fisso vecchi codici di contratto</strong> in grafici, watchlist e alert: non si aggiornano automaticamente.",
+        "<strong class='text-white'>Visualizzi il grafico con il simbolo continuo/del front month,</strong> ma confermi che la piattaforma lo associ a un contratto negoziabile attivo prima di inviare un ordine.",
+        "<strong class='text-white'>Verifichi il suo abbonamento ai dati di mercato in tempo reale e gli accordi firmati.</strong> Un contratto scaduto non mostra dati, ma nemmeno un feed scaduto.",
+        "<strong class='text-white'>Su un conto prop o di valutazione, confermi che la società abbia abilitato i dati.</strong> I conti di valutazione di solito non possono abbonarsi da soli.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa “No Data / Symbol Not Found” in Tradovate" },
+    { type: "paragraph",html: "Ogni contratto future ha una vita finita. Viene quotato, si negozia per un periodo prestabilito, poi raggiunge la data di scadenza e viene regolato, dopodiché non viene più negoziato e non riceve più quotazioni. Se richiede un contratto scaduto, semplicemente non c'è alcun mercato attivo dietro, quindi Tradovate non ha nulla da tracciare. Per questo il sintomo appare come &ldquo;No Data&rdquo;, un grafico vuoto o &ldquo;Symbol Not Found&rdquo; invece di un errore sul suo conto. La piattaforma si è caricata correttamente. È lo strumento richiesto a non essere più in vita." },
+    { type: "paragraph",html: "È un caso diverso da una piattaforma oscurata o da un login perso. Il suo conto, il saldo, gli ordini e le posizioni sono tutti intatti sui server di Tradovate; il problema è il <em>simbolo</em>, non la sessione. I grafici di un contratto scaduto o quasi scaduto possono apparire vuoti, bloccati o mostrare buchi e barre sparse intorno alla data di rollover, perché volume e liquidità sono già passati al mese di contratto successivo. Corregga il simbolo e i dati tornano subito." },
+    { type: "paragraph",html: "La chiave per leggere e correggere questo problema è sapere come è costruito un simbolo future di Tradovate. È la radice dello strumento, poi un codice di mese di una lettera, poi l'anno: <code>ES</code> + <code>Z</code> (dicembre) + <code>5</code> (2025) = <code>ESZ5</code>, l'E-mini S&amp;P 500 in scadenza a dicembre 2025. I codici dei mesi sono standardizzati per tutti i prodotti quotati al CME:" },
+    {
+      type: "list",
+      items: [
+        "Gennaio <strong class='text-white'>F</strong>, febbraio <strong class='text-white'>G</strong>, marzo <strong class='text-white'>H</strong>, aprile <strong class='text-white'>J</strong>",
+        "Maggio <strong class='text-white'>K</strong>, giugno <strong class='text-white'>M</strong>, luglio <strong class='text-white'>N</strong>, agosto <strong class='text-white'>Q</strong>",
+        "Settembre <strong class='text-white'>U</strong>, ottobre <strong class='text-white'>V</strong>, novembre <strong class='text-white'>X</strong>, dicembre <strong class='text-white'>Z</strong>",
+      ],
+    },
+    { type: "paragraph",html: "Le lettere I, L e O vengono saltate perché nessuno le scambi per numeri. Un'altra particolarità: alcune piattaforme mostrano l'anno con una cifra (<code>ESZ5</code>) e altre con due (<code>ESZ25</code>), quindi controlli quale formato usa il suo ambiente Tradovate. Una volta che sa leggere il codice, un solo sguardo le dice se il contratto che ha davanti è attivo o morto da tempo." },
+    { type: "heading",text: "Principali cause di “No Data / Symbol Not Found”" },
+    { type: "heading",text: "1. Il contratto è semplicemente scaduto" },
+    { type: "paragraph",html: "È la causa numero uno, senza discussione. I future sugli indici azionari come ES e NQ seguono un ciclo trimestrale, marzo, giugno, settembre, dicembre, mentre energia, metalli e agricoli scadono mensilmente o secondo un proprio calendario. Una volta superata la scadenza, un contratto smette di essere negoziato e di fornire dati. Se il suo grafico o la sua watchlist punta ancora al codice del trimestre scorso, aggiornarlo cento volte non riporterà nulla." },
+    { type: "heading",text: "2. Ha inserito in modo fisso un vecchio codice mese/anno" },
+    { type: "paragraph",html: "Grafici, watchlist, pannelli DOM e alert di TradingView che fanno riferimento a un contratto datato specifico, per esempio <code>NQH5</code>, <strong class='text-white'>non</strong> fanno il roll da soli. Continuano a puntare per sempre a quel contratto esatto. Nel momento in cui scade, tutto ciò che è collegato a quel codice ammutolisce: il grafico, l'alert, l'automazione, tutto. È il modo più comune in cui i trader &ldquo;perdono&rdquo; i dati senza toccare una sola impostazione." },
+    { type: "heading",text: "3. Un simbolo continuo non ha fatto il roll o non è negoziabile" },
+    { type: "paragraph",html: "I simboli continui come <code>NQ1!</code> sono una comodità grafica che unisce il contratto frontale attraverso i rollover. Tradovate sposta un contratto continuo sul nuovo mese in base al volume: fa il roll quando il volume di scambi del contratto successivo supera quello del contratto in scadenza, non a una data fissa del calendario. Utile per i grafici. Ma un simbolo continuo non è sempre un simbolo <em>d'ordine</em> valido: se invia un ordine su un codice continuo o mappato in modo errato, può essere respinto con un errore di simbolo o &ldquo;non-tradable&rdquo; anche se il grafico appare perfetto." },
+    { type: "heading",text: "4. La sua posizione è nel contratto in scadenza, vicino al roll" },
+    { type: "paragraph",html: "Se detiene già il vecchio contratto mentre si avvicina alla scadenza, Tradovate può portare quello strumento in uno stato di sola liquidazione. Può chiudere la posizione, ma i nuovi ordini vengono respinti perché la borsa sta smontando il contratto. Il grafico può ancora mostrare dati radi e lacunosi mentre le quotazioni si esauriscono, il che dà l'impressione di un simbolo mezzo morto." },
+    { type: "heading",text: "5. Nessun dato in tempo reale: contratto scaduto o abbonamento scaduto" },
+    { type: "paragraph",html: "Un contratto scaduto e un abbonamento ai dati di mercato mancante producono lo <em>stesso</em> sintomo visibile: nessuna quotazione. Quindi, prima di dare per scontato che sia il simbolo, confermi che un feed di dati in tempo reale sia effettivamente attivo. Sui conti personali significa un abbonamento attivo ai dati di mercato della borsa con gli accordi sui dati firmati. Sui conti prop o di valutazione, i dati sono di solito forniti dalla società, non attivati da lei." },
+    { type: "heading",text: "Come risolvere “No Data / Symbol Not Found”: passo dopo passo" },
+    { type: "paragraph",html: "Segua questi passaggi in ordine. Nella maggior parte dei casi la prima soluzione, passare al contratto attivo, è tutto ciò che le servirà." },
+    { type: "heading",text: "Risolvere un contratto scaduto: passare al front month" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cerchi il simbolo radice", html: "Nella ricerca simboli o nel selettore degli strumenti di Tradovate, digiti <strong class='text-white'>solo il simbolo radice</strong>, <code>ES</code>, <code>NQ</code>, <code>CL</code>, <code>GC</code> e così via, invece di un codice datato." },
+        { title: "Scelga il contratto del front month", html: "Guardi l'elenco delle scadenze disponibili e scelga il contratto del <strong class='text-white'>front month</strong>: la scadenza più vicina attivamente negoziata, quella con più volume. Tradovate segnala per lei il contratto frontale corrente." },
+        { title: "Confermi che il codice sia attivo", html: "Legga il codice mese/anno per confermare che sia attivo. A metà 2026, per esempio, un front month di ES porterebbe un codice <code>M6</code> (giugno 2026) o <code>U6</code> (settembre 2026) a seconda del punto del roll, mai un trimestre passato." },
+        { title: "Carichi il contratto", html: "Selezioni quel contratto per caricarlo nel grafico e nel pannello ordini. Quotazioni in tempo reale e candele dovrebbero apparire subito." },
+      ],
+    },
+    { type: "heading",text: "Risolvere simboli fissi in grafici, alert e automazione" },
+    {
+      type: "steps",
+      items: [
+        { title: "Riselezioni il front month ovunque", html: "Apra ogni <strong class='text-white'>grafico, watchlist e DOM</strong> che non mostra ancora dati e riselezioni il contratto del front month corrente al posto del vecchio codice datato." },
+        { title: "Aggiorni alert e strategie", html: "In <strong class='text-white'>TradingView</strong>, o in qualsiasi fonte di alert esterna collegata a Tradovate, modifichi gli alert e le strategie che fanno riferimento a un contratto scaduto e li riorienti sul simbolo attivo. Gli alert non fanno il roll da soli." },
+        { title: "Salvi l'area di lavoro e imposti un promemoria", html: "Salvi la sua <strong class='text-white'>area di lavoro</strong> aggiornata in modo che i simboli corretti si ricarichino alla prossima sessione e imposti un promemoria per ripeterlo a ogni periodo di roll." },
+      ],
+    },
+    { type: "heading",text: "Risolvere una posizione vicina alla scadenza bloccata in sola liquidazione" },
+    {
+      type: "steps",
+      items: [
+        { title: "Azzeri il contratto in scadenza", html: "Se i nuovi ordini sul suo strumento attuale continuano a essere respinti mentre il contratto si avvicina alla scadenza, <strong class='text-white'>chiuda (flatten) prima la posizione nel contratto in scadenza</strong>." },
+        { title: "Rientri sul nuovo front month", html: "Riapra la posizione prevista nel <strong class='text-white'>nuovo front month</strong> selezionato sopra, in modo da operare sul mercato attivo e pienamente liquido." },
+        { title: "La prossima volta faccia il roll qualche giorno prima", html: "D'ora in poi, faccia il roll alcuni giorni prima della scadenza invece che l'ultimo giorno. Tempistiche e avvisi di roll variano a seconda della piattaforma e della società, quindi non conti su un avviso dell'ultimo minuto." },
+      ],
+    },
+    { type: "heading",text: "Risolvere un vero problema del feed di dati" },
+    {
+      type: "steps",
+      items: [
+        { title: "Controlli anche il front month", html: "Se anche il contratto del front month <em>non</em> mostra dati, il problema è il suo feed, non il simbolo. Confermi che il suo <strong class='text-white'>abbonamento ai dati di mercato in tempo reale</strong> sia attivo e che i suoi <strong class='text-white'>accordi sui dati</strong> di borsa siano firmati. Costi e pacchetti variano a seconda della borsa e del piano, quindi controlli i prezzi attuali dei dati di mercato di Tradovate." },
+        { title: "Esca e rientri", html: "Esca e rientri dopo qualsiasi modifica ai dati, in modo che le abilitazioni si aggiornino." },
+        { title: "Chieda alla società su un conto prop", html: "Su un <strong class='text-white'>conto prop o di valutazione</strong>, contatti la società per abilitare o riparare i dati di mercato: i conti di valutazione di solito non possono abbonarsi da soli tramite Tradovate." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo / messaggio","Cosa significa","Prima soluzione"], rows: [
+      ["&ldquo;No Data&rdquo; sul grafico","Il simbolo punta a un contratto scaduto","Passare al contratto corrente del front month"],
+      ["&ldquo;Symbol Not Found&rdquo;","Il codice datato non corrisponde più a un contratto attivo","Cercare il simbolo radice e scegliere la scadenza attiva"],
+      ["&ldquo;No quote available&rdquo;","Nessun mercato attivo dietro il simbolo (scaduto o senza abbonamento)","Confermare il front month e un abbonamento ai dati attivo"],
+      ["Grafico vuoto / con buchi vicino alla data di roll","La liquidità è passata al mese successivo","Spostare grafico e ordini sul nuovo front month"],
+      ["Ordine respinto su un simbolo continuo (es. <code>NQ1!</code>)","Il codice continuo non è un simbolo d'ordine valido","Operare invece sul contratto esplicito del front month"],
+      ["Nuovi ordini respinti sul contratto detenuto vicino alla scadenza","Contratto in smontaggio, sola liquidazione","Azzerare il vecchio contratto, rientrare sul nuovo"],
+      ["Anche il front month non mostra dati","Feed dei dati di mercato scaduto o non abilitato","Verificare abbonamento/accordi; sui conti prop, chiedere alla società"],
+    ] },
+    { type: "heading",text: "Prevenga tutto questo con PickMyTrade" },
+    { type: "paragraph",html: "Fare il roll dei contratti è esattamente il tipo di operazione di routine che è facile dimenticare finché un simbolo morto non le costa un trade all'apertura. PickMyTrade mantiene la sua automazione da TradingView a Tradovate puntata su un contratto valido e negoziabile, così un codice scaduto non compromette silenziosamente i suoi ingressi e le sue uscite." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validazione del simbolo</strong>, controlla il simbolo dell'ordine prima dell'instradamento, così un codice di contratto obsoleto o non negoziabile viene intercettato invece di essere sparato nel vuoto.",
+        "<strong class='text-white'>Mappatura del front month</strong>, risolve il suo alert sul contratto attivo corrente, così non deve modificare a mano i codici datati a ogni roll.",
+        "<strong class='text-white'>Controlli di abilitazione e dati</strong>, rispettano il suo accordo sui dati e lo stato dell'abbonamento, così gli ordini non vengono instradati su un simbolo senza feed in tempo reale.",
+        "<strong class='text-white'>Sincronizzazione multi-conto</strong>, replica l'ordine corretto su tutti i conti collegati, così un roll mancato non desincronizza gli altri.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Never Trade a Dead Contract Code", de: "Handeln Sie nie mit einem toten Kontraktcode", es: "No opere nunca con el código de un contrato muerto", fr: "Ne tradez jamais un code de contrat mort", it: "Non operi mai su un codice di contratto morto" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and trade rejection-free, with an expired symbol caught before it breaks a trade.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, verbinden Sie noch heute Ihre Alerts und handeln Sie ohne Ablehnungen, denn ein abgelaufenes Symbol wird erkannt, bevor es einen Trade stört.", es: "Comience su prueba gratuita de 7 días, vincule sus alertas hoy y opere sin rechazos, con un símbolo vencido detectado antes de que arruine una operación.", fr: "Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et tradez sans rejet, avec un symbole expiré repéré avant qu'il ne perturbe un trade.", it: "Inizi la prova gratuita di 7 giorni, colleghi gli alert oggi stesso e operi senza rifiuti, con un simbolo scaduto intercettato prima che comprometta un trade." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does my Tradovate chart say “No Data” or “Symbol Not Found”?", a: "Almost always because the symbol points at a futures contract that has already expired. Expired contracts stop trading and stop feeding quotes, so there's nothing to plot. Search the root symbol and switch to the current front-month contract to bring live data back." },
+    { q: "How do I know if my contract has expired?", a: "Read the code. A Tradovate symbol is root + month letter + year, ESZ5 is December (Z) 2025 (5). If that month and year are in the past, the contract is dead. Equity-index futures roll quarterly in March, June, September, and December; other products roll on their own schedules." },
+    { q: "What are the futures month codes?", a: "F=Jan, G=Feb, H=Mar, J=Apr, K=May, M=Jun, N=Jul, Q=Aug, U=Sep, V=Oct, X=Nov, Z=Dec. The letters I, L, and O are skipped so they aren't mistaken for numbers." },
+    { q: "What is the front-month contract and how do I find it?", a: "The front month is the nearest active expiration, in practice the contract carrying the highest trading volume. In Tradovate, search the root symbol (for example ES) and pick the expiration Tradovate flags as current/front. That's the contract you should chart and trade." },
+    { q: "Should I trade the continuous symbol like NQ1!?", a: "NQ1!-style continuous symbols are for charting continuity across rollovers, Tradovate switches them to the new month when its volume overtakes the old one. They aren't always valid order symbols, so send actual orders on the explicit front-month contract to avoid symbol or non-tradable rejections." },
+    { q: "The front month also shows no data, now what?", a: "Then it's a feed problem, not the symbol. Confirm your real-time market-data subscription is active and your exchange data agreements are signed, then log out and back in. On a prop or evaluation account, the firm has to enable data for you." },
+    { q: "Why can I close my position but not open a new one on the same contract?", a: "As a contract nears expiration, Tradovate can flag it liquidation-only, you may exit but not add new orders while the exchange winds it down. Flatten the expiring contract and re-enter on the new front month." },
+    { q: "How do I stop this from happening every quarter?", a: "Don't hard-code dated contract codes in charts and alerts, roll a few days before expiry rather than on the last day, and let automation validate and map the symbol so a stale code gets caught before it breaks a trade." },
+  ], de: [
+    { q: "Warum zeigt mein Tradovate-Chart „No Data“ oder „Symbol Not Found“ an?", a: "Fast immer, weil das Symbol auf einen Futures-Kontrakt verweist, der bereits abgelaufen ist. Abgelaufene Kontrakte werden nicht mehr gehandelt und liefern keine Kurse mehr, sodass nichts dargestellt werden kann. Suchen Sie das Root-Symbol und wechseln Sie zum aktuellen Front-Month-Kontrakt, um die Live-Daten zurückzubekommen." },
+    { q: "Woran erkenne ich, ob mein Kontrakt abgelaufen ist?", a: "Lesen Sie den Code. Ein Tradovate-Symbol besteht aus Root + Monatsbuchstabe + Jahr, ESZ5 steht für Dezember (Z) 2025 (5). Liegen Monat und Jahr in der Vergangenheit, ist der Kontrakt tot. Aktienindex-Futures rollen vierteljährlich im März, Juni, September und Dezember; andere Produkte rollen nach eigenem Zeitplan." },
+    { q: "Was sind die Monatscodes bei Futures?", a: "F=Jan, G=Feb, H=Mär, J=Apr, K=Mai, M=Jun, N=Jul, Q=Aug, U=Sep, V=Okt, X=Nov, Z=Dez. Die Buchstaben I, L und O werden ausgelassen, damit sie nicht mit Zahlen verwechselt werden." },
+    { q: "Was ist der Front-Month-Kontrakt und wie finde ich ihn?", a: "Der Front Month ist der nächste aktive Verfall, in der Praxis der Kontrakt mit dem höchsten Handelsvolumen. Suchen Sie in Tradovate das Root-Symbol (zum Beispiel ES) und wählen Sie den Verfall, den Tradovate als aktuell/Front kennzeichnet. Diesen Kontrakt sollten Sie charten und handeln." },
+    { q: "Sollte ich das fortlaufende Symbol wie NQ1! handeln?", a: "Fortlaufende Symbole im Stil von NQ1! dienen der Kontinuität im Chart über Rollovers hinweg; Tradovate stellt sie auf den neuen Monat um, sobald dessen Volumen das des alten übersteigt. Sie sind nicht immer gültige Order-Symbole. Senden Sie echte Orders daher auf den expliziten Front-Month-Kontrakt, um Ablehnungen wegen Symbol oder „nicht handelbar“ zu vermeiden." },
+    { q: "Der Front Month zeigt ebenfalls keine Daten, was nun?", a: "Dann liegt ein Feed-Problem vor, nicht am Symbol. Prüfen Sie, ob Ihr Echtzeit-Marktdaten-Abonnement aktiv ist und Ihre Börsen-Datenvereinbarungen unterzeichnet sind, und melden Sie sich dann ab und wieder an. Bei einem Prop- oder Evaluierungskonto muss die Firma die Daten für Sie freischalten." },
+    { q: "Warum kann ich meine Position schließen, aber keine neue im selben Kontrakt eröffnen?", a: "Kurz vor dem Verfall kann Tradovate einen Kontrakt als „nur Glattstellung“ kennzeichnen: Sie dürfen aussteigen, aber keine neuen Orders hinzufügen, während die Börse ihn abwickelt. Stellen Sie den auslaufenden Kontrakt glatt und steigen Sie im neuen Front Month wieder ein." },
+    { q: "Wie verhindere ich, dass das jedes Quartal passiert?", a: "Hinterlegen Sie keine datierten Kontraktcodes fest in Charts und Alerts, rollen Sie einige Tage vor dem Verfall statt am letzten Tag und lassen Sie die Automatisierung das Symbol prüfen und zuordnen, damit ein veralteter Code erkannt wird, bevor er einen Trade stört." },
+  ], es: [
+    { q: "¿Por qué mi gráfico de Tradovate dice “No Data” o “Symbol Not Found”?", a: "Casi siempre porque el símbolo apunta a un contrato de futuros que ya venció. Los contratos vencidos dejan de negociarse y de emitir cotizaciones, así que no hay nada que dibujar. Busque el símbolo raíz y cambie al contrato vigente del mes más próximo para recuperar los datos en vivo." },
+    { q: "¿Cómo sé si mi contrato ha vencido?", a: "Lea el código. Un símbolo de Tradovate es raíz + letra del mes + año; ESZ5 es diciembre (Z) de 2025 (5). Si ese mes y año están en el pasado, el contrato está muerto. Los futuros de índices bursátiles se renuevan trimestralmente en marzo, junio, septiembre y diciembre; otros productos lo hacen según su propio calendario." },
+    { q: "¿Cuáles son los códigos de mes de los futuros?", a: "F=Ene, G=Feb, H=Mar, J=Abr, K=May, M=Jun, N=Jul, Q=Ago, U=Sep, V=Oct, X=Nov, Z=Dic. Las letras I, L y O se omiten para que no se confundan con números." },
+    { q: "¿Qué es el contrato del mes más próximo (front month) y cómo lo encuentro?", a: "El front month es el vencimiento activo más cercano, en la práctica el contrato con mayor volumen de negociación. En Tradovate, busque el símbolo raíz (por ejemplo ES) y elija el vencimiento que Tradovate marca como actual/front. Ese es el contrato que debe graficar y operar." },
+    { q: "¿Debo operar el símbolo continuo como NQ1!?", a: "Los símbolos continuos del estilo NQ1! sirven para dar continuidad a los gráficos a lo largo de los rollovers; Tradovate los cambia al nuevo mes cuando su volumen supera al del anterior. No siempre son símbolos válidos para órdenes, así que envíe las órdenes reales sobre el contrato explícito del mes más próximo para evitar rechazos por símbolo o por “no negociable”." },
+    { q: "El front month tampoco muestra datos, ¿y ahora qué?", a: "Entonces es un problema del feed, no del símbolo. Confirme que su suscripción de datos de mercado en tiempo real está activa y que sus acuerdos de datos de la bolsa están firmados, y luego cierre sesión y vuelva a entrar. En una cuenta de prop firm o de evaluación, la firma tiene que activarle los datos." },
+    { q: "¿Por qué puedo cerrar mi posición pero no abrir una nueva en el mismo contrato?", a: "Cuando un contrato se acerca al vencimiento, Tradovate puede marcarlo como solo liquidación: puede salir, pero no añadir nuevas órdenes mientras la bolsa lo va liquidando. Cierre el contrato que vence y vuelva a entrar en el nuevo front month." },
+    { q: "¿Cómo evito que esto ocurra cada trimestre?", a: "No fije códigos de contrato con fecha en gráficos ni alertas, haga el roll unos días antes del vencimiento y no el último día, y deje que la automatización valide y asigne el símbolo para que un código obsoleto se detecte antes de que arruine una operación." },
+  ], fr: [
+    { q: "Pourquoi mon graphique Tradovate affiche-t-il « No Data » ou « Symbol Not Found » ?", a: "Presque toujours parce que le symbole pointe vers un contrat à terme déjà expiré. Les contrats expirés cessent de se négocier et de diffuser des cotations ; il n'y a donc rien à tracer. Recherchez le symbole racine et passez au contrat du mois en cours pour retrouver les données en direct." },
+    { q: "Comment savoir si mon contrat a expiré ?", a: "Lisez le code. Un symbole Tradovate se compose de la racine + lettre du mois + année ; ESZ5 correspond à décembre (Z) 2025 (5). Si ce mois et cette année sont dans le passé, le contrat est mort. Les contrats à terme sur indices actions se renouvellent chaque trimestre en mars, juin, septembre et décembre ; les autres produits suivent leur propre calendrier." },
+    { q: "Quels sont les codes de mois des contrats à terme ?", a: "F=janv., G=févr., H=mars, J=avr., K=mai, M=juin, N=juil., Q=août, U=sept., V=oct., X=nov., Z=déc. Les lettres I, L et O sont omises pour ne pas être confondues avec des chiffres." },
+    { q: "Qu'est-ce que le contrat du mois en cours (front month) et comment le trouver ?", a: "Le front month est l'échéance active la plus proche, en pratique le contrat présentant le volume d'échanges le plus élevé. Dans Tradovate, recherchez le symbole racine (par exemple ES) et choisissez l'échéance que Tradovate signale comme actuelle/front. C'est le contrat que vous devez afficher et trader." },
+    { q: "Dois-je trader le symbole continu comme NQ1! ?", a: "Les symboles continus de type NQ1! servent à assurer la continuité des graphiques lors des rollovers ; Tradovate les bascule sur le nouveau mois lorsque son volume dépasse celui de l'ancien. Ce ne sont pas toujours des symboles valides pour les ordres ; envoyez donc vos ordres réels sur le contrat explicite du front month afin d'éviter les rejets pour symbole ou « non négociable »." },
+    { q: "Le front month n'affiche pas non plus de données, que faire ?", a: "Il s'agit alors d'un problème de flux, pas de symbole. Confirmez que votre abonnement aux données de marché en temps réel est actif et que vos accords de données de bourse sont signés, puis déconnectez-vous et reconnectez-vous. Sur un compte de prop firm ou d'évaluation, c'est la société qui doit activer les données pour vous." },
+    { q: "Pourquoi puis-je clôturer ma position mais pas en ouvrir une nouvelle sur le même contrat ?", a: "À l'approche de l'échéance, Tradovate peut signaler un contrat en liquidation seule : vous pouvez sortir mais pas ajouter de nouveaux ordres pendant que la bourse le dénoue. Aplatissez le contrat arrivant à échéance et réentrez sur le nouveau front month." },
+    { q: "Comment éviter que cela se reproduise chaque trimestre ?", a: "N'inscrivez pas en dur des codes de contrat datés dans vos graphiques et alertes, effectuez le roll quelques jours avant l'échéance plutôt que le dernier jour, et laissez l'automatisation valider et mapper le symbole afin qu'un code périmé soit repéré avant de perturber un trade." },
+  ], it: [
+    { q: "Perché il mio grafico Tradovate mostra “No Data” o “Symbol Not Found”?", a: "Quasi sempre perché il simbolo punta a un contratto future già scaduto. I contratti scaduti smettono di essere negoziati e di fornire quotazioni, quindi non c'è nulla da tracciare. Cerchi il simbolo radice e passi al contratto del mese corrente per riavere i dati in tempo reale." },
+    { q: "Come faccio a sapere se il mio contratto è scaduto?", a: "Legga il codice. Un simbolo Tradovate è radice + lettera del mese + anno; ESZ5 è dicembre (Z) 2025 (5). Se quel mese e quell'anno sono nel passato, il contratto è morto. I future sugli indici azionari scadono trimestralmente a marzo, giugno, settembre e dicembre; gli altri prodotti seguono un proprio calendario." },
+    { q: "Quali sono i codici dei mesi dei future?", a: "F=gen, G=feb, H=mar, J=apr, K=mag, M=giu, N=lug, Q=ago, U=set, V=ott, X=nov, Z=dic. Le lettere I, L e O vengono saltate per non essere confuse con i numeri." },
+    { q: "Cos'è il contratto del mese corrente (front month) e come lo trovo?", a: "Il front month è la scadenza attiva più vicina, in pratica il contratto con il volume di scambi più alto. In Tradovate, cerchi il simbolo radice (per esempio ES) e scelga la scadenza che Tradovate segnala come corrente/front. È il contratto che deve visualizzare nel grafico e su cui deve operare." },
+    { q: "Devo operare sul simbolo continuo come NQ1!?", a: "I simboli continui in stile NQ1! servono a garantire continuità nei grafici attraverso i rollover; Tradovate li sposta sul nuovo mese quando il suo volume supera quello del vecchio. Non sempre sono simboli validi per gli ordini, quindi invii gli ordini reali sul contratto esplicito del front month per evitare rifiuti per simbolo o “non negoziabile”." },
+    { q: "Anche il front month non mostra dati, e adesso?", a: "Allora è un problema del feed, non del simbolo. Confermi che il suo abbonamento ai dati di mercato in tempo reale sia attivo e che i suoi accordi sui dati di borsa siano firmati, poi esca e rientri. Su un conto prop o di valutazione, è la società a dover abilitare i dati per lei." },
+    { q: "Perché posso chiudere la posizione ma non aprirne una nuova sullo stesso contratto?", a: "Quando un contratto si avvicina alla scadenza, Tradovate può segnalarlo come solo liquidazione: può uscire ma non aggiungere nuovi ordini mentre la borsa lo smonta. Azzeri il contratto in scadenza e rientri sul nuovo front month." },
+    { q: "Come evito che accada ogni trimestre?", a: "Non inserisca codici di contratto datati in modo fisso nei grafici e negli alert, faccia il roll alcuni giorni prima della scadenza invece che l'ultimo giorno e lasci che l'automazione validi e mappi il simbolo, in modo che un codice obsoleto venga intercettato prima che comprometta un trade." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von dieser weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni uniquement à des fins éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée, ni parrainée par elle. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; confirmez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

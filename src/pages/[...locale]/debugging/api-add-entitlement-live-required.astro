@@ -1,0 +1,504 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-add-entitlement-live-required";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate addEntitlementSubscription Live Required";
+const META_DESCRIPTION =
+  "addEntitlementSubscription returns 'Live account is required'? Sign the non-professional market data agreement first, then assign the entitlement.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { de: "Tradovate addEntitlementSubscription: Live-Konto nötig", es: "Tradovate addEntitlementSubscription: exige cuenta en vivo", fr: "Tradovate addEntitlementSubscription : compte live requis" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate addEntitlementSubscription: Live-Konto erforderlich", es: "Tradovate addEntitlementSubscription: se requiere cuenta en vivo", fr: "Tradovate addEntitlementSubscription : compte en direct requis", it: "Tradovate addEntitlementSubscription: account live richiesto" },
+  dek: { en: "The account clearly exists, but addEntitlementSubscription still comes back with \"Live account is required.\" Here's what the message actually means, and the exact call order that clears it.", de: "Das Konto existiert eindeutig, aber addEntitlementSubscription liefert weiterhin \"Live-Konto ist erforderlich.\" So erfahren Sie, was die Meldung wirklich bedeutet, und in dieser genauen Reihenfolge müssen die Aufrufe erfolgen, damit sie verschwindet.", es: "La cuenta claramente existe, pero addEntitlementSubscription sigue devolviendo \"Se requiere una cuenta en vivo.\" Esto es lo que el mensaje realmente significa, y el orden exacto de llamadas que lo resuelve.", fr: "Le compte existe bel et bien, mais addEntitlementSubscription continue de renvoyer \"Un compte en direct est requis.\" Voici ce que le message signifie réellement, et l'ordre exact des appels qui résout le problème.", it: "L'account esiste chiaramente, ma addEntitlementSubscription continua a restituire \"È richiesto un account live.\" Ecco cosa significa davvero il messaggio, e l'ordine esatto delle chiamate che lo risolve." },
+  readTime: { en: "6 min read", de: "6 Minuten Lesezeit", es: "Lectura de 6 minutos", fr: "Lecture de 6 minutes", it: "Lettura di 6 minuti" },
+  lastUpdated: "2026-07-08",
+  heroImage: { src: `${IMG}/api-add-entitlement-live-required-1.png`, alt: { en: "Tradovate addEntitlementSubscription API response returning HTTP 200 with errorText Live account is required", de: "Tradovate-addEntitlementSubscription-API-Antwort mit HTTP 200 und errorText Live account is required", es: "Respuesta de la API Tradovate addEntitlementSubscription devolviendo HTTP 200 con errorText Live account is required", fr: "Réponse de l'API Tradovate addEntitlementSubscription renvoyant HTTP 200 avec errorText Live account is required", it: "Risposta dell'API Tradovate addEntitlementSubscription che restituisce HTTP 200 con errorText Live account is required" } },
+  blocks: { en: [
+    { type: "paragraph", html: "You've provisioned a user through the Tradovate API, the account is created, everything looks clean, then your call to <code>addEntitlementSubscription</code> comes back with <code>Live account is required</code> and the market-data entitlement never lands. It's one of the most confusing responses in the whole provisioning flow, because the account clearly <em>does</em> exist and the message points you in the wrong direction. Here's the short version: that error almost always means the user hasn't signed the <strong class='text-white'>non-professional market data agreement</strong> yet. Get that agreement on file, confirm it synced, and the same call goes through. Below is the full diagnosis, the exact order the calls need to run in, and how a bridge like PickMyTrade sidesteps the whole entitlement dance." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist",
+      items: [
+        "<strong class='text-white'>Sign the non-professional market data agreement first</strong>, this is the real prerequisite the misleading error is hiding.",
+        "<strong class='text-white'>Add contact information for the user</strong>, a skipped contact step will block or delay entitlement assignment.",
+        "<strong class='text-white'>Confirm the signature synced</strong>, the entitlement check reads the saved record, not the moment the user clicked &ldquo;accept.&rdquo;",
+        "<strong class='text-white'>Parse the response body, not just the status code</strong>, the call returns HTTP <code>200</code> with the failure in an <code>errorText</code> field.",
+        "<strong class='text-white'>Run the calls in order</strong>, create user &rarr; add contact info &rarr; create account &rarr; confirm agreement &rarr; assign entitlement.",
+        "<strong class='text-white'>Check who owns data on prop accounts</strong>, some firms enable market data and entitlements centrally, so you may not be the one to call this.",
+      ],
+    },
+    { type: "heading", text: "What \"Live Account Is Required\" Actually Means" },
+    { type: "paragraph", html: "Take the message literally and you'll waste an afternoon. The response isn't telling you the account is missing, it's telling you the account isn't <em>eligible</em> to receive a live market-data entitlement yet. And the single most common reason for that is a missing market data agreement. Tradovate, like every futures broker, has to have a signed CME market data agreement on file before it can hand a user real-time exchange data. No agreement, no entitlement, and the API reports that gap with the blunt <code>Live account is required</code> string." },
+    { type: "paragraph", html: "One detail trips up a lot of integrations: the request doesn't fail with an HTTP error. It returns <strong class='text-white'>HTTP 200</strong>, and the actual problem sits inside the JSON body as an <code>errorText</code> value. If your provisioning script only checks <code>response.status === 200</code> and moves on, it'll log a success while the entitlement was silently never assigned, and you won't find out until the user opens a chart to a blank, delayed, or quote-less symbol. Always read the body." },
+    { type: "heading", text: "Why the Agreement Is the Real Blocker" },
+    { type: "paragraph", html: "Real-time futures data doesn't come free of paperwork. CME Group requires every end user who receives live data to be classified and to accept the exchange's market data terms, that's the &ldquo;agreement&rdquo; in play here. Users declare whether they're <strong class='text-white'>professional</strong> or <strong class='text-white'>non-professional</strong>, and the overwhelming majority of individual retail traders fall into the non-professional bucket. That declaration plus the accepted terms is what unlocks the entitlement your API call is trying to attach." },
+    { type: "paragraph", html: "Until the user completes that step, the account can technically exist, it can even be a simulated or evaluation account, but it can't legally be handed live exchange data. So the entitlement assignment has nothing valid to attach to, and Tradovate refuses it. This is the same root cause behind a whole family of downstream symptoms: symbols that stay delayed, charts with no quotes, and orders rejected for &ldquo;no quote available.&rdquo; The agreement is upstream of all of it." },
+    { type: "heading", text: "Professional vs. non-professional, briefly" },
+    { type: "paragraph", html: "Non-professional status generally covers individuals trading their own money for personal purposes. Professional status applies to certain business, advisory, or data-redistribution use and carries materially higher exchange fees. The user is the one who declares it, and they're responsible for declaring accurately. If a user isn't sure which they are, point them to the current exchange criteria rather than guessing, the fee difference is real and the rules change." },
+    { type: "heading", text: "The Fix: Get the Agreement Signed, Then Assign" },
+    { type: "heading", text: "Step 1, Have the user sign the non-professional market data agreement" },
+    { type: "paragraph", html: "This is the step that clears the error. The agreement is presented inside the Tradovate platform the user logs into, usually surfaced during first login, in the account or agreements area, or the moment they try to turn on market data. The user reviews it, declares non-professional status, and accepts. Exact menu wording shifts between platform versions, so if you're documenting this for your own users, confirm the current label in the live app rather than hard-coding an old path." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-2.webp`, alt: "Tradovate non-professional market data agreement screen where the user declares status and accepts CME terms" },
+    { type: "heading", text: "Step 2, Add contact information for the user" },
+    { type: "paragraph", html: "Before the entitlement will assign cleanly, the user needs contact information on file. If you skip this during provisioning, the user gets prompted for it on first login, and until it exists, entitlement assignment can stall. Populate it as part of your setup flow so nothing downstream waits on it." },
+    { type: "heading", text: "Step 3, Confirm the signature actually synced" },
+    { type: "paragraph", html: "Here's the subtle part. The entitlement check doesn't read the moment the user clicked &ldquo;accept,&rdquo; it reads the <em>saved, synced</em> account record. Give the signature a beat to propagate and re-sync the user's state before you retry. Firing <code>addEntitlementSubscription</code> in the same millisecond the user accepts is a reliable way to get the same error again on a race condition. Confirm the agreement shows as signed in the synced data first." },
+    { type: "heading", text: "Step 4, Call addEntitlementSubscription" },
+    { type: "paragraph", html: "With the agreement signed and synced and contact info in place, assign the entitlement. Now the call has a valid, eligible account to attach to and it returns cleanly. Re-check the response body, a success won't carry an <code>errorText</code>. If you're batch-provisioning, only mark a user &ldquo;done&rdquo; after you've verified the body, not the status code." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-3.png`, alt: "Successful Tradovate addEntitlementSubscription response after the market data agreement is signed, with no errorText" },
+    { type: "heading", text: "Step 5, Verify the user now has live data" },
+    { type: "paragraph", html: "Close the loop by confirming the user actually sees real-time quotes. Have them open a front-month symbol and check that it's live rather than delayed. If the entitlement assigned but the user still sees delayed data, the market-data subscription side may need attention too, entitlement and an active data subscription are related but not identical, and both have to be right for a clean live feed." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-4.png`, alt: "Tradovate market data subscription area confirming an active real-time exchange feed for the user" },
+    { type: "heading", text: "The Provisioning Order That Works" },
+    { type: "paragraph", html: "Nearly every &ldquo;Live account is required&rdquo; ticket traces back to running these calls out of order or skipping one. Keep the sequence intact:" },
+    {
+      type: "table",
+      headers: ["Step", "What you do", "Why it matters"],
+      rows: [
+        ["1. Create the user", "Provision the user record", "Nothing attaches without a user to attach to"],
+        ["2. Add contact information", "Populate the user's contact details", "Missing contact info stalls entitlement assignment"],
+        ["3. Create the account", "Create the trading/evaluation account", "The entitlement is assigned against a real account"],
+        ["4. Confirm the data agreement", "User signs; you verify it synced", "The actual prerequisite behind the error message"],
+        ["5. Assign the entitlement", "Call <code>addEntitlementSubscription</code>", "Now succeeds because the account is eligible"],
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Meaning", "Fix"],
+      rows: [
+        ["<code>200</code> with <code>errorText: Live account is required</code>", "Market data agreement not signed yet", "Have the user sign the non-professional agreement, then retry"],
+        ["Call &ldquo;succeeds&rdquo; but data stays delayed", "Your code checked status, not body", "Parse the response body for <code>errorText</code> before treating it as done"],
+        ["Fails immediately after the user accepts", "Signature hasn't synced yet", "Re-sync the user state, then call the endpoint"],
+        ["Fails even with the agreement signed", "Contact info missing or wrong account targeted", "Add contact information; confirm you're using the right account"],
+        ["Entitlement assigns but quotes are still delayed", "No active market-data subscription", "Confirm a real-time exchange subscription is active for the user"],
+        ["Prop/eval account won't take the entitlement", "Firm controls data centrally", "Check the prop firm's rules; they may enable data for you"],
+      ],
+    },
+    { type: "heading", text: "A Note on Prop and Evaluation Accounts" },
+    { type: "paragraph", html: "Evaluation and simulated accounts still route live exchange data, so the agreement requirement doesn't go away just because no real money is on the line. What changes is <em>ownership</em>. Plenty of prop firms manage market data and entitlements centrally as part of the account they issue you, in those cases you shouldn't be calling <code>addEntitlementSubscription</code> at all, and doing so can conflict with how the firm provisions data. Rules vary by firm and account type, so confirm your firm's current process before you provision entitlements yourself. When the firm owns the data pipeline, the fix for missing live data is a support request to them, not an API call from you." },
+    { type: "heading", text: "Skip the Entitlement Wrangling with PickMyTrade" },
+    { type: "paragraph", html: "If your goal is simply to trade your TradingView signals on a live Tradovate account, not to run a provisioning pipeline, PickMyTrade handles the broker-side plumbing so you never touch entitlement calls:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Managed connection</strong>, the data-agreement and entitlement state your account carries is respected before an order is ever sent, so you're not debugging <code>errorText</code> in a raw API response.",
+        "<strong class='text-white'>Alert-to-order routing</strong>, TradingView alerts flow straight to your Tradovate account without you writing or sequencing API calls.",
+        "<strong class='text-white'>Entitlement &amp; risk awareness</strong>, orders respect your account's data state and prop-firm limits instead of bouncing on a missing prerequisite.",
+        "<strong class='text-white'>Multi-account sync</strong>, mirror one signal across several accounts without re-solving provisioning for each.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie haben über die Tradovate-API einen Benutzer angelegt, das Konto ist erstellt, alles sieht sauber aus, doch Ihr Aufruf von <code>addEntitlementSubscription</code> liefert weiterhin <code>Live account is required</code> zurück, und die Market-Data-Berechtigung wird nie zugewiesen. Das ist eine der verwirrendsten Antworten im gesamten Provisioning-Ablauf, denn das Konto <em>existiert</em> eindeutig, und die Meldung führt Sie in die falsche Richtung. Hier die Kurzfassung: Dieser Fehler bedeutet fast immer, dass der Benutzer die <strong class='text-white'>Non-Professional-Market-Data-Vereinbarung</strong> noch nicht unterschrieben hat. Sorgen Sie dafür, dass diese Vereinbarung vorliegt, bestätigen Sie die Synchronisierung, und derselbe Aufruf geht durch. Im Folgenden finden Sie die vollständige Diagnose, die genaue Reihenfolge, in der die Aufrufe erfolgen müssen, und wie eine Bridge wie PickMyTrade das gesamte Entitlement-Hin-und-Her umgeht." },
+    {
+      type: "checklist",
+      heading: "Kurzcheckliste",
+      items: [
+        "<strong class='text-white'>Unterschreiben Sie zuerst die Non-Professional-Market-Data-Vereinbarung</strong>, das ist die eigentliche Voraussetzung, die sich hinter der irreführenden Fehlermeldung verbirgt.",
+        "<strong class='text-white'>Hinterlegen Sie die Kontaktinformationen des Benutzers</strong>, ein übersprungener Kontaktschritt blockiert oder verzögert die Entitlement-Zuweisung.",
+        "<strong class='text-white'>Bestätigen Sie, dass die Unterschrift synchronisiert wurde</strong>, die Entitlement-Prüfung liest den gespeicherten Datensatz, nicht den Moment, in dem der Benutzer auf &ldquo;Akzeptieren&rdquo; geklickt hat.",
+        "<strong class='text-white'>Werten Sie den Response-Body aus, nicht nur den Statuscode</strong>, der Aufruf liefert HTTP <code>200</code>, während der Fehler im Feld <code>errorText</code> steckt.",
+        "<strong class='text-white'>Führen Sie die Aufrufe in der richtigen Reihenfolge aus</strong>: Benutzer anlegen &rarr; Kontaktinformationen hinzufügen &rarr; Konto anlegen &rarr; Vereinbarung bestätigen &rarr; Entitlement zuweisen.",
+        "<strong class='text-white'>Prüfen Sie, wer bei Prop-Konten für die Daten zuständig ist</strong>, manche Firmen aktivieren Marktdaten und Entitlements zentral, sodass möglicherweise nicht Sie diesen Aufruf tätigen müssen.",
+      ],
+    },
+    { type: "heading", text: "Was \"Live-Konto ist erforderlich\" wirklich bedeutet" },
+    { type: "paragraph", html: "Nehmen Sie die Meldung wörtlich, und Sie verschwenden einen ganzen Nachmittag. Die Antwort sagt nicht, dass das Konto fehlt, sie sagt, dass das Konto noch nicht <em>berechtigt</em> ist, ein Live-Market-Data-Entitlement zu erhalten. Und der mit Abstand häufigste Grund dafür ist eine fehlende Marktdatenvereinbarung. Tradovate muss, wie jeder Futures-Broker, eine unterschriebene CME-Marktdatenvereinbarung vorliegen haben, bevor es einem Benutzer Echtzeit-Börsendaten geben kann. Keine Vereinbarung, kein Entitlement, und die API meldet diese Lücke mit der schlichten Zeichenkette <code>Live account is required</code>." },
+    { type: "paragraph", html: "Ein Detail bringt viele Integrationen ins Straucheln: Die Anfrage schlägt nicht mit einem HTTP-Fehler fehl. Sie liefert <strong class='text-white'>HTTP 200</strong>, und das eigentliche Problem steckt im JSON-Body als <code>errorText</code>-Wert. Wenn Ihr Provisioning-Skript nur <code>response.status === 200</code> prüft und weitermacht, protokolliert es einen Erfolg, während das Entitlement stillschweigend nie zugewiesen wurde, und Sie merken es erst, wenn der Benutzer ein Chart mit einem leeren, verzögerten oder kursfreien Symbol öffnet. Lesen Sie immer den Body." },
+    { type: "heading", text: "Warum die Vereinbarung das eigentliche Hindernis ist" },
+    { type: "paragraph", html: "Echtzeit-Futures-Daten gibt es nicht ohne Papierkram. Die CME Group verlangt, dass jeder Endnutzer, der Live-Daten erhält, klassifiziert wird und die Marktdatenbedingungen der Börse akzeptiert, das ist die &ldquo;Vereinbarung&rdquo;, um die es hier geht. Nutzer geben an, ob sie <strong class='text-white'>professionell</strong> oder <strong class='text-white'>nicht-professionell</strong> sind, und die überwiegende Mehrheit der privaten Retail-Trader fällt in die Kategorie nicht-professionell. Diese Angabe zusammen mit den akzeptierten Bedingungen ist es, was das Entitlement freischaltet, das Ihr API-Aufruf zuzuweisen versucht." },
+    { type: "paragraph", html: "Solange der Benutzer diesen Schritt nicht abgeschlossen hat, kann das Konto technisch existieren, es kann sogar ein simuliertes Konto oder ein Evaluierungskonto sein, aber es darf rechtlich keine Live-Börsendaten erhalten. Die Entitlement-Zuweisung hat also nichts Gültiges, an das sie sich anheften kann, und Tradovate lehnt sie ab. Das ist dieselbe Grundursache hinter einer ganzen Familie nachgelagerter Symptome: Symbole, die verzögert bleiben, Charts ohne Kurse und Orders, die mit &ldquo;keine Kursdaten verfügbar&rdquo; abgelehnt werden. Die Vereinbarung steht all dem vorgelagert." },
+    { type: "heading", text: "Professionell vs. nicht-professionell, kurz erklärt" },
+    { type: "paragraph", html: "Der Status nicht-professionell umfasst grundsätzlich Privatpersonen, die mit eigenem Geld zu privaten Zwecken handeln. Der Status professionell gilt für bestimmte geschäftliche, beratende oder datenredistributierende Nutzungen und ist mit deutlich höheren Börsengebühren verbunden. Der Benutzer ist es, der diese Angabe macht, und er ist dafür verantwortlich, sie korrekt anzugeben. Ist sich ein Benutzer nicht sicher, welcher Status zutrifft, verweisen Sie ihn auf die aktuellen Kriterien der Börse, statt zu raten, der Gebührenunterschied ist real und die Regeln ändern sich." },
+    { type: "heading", text: "Die Lösung: Vereinbarung unterschreiben lassen, dann zuweisen" },
+    { type: "heading", text: "Schritt 1: Lassen Sie den Benutzer die Non-Professional-Market-Data-Vereinbarung unterschreiben" },
+    { type: "paragraph", html: "Das ist der Schritt, der den Fehler behebt. Die Vereinbarung wird innerhalb der Tradovate-Plattform angezeigt, in die sich der Benutzer einloggt, üblicherweise beim ersten Login, im Bereich Konto oder Vereinbarungen, oder in dem Moment, in dem er versucht, Marktdaten zu aktivieren. Der Benutzer prüft sie, erklärt den Status nicht-professionell und akzeptiert. Der genaue Menütext ändert sich zwischen Plattformversionen, wenn Sie dies für Ihre eigenen Benutzer dokumentieren, bestätigen Sie daher die aktuelle Bezeichnung in der Live-App, statt einen alten Pfad fest zu verdrahten." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-2.webp`, alt: "Tradovate-Bildschirm für die Non-Professional-Marktdatenvereinbarung, auf dem der Benutzer seinen Status angibt und die CME-Bedingungen akzeptiert" },
+    { type: "heading", text: "Schritt 2: Kontaktinformationen für den Benutzer hinzufügen" },
+    { type: "paragraph", html: "Bevor sich das Entitlement sauber zuweisen lässt, benötigt der Benutzer hinterlegte Kontaktinformationen. Überspringen Sie dies beim Provisioning, wird der Benutzer beim ersten Login dazu aufgefordert, und bis diese Angaben vorliegen, kann die Entitlement-Zuweisung ins Stocken geraten. Hinterlegen Sie sie als Teil Ihres Setup-Ablaufs, damit nichts Nachgelagertes darauf warten muss." },
+    { type: "heading", text: "Schritt 3: Bestätigen Sie, dass die Unterschrift tatsächlich synchronisiert wurde" },
+    { type: "paragraph", html: "Hier liegt die Feinheit. Die Entitlement-Prüfung liest nicht den Moment, in dem der Benutzer auf &ldquo;Akzeptieren&rdquo; geklickt hat, sondern den <em>gespeicherten, synchronisierten</em> Kontodatensatz. Geben Sie der Unterschrift einen Moment Zeit, um sich zu propagieren, und synchronisieren Sie den Status des Benutzers neu, bevor Sie es erneut versuchen. <code>addEntitlementSubscription</code> in derselben Millisekunde auszulösen, in der der Benutzer akzeptiert, führt zuverlässig durch eine Race Condition wieder zu demselben Fehler. Bestätigen Sie zuerst, dass die Vereinbarung in den synchronisierten Daten als unterschrieben angezeigt wird." },
+    { type: "heading", text: "Schritt 4: addEntitlementSubscription aufrufen" },
+    { type: "paragraph", html: "Sobald die Vereinbarung unterschrieben und synchronisiert ist und die Kontaktdaten vorliegen, weisen Sie das Entitlement zu. Jetzt hat der Aufruf ein gültiges, berechtigtes Konto, an das er sich anheften kann, und liefert sauber zurück. Prüfen Sie den Response-Body erneut, ein Erfolg enthält kein <code>errorText</code>. Wenn Sie im Batch provisionieren, markieren Sie einen Benutzer erst dann als &ldquo;fertig&rdquo;, nachdem Sie den Body geprüft haben, nicht den Statuscode." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-3.png`, alt: "Erfolgreiche Tradovate-addEntitlementSubscription-Antwort, nachdem die Marktdatenvereinbarung unterschrieben wurde, ohne errorText" },
+    { type: "heading", text: "Schritt 5: Prüfen Sie, ob der Benutzer jetzt Live-Daten hat" },
+    { type: "paragraph", html: "Schließen Sie den Kreis, indem Sie bestätigen, dass der Benutzer tatsächlich Echtzeitkurse sieht. Lassen Sie ihn ein Front-Month-Symbol öffnen und prüfen, ob es live statt verzögert ist. Wurde das Entitlement zugewiesen, der Benutzer sieht aber weiterhin verzögerte Daten, muss möglicherweise auch die Marktdaten-Subscription-Seite geprüft werden, Entitlement und ein aktives Datenabonnement hängen zusammen, sind aber nicht identisch, und beides muss stimmen, damit ein sauberer Live-Feed entsteht." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-4.png`, alt: "Tradovate-Bereich für Marktdaten-Abonnements, der einen aktiven Echtzeit-Börsenfeed für den Benutzer bestätigt" },
+    { type: "heading", text: "Die Provisioning-Reihenfolge, die funktioniert" },
+    { type: "paragraph", html: "Fast jedes &ldquo;Live account is required&rdquo;-Ticket lässt sich darauf zurückführen, dass diese Aufrufe in der falschen Reihenfolge ausgeführt oder einer davon übersprungen wurde. Halten Sie die Reihenfolge ein:" },
+    {
+      type: "table",
+      headers: ["Schritt", "Was Sie tun", "Warum es wichtig ist"],
+      rows: [
+        ["1. Benutzer anlegen", "Benutzerdatensatz provisionieren", "Ohne Benutzer gibt es nichts, woran sich etwas anheften lässt"],
+        ["2. Kontaktinformationen hinzufügen", "Kontaktdaten des Benutzers hinterlegen", "Fehlende Kontaktdaten blockieren die Entitlement-Zuweisung"],
+        ["3. Konto anlegen", "Das Trading-/Evaluierungskonto erstellen", "Das Entitlement wird einem echten Konto zugewiesen"],
+        ["4. Datenvereinbarung bestätigen", "Der Benutzer unterschreibt; Sie prüfen die Synchronisierung", "Die eigentliche Voraussetzung hinter der Fehlermeldung"],
+        ["5. Entitlement zuweisen", "<code>addEntitlementSubscription</code> aufrufen", "Gelingt jetzt, weil das Konto berechtigt ist"],
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Bedeutung", "Lösung"],
+      rows: [
+        ["<code>200</code> mit <code>errorText: Live account is required</code>", "Marktdatenvereinbarung noch nicht unterschrieben", "Lassen Sie den Benutzer die Non-Professional-Vereinbarung unterschreiben und versuchen Sie es erneut"],
+        ["Aufruf &ldquo;gelingt&rdquo;, aber die Daten bleiben verzögert", "Ihr Code hat den Status geprüft, nicht den Body", "Werten Sie den Response-Body auf <code>errorText</code> aus, bevor Sie ihn als erledigt behandeln"],
+        ["Schlägt sofort nach der Annahme durch den Benutzer fehl", "Die Unterschrift ist noch nicht synchronisiert", "Synchronisieren Sie den Benutzerstatus neu und rufen Sie den Endpunkt dann auf"],
+        ["Schlägt selbst bei unterschriebener Vereinbarung fehl", "Kontaktdaten fehlen oder falsches Konto angesprochen", "Kontaktinformationen hinzufügen; prüfen, ob das richtige Konto verwendet wird"],
+        ["Entitlement wird zugewiesen, Kurse bleiben aber verzögert", "Kein aktives Marktdaten-Abonnement", "Bestätigen Sie, dass für den Benutzer ein Echtzeit-Börsenabonnement aktiv ist"],
+        ["Prop-/Evaluierungskonto akzeptiert das Entitlement nicht", "Die Firma steuert die Daten zentral", "Prüfen Sie die Regeln der Prop-Firma; sie aktiviert die Daten möglicherweise für Sie"],
+      ],
+    },
+    { type: "heading", text: "Ein Hinweis zu Prop- und Evaluierungskonten" },
+    { type: "paragraph", html: "Evaluierungs- und simulierte Konten leiten weiterhin Live-Börsendaten weiter, daher entfällt die Vereinbarungspflicht nicht nur, weil kein echtes Geld im Spiel ist. Was sich ändert, ist die <em>Zuständigkeit</em>. Viele Prop-Firmen verwalten Marktdaten und Entitlements zentral als Teil des Kontos, das sie Ihnen ausstellen, in diesen Fällen sollten Sie <code>addEntitlementSubscription</code> überhaupt nicht aufrufen, und dies zu tun kann mit der Art und Weise kollidieren, wie die Firma Daten provisioniert. Die Regeln variieren je nach Firma und Kontotyp, bestätigen Sie daher den aktuellen Prozess Ihrer Firma, bevor Sie Entitlements selbst provisionieren. Gehört die Datenpipeline der Firma, ist die Lösung bei fehlenden Live-Daten eine Support-Anfrage an sie, kein API-Aufruf Ihrerseits." },
+    { type: "heading", text: "Umgehen Sie das Entitlement-Hin-und-Her mit PickMyTrade" },
+    { type: "paragraph", html: "Wenn Ihr Ziel einfach darin besteht, Ihre TradingView-Signale auf einem Live-Tradovate-Konto zu handeln, und nicht darin, eine Provisioning-Pipeline zu betreiben, übernimmt PickMyTrade die broker-seitige Verkabelung, sodass Sie nie mit Entitlement-Aufrufen in Berührung kommen:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Verwaltete Verbindung</strong>, der Datenvereinbarungs- und Entitlement-Status Ihres Kontos wird berücksichtigt, bevor überhaupt eine Order gesendet wird, sodass Sie keinen <code>errorText</code> in einer rohen API-Antwort debuggen müssen.",
+        "<strong class='text-white'>Alert-zu-Order-Routing</strong>, TradingView-Alerts fließen direkt zu Ihrem Tradovate-Konto, ohne dass Sie API-Aufrufe schreiben oder in eine Reihenfolge bringen müssen.",
+        "<strong class='text-white'>Entitlement- &amp; Risikobewusstsein</strong>, Orders berücksichtigen den Datenstatus Ihres Kontos und die Limits der Prop-Firma, statt an einer fehlenden Voraussetzung abzuprallen.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong>, spiegeln Sie ein Signal über mehrere Konten hinweg, ohne das Provisioning für jedes einzelne erneut lösen zu müssen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Ha aprovisionado un usuario a través de la API de Tradovate, la cuenta está creada, todo parece correcto, pero su llamada a <code>addEntitlementSubscription</code> sigue devolviendo <code>Live account is required</code> y el entitlement de datos de mercado nunca se asigna. Es una de las respuestas más confusas de todo el flujo de aprovisionamiento, porque la cuenta claramente <em>sí</em> existe y el mensaje lo lleva en la dirección equivocada. Aquí la versión breve: ese error casi siempre significa que el usuario todavía no ha firmado el <strong class='text-white'>acuerdo de datos de mercado no profesional</strong>. Consiga ese acuerdo firmado, confirme que se sincronizó, y la misma llamada funcionará. A continuación, el diagnóstico completo, el orden exacto en que deben ejecutarse las llamadas y cómo un puente como PickMyTrade evita por completo este baile de entitlements." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida",
+      items: [
+        "<strong class='text-white'>Firme primero el acuerdo de datos de mercado no profesional</strong>, ese es el verdadero requisito previo que el mensaje de error engañoso esconde.",
+        "<strong class='text-white'>Agregue la información de contacto del usuario</strong>, si se omite este paso, la asignación del entitlement se bloqueará o se retrasará.",
+        "<strong class='text-white'>Confirme que la firma se sincronizó</strong>, la verificación del entitlement lee el registro guardado, no el momento en que el usuario hizo clic en &ldquo;aceptar&rdquo;.",
+        "<strong class='text-white'>Analice el cuerpo de la respuesta, no solo el código de estado</strong>, la llamada devuelve HTTP <code>200</code> con el fallo en un campo <code>errorText</code>.",
+        "<strong class='text-white'>Ejecute las llamadas en orden</strong>: crear usuario &rarr; agregar información de contacto &rarr; crear cuenta &rarr; confirmar acuerdo &rarr; asignar entitlement.",
+        "<strong class='text-white'>Verifique quién es responsable de los datos en cuentas prop</strong>, algunas firmas habilitan los datos de mercado y los entitlements de forma centralizada, por lo que puede que no le corresponda a usted hacer esta llamada.",
+      ],
+    },
+    { type: "heading", text: "Qué significa realmente \"Se requiere una cuenta en vivo\"" },
+    { type: "paragraph", html: "Tome el mensaje al pie de la letra y perderá toda una tarde. La respuesta no le dice que la cuenta no existe, le dice que la cuenta todavía no es <em>elegible</em> para recibir un entitlement de datos de mercado en vivo. Y el motivo más común, con diferencia, es un acuerdo de datos de mercado faltante. Tradovate, como todo bróker de futuros, debe tener registrado un acuerdo de datos de mercado de CME firmado antes de poder entregar a un usuario datos de bolsa en tiempo real. Sin acuerdo, no hay entitlement, y la API reporta ese vacío con la cadena <code>Live account is required</code>." },
+    { type: "paragraph", html: "Un detalle hace tropezar a muchas integraciones: la solicitud no falla con un error HTTP. Devuelve <strong class='text-white'>HTTP 200</strong>, y el problema real está dentro del cuerpo JSON como un valor <code>errorText</code>. Si su script de aprovisionamiento solo verifica <code>response.status === 200</code> y continúa, registrará un éxito mientras el entitlement nunca se asignó en silencio, y no lo descubrirá hasta que el usuario abra un gráfico con un símbolo en blanco, retrasado o sin cotización. Lea siempre el cuerpo de la respuesta." },
+    { type: "heading", text: "Por qué el acuerdo es el verdadero obstáculo" },
+    { type: "paragraph", html: "Los datos de futuros en tiempo real no llegan sin papeleo. CME Group exige que todo usuario final que reciba datos en vivo esté clasificado y acepte los términos de datos de mercado de la bolsa, eso es el &ldquo;acuerdo&rdquo; del que hablamos aquí. Los usuarios declaran si son <strong class='text-white'>profesionales</strong> o <strong class='text-white'>no profesionales</strong>, y la inmensa mayoría de los traders minoristas individuales caen en la categoría no profesional. Esa declaración, junto con los términos aceptados, es lo que desbloquea el entitlement que su llamada a la API intenta asignar." },
+    { type: "paragraph", html: "Hasta que el usuario complete ese paso, la cuenta puede existir técnicamente, incluso puede ser una cuenta simulada o de evaluación, pero legalmente no se le puede entregar datos de bolsa en vivo. Así que la asignación del entitlement no tiene nada válido a lo que engancharse, y Tradovate la rechaza. Esta es la misma causa raíz detrás de toda una familia de síntomas derivados: símbolos que se quedan retrasados, gráficos sin cotizaciones y órdenes rechazadas por &ldquo;no hay cotización disponible&rdquo;. El acuerdo está en el origen de todo esto." },
+    { type: "heading", text: "Profesional o no profesional, brevemente" },
+    { type: "paragraph", html: "El estatus no profesional generalmente cubre a personas que operan con su propio dinero con fines personales. El estatus profesional se aplica a ciertos usos comerciales, de asesoría o de redistribución de datos y conlleva tarifas de bolsa considerablemente más altas. Es el usuario quien lo declara, y es responsable de declararlo con precisión. Si un usuario no está seguro de cuál le corresponde, remítalo a los criterios vigentes de la bolsa en lugar de adivinar, la diferencia de tarifas es real y las reglas cambian." },
+    { type: "heading", text: "La solución: firmar el acuerdo y luego asignar" },
+    { type: "heading", text: "Paso 1: haga que el usuario firme el acuerdo de datos de mercado no profesional" },
+    { type: "paragraph", html: "Este es el paso que elimina el error. El acuerdo se presenta dentro de la plataforma Tradovate en la que inicia sesión el usuario, normalmente aparece durante el primer inicio de sesión, en la sección de cuenta o acuerdos, o en el momento en que intenta activar los datos de mercado. El usuario lo revisa, declara el estatus no profesional y acepta. El texto exacto del menú varía entre versiones de la plataforma, así que si está documentando esto para sus propios usuarios, confirme la etiqueta actual en la aplicación en vivo en lugar de fijar una ruta antigua." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-2.webp`, alt: "Pantalla del acuerdo de datos de mercado no profesional de Tradovate donde el usuario declara su estatus y acepta los términos de CME" },
+    { type: "heading", text: "Paso 2: agregue la información de contacto del usuario" },
+    { type: "paragraph", html: "Antes de que el entitlement se asigne correctamente, el usuario necesita tener registrada su información de contacto. Si omite esto durante el aprovisionamiento, se le pedirá al usuario en su primer inicio de sesión, y hasta que exista, la asignación del entitlement puede estancarse. Complétela como parte de su flujo de configuración para que nada más adelante quede a la espera." },
+    { type: "heading", text: "Paso 3: confirme que la firma realmente se sincronizó" },
+    { type: "paragraph", html: "Aquí está el matiz. La verificación del entitlement no lee el momento en que el usuario hizo clic en &ldquo;aceptar&rdquo;, lee el registro de la cuenta <em>guardado y sincronizado</em>. Dele un momento a la firma para propagarse y vuelva a sincronizar el estado del usuario antes de reintentar. Disparar <code>addEntitlementSubscription</code> en el mismo milisegundo en que el usuario acepta es una forma segura de obtener el mismo error de nuevo por una condición de carrera. Confirme primero que el acuerdo aparece como firmado en los datos sincronizados." },
+    { type: "heading", text: "Paso 4: llame a addEntitlementSubscription" },
+    { type: "paragraph", html: "Con el acuerdo firmado y sincronizado y la información de contacto en su lugar, asigne el entitlement. Ahora la llamada tiene una cuenta válida y elegible a la cual engancharse, y responde sin problemas. Vuelva a comprobar el cuerpo de la respuesta, un éxito no llevará un <code>errorText</code>. Si está aprovisionando por lotes, marque a un usuario como &ldquo;listo&rdquo; solo después de haber verificado el cuerpo, no el código de estado." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-3.png`, alt: "Respuesta exitosa de Tradovate addEntitlementSubscription después de firmar el acuerdo de datos de mercado, sin errorText" },
+    { type: "heading", text: "Paso 5: verifique que el usuario ahora tenga datos en vivo" },
+    { type: "paragraph", html: "Cierre el ciclo confirmando que el usuario realmente ve cotizaciones en tiempo real. Pídale que abra un símbolo del mes cercano y verifique que sea en vivo y no retrasado. Si el entitlement se asignó pero el usuario sigue viendo datos retrasados, puede que también haya que revisar el lado de la suscripción de datos de mercado, el entitlement y una suscripción de datos activa están relacionados pero no son lo mismo, y ambos deben estar correctos para un feed en vivo limpio." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-4.png`, alt: "Área de suscripción de datos de mercado de Tradovate confirmando un feed de bolsa en tiempo real activo para el usuario" },
+    { type: "heading", text: "El orden de aprovisionamiento que funciona" },
+    { type: "paragraph", html: "Casi todos los tickets de &ldquo;Live account is required&rdquo; se deben a ejecutar estas llamadas fuera de orden o a omitir una de ellas. Mantenga la secuencia intacta:" },
+    {
+      type: "table",
+      headers: ["Paso", "Qué hace usted", "Por qué importa"],
+      rows: [
+        ["1. Crear el usuario", "Aprovisionar el registro del usuario", "Nada puede engancharse sin un usuario al que engancharse"],
+        ["2. Agregar información de contacto", "Completar los datos de contacto del usuario", "La falta de información de contacto detiene la asignación del entitlement"],
+        ["3. Crear la cuenta", "Crear la cuenta de trading/evaluación", "El entitlement se asigna a una cuenta real"],
+        ["4. Confirmar el acuerdo de datos", "El usuario firma; usted verifica que se sincronizó", "El verdadero requisito previo detrás del mensaje de error"],
+        ["5. Asignar el entitlement", "Llamar a <code>addEntitlementSubscription</code>", "Ahora tiene éxito porque la cuenta es elegible"],
+      ],
+    },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Significado", "Solución"],
+      rows: [
+        ["<code>200</code> con <code>errorText: Live account is required</code>", "El acuerdo de datos de mercado aún no está firmado", "Haga que el usuario firme el acuerdo no profesional y vuelva a intentarlo"],
+        ["La llamada &ldquo;tiene éxito&rdquo; pero los datos siguen retrasados", "Su código verificó el estado, no el cuerpo", "Analice el cuerpo de la respuesta en busca de <code>errorText</code> antes de darlo por hecho"],
+        ["Falla inmediatamente después de que el usuario acepta", "La firma aún no se ha sincronizado", "Vuelva a sincronizar el estado del usuario y luego llame al endpoint"],
+        ["Falla incluso con el acuerdo firmado", "Falta información de contacto o se apunta a la cuenta equivocada", "Agregue la información de contacto; confirme que está usando la cuenta correcta"],
+        ["El entitlement se asigna, pero las cotizaciones siguen retrasadas", "No hay una suscripción de datos de mercado activa", "Confirme que haya una suscripción de bolsa en tiempo real activa para el usuario"],
+        ["La cuenta prop/de evaluación no acepta el entitlement", "La firma controla los datos de forma centralizada", "Revise las reglas de la firma prop; puede que ellos habiliten los datos por usted"],
+      ],
+    },
+    { type: "heading", text: "Una nota sobre cuentas prop y de evaluación" },
+    { type: "paragraph", html: "Las cuentas de evaluación y simuladas también reciben datos de bolsa en vivo, así que el requisito del acuerdo no desaparece solo porque no haya dinero real en juego. Lo que cambia es la <em>titularidad</em>. Muchas firmas prop gestionan los datos de mercado y los entitlements de forma centralizada como parte de la cuenta que le emiten, en esos casos usted no debería llamar a <code>addEntitlementSubscription</code> en absoluto, y hacerlo puede entrar en conflicto con la forma en que la firma aprovisiona los datos. Las reglas varían según la firma y el tipo de cuenta, así que confirme el proceso actual de su firma antes de aprovisionar entitlements usted mismo. Cuando la firma es dueña del pipeline de datos, la solución ante la falta de datos en vivo es una solicitud de soporte a ellos, no una llamada a la API de su parte." },
+    { type: "heading", text: "Evite el forcejeo con los entitlements con PickMyTrade" },
+    { type: "paragraph", html: "Si su objetivo es simplemente operar sus señales de TradingView en una cuenta de Tradovate en vivo, no gestionar un pipeline de aprovisionamiento, PickMyTrade se encarga del trabajo técnico del lado del bróker para que usted nunca tenga que tocar llamadas de entitlement:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Conexión gestionada</strong>, el estado del acuerdo de datos y del entitlement de su cuenta se respeta antes de que se envíe cualquier orden, así que no tendrá que depurar un <code>errorText</code> en una respuesta cruda de la API.",
+        "<strong class='text-white'>Enrutamiento de alerta a orden</strong>, las alertas de TradingView fluyen directamente a su cuenta de Tradovate sin que usted tenga que escribir ni secuenciar llamadas a la API.",
+        "<strong class='text-white'>Conciencia de entitlement y riesgo</strong>, las órdenes respetan el estado de datos de su cuenta y los límites de la firma prop en lugar de rebotar por un requisito previo faltante.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replique una señal en varias cuentas sin tener que resolver el aprovisionamiento para cada una.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous avez provisionné un utilisateur via l'API Tradovate, le compte est créé, tout semble correct, puis votre appel à <code>addEntitlementSubscription</code> renvoie toujours <code>Live account is required</code> et l'entitlement de données de marché n'est jamais attribué. C'est l'une des réponses les plus déroutantes de tout le flux de provisioning, car le compte <em>existe</em> bel et bien et le message vous oriente dans la mauvaise direction. Voici la version courte : cette erreur signifie presque toujours que l'utilisateur n'a pas encore signé l'<strong class='text-white'>accord de données de marché non professionnel</strong>. Faites signer cet accord, confirmez qu'il est synchronisé, et le même appel passera. Voici le diagnostic complet, l'ordre exact dans lequel les appels doivent s'exécuter, et comment un pont comme PickMyTrade évite toute cette gymnastique d'entitlements." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide",
+      items: [
+        "<strong class='text-white'>Faites d'abord signer l'accord de données de marché non professionnel</strong>, c'est le véritable prérequis que cette erreur trompeuse dissimule.",
+        "<strong class='text-white'>Ajoutez les coordonnées de l'utilisateur</strong>, une étape de contact ignorée bloquera ou retardera l'attribution de l'entitlement.",
+        "<strong class='text-white'>Confirmez que la signature s'est synchronisée</strong>, la vérification de l'entitlement lit l'enregistrement sauvegardé, pas le moment où l'utilisateur a cliqué sur &ldquo;accepter&rdquo;.",
+        "<strong class='text-white'>Analysez le corps de la réponse, pas seulement le code de statut</strong>, l'appel renvoie un HTTP <code>200</code> avec l'échec dans un champ <code>errorText</code>.",
+        "<strong class='text-white'>Exécutez les appels dans l'ordre</strong> : créer l'utilisateur &rarr; ajouter les coordonnées &rarr; créer le compte &rarr; confirmer l'accord &rarr; attribuer l'entitlement.",
+        "<strong class='text-white'>Vérifiez qui gère les données sur les comptes prop</strong>, certaines firmes activent les données de marché et les entitlements de façon centralisée, il se peut donc que ce ne soit pas à vous d'effectuer cet appel.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie réellement \"Un compte en direct est requis\"" },
+    { type: "paragraph", html: "Prenez le message au pied de la lettre et vous perdrez tout un après-midi. La réponse ne dit pas que le compte est manquant, elle indique que le compte n'est pas encore <em>éligible</em> à recevoir un entitlement de données de marché en direct. Et la raison la plus courante, de loin, est un accord de données de marché manquant. Tradovate, comme tout courtier en futures, doit avoir au dossier un accord de données de marché CME signé avant de pouvoir fournir à un utilisateur des données de marché en temps réel. Pas d'accord, pas d'entitlement, et l'API signale cet écart avec la chaîne brute <code>Live account is required</code>." },
+    { type: "paragraph", html: "Un détail fait trébucher beaucoup d'intégrations : la requête n'échoue pas avec une erreur HTTP. Elle renvoie <strong class='text-white'>HTTP 200</strong>, et le vrai problème se trouve dans le corps JSON sous la forme d'une valeur <code>errorText</code>. Si votre script de provisioning se contente de vérifier <code>response.status === 200</code> et poursuit, il enregistrera un succès alors que l'entitlement n'a jamais été attribué silencieusement, et vous ne le découvrirez que lorsque l'utilisateur ouvrira un graphique avec un symbole vide, retardé ou sans cotation. Lisez toujours le corps de la réponse." },
+    { type: "heading", text: "Pourquoi l'accord est le véritable obstacle" },
+    { type: "paragraph", html: "Les données de futures en temps réel ne viennent pas sans formalités. CME Group exige que chaque utilisateur final recevant des données en direct soit classifié et accepte les conditions de données de marché de la bourse, c'est l'&ldquo;accord&rdquo; dont il est question ici. Les utilisateurs déclarent s'ils sont <strong class='text-white'>professionnels</strong> ou <strong class='text-white'>non professionnels</strong>, et l'immense majorité des traders particuliers relèvent de la catégorie non professionnelle. Cette déclaration, associée aux conditions acceptées, est ce qui débloque l'entitlement que votre appel API tente d'attribuer." },
+    { type: "paragraph", html: "Tant que l'utilisateur n'a pas terminé cette étape, le compte peut techniquement exister, il peut même s'agir d'un compte simulé ou d'évaluation, mais il ne peut légalement pas recevoir de données de marché en direct. L'attribution de l'entitlement n'a donc rien de valide auquel s'accrocher, et Tradovate la refuse. C'est la même cause première derrière toute une famille de symptômes en aval : symboles qui restent retardés, graphiques sans cotations, et ordres rejetés pour &ldquo;aucune cotation disponible&rdquo;. L'accord est en amont de tout cela." },
+    { type: "heading", text: "Professionnel ou non professionnel, en bref" },
+    { type: "paragraph", html: "Le statut non professionnel couvre généralement les particuliers qui négocient leur propre argent à des fins personnelles. Le statut professionnel s'applique à certains usages commerciaux, de conseil ou de redistribution de données et entraîne des frais de bourse nettement plus élevés. C'est l'utilisateur qui le déclare, et il est responsable de le déclarer avec exactitude. Si un utilisateur n'est pas sûr de son statut, orientez-le vers les critères actuels de la bourse plutôt que de deviner, la différence de frais est réelle et les règles évoluent." },
+    { type: "heading", text: "La solution : faire signer l'accord, puis attribuer" },
+    { type: "heading", text: "Étape 1 : faites signer à l'utilisateur l'accord de données de marché non professionnel" },
+    { type: "paragraph", html: "C'est l'étape qui résout l'erreur. L'accord est présenté dans la plateforme Tradovate à laquelle l'utilisateur se connecte, généralement lors de la première connexion, dans la zone compte ou accords, ou au moment où il essaie d'activer les données de marché. L'utilisateur le consulte, déclare le statut non professionnel et l'accepte. Le libellé exact du menu varie selon les versions de la plateforme, donc si vous documentez cela pour vos propres utilisateurs, confirmez l'intitulé actuel dans l'application en direct plutôt que de figer un ancien chemin." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-2.webp`, alt: "Écran de l'accord de données de marché non professionnel de Tradovate où l'utilisateur déclare son statut et accepte les conditions CME" },
+    { type: "heading", text: "Étape 2 : ajoutez les coordonnées de l'utilisateur" },
+    { type: "paragraph", html: "Avant que l'entitlement ne s'attribue correctement, l'utilisateur doit avoir des coordonnées enregistrées. Si vous sautez cette étape lors du provisioning, l'utilisateur y sera invité à sa première connexion, et tant qu'elles n'existent pas, l'attribution de l'entitlement peut se bloquer. Renseignez-les dans le cadre de votre flux de configuration afin que rien en aval n'ait à attendre." },
+    { type: "heading", text: "Étape 3 : confirmez que la signature s'est réellement synchronisée" },
+    { type: "paragraph", html: "Voici la subtilité. La vérification de l'entitlement ne lit pas le moment où l'utilisateur a cliqué sur &ldquo;accepter&rdquo;, elle lit l'enregistrement de compte <em>sauvegardé et synchronisé</em>. Laissez un instant à la signature pour se propager et resynchronisez l'état de l'utilisateur avant de réessayer. Déclencher <code>addEntitlementSubscription</code> à la même milliseconde où l'utilisateur accepte est un moyen sûr de retomber sur la même erreur à cause d'une condition de course. Confirmez d'abord que l'accord apparaît comme signé dans les données synchronisées." },
+    { type: "heading", text: "Étape 4 : appelez addEntitlementSubscription" },
+    { type: "paragraph", html: "Une fois l'accord signé et synchronisé et les coordonnées en place, attribuez l'entitlement. L'appel dispose désormais d'un compte valide et éligible auquel s'accrocher, et il répond proprement. Revérifiez le corps de la réponse, un succès ne contiendra pas de <code>errorText</code>. Si vous provisionnez par lots, ne marquez un utilisateur comme &ldquo;terminé&rdquo; qu'après avoir vérifié le corps, pas le code de statut." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-3.png`, alt: "Réponse réussie de Tradovate addEntitlementSubscription après la signature de l'accord de données de marché, sans errorText" },
+    { type: "heading", text: "Étape 5 : vérifiez que l'utilisateur dispose désormais de données en direct" },
+    { type: "paragraph", html: "Bouclez la boucle en confirmant que l'utilisateur voit réellement des cotations en temps réel. Faites-lui ouvrir un symbole du mois le plus proche et vérifiez qu'il est en direct plutôt que retardé. Si l'entitlement a été attribué mais que l'utilisateur voit toujours des données retardées, il faudra peut-être aussi se pencher sur le côté abonnement aux données de marché, l'entitlement et un abonnement de données actif sont liés mais pas identiques, et les deux doivent être corrects pour un flux en direct propre." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-4.png`, alt: "Zone d'abonnement aux données de marché de Tradovate confirmant un flux boursier en temps réel actif pour l'utilisateur" },
+    { type: "heading", text: "L'ordre de provisioning qui fonctionne" },
+    { type: "paragraph", html: "Presque tous les tickets &ldquo;Live account is required&rdquo; s'expliquent par des appels exécutés dans le mauvais ordre ou par une étape sautée. Respectez la séquence :" },
+    {
+      type: "table",
+      headers: ["Étape", "Ce que vous faites", "Pourquoi c'est important"],
+      rows: [
+        ["1. Créer l'utilisateur", "Provisionner l'enregistrement utilisateur", "Rien ne peut s'attacher sans utilisateur auquel s'attacher"],
+        ["2. Ajouter les coordonnées", "Renseigner les coordonnées de l'utilisateur", "Des coordonnées manquantes bloquent l'attribution de l'entitlement"],
+        ["3. Créer le compte", "Créer le compte de trading/évaluation", "L'entitlement est attribué à un compte réel"],
+        ["4. Confirmer l'accord de données", "L'utilisateur signe ; vous vérifiez la synchronisation", "Le véritable prérequis derrière le message d'erreur"],
+        ["5. Attribuer l'entitlement", "Appeler <code>addEntitlementSubscription</code>", "Réussit désormais car le compte est éligible"],
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Signification", "Correctif"],
+      rows: [
+        ["<code>200</code> avec <code>errorText: Live account is required</code>", "L'accord de données de marché n'est pas encore signé", "Faites signer l'accord non professionnel à l'utilisateur, puis réessayez"],
+        ["L'appel &ldquo;réussit&rdquo; mais les données restent retardées", "Votre code vérifiait le statut, pas le corps", "Analysez le corps de la réponse pour <code>errorText</code> avant de le considérer comme terminé"],
+        ["Échoue immédiatement après l'acceptation de l'utilisateur", "La signature n'est pas encore synchronisée", "Resynchronisez l'état de l'utilisateur, puis appelez le endpoint"],
+        ["Échoue même avec l'accord signé", "Coordonnées manquantes ou mauvais compte ciblé", "Ajoutez les coordonnées ; vérifiez que vous utilisez le bon compte"],
+        ["L'entitlement est attribué mais les cotations restent retardées", "Aucun abonnement de données de marché actif", "Vérifiez qu'un abonnement boursier en temps réel est actif pour l'utilisateur"],
+        ["Le compte prop/d'évaluation n'accepte pas l'entitlement", "La firme contrôle les données de façon centralisée", "Vérifiez les règles de la firme prop ; elle active peut-être les données pour vous"],
+      ],
+    },
+    { type: "heading", text: "Une remarque sur les comptes prop et d'évaluation" },
+    { type: "paragraph", html: "Les comptes d'évaluation et simulés acheminent tout de même des données de marché en direct, donc l'exigence de l'accord ne disparaît pas simplement parce qu'aucun argent réel n'est en jeu. Ce qui change, c'est la <em>propriété</em>. De nombreuses firmes prop gèrent les données de marché et les entitlements de façon centralisée dans le cadre du compte qu'elles vous délivrent, dans ces cas-là, vous ne devriez pas appeler <code>addEntitlementSubscription</code> du tout, et le faire peut entrer en conflit avec la manière dont la firme provisionne les données. Les règles varient selon la firme et le type de compte, confirmez donc le processus actuel de votre firme avant de provisionner vous-même des entitlements. Lorsque la firme est propriétaire du pipeline de données, la solution en cas de données en direct manquantes est une demande de support auprès d'elle, pas un appel API de votre part." },
+    { type: "heading", text: "Évitez toute la gymnastique des entitlements avec PickMyTrade" },
+    { type: "paragraph", html: "Si votre objectif est simplement de trader vos signaux TradingView sur un compte Tradovate en direct, et non de gérer un pipeline de provisioning, PickMyTrade s'occupe de la tuyauterie côté courtier afin que vous n'ayez jamais à toucher aux appels d'entitlement :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connexion gérée</strong>, l'état de l'accord de données et de l'entitlement de votre compte est respecté avant même l'envoi d'un ordre, vous n'avez donc pas à déboguer un <code>errorText</code> dans une réponse API brute.",
+        "<strong class='text-white'>Routage alerte-vers-ordre</strong>, les alertes TradingView circulent directement vers votre compte Tradovate sans que vous ayez à écrire ou séquencer des appels API.",
+        "<strong class='text-white'>Conscience de l'entitlement et du risque</strong>, les ordres respectent l'état des données de votre compte et les limites de la firme prop au lieu de rebondir sur un prérequis manquant.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, répliquez un signal sur plusieurs comptes sans avoir à résoudre le provisioning pour chacun d'eux.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Avete effettuato il provisioning di un utente tramite l'API Tradovate, l'account è creato, tutto sembra pulito, ma la chiamata a <code>addEntitlementSubscription</code> continua a restituire <code>Live account is required</code> e l'entitlement dei dati di mercato non viene mai assegnato. È una delle risposte più confuse dell'intero flusso di provisioning, perché l'account <em>esiste</em> chiaramente e il messaggio vi indirizza nella direzione sbagliata. Ecco la versione breve: questo errore significa quasi sempre che l'utente non ha ancora firmato l'<strong class='text-white'>accordo sui dati di mercato non professionali</strong>. Fate firmare l'accordo, confermate che si sia sincronizzato, e la stessa chiamata andrà a buon fine. Di seguito trovate la diagnosi completa, l'ordine esatto in cui devono essere eseguite le chiamate e come un bridge come PickMyTrade elimina del tutto questa danza degli entitlement." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida",
+      items: [
+        "<strong class='text-white'>Fate firmare per prima cosa l'accordo sui dati di mercato non professionali</strong>, questo è il vero prerequisito che l'errore fuorviante nasconde.",
+        "<strong class='text-white'>Aggiungete le informazioni di contatto dell'utente</strong>, saltare questo passaggio blocca o ritarda l'assegnazione dell'entitlement.",
+        "<strong class='text-white'>Confermate che la firma si sia sincronizzata</strong>, il controllo dell'entitlement legge il record salvato, non il momento in cui l'utente ha cliccato su &ldquo;accetta&rdquo;.",
+        "<strong class='text-white'>Analizzate il corpo della risposta, non solo il codice di stato</strong>, la chiamata restituisce HTTP <code>200</code> con l'errore nel campo <code>errorText</code>.",
+        "<strong class='text-white'>Eseguite le chiamate nell'ordine corretto</strong>: creare l'utente &rarr; aggiungere le informazioni di contatto &rarr; creare l'account &rarr; confermare l'accordo &rarr; assegnare l'entitlement.",
+        "<strong class='text-white'>Verificate chi gestisce i dati sugli account prop</strong>, alcune società attivano i dati di mercato e gli entitlement a livello centrale, quindi potreste non essere voi a dover effettuare questa chiamata.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa davvero \"È richiesto un account live\"" },
+    { type: "paragraph", html: "Prendete il messaggio alla lettera e perderete un intero pomeriggio. La risposta non dice che l'account manca, dice che l'account non è ancora <em>idoneo</em> a ricevere un entitlement di dati di mercato live. E il motivo più comune, di gran lunga, è un accordo sui dati di mercato mancante. Tradovate, come ogni broker di futures, deve avere in archivio un accordo sui dati di mercato CME firmato prima di poter fornire a un utente dati di borsa in tempo reale. Senza accordo, nessun entitlement, e l'API segnala questa lacuna con la stringa <code>Live account is required</code>." },
+    { type: "paragraph", html: "Un dettaglio manda in confusione molte integrazioni: la richiesta non fallisce con un errore HTTP. Restituisce <strong class='text-white'>HTTP 200</strong>, e il vero problema si trova nel corpo JSON come valore <code>errorText</code>. Se il vostro script di provisioning controlla solo <code>response.status === 200</code> e prosegue, registrerà un successo mentre l'entitlement non è mai stato assegnato in silenzio, e ve ne accorgerete solo quando l'utente aprirà un grafico con un simbolo vuoto, ritardato o senza quotazione. Leggete sempre il corpo della risposta." },
+    { type: "heading", text: "Perché l'accordo è il vero ostacolo" },
+    { type: "paragraph", html: "I dati sui futures in tempo reale non arrivano senza burocrazia. Il CME Group richiede che ogni utente finale che riceve dati live venga classificato e accetti i termini sui dati di mercato della borsa, questo è l'&ldquo;accordo&rdquo; di cui parliamo qui. Gli utenti dichiarano se sono <strong class='text-white'>professionali</strong> o <strong class='text-white'>non professionali</strong>, e la stragrande maggioranza dei trader retail individuali rientra nella categoria non professionale. Questa dichiarazione, insieme ai termini accettati, è ciò che sblocca l'entitlement che la vostra chiamata API sta cercando di assegnare." },
+    { type: "paragraph", html: "Finché l'utente non completa questo passaggio, l'account può tecnicamente esistere, può anche trattarsi di un account simulato o di valutazione, ma non può legalmente ricevere dati di borsa live. Quindi l'assegnazione dell'entitlement non ha nulla di valido a cui agganciarsi, e Tradovate la rifiuta. Questa è la stessa causa alla radice di un'intera famiglia di sintomi a valle: simboli che restano ritardati, grafici senza quotazioni e ordini rifiutati per &ldquo;nessuna quotazione disponibile&rdquo;. L'accordo è a monte di tutto questo." },
+    { type: "heading", text: "Professionale o non professionale, in breve" },
+    { type: "paragraph", html: "Lo stato non professionale copre generalmente le persone che negoziano il proprio denaro per scopi personali. Lo stato professionale si applica a determinati usi aziendali, di consulenza o di ridistribuzione dei dati e comporta commissioni di borsa notevolmente più alte. È l'utente a dichiararlo, ed è responsabile di dichiararlo correttamente. Se un utente non è sicuro di quale sia il proprio stato, indirizzatelo ai criteri attuali della borsa invece di indovinare, la differenza di commissioni è reale e le regole cambiano." },
+    { type: "heading", text: "La soluzione: fate firmare l'accordo, poi assegnate" },
+    { type: "heading", text: "Passaggio 1: fate firmare all'utente l'accordo sui dati di mercato non professionali" },
+    { type: "paragraph", html: "Questo è il passaggio che risolve l'errore. L'accordo viene presentato all'interno della piattaforma Tradovate in cui l'utente effettua l'accesso, di solito appare durante il primo login, nell'area account o accordi, oppure nel momento in cui l'utente prova ad attivare i dati di mercato. L'utente lo esamina, dichiara lo stato non professionale e accetta. Il testo esatto del menu cambia tra le versioni della piattaforma, quindi se state documentando questo passaggio per i vostri utenti, confermate l'etichetta attuale nell'app live invece di fissare un vecchio percorso." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-2.webp`, alt: "Schermata dell'accordo sui dati di mercato non professionali di Tradovate in cui l'utente dichiara il proprio stato e accetta i termini CME" },
+    { type: "heading", text: "Passaggio 2: aggiungete le informazioni di contatto dell'utente" },
+    { type: "paragraph", html: "Prima che l'entitlement possa essere assegnato correttamente, l'utente deve avere le informazioni di contatto registrate. Se saltate questo passaggio durante il provisioning, all'utente verrà richiesto al primo accesso, e finché non esistono, l'assegnazione dell'entitlement può bloccarsi. Popolatele come parte del vostro flusso di configurazione così che nulla a valle debba attendere." },
+    { type: "heading", text: "Passaggio 3: confermate che la firma si sia effettivamente sincronizzata" },
+    { type: "paragraph", html: "Ecco il dettaglio sottile. Il controllo dell'entitlement non legge il momento in cui l'utente ha cliccato su &ldquo;accetta&rdquo;, legge il record dell'account <em>salvato e sincronizzato</em>. Concedete alla firma un momento per propagarsi e risincronizzate lo stato dell'utente prima di riprovare. Richiamare <code>addEntitlementSubscription</code> nello stesso millisecondo in cui l'utente accetta è un modo affidabile per ottenere di nuovo lo stesso errore a causa di una race condition. Confermate prima che l'accordo risulti firmato nei dati sincronizzati." },
+    { type: "heading", text: "Passaggio 4: chiamate addEntitlementSubscription" },
+    { type: "paragraph", html: "Con l'accordo firmato e sincronizzato e le informazioni di contatto in ordine, assegnate l'entitlement. Ora la chiamata ha un account valido e idoneo a cui agganciarsi e risponde correttamente. Ricontrollate il corpo della risposta, un successo non conterrà un <code>errorText</code>. Se state effettuando il provisioning in batch, contrassegnate un utente come &ldquo;completato&rdquo; solo dopo aver verificato il corpo, non il codice di stato." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-3.png`, alt: "Risposta riuscita di Tradovate addEntitlementSubscription dopo la firma dell'accordo sui dati di mercato, senza errorText" },
+    { type: "heading", text: "Passaggio 5: verificate che l'utente disponga ora di dati live" },
+    { type: "paragraph", html: "Chiudete il cerchio confermando che l'utente veda effettivamente quotazioni in tempo reale. Fategli aprire un simbolo del mese più vicino e verificate che sia live e non ritardato. Se l'entitlement è stato assegnato ma l'utente vede ancora dati ritardati, potrebbe essere necessario controllare anche il lato dell'abbonamento ai dati di mercato, l'entitlement e un abbonamento dati attivo sono correlati ma non identici, ed entrambi devono essere corretti per un feed live pulito." },
+    { type: "image", src: `${IMG}/api-add-entitlement-live-required-4.png`, alt: "Area dell'abbonamento ai dati di mercato di Tradovate che conferma un feed di borsa in tempo reale attivo per l'utente" },
+    { type: "heading", text: "L'ordine di provisioning che funziona" },
+    { type: "paragraph", html: "Quasi tutti i ticket &ldquo;Live account is required&rdquo; derivano dall'aver eseguito queste chiamate nell'ordine sbagliato o dall'averne saltata una. Mantenete la sequenza intatta:" },
+    {
+      type: "table",
+      headers: ["Passaggio", "Cosa fate", "Perché è importante"],
+      rows: [
+        ["1. Creare l'utente", "Effettuare il provisioning del record utente", "Nulla può agganciarsi senza un utente a cui agganciarsi"],
+        ["2. Aggiungere le informazioni di contatto", "Compilare i dati di contatto dell'utente", "Le informazioni di contatto mancanti bloccano l'assegnazione dell'entitlement"],
+        ["3. Creare l'account", "Creare l'account di trading/valutazione", "L'entitlement viene assegnato a un account reale"],
+        ["4. Confermare l'accordo sui dati", "L'utente firma; voi verificate che si sia sincronizzato", "Il vero prerequisito dietro il messaggio di errore"],
+        ["5. Assegnare l'entitlement", "Chiamare <code>addEntitlementSubscription</code>", "Ora ha successo perché l'account è idoneo"],
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Significato", "Soluzione"],
+      rows: [
+        ["<code>200</code> con <code>errorText: Live account is required</code>", "L'accordo sui dati di mercato non è ancora firmato", "Fate firmare all'utente l'accordo non professionale, quindi riprovate"],
+        ["La chiamata &ldquo;riesce&rdquo; ma i dati restano ritardati", "Il vostro codice controllava lo stato, non il corpo", "Analizzate il corpo della risposta alla ricerca di <code>errorText</code> prima di considerarlo completato"],
+        ["Fallisce immediatamente dopo l'accettazione dell'utente", "La firma non si è ancora sincronizzata", "Risincronizzate lo stato dell'utente, quindi chiamate l'endpoint"],
+        ["Fallisce anche con l'accordo firmato", "Informazioni di contatto mancanti o account sbagliato", "Aggiungete le informazioni di contatto; verificate di usare l'account corretto"],
+        ["L'entitlement viene assegnato ma le quotazioni restano ritardate", "Nessun abbonamento ai dati di mercato attivo", "Confermate che sia attivo un abbonamento di borsa in tempo reale per l'utente"],
+        ["L'account prop/di valutazione non accetta l'entitlement", "La società controlla i dati a livello centrale", "Controllate le regole della prop firm; potrebbero attivare i dati per voi"],
+      ],
+    },
+    { type: "heading", text: "Una nota su account prop e di valutazione" },
+    { type: "paragraph", html: "Gli account di valutazione e simulati veicolano comunque dati di borsa live, quindi il requisito dell'accordo non scompare solo perché non c'è denaro reale in gioco. Ciò che cambia è la <em>titolarità</em>. Molte prop firm gestiscono i dati di mercato e gli entitlement a livello centrale come parte dell'account che vi emettono, in questi casi non dovreste chiamare affatto <code>addEntitlementSubscription</code>, e farlo può entrare in conflitto con il modo in cui la società effettua il provisioning dei dati. Le regole variano in base alla società e al tipo di account, quindi confermate il processo attuale della vostra società prima di effettuare voi stessi il provisioning degli entitlement. Quando è la società a possedere la pipeline dei dati, la soluzione per i dati live mancanti è una richiesta di supporto a loro, non una chiamata API da parte vostra." },
+    { type: "heading", text: "Evitate la lotta con gli entitlement grazie a PickMyTrade" },
+    { type: "paragraph", html: "Se il vostro obiettivo è semplicemente fare trading con i vostri segnali TradingView su un account Tradovate live, e non gestire una pipeline di provisioning, PickMyTrade si occupa dell'idraulica lato broker così non dovrete mai toccare le chiamate di entitlement:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connessione gestita</strong>, lo stato dell'accordo sui dati e dell'entitlement del vostro account viene rispettato prima ancora che venga inviato un ordine, quindi non dovrete eseguire il debug di un <code>errorText</code> in una risposta API grezza.",
+        "<strong class='text-white'>Instradamento da alert a ordine</strong>, gli alert di TradingView arrivano direttamente al vostro account Tradovate senza che dobbiate scrivere o sequenziare chiamate API.",
+        "<strong class='text-white'>Consapevolezza di entitlement e rischio</strong>, gli ordini rispettano lo stato dei dati del vostro account e i limiti della prop firm invece di rimbalzare per un prerequisito mancante.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replicate un segnale su più account senza dover risolvere di nuovo il provisioning per ciascuno.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Skip the Entitlement Wrangling", de: "Umgehen Sie das Entitlement-Hin-und-Her", es: "Evite el forcejeo con los entitlements", fr: "Évitez la gymnastique des entitlements", it: "Evitate la lotta con gli entitlement" },
+  ctaText: { en: "Link your alerts and trade live on Tradovate without writing or sequencing a single entitlement API call.", de: "Verknüpfen Sie Ihre Alerts und handeln Sie live auf Tradovate, ohne einen einzigen Entitlement-API-Aufruf schreiben oder in eine Reihenfolge bringen zu müssen.", es: "Conecte sus alertas y opere en vivo en Tradovate sin escribir ni secuenciar una sola llamada a la API de entitlement.", fr: "Connectez vos alertes et tradez en direct sur Tradovate sans écrire ni séquencer le moindre appel API d'entitlement.", it: "Collegate i vostri alert e fate trading live su Tradovate senza scrivere o sequenziare una sola chiamata API di entitlement." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avviate la vostra prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does addEntitlementSubscription say \"Live account is required\" when the account already exists?", a: "The wording is misleading. In practice the call fails because the user hasn't signed the non-professional market data agreement yet. Until that agreement is on file, Tradovate treats the account as not eligible to receive the market-data entitlement, and the endpoint returns that message. Get the agreement signed, confirm it synced, then retry the call." },
+    { q: "Where does the user sign the non-professional market data agreement?", a: "It's presented inside the Tradovate platform the user is logging into, typically under the account or agreements area, and it also surfaces during first login or when they try to subscribe to market data. The user declares non-professional status and accepts the CME market data terms. Exact menu labels shift between platform versions, so confirm the current path in the live app." },
+    { q: "Is the addEntitlementSubscription call an HTTP error or a 200?", a: "Tradovate returns HTTP 200 and carries the problem in the response body as an errorText field reading 'Live account is required'. If your code only checks the HTTP status code, it will look like a success while the entitlement was never assigned. Always parse the body for errorText, not just the status." },
+    { q: "What's the correct order of calls to provision a user and assign the entitlement?", a: "Create the user, add their contact information, create the account, confirm the market data agreement is signed, and only then call addEntitlementSubscription. Skipping the contact info or agreement step is the usual reason the entitlement call bounces." },
+    { q: "Professional or non-professional, which should the user pick?", a: "Most individual retail traders qualify as non-professional, which is the status this workflow expects. Professional classification applies to certain business, advisory, or redistribution use and carries higher exchange fees. The user is responsible for declaring accurately; when unsure, they should check the current exchange criteria." },
+    { q: "Do prop-firm evaluation accounts need this too?", a: "Yes. Even evaluation and simulated accounts route live exchange data, so the market data agreement still has to be signed before the entitlement will assign. What varies is who is allowed to trigger it, some prop firms handle data and entitlements centrally, so check the firm's rules before provisioning it yourself." },
+    { q: "The agreement is signed but the call still fails. What now?", a: "Give the signature a moment to propagate and re-sync the user state before retrying, since the entitlement check reads the synced record, not the click. Also confirm you added contact information for the user and that you're targeting the right account. If it still fails after a clean sync, the account may not be fully activated yet." },
+  ], de: [
+    { q: "Warum meldet addEntitlementSubscription \"Live account is required\", obwohl das Konto bereits existiert?", a: "Der Wortlaut ist irreführend. In der Praxis schlägt der Aufruf fehl, weil der Benutzer die Non-Professional-Marktdatenvereinbarung noch nicht unterschrieben hat. Solange diese Vereinbarung nicht vorliegt, behandelt Tradovate das Konto als nicht berechtigt, das Market-Data-Entitlement zu erhalten, und der Endpunkt gibt diese Meldung zurück. Lassen Sie die Vereinbarung unterschreiben, bestätigen Sie die Synchronisierung, und versuchen Sie den Aufruf dann erneut." },
+    { q: "Wo unterschreibt der Benutzer die Non-Professional-Marktdatenvereinbarung?", a: "Sie wird innerhalb der Tradovate-Plattform angezeigt, in die sich der Benutzer einloggt, üblicherweise im Bereich Konto oder Vereinbarungen, und sie erscheint auch beim ersten Login oder wenn der Benutzer versucht, Marktdaten zu abonnieren. Der Benutzer erklärt den Status nicht-professionell und akzeptiert die CME-Marktdatenbedingungen. Die genauen Menübezeichnungen ändern sich zwischen Plattformversionen, bestätigen Sie daher den aktuellen Pfad in der Live-App." },
+    { q: "Ist der Aufruf von addEntitlementSubscription ein HTTP-Fehler oder ein 200er?", a: "Tradovate liefert HTTP 200 zurück und trägt das Problem im Response-Body als errorText-Feld mit dem Inhalt 'Live account is required'. Wenn Ihr Code nur den HTTP-Statuscode prüft, sieht es wie ein Erfolg aus, während das Entitlement nie zugewiesen wurde. Werten Sie den Body immer auf errorText aus, nicht nur den Status." },
+    { q: "Wie lautet die richtige Reihenfolge der Aufrufe, um einen Benutzer zu provisionieren und das Entitlement zuzuweisen?", a: "Legen Sie den Benutzer an, fügen Sie seine Kontaktinformationen hinzu, legen Sie das Konto an, bestätigen Sie, dass die Marktdatenvereinbarung unterschrieben ist, und rufen Sie erst dann addEntitlementSubscription auf. Das Überspringen des Kontakt- oder Vereinbarungsschritts ist der übliche Grund, warum der Entitlement-Aufruf abprallt." },
+    { q: "Professionell oder nicht-professionell, welchen Status sollte der Benutzer wählen?", a: "Die meisten privaten Retail-Trader qualifizieren sich als nicht-professionell, das ist der Status, den dieser Ablauf erwartet. Die Klassifizierung professionell gilt für bestimmte geschäftliche, beratende oder redistributierende Nutzungen und ist mit höheren Börsengebühren verbunden. Der Benutzer ist dafür verantwortlich, korrekt anzugeben; im Zweifelsfall sollte er die aktuellen Kriterien der Börse prüfen." },
+    { q: "Benötigen auch Prop-Firm-Evaluierungskonten das?", a: "Ja. Selbst Evaluierungs- und simulierte Konten leiten Live-Börsendaten weiter, daher muss die Marktdatenvereinbarung trotzdem unterschrieben werden, bevor sich das Entitlement zuweisen lässt. Was variiert, ist, wer berechtigt ist, dies auszulösen, manche Prop-Firmen verwalten Daten und Entitlements zentral, prüfen Sie daher die Regeln der Firma, bevor Sie es selbst provisionieren." },
+    { q: "Die Vereinbarung ist unterschrieben, aber der Aufruf schlägt weiterhin fehl. Was jetzt?", a: "Geben Sie der Unterschrift einen Moment Zeit, um sich zu propagieren, und synchronisieren Sie den Benutzerstatus neu, bevor Sie es erneut versuchen, da die Entitlement-Prüfung den synchronisierten Datensatz liest, nicht den Klick. Bestätigen Sie außerdem, dass Sie Kontaktinformationen für den Benutzer hinzugefügt haben und dass Sie das richtige Konto ansprechen. Schlägt es nach einer sauberen Synchronisierung weiterhin fehl, ist das Konto möglicherweise noch nicht vollständig aktiviert." },
+  ], es: [
+    { q: "¿Por qué addEntitlementSubscription dice \"Live account is required\" cuando la cuenta ya existe?", a: "El texto es engañoso. En la práctica, la llamada falla porque el usuario todavía no ha firmado el acuerdo de datos de mercado no profesional. Hasta que ese acuerdo esté registrado, Tradovate trata la cuenta como no elegible para recibir el entitlement de datos de mercado, y el endpoint devuelve ese mensaje. Haga firmar el acuerdo, confirme que se sincronizó y vuelva a intentar la llamada." },
+    { q: "¿Dónde firma el usuario el acuerdo de datos de mercado no profesional?", a: "Se presenta dentro de la plataforma Tradovate en la que el usuario inicia sesión, normalmente en la sección de cuenta o acuerdos, y también aparece durante el primer inicio de sesión o cuando intenta suscribirse a datos de mercado. El usuario declara el estatus no profesional y acepta los términos de datos de mercado de CME. Las etiquetas exactas del menú varían entre versiones de la plataforma, así que confirme la ruta actual en la aplicación en vivo." },
+    { q: "¿La llamada addEntitlementSubscription es un error HTTP o un 200?", a: "Tradovate devuelve HTTP 200 y lleva el problema en el cuerpo de la respuesta como un campo errorText que dice 'Live account is required'. Si su código solo verifica el código de estado HTTP, parecerá un éxito mientras el entitlement nunca se asignó. Analice siempre el cuerpo en busca de errorText, no solo el estado." },
+    { q: "¿Cuál es el orden correcto de las llamadas para aprovisionar un usuario y asignar el entitlement?", a: "Cree el usuario, agregue su información de contacto, cree la cuenta, confirme que el acuerdo de datos de mercado está firmado, y solo entonces llame a addEntitlementSubscription. Omitir el paso de contacto o de acuerdo es la razón habitual por la que la llamada del entitlement rebota." },
+    { q: "¿Profesional o no profesional, cuál debería elegir el usuario?", a: "La mayoría de los traders minoristas individuales califican como no profesionales, que es el estatus que este flujo espera. La clasificación profesional se aplica a ciertos usos comerciales, de asesoría o de redistribución y conlleva tarifas de bolsa más altas. El usuario es responsable de declarar con precisión; en caso de duda, debería consultar los criterios vigentes de la bolsa." },
+    { q: "¿Las cuentas de evaluación de firmas prop también necesitan esto?", a: "Sí. Incluso las cuentas de evaluación y simuladas reciben datos de bolsa en vivo, así que el acuerdo de datos de mercado igual debe firmarse antes de que se asigne el entitlement. Lo que varía es quién está autorizado a activarlo, algunas firmas prop gestionan los datos y los entitlements de forma centralizada, así que revise las reglas de la firma antes de aprovisionarlo usted mismo." },
+    { q: "El acuerdo está firmado pero la llamada sigue fallando. ¿Qué hago ahora?", a: "Dele un momento a la firma para propagarse y vuelva a sincronizar el estado del usuario antes de reintentar, ya que la verificación del entitlement lee el registro sincronizado, no el clic. Confirme también que agregó la información de contacto del usuario y que está apuntando a la cuenta correcta. Si sigue fallando después de una sincronización limpia, es posible que la cuenta aún no esté totalmente activada." },
+  ], fr: [
+    { q: "Pourquoi addEntitlementSubscription affiche-t-il \"Live account is required\" alors que le compte existe déjà ?", a: "Le libellé est trompeur. En pratique, l'appel échoue parce que l'utilisateur n'a pas encore signé l'accord de données de marché non professionnel. Tant que cet accord n'est pas enregistré, Tradovate considère que le compte n'est pas éligible pour recevoir l'entitlement de données de marché, et le endpoint renvoie ce message. Faites signer l'accord, confirmez qu'il est synchronisé, puis relancez l'appel." },
+    { q: "Où l'utilisateur signe-t-il l'accord de données de marché non professionnel ?", a: "Il est présenté dans la plateforme Tradovate à laquelle l'utilisateur se connecte, généralement dans la zone compte ou accords, et il apparaît aussi lors de la première connexion ou lorsque l'utilisateur tente de s'abonner aux données de marché. L'utilisateur déclare le statut non professionnel et accepte les conditions de données de marché CME. Les libellés exacts du menu varient selon les versions de la plateforme, confirmez donc le chemin actuel dans l'application en direct." },
+    { q: "L'appel addEntitlementSubscription est-il une erreur HTTP ou un 200 ?", a: "Tradovate renvoie un HTTP 200 et place le problème dans le corps de la réponse sous la forme d'un champ errorText contenant 'Live account is required'. Si votre code se contente de vérifier le code de statut HTTP, cela ressemblera à un succès alors que l'entitlement n'a jamais été attribué. Analysez toujours le corps pour errorText, pas seulement le statut." },
+    { q: "Quel est l'ordre correct des appels pour provisionner un utilisateur et attribuer l'entitlement ?", a: "Créez l'utilisateur, ajoutez ses coordonnées, créez le compte, confirmez que l'accord de données de marché est signé, et alors seulement appelez addEntitlementSubscription. Sauter l'étape des coordonnées ou de l'accord est la raison habituelle pour laquelle l'appel d'entitlement rebondit." },
+    { q: "Professionnel ou non professionnel, lequel l'utilisateur doit-il choisir ?", a: "La plupart des traders particuliers individuels sont qualifiés de non professionnels, c'est le statut attendu par ce flux. La classification professionnelle s'applique à certains usages commerciaux, de conseil ou de redistribution et entraîne des frais de bourse plus élevés. L'utilisateur est responsable de déclarer avec exactitude ; en cas de doute, il doit vérifier les critères actuels de la bourse." },
+    { q: "Les comptes d'évaluation des firmes prop en ont-ils besoin aussi ?", a: "Oui. Même les comptes d'évaluation et simulés acheminent des données de marché en direct, l'accord de données de marché doit donc quand même être signé avant que l'entitlement ne soit attribué. Ce qui varie, c'est qui est autorisé à le déclencher, certaines firmes prop gèrent les données et les entitlements de façon centralisée, vérifiez donc les règles de la firme avant de le provisionner vous-même." },
+    { q: "L'accord est signé mais l'appel échoue toujours. Que faire maintenant ?", a: "Laissez un instant à la signature pour se propager et resynchronisez l'état de l'utilisateur avant de réessayer, car la vérification de l'entitlement lit l'enregistrement synchronisé, pas le clic. Confirmez également que vous avez ajouté les coordonnées de l'utilisateur et que vous ciblez le bon compte. Si cela échoue toujours après une synchronisation propre, le compte n'est peut-être pas encore entièrement activé." },
+  ], it: [
+    { q: "Perché addEntitlementSubscription restituisce \"Live account is required\" quando l'account esiste già?", a: "La formulazione è fuorviante. In pratica la chiamata fallisce perché l'utente non ha ancora firmato l'accordo sui dati di mercato non professionali. Finché tale accordo non è in archivio, Tradovate considera l'account non idoneo a ricevere l'entitlement dei dati di mercato, e l'endpoint restituisce quel messaggio. Fate firmare l'accordo, confermate che si sia sincronizzato, quindi riprovate la chiamata." },
+    { q: "Dove firma l'utente l'accordo sui dati di mercato non professionali?", a: "Viene presentato all'interno della piattaforma Tradovate in cui l'utente effettua l'accesso, di solito nell'area account o accordi, e appare anche durante il primo login o quando l'utente prova ad abbonarsi ai dati di mercato. L'utente dichiara lo stato non professionale e accetta i termini sui dati di mercato CME. Le etichette esatte del menu cambiano tra le versioni della piattaforma, quindi confermate il percorso attuale nell'app live." },
+    { q: "La chiamata addEntitlementSubscription è un errore HTTP o un 200?", a: "Tradovate restituisce HTTP 200 e colloca il problema nel corpo della risposta come campo errorText con il valore 'Live account is required'. Se il vostro codice controlla solo il codice di stato HTTP, sembrerà un successo mentre l'entitlement non è mai stato assegnato. Analizzate sempre il corpo alla ricerca di errorText, non solo lo stato." },
+    { q: "Qual è l'ordine corretto delle chiamate per effettuare il provisioning di un utente e assegnare l'entitlement?", a: "Create l'utente, aggiungete le sue informazioni di contatto, create l'account, confermate che l'accordo sui dati di mercato sia firmato, e solo allora chiamate addEntitlementSubscription. Saltare il passaggio del contatto o dell'accordo è il motivo abituale per cui la chiamata dell'entitlement rimbalza." },
+    { q: "Professionale o non professionale, quale dovrebbe scegliere l'utente?", a: "La maggior parte dei trader retail individuali si qualifica come non professionale, che è lo stato previsto da questo flusso. La classificazione professionale si applica a determinati usi aziendali, di consulenza o di ridistribuzione e comporta commissioni di borsa più alte. L'utente è responsabile di dichiarare correttamente; in caso di dubbio, dovrebbe controllare i criteri attuali della borsa." },
+    { q: "Anche gli account di valutazione delle prop firm ne hanno bisogno?", a: "Sì. Anche gli account di valutazione e simulati veicolano dati di borsa live, quindi l'accordo sui dati di mercato deve comunque essere firmato prima che l'entitlement venga assegnato. Ciò che varia è chi è autorizzato ad attivarlo, alcune prop firm gestiscono i dati e gli entitlement a livello centrale, quindi controllate le regole della società prima di effettuare voi stessi il provisioning." },
+    { q: "L'accordo è firmato ma la chiamata continua a fallire. Cosa fare ora?", a: "Concedete alla firma un momento per propagarsi e risincronizzate lo stato dell'utente prima di riprovare, poiché il controllo dell'entitlement legge il record sincronizzato, non il clic. Confermate anche di aver aggiunto le informazioni di contatto dell'utente e di puntare all'account corretto. Se continua a fallire dopo una sincronizzazione pulita, l'account potrebbe non essere ancora completamente attivato." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. “Tradovate” and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc. und wird von diesem weder unterstützt noch gesponsert. „Tradovate“ sowie alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie daher immer den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. “Tradovate” y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso vigente en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de futures et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni sponsorisée par Tradovate, Inc. «Tradovate» ainsi que tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti con leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. “Tradovate” e tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermate sempre il processo attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}${IMG}/api-add-entitlement-live-required-1.png`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage={`${IMG}/api-add-entitlement-live-required-1.png`}
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

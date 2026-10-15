@@ -1,0 +1,435 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-isautomated-flag-required";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API: isAutomated Must Be True for Bots";
+const META_DESCRIPTION =
+  "Tradovate isAutomated flag must be true on every bot order: set the right type to meet CME rules and stop automated orders getting rejected.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API: isAutomated muss für Bots auf true stehen", es: "API de Tradovate: isAutomated debe ser true para los bots", fr: "API Tradovate : isAutomated doit être true pour les bots", it: "API Tradovate: isAutomated deve essere true per i bot" },
+  dek: { en: "Leave isAutomated at its default of false and every algorithmic order you send gets quietly mislabeled to CME as a human click. Here's what the flag does, why it exists, and how to set it correctly.", de: "Lassen Sie isAutomated auf seinem Standardwert false, wird jede algorithmische Order, die Sie senden, stillschweigend gegenüber der CME als menschlicher Klick fehlgekennzeichnet. Hier erfahren Sie, was das Flag bewirkt, warum es existiert und wie Sie es korrekt setzen.", es: "Si deja isAutomated en su valor predeterminado false, cada orden algorítmica que envíe quedará silenciosamente mal etiquetada ante CME como un clic humano. Esto es lo que hace el indicador, por qué existe y cómo configurarlo correctamente.", fr: "Si vous laissez isAutomated à sa valeur par défaut false, chaque ordre algorithmique que vous envoyez est silencieusement mal étiqueté auprès du CME comme un clic humain. Voici ce que fait cet indicateur, pourquoi il existe, et comment le configurer correctement.", it: "Se lasciate isAutomated al suo valore predefinito false, ogni ordine algoritmico che inviate viene silenziosamente etichettato in modo errato presso il CME come un clic umano. Ecco cosa fa il flag, perché esiste e come impostarlo correttamente." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Route orders to Tradovate from a bot, a webhook bridge, or a script, and one small field decides whether the exchange treats your fill as a clean automated order or an audit-trail violation: <code>isAutomated</code>. Leave it at its default of <code>false</code> and every algorithmic order you send gets quietly mislabeled to CME as a human click. Send it as the wrong data type and your request can bounce before it ever reaches the matching engine. In 2026, with CME's Manual/Automated indicator enforced on every single order, getting this one boolean right isn't optional, and it's one of the most common reasons developers watch their automated orders behave strangely or get flagged. Here's exactly what the flag does, why it exists, and how to set it so your bot trades rejection-free." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for the isAutomated Flag",
+      items: [
+        "<strong class='text-white'>Bot, script, or webhook sending the order?</strong> Set <code>isAutomated: true</code> on every <code>/order/placeOrder</code> call.",
+        "<strong class='text-white'>Human clicking a button in your own UI?</strong> <code>isAutomated</code> stays <code>false</code> (the default).",
+        "<strong class='text-white'>Sending the value as the right type?</strong> The schema defines it as a boolean <code>true</code>, not the string <code>\"true\"</code>, match what your HTTP client actually serializes.",
+        "<strong class='text-white'>Using a bracket/OSO strategy?</strong> Apply the flag to the parent order in <code>placeOSO</code>/<code>placeOrderStrategy</code> too, not just single orders.",
+        "<strong class='text-white'>Seeing odd rejections or \"access denied\"?</strong> Confirm the flag and its type before you blame auth, symbol, or risk settings.",
+        "<strong class='text-white'>Not sure who \"owns\" the order?</strong> If no human physically triggered it in real time, it's automated. Flag it.",
+      ],
+    },
+    { type: "heading", text: "What the isAutomated Flag Actually Means" },
+    { type: "paragraph", html: "<code>isAutomated</code> is a boolean field in Tradovate's <code>placeOrder</code> request body. It tells Tradovate, and, through Tradovate, the CME Globex matching engine, whether a live person physically initiated the order or whether software generated it. Omit the field and Tradovate treats it as <code>false</code>, which is correct only for an order a human placed by clicking in a front-end." },
+    { type: "paragraph", html: "The moment an algorithm, a trading bot, a TradingView webhook, or any impersonal process generates the order, that default is wrong. The flag must be set for orders placed by an automated algorithm, as opposed to ones manually initiated by click. Setting <code>isAutomated: true</code> is how your request maps to the correct exchange designation." },
+    { type: "paragraph", html: "This isn't a Tradovate preference, it's an exchange rule. Since June 5, 2011, CME Group has required every order entered into Globex to identify whether it was entered by manual or automated means, carried in FIX <strong class='text-white'>Tag 1028 (Manual Order Indicator)</strong>. On October 8, 2012, that requirement was codified into each exchange's <strong class='text-white'>Rule 536.B</strong>. The allowed values are strict: manual orders submit <code>Y</code>, automated orders submit <code>N</code>, and no other values are permitted. Your <code>isAutomated: true</code> is what makes Tradovate stamp your order as automated (<code>N</code>) on the wire. Inaccurate submission of that indicator is an audit-trail violation that can result in disciplinary action under CME Rule 512." },
+    { type: "heading", text: "Top Causes of a Missing or Wrong isAutomated Flag" },
+    { type: "heading", text: "1. The Field Is Simply Omitted" },
+    { type: "paragraph", html: "The most common cause is leaving <code>isAutomated</code> out of the payload entirely. Tradovate defaults it to <code>false</code>, so the request still succeeds, which is exactly why it's dangerous. Your bot's orders route to the exchange tagged as manual (<code>Y</code>), even though software generated them. Nothing errors, but every automated fill is now mislabeled in CME's audit trail." },
+    { type: "heading", text: "2. The Value Is Sent as the Wrong Type" },
+    { type: "paragraph", html: "The Tradovate order schema documents <code>isAutomated</code> as a boolean. Some HTTP clients, form-encoded requests, or third-party wrappers serialize it as the string <code>\"true\"</code> instead of the JSON boolean <code>true</code>. Depending on how your stack builds the request body, a value the API can't parse as a boolean may be ignored (falling back to <code>false</code>) or cause the request to fail. Send the type your library actually serializes to JSON, a real boolean, unless your bridge documents otherwise." },
+    { type: "heading", text: "3. The Flag Is Missing on Bracket / Strategy Orders" },
+    { type: "paragraph", html: "Developers often add <code>isAutomated</code> to single <code>placeOrder</code> calls but forget it on <code>placeOSO</code> and <code>placeOrderStrategy</code> (OSO/OCO bracket) requests. The parent order in a strategy is still an automated order and needs the flag. A bracket entry sent without it is the same violation as an unflagged single order." },
+    { type: "heading", text: "4. A Human-vs-Bot Mix-Up in the Code Path" },
+    { type: "paragraph", html: "If the same code path handles both manual UI actions and automated signals, it's easy to hard-code one value for both. The flag has to reflect the true origin of <em>each</em> order at send time: <code>true</code> when a signal or algorithm fired it, <code>false</code> only when a person clicked." },
+    { type: "heading", text: "How to Fix the isAutomated Flag: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Fixing the missing flag", html: "Open the code that builds your <code>/order/placeOrder</code> request body. Add <code>isAutomated</code> alongside the other required fields, <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, and <code>orderType</code>. Set the value to <code>true</code> for any order your bot, script, or webhook generates. Leave it <code>false</code> only on orders a human triggers directly. Re-send a test order in the demo environment and confirm the response is a valid order id, not an error. A minimal automated <code>placeOrder</code> body looks like: <code>{ \"accountSpec\": \"YourUserName\", \"accountId\": 0, \"action\": \"Buy\", \"symbol\": \"MESU6\", \"orderQty\": 1, \"orderType\": \"Market\", \"isAutomated\": true }</code>" },
+        { title: "Fixing the wrong data type", html: "Inspect the raw JSON your client sends (log the request body or use your library's debug output). Confirm <code>isAutomated</code> appears as a bare boolean, <code>\"isAutomated\": true</code>, and <strong class='text-white'>not</strong> as a quoted string <code>\"isAutomated\": \"true\"</code>. If your framework auto-quotes booleans, cast the value explicitly to a real boolean before serializing, or use the type your API wrapper documents. Re-test and verify the order is accepted. If you're using a bridge or third party, check their docs for the exact expected type, a few form-encoded integrations expect a string form, so confirm against your specific tooling before assuming." },
+        { title: "Fixing bracket and strategy orders", html: "Locate your <code>placeOSO</code> or <code>placeOrderStrategy</code> request builder. Add <code>isAutomated: true</code> to the entry/parent order of the strategy, exactly as you would for a single order. The attached stop and target legs inherit the strategy context, but the flag belongs on the order you submit. Send a test bracket in demo and confirm all legs appear in the Orders report as expected." },
+        { title: "Confirming the order was accepted and correctly tagged", html: "After sending, check the <code>placeOrder</code> response for a numeric <code>orderId</code> (success) rather than a <code>failureReason</code>. Open the Orders module or query <code>/order/list</code> and confirm the order shows as accepted/working, not rejected. For live accounts, watch the first few automated orders closely to make sure they route cleanly now that the flag is set." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "What It Means", "Fix"],
+      rows: [
+        ["isAutomated omitted from payload", "Defaults to false; bot orders tagged manual (Tag 1028 = Y)", "Add isAutomated: true to every automated placeOrder"],
+        ["\"isAutomated\": \"true\" (string)", "Value may not parse as boolean; can be ignored or rejected", "Send the JSON boolean true, not a quoted string"],
+        ["Flag missing on OSO/OCO parent", "Bracket entry routes as an unflagged automated order", "Set isAutomated: true on the strategy's parent order"],
+        ["Same code path for UI and bot", "Wrong origin reported per order", "Set the flag per order based on true origin at send time"],
+        ["Order flagged / audit-trail concern", "CME Tag 1028 designation is inaccurate", "Ensure automated orders always report as automated (N)"],
+        ["Intermittent \"access is denied\" on placeOrder", "Usually auth/account/symbol, not the flag itself", "Fix auth and use the numeric account id; keep the flag correct too"],
+      ],
+    },
+    { type: "heading", text: "Where PickMyTrade Fits" },
+    { type: "paragraph", html: "If maintaining the raw API contract by hand feels fragile, PickMyTrade links TradingView alerts straight to your Tradovate account and handles the order plumbing for you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Correct Automation Tagging</strong>, orders generated from your alerts are submitted through the proper automated pathway, so the exchange designation is handled without hand-coding the flag.",
+        "<strong class='text-white'>Payload Validation</strong>, symbol, quantity, and order-type fields are validated before the order is sent, catching the mistakes that sit right next to <code>isAutomated</code> in the body.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, order flow is spaced out so bursts don't trip Tradovate's request limits.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, the same validated order mirrors across your connected accounts instead of you re-implementing the payload for each one.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Wenn Sie Orders von einem Bot, einer Webhook-Bridge oder einem Skript an Tradovate senden, entscheidet ein kleines Feld darüber, ob die Börse Ihre Ausführung als sauberen automatisierten Auftrag oder als Verstoß gegen die Audit-Trail-Vorschriften einstuft: <code>isAutomated</code>. Lassen Sie es bei seinem Standardwert <code>false</code>, wird jede algorithmische Order, die Sie senden, stillschweigend gegenüber der CME als manueller Klick fehlgekennzeichnet. Senden Sie den Wert im falschen Datentyp, kann Ihre Anfrage abgelehnt werden, bevor sie überhaupt die Matching Engine erreicht. Im Jahr 2026, in dem der Manual/Automated-Indikator der CME bei jeder einzelnen Order durchgesetzt wird, ist es keine Option mehr, dieses eine Boolean korrekt zu setzen, und es ist einer der häufigsten Gründe, warum Entwickler beobachten, dass sich ihre automatisierten Orders merkwürdig verhalten oder markiert werden. Hier erfahren Sie genau, was das Flag bewirkt, warum es existiert und wie Sie es setzen, damit Ihr Bot ablehnungsfrei handelt." },
+    {
+      type: "checklist",
+      heading: "Schnelle Checkliste für das isAutomated-Flag",
+      items: [
+        "<strong class='text-white'>Sendet ein Bot, ein Skript oder ein Webhook die Order?</strong> Setzen Sie <code>isAutomated: true</code> bei jedem <code>/order/placeOrder</code>-Aufruf.",
+        "<strong class='text-white'>Klickt ein Mensch auf eine Schaltfläche in Ihrer eigenen Oberfläche?</strong> <code>isAutomated</code> bleibt auf <code>false</code> (dem Standardwert).",
+        "<strong class='text-white'>Senden Sie den Wert im richtigen Typ?</strong> Das Schema definiert ihn als Boolean <code>true</code>, nicht als Zeichenkette <code>\"true\"</code>, prüfen Sie, was Ihr HTTP-Client tatsächlich serialisiert.",
+        "<strong class='text-white'>Verwenden Sie eine Bracket-/OSO-Strategie?</strong> Setzen Sie das Flag auch bei der übergeordneten Order in <code>placeOSO</code>/<code>placeOrderStrategy</code>, nicht nur bei Einzelorders.",
+        "<strong class='text-white'>Sehen Sie merkwürdige Ablehnungen oder „Zugriff verweigert“?</strong> Prüfen Sie zuerst das Flag und seinen Typ, bevor Sie Authentifizierung, Symbol oder Risikoeinstellungen verantwortlich machen.",
+        "<strong class='text-white'>Nicht sicher, wer die Order „besitzt“?</strong> Wenn kein Mensch sie in Echtzeit physisch ausgelöst hat, ist sie automatisiert. Markieren Sie sie entsprechend.",
+      ],
+    },
+    { type: "heading", text: "Was das isAutomated-Flag wirklich bedeutet" },
+    { type: "paragraph", html: "<code>isAutomated</code> ist ein Boolean-Feld im <code>placeOrder</code>-Anfragetext von Tradovate. Es teilt Tradovate und über Tradovate der CME-Globex-Matching-Engine mit, ob eine reale Person die Order physisch ausgelöst hat oder ob Software sie erzeugt hat. Lassen Sie das Feld weg, behandelt Tradovate es als <code>false</code>, was nur für eine Order korrekt ist, die ein Mensch durch einen Klick in einem Frontend ausgelöst hat." },
+    { type: "paragraph", html: "Sobald ein Algorithmus, ein Trading-Bot, ein TradingView-Webhook oder ein anderer unpersönlicher Prozess die Order erzeugt, ist dieser Standardwert falsch. Das Flag muss bei Orders gesetzt werden, die von einem automatisierten Algorithmus platziert werden, im Gegensatz zu solchen, die manuell per Klick ausgelöst werden. Das Setzen von <code>isAutomated: true</code> sorgt dafür, dass Ihre Anfrage der korrekten Börsen-Kennzeichnung zugeordnet wird." },
+    { type: "paragraph", html: "Das ist keine Präferenz von Tradovate, sondern eine Börsenregel. Seit dem 5. Juni 2011 verlangt die CME Group, dass jede in Globex eingegebene Order angibt, ob sie manuell oder automatisiert eingegeben wurde, übermittelt im FIX-<strong class='text-white'>Tag 1028 (Manual Order Indicator)</strong>. Am 8. Oktober 2012 wurde diese Anforderung in der <strong class='text-white'>Rule 536.B</strong> jeder Börse festgeschrieben. Die zulässigen Werte sind strikt: manuelle Orders übermitteln <code>Y</code>, automatisierte Orders übermitteln <code>N</code>, andere Werte sind nicht zulässig. Ihr <code>isAutomated: true</code> sorgt dafür, dass Tradovate Ihre Order auf der Leitung als automatisiert (<code>N</code>) kennzeichnet. Eine ungenaue Übermittlung dieses Indikators ist ein Verstoß gegen die Audit-Trail-Vorschriften, der gemäß CME Rule 512 disziplinarische Maßnahmen nach sich ziehen kann." },
+    { type: "heading", text: "Häufigste Ursachen für ein fehlendes oder falsches isAutomated-Flag" },
+    { type: "heading", text: "1. Das Feld wird einfach weggelassen" },
+    { type: "paragraph", html: "Die häufigste Ursache ist, <code>isAutomated</code> komplett aus dem Payload wegzulassen. Tradovate setzt es standardmäßig auf <code>false</code>, sodass die Anfrage trotzdem erfolgreich ist, genau das macht es gefährlich. Die Orders Ihres Bots werden gegenüber der Börse als manuell (<code>Y</code>) gekennzeichnet, obwohl sie von Software erzeugt wurden. Es gibt keinen Fehler, aber jede automatisierte Ausführung ist nun im Audit-Trail der CME falsch gekennzeichnet." },
+    { type: "heading", text: "2. Der Wert wird im falschen Typ gesendet" },
+    { type: "paragraph", html: "Das Tradovate-Orderschema dokumentiert <code>isAutomated</code> als Boolean. Manche HTTP-Clients, formularkodierte Anfragen oder Third-Party-Wrapper serialisieren es als Zeichenkette <code>\"true\"</code> statt als JSON-Boolean <code>true</code>. Je nachdem, wie Ihr Stack den Anfragetext aufbaut, kann ein Wert, den die API nicht als Boolean parsen kann, ignoriert werden (mit Rückfall auf <code>false</code>) oder die Anfrage zum Scheitern bringen. Senden Sie den Typ, den Ihre Bibliothek tatsächlich als JSON serialisiert, einen echten Boolean, sofern Ihre Bridge nichts anderes dokumentiert." },
+    { type: "heading", text: "3. Das Flag fehlt bei Bracket-/Strategie-Orders" },
+    { type: "paragraph", html: "Entwickler fügen <code>isAutomated</code> häufig bei einzelnen <code>placeOrder</code>-Aufrufen hinzu, vergessen es aber bei <code>placeOSO</code>- und <code>placeOrderStrategy</code>-Anfragen (OSO/OCO-Bracket). Die übergeordnete Order in einer Strategie ist weiterhin eine automatisierte Order und benötigt das Flag. Ein ohne dieses Flag gesendeter Bracket-Einstieg stellt denselben Verstoß dar wie eine nicht markierte Einzelorder." },
+    { type: "heading", text: "4. Eine Mensch-vs-Bot-Verwechslung im Codepfad" },
+    { type: "paragraph", html: "Wenn derselbe Codepfad sowohl manuelle UI-Aktionen als auch automatisierte Signale verarbeitet, ist es leicht, für beide denselben Wert fest zu codieren. Das Flag muss den tatsächlichen Ursprung <em>jeder</em> Order zum Sendezeitpunkt widerspiegeln: <code>true</code>, wenn ein Signal oder Algorithmus sie ausgelöst hat, <code>false</code> nur, wenn ein Mensch geklickt hat." },
+    { type: "heading", text: "So beheben Sie das isAutomated-Flag: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Das fehlende Flag beheben", html: "Öffnen Sie den Code, der Ihren <code>/order/placeOrder</code>-Anfragetext erstellt. Fügen Sie <code>isAutomated</code> neben den anderen Pflichtfeldern hinzu, <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code> und <code>orderType</code>. Setzen Sie den Wert auf <code>true</code> für jede Order, die Ihr Bot, Skript oder Webhook erzeugt. Lassen Sie ihn nur bei Orders auf <code>false</code>, die ein Mensch direkt auslöst. Senden Sie eine Testorder in der Demo-Umgebung erneut und bestätigen Sie, dass die Antwort eine gültige Order-ID enthält und kein Fehler ist. Ein minimaler automatisierter <code>placeOrder</code>-Body sieht so aus: <code>{ \"accountSpec\": \"YourUserName\", \"accountId\": 0, \"action\": \"Buy\", \"symbol\": \"MESU6\", \"orderQty\": 1, \"orderType\": \"Market\", \"isAutomated\": true }</code>" },
+        { title: "Den falschen Datentyp beheben", html: "Untersuchen Sie das rohe JSON, das Ihr Client sendet (protokollieren Sie den Anfragetext oder verwenden Sie die Debug-Ausgabe Ihrer Bibliothek). Bestätigen Sie, dass <code>isAutomated</code> als reiner Boolean erscheint, <code>\"isAutomated\": true</code>, und <strong class='text-white'>nicht</strong> als zitierte Zeichenkette <code>\"isAutomated\": \"true\"</code>. Wenn Ihr Framework Booleans automatisch in Anführungszeichen setzt, konvertieren Sie den Wert vor der Serialisierung explizit in einen echten Boolean oder verwenden Sie den von Ihrem API-Wrapper dokumentierten Typ. Testen Sie erneut und bestätigen Sie, dass die Order akzeptiert wird. Wenn Sie eine Bridge oder einen Drittanbieter verwenden, prüfen Sie deren Dokumentation auf den genau erwarteten Typ, einige formularkodierte Integrationen erwarten eine Zeichenkettenform, prüfen Sie dies also anhand Ihres konkreten Tools, bevor Sie etwas annehmen." },
+        { title: "Bracket- und Strategie-Orders beheben", html: "Suchen Sie Ihren <code>placeOSO</code>- oder <code>placeOrderStrategy</code>-Request-Builder. Fügen Sie <code>isAutomated: true</code> zur Einstiegs-/übergeordneten Order der Strategie hinzu, genau wie bei einer Einzelorder. Die angehängten Stop- und Target-Legs übernehmen den Strategiekontext, aber das Flag gehört zur Order, die Sie einreichen. Senden Sie ein Test-Bracket in der Demo und bestätigen Sie, dass alle Legs wie erwartet im Orders-Bericht erscheinen." },
+        { title: "Bestätigen, dass die Order akzeptiert und korrekt gekennzeichnet wurde", html: "Prüfen Sie nach dem Senden die <code>placeOrder</code>-Antwort auf eine numerische <code>orderId</code> (Erfolg) statt auf einen <code>failureReason</code>. Öffnen Sie das Orders-Modul oder fragen Sie <code>/order/list</code> ab und bestätigen Sie, dass die Order als akzeptiert/aktiv angezeigt wird, nicht als abgelehnt. Beobachten Sie bei Live-Konten die ersten automatisierten Orders genau, um sicherzustellen, dass sie nun, da das Flag gesetzt ist, sauber weitergeleitet werden." },
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Was es bedeutet", "Lösung"],
+      rows: [
+        ["isAutomated im Payload weggelassen", "Wird standardmäßig auf false gesetzt; Bot-Orders werden als manuell markiert (Tag 1028 = Y)", "isAutomated: true zu jeder automatisierten placeOrder hinzufügen"],
+        ["\"isAutomated\": \"true\" (Zeichenkette)", "Wert kann möglicherweise nicht als Boolean geparst werden; kann ignoriert oder abgelehnt werden", "Senden Sie den JSON-Boolean true, keine zitierte Zeichenkette"],
+        ["Flag fehlt bei OSO/OCO-Parent", "Bracket-Einstieg wird als nicht markierte automatisierte Order weitergeleitet", "isAutomated: true bei der übergeordneten Order der Strategie setzen"],
+        ["Gleicher Codepfad für UI und Bot", "Falscher Ursprung pro Order gemeldet", "Flag pro Order basierend auf dem tatsächlichen Ursprung zum Sendezeitpunkt setzen"],
+        ["Order markiert / Audit-Trail-Bedenken", "CME-Tag-1028-Kennzeichnung ist ungenau", "Sicherstellen, dass automatisierte Orders immer als automatisiert (N) gemeldet werden"],
+        ["Gelegentliches „Zugriff verweigert“ bei placeOrder", "Meist Authentifizierung/Konto/Symbol, nicht das Flag selbst", "Authentifizierung beheben und die numerische Konto-ID verwenden; Flag ebenfalls korrekt halten"],
+      ],
+    },
+    { type: "heading", text: "Wo PickMyTrade ins Spiel kommt" },
+    { type: "paragraph", html: "Wenn Ihnen die manuelle Pflege des rohen API-Vertrags zu fehleranfällig erscheint, verbindet PickMyTrade TradingView-Alerts direkt mit Ihrem Tradovate-Konto und übernimmt die Order-Verarbeitung für Sie:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Korrekte Automatisierungs-Kennzeichnung</strong>, aus Ihren Alerts generierte Orders werden über den richtigen automatisierten Pfad übermittelt, sodass die Börsen-Kennzeichnung erledigt wird, ohne das Flag manuell zu codieren.",
+        "<strong class='text-white'>Payload-Validierung</strong>, Symbol-, Mengen- und Ordertyp-Felder werden validiert, bevor die Order gesendet wird, wodurch Fehler abgefangen werden, die direkt neben <code>isAutomated</code> im Body stehen.",
+        "<strong class='text-white'>Rate-Limit-sicheres Routing</strong>, der Order-Fluss wird zeitlich gestaffelt, sodass Bursts die Anfragelimits von Tradovate nicht auslösen.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong>, dieselbe validierte Order wird auf all Ihre verbundenen Konten gespiegelt, statt dass Sie den Payload für jedes einzelne neu implementieren müssen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Si envía órdenes a Tradovate desde un bot, un puente de webhook o un script, un pequeño campo decide si el mercado trata su ejecución como una orden automatizada limpia o como una infracción del registro de auditoría: <code>isAutomated</code>. Si lo deja en su valor predeterminado <code>false</code>, cada orden algorítmica que envíe queda silenciosamente mal etiquetada ante CME como un clic humano. Si lo envía con el tipo de dato incorrecto, su solicitud puede rechazarse antes de llegar siquiera al motor de emparejamiento. En 2026, con el indicador Manual/Automatizado de CME exigido en cada orden, acertar con este único valor booleano ya no es opcional, y es una de las causas más comunes de que los desarrolladores vean sus órdenes automatizadas comportarse de forma extraña o quedar marcadas. A continuación se explica exactamente qué hace el indicador, por qué existe y cómo configurarlo para que su bot opere sin rechazos." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para el indicador isAutomated",
+      items: [
+        "<strong class='text-white'>¿Un bot, script o webhook envía la orden?</strong> Establezca <code>isAutomated: true</code> en cada llamada a <code>/order/placeOrder</code>.",
+        "<strong class='text-white'>¿Un humano hace clic en un botón de su propia interfaz?</strong> <code>isAutomated</code> permanece en <code>false</code> (el valor predeterminado).",
+        "<strong class='text-white'>¿Envía el valor con el tipo correcto?</strong> El esquema lo define como booleano <code>true</code>, no como la cadena <code>\"true\"</code>, compruebe lo que su cliente HTTP realmente serializa.",
+        "<strong class='text-white'>¿Utiliza una estrategia bracket/OSO?</strong> Aplique el indicador también a la orden principal en <code>placeOSO</code>/<code>placeOrderStrategy</code>, no solo a las órdenes individuales.",
+        "<strong class='text-white'>¿Ve rechazos extraños o “acceso denegado”?</strong> Confirme el indicador y su tipo antes de culpar a la autenticación, el símbolo o la configuración de riesgo.",
+        "<strong class='text-white'>¿No está seguro de quién “posee” la orden?</strong> Si ningún humano la activó físicamente en tiempo real, es automatizada. Márquela como tal.",
+      ],
+    },
+    { type: "heading", text: "Qué significa realmente el indicador isAutomated" },
+    { type: "paragraph", html: "<code>isAutomated</code> es un campo booleano en el cuerpo de la solicitud <code>placeOrder</code> de Tradovate. Indica a Tradovate, y a través de Tradovate al motor de emparejamiento de CME Globex, si una persona real inició físicamente la orden o si fue generada por software. Si omite el campo, Tradovate lo trata como <code>false</code>, lo cual solo es correcto para una orden que un humano colocó haciendo clic en una interfaz." },
+    { type: "paragraph", html: "En el momento en que un algoritmo, un bot de trading, un webhook de TradingView o cualquier proceso impersonal genera la orden, ese valor predeterminado es incorrecto. El indicador debe establecerse para las órdenes colocadas por un algoritmo automatizado, a diferencia de las iniciadas manualmente mediante un clic. Establecer <code>isAutomated: true</code> es lo que hace que su solicitud se asigne a la designación correcta del mercado." },
+    { type: "paragraph", html: "Esto no es una preferencia de Tradovate, sino una norma del mercado. Desde el 5 de junio de 2011, CME Group exige que toda orden introducida en Globex identifique si se introdujo por medios manuales o automatizados, indicado en el <strong class='text-white'>Tag 1028 (Manual Order Indicator)</strong> de FIX. El 8 de octubre de 2012, ese requisito se codificó en la <strong class='text-white'>Rule 536.B</strong> de cada mercado. Los valores permitidos son estrictos: las órdenes manuales envían <code>Y</code>, las órdenes automatizadas envían <code>N</code>, y no se permite ningún otro valor. Su <code>isAutomated: true</code> es lo que hace que Tradovate marque su orden como automatizada (<code>N</code>) en la transmisión. El envío inexacto de ese indicador es una infracción del registro de auditoría que puede dar lugar a medidas disciplinarias conforme a la CME Rule 512." },
+    { type: "heading", text: "Causas principales de un indicador isAutomated ausente o incorrecto" },
+    { type: "heading", text: "1. El campo simplemente se omite" },
+    { type: "paragraph", html: "La causa más común es omitir por completo <code>isAutomated</code> del payload. Tradovate lo establece por defecto en <code>false</code>, por lo que la solicitud sigue teniendo éxito, y precisamente por eso es peligroso. Las órdenes de su bot se enrutan al mercado etiquetadas como manuales (<code>Y</code>), aunque las haya generado un software. No se produce ningún error, pero cada ejecución automatizada queda ahora mal etiquetada en el registro de auditoría de CME." },
+    { type: "heading", text: "2. El valor se envía con el tipo incorrecto" },
+    { type: "paragraph", html: "El esquema de órdenes de Tradovate documenta <code>isAutomated</code> como booleano. Algunos clientes HTTP, solicitudes con codificación de formulario o wrappers de terceros lo serializan como la cadena <code>\"true\"</code> en lugar del booleano JSON <code>true</code>. Según cómo su stack construya el cuerpo de la solicitud, un valor que la API no pueda interpretar como booleano puede ser ignorado (volviendo a <code>false</code>) o provocar que la solicitud falle. Envíe el tipo que su librería realmente serializa a JSON, un booleano real, salvo que su puente documente lo contrario." },
+    { type: "heading", text: "3. El indicador falta en las órdenes bracket/estrategia" },
+    { type: "paragraph", html: "Los desarrolladores suelen añadir <code>isAutomated</code> en llamadas individuales a <code>placeOrder</code>, pero lo olvidan en las solicitudes <code>placeOSO</code> y <code>placeOrderStrategy</code> (bracket OSO/OCO). La orden principal de una estrategia sigue siendo una orden automatizada y necesita el indicador. Una entrada bracket enviada sin él supone la misma infracción que una orden individual sin marcar." },
+    { type: "heading", text: "4. Una confusión entre humano y bot en el flujo de código" },
+    { type: "paragraph", html: "Si el mismo flujo de código gestiona tanto acciones manuales de la interfaz como señales automatizadas, es fácil codificar un único valor fijo para ambos casos. El indicador debe reflejar el verdadero origen de <em>cada</em> orden en el momento del envío: <code>true</code> cuando una señal o un algoritmo la disparó, <code>false</code> solo cuando una persona hizo clic." },
+    { type: "heading", text: "Cómo corregir el indicador isAutomated: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Corregir el indicador ausente", html: "Abra el código que construye el cuerpo de su solicitud <code>/order/placeOrder</code>. Añada <code>isAutomated</code> junto a los demás campos obligatorios, <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code> y <code>orderType</code>. Establezca el valor en <code>true</code> para cualquier orden que genere su bot, script o webhook. Déjelo en <code>false</code> únicamente en las órdenes que un humano activa directamente. Reenvíe una orden de prueba en el entorno demo y confirme que la respuesta es un id de orden válido y no un error. Un cuerpo <code>placeOrder</code> automatizado mínimo se ve así: <code>{ \"accountSpec\": \"YourUserName\", \"accountId\": 0, \"action\": \"Buy\", \"symbol\": \"MESU6\", \"orderQty\": 1, \"orderType\": \"Market\", \"isAutomated\": true }</code>" },
+        { title: "Corregir el tipo de dato incorrecto", html: "Inspeccione el JSON en bruto que envía su cliente (registre el cuerpo de la solicitud o use la salida de depuración de su librería). Confirme que <code>isAutomated</code> aparece como un booleano simple, <code>\"isAutomated\": true</code>, y <strong class='text-white'>no</strong> como una cadena entre comillas <code>\"isAutomated\": \"true\"</code>. Si su framework entrecomilla automáticamente los booleanos, convierta el valor explícitamente a un booleano real antes de serializar, o use el tipo que documenta su wrapper de API. Vuelva a probar y verifique que la orden se acepta. Si utiliza un puente o un tercero, consulte su documentación para conocer el tipo exacto esperado; algunas integraciones con codificación de formulario esperan una forma de cadena, así que confírmelo con su herramienta específica antes de asumirlo." },
+        { title: "Corregir órdenes bracket y de estrategia", html: "Localice su generador de solicitudes <code>placeOSO</code> o <code>placeOrderStrategy</code>. Añada <code>isAutomated: true</code> a la orden de entrada/principal de la estrategia, exactamente igual que haría con una orden individual. Los tramos de stop y target adjuntos heredan el contexto de la estrategia, pero el indicador corresponde a la orden que envía. Envíe un bracket de prueba en demo y confirme que todos los tramos aparecen en el informe de órdenes tal como se espera." },
+        { title: "Confirmar que la orden fue aceptada y etiquetada correctamente", html: "Después de enviar, compruebe en la respuesta de <code>placeOrder</code> un <code>orderId</code> numérico (éxito) en lugar de un <code>failureReason</code>. Abra el módulo de órdenes o consulte <code>/order/list</code> y confirme que la orden aparece como aceptada/en curso, no rechazada. En cuentas reales, vigile de cerca las primeras órdenes automatizadas para asegurarse de que se enrutan correctamente ahora que el indicador está configurado." },
+      ],
+    },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Qué significa", "Solución"],
+      rows: [
+        ["isAutomated omitido del payload", "Por defecto es false; las órdenes del bot se etiquetan como manuales (Tag 1028 = Y)", "Añada isAutomated: true a cada placeOrder automatizada"],
+        ["\"isAutomated\": \"true\" (cadena)", "El valor puede no interpretarse como booleano; puede ser ignorado o rechazado", "Envíe el booleano JSON true, no una cadena entre comillas"],
+        ["Falta el indicador en el padre OSO/OCO", "La entrada bracket se enruta como una orden automatizada sin marcar", "Establezca isAutomated: true en la orden principal de la estrategia"],
+        ["Mismo flujo de código para UI y bot", "Se reporta un origen incorrecto por orden", "Establezca el indicador por orden según el origen real en el momento del envío"],
+        ["Orden marcada / preocupación de auditoría", "La designación CME Tag 1028 es inexacta", "Asegúrese de que las órdenes automatizadas siempre se reporten como automatizadas (N)"],
+        ["\"Acceso denegado\" intermitente en placeOrder", "Normalmente autenticación/cuenta/símbolo, no el indicador en sí", "Corrija la autenticación y use el id numérico de la cuenta; mantenga también el indicador correcto"],
+      ],
+    },
+    { type: "heading", text: "Dónde encaja PickMyTrade" },
+    { type: "paragraph", html: "Si mantener el contrato de API en bruto a mano le resulta frágil, PickMyTrade conecta las alertas de TradingView directamente con su cuenta de Tradovate y se encarga de la gestión de las órdenes por usted:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Etiquetado de automatización correcto</strong>, las órdenes generadas a partir de sus alertas se envían a través de la vía automatizada adecuada, de modo que la designación del mercado se gestiona sin codificar manualmente el indicador.",
+        "<strong class='text-white'>Validación del payload</strong>, los campos de símbolo, cantidad y tipo de orden se validan antes de enviar la orden, detectando los errores que se sitúan justo al lado de <code>isAutomated</code> en el cuerpo.",
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de tasa</strong>, el flujo de órdenes se espacia para que las ráfagas no activen los límites de solicitud de Tradovate.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, la misma orden validada se replica en todas sus cuentas conectadas en lugar de que usted tenga que reimplementar el payload para cada una.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Lorsque vous envoyez des ordres à Tradovate depuis un bot, un pont de webhook ou un script, un petit champ détermine si la bourse considère votre exécution comme un ordre automatisé conforme ou comme une infraction à la piste d'audit : <code>isAutomated</code>. Si vous le laissez à sa valeur par défaut <code>false</code>, chaque ordre algorithmique que vous envoyez est silencieusement mal étiqueté auprès du CME comme un clic humain. Si vous l'envoyez avec le mauvais type de donnée, votre requête peut être rejetée avant même d'atteindre le moteur d'appariement. En 2026, avec l'indicateur Manuel/Automatisé du CME appliqué à chaque ordre, obtenir ce booléen correctement n'est plus optionnel, et c'est l'une des raisons les plus courantes pour lesquelles les développeurs voient leurs ordres automatisés se comporter étrangement ou être signalés. Voici exactement ce que fait cet indicateur, pourquoi il existe, et comment le configurer pour que votre bot trade sans rejet." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour l'indicateur isAutomated",
+      items: [
+        "<strong class='text-white'>Un bot, un script ou un webhook envoie-t-il l'ordre ?</strong> Définissez <code>isAutomated: true</code> sur chaque appel à <code>/order/placeOrder</code>.",
+        "<strong class='text-white'>Un humain clique-t-il sur un bouton dans votre propre interface ?</strong> <code>isAutomated</code> reste sur <code>false</code> (la valeur par défaut).",
+        "<strong class='text-white'>Envoyez-vous la valeur avec le bon type ?</strong> Le schéma la définit comme un booléen <code>true</code>, pas comme la chaîne <code>\"true\"</code>, vérifiez ce que votre client HTTP sérialise réellement.",
+        "<strong class='text-white'>Utilisez-vous une stratégie bracket/OSO ?</strong> Appliquez également l'indicateur à l'ordre parent dans <code>placeOSO</code>/<code>placeOrderStrategy</code>, pas seulement aux ordres uniques.",
+        "<strong class='text-white'>Vous constatez des rejets étranges ou « accès refusé » ?</strong> Vérifiez l'indicateur et son type avant de blâmer l'authentification, le symbole ou les paramètres de risque.",
+        "<strong class='text-white'>Vous ne savez pas qui « possède » l'ordre ?</strong> Si aucun humain ne l'a déclenché physiquement en temps réel, il est automatisé. Signalez-le comme tel.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie réellement l'indicateur isAutomated" },
+    { type: "paragraph", html: "<code>isAutomated</code> est un champ booléen dans le corps de la requête <code>placeOrder</code> de Tradovate. Il indique à Tradovate, et via Tradovate au moteur d'appariement CME Globex, si une personne réelle a physiquement déclenché l'ordre ou si un logiciel l'a généré. Si vous omettez le champ, Tradovate le traite comme <code>false</code>, ce qui n'est correct que pour un ordre qu'un humain a passé en cliquant dans une interface." },
+    { type: "paragraph", html: "Dès qu'un algorithme, un bot de trading, un webhook TradingView ou tout processus impersonnel génère l'ordre, cette valeur par défaut est incorrecte. L'indicateur doit être défini pour les ordres passés par un algorithme automatisé, par opposition à ceux déclenchés manuellement par un clic. Définir <code>isAutomated: true</code> est ce qui permet à votre requête d'être associée à la désignation correcte de la bourse." },
+    { type: "paragraph", html: "Ce n'est pas une préférence de Tradovate, c'est une règle de la bourse. Depuis le 5 juin 2011, CME Group exige que chaque ordre saisi dans Globex indique s'il a été saisi par des moyens manuels ou automatisés, transmis dans le <strong class='text-white'>Tag 1028 (Manual Order Indicator)</strong> FIX. Le 8 octobre 2012, cette exigence a été codifiée dans la <strong class='text-white'>Rule 536.B</strong> de chaque bourse. Les valeurs autorisées sont strictes : les ordres manuels envoient <code>Y</code>, les ordres automatisés envoient <code>N</code>, et aucune autre valeur n'est permise. Votre <code>isAutomated: true</code> est ce qui fait que Tradovate marque votre ordre comme automatisé (<code>N</code>) sur le fil. Une transmission inexacte de cet indicateur constitue une infraction à la piste d'audit pouvant entraîner des mesures disciplinaires en vertu de la CME Rule 512." },
+    { type: "heading", text: "Principales causes d'un indicateur isAutomated manquant ou incorrect" },
+    { type: "heading", text: "1. Le champ est tout simplement omis" },
+    { type: "paragraph", html: "La cause la plus fréquente consiste à omettre entièrement <code>isAutomated</code> du payload. Tradovate le définit par défaut sur <code>false</code>, de sorte que la requête aboutit quand même, ce qui est précisément ce qui rend cela dangereux. Les ordres de votre bot sont acheminés vers la bourse en étant étiquetés comme manuels (<code>Y</code>), alors qu'ils ont été générés par un logiciel. Rien ne génère d'erreur, mais chaque exécution automatisée est désormais mal étiquetée dans la piste d'audit du CME." },
+    { type: "heading", text: "2. La valeur est envoyée avec le mauvais type" },
+    { type: "paragraph", html: "Le schéma des ordres de Tradovate documente <code>isAutomated</code> comme un booléen. Certains clients HTTP, requêtes encodées en formulaire ou wrappers tiers le sérialisent comme la chaîne <code>\"true\"</code> au lieu du booléen JSON <code>true</code>. Selon la façon dont votre pile construit le corps de la requête, une valeur que l'API ne peut pas interpréter comme un booléen peut être ignorée (revenant à <code>false</code>) ou faire échouer la requête. Envoyez le type que votre bibliothèque sérialise réellement en JSON, un véritable booléen, sauf indication contraire dans la documentation de votre pont." },
+    { type: "heading", text: "3. L'indicateur est manquant sur les ordres bracket/stratégie" },
+    { type: "paragraph", html: "Les développeurs ajoutent souvent <code>isAutomated</code> aux appels <code>placeOrder</code> uniques, mais l'oublient sur les requêtes <code>placeOSO</code> et <code>placeOrderStrategy</code> (bracket OSO/OCO). L'ordre parent d'une stratégie reste un ordre automatisé et nécessite l'indicateur. Une entrée bracket envoyée sans lui constitue la même infraction qu'un ordre unique non marqué." },
+    { type: "heading", text: "4. Une confusion humain / bot dans le chemin de code" },
+    { type: "paragraph", html: "Si le même chemin de code gère à la fois les actions manuelles de l'interface et les signaux automatisés, il est facile de coder en dur une seule valeur pour les deux. L'indicateur doit refléter la véritable origine de <em>chaque</em> ordre au moment de l'envoi : <code>true</code> lorsqu'un signal ou un algorithme l'a déclenché, <code>false</code> uniquement lorsqu'une personne a cliqué." },
+    { type: "heading", text: "Comment corriger l'indicateur isAutomated : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Corriger l'indicateur manquant", html: "Ouvrez le code qui construit le corps de votre requête <code>/order/placeOrder</code>. Ajoutez <code>isAutomated</code> aux côtés des autres champs requis, <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code> et <code>orderType</code>. Définissez la valeur sur <code>true</code> pour tout ordre généré par votre bot, script ou webhook. Laissez-la sur <code>false</code> uniquement pour les ordres qu'un humain déclenche directement. Renvoyez un ordre de test dans l'environnement de démonstration et vérifiez que la réponse contient un identifiant d'ordre valide, et non une erreur. Un corps <code>placeOrder</code> automatisé minimal ressemble à ceci : <code>{ \"accountSpec\": \"YourUserName\", \"accountId\": 0, \"action\": \"Buy\", \"symbol\": \"MESU6\", \"orderQty\": 1, \"orderType\": \"Market\", \"isAutomated\": true }</code>" },
+        { title: "Corriger le mauvais type de donnée", html: "Examinez le JSON brut envoyé par votre client (enregistrez le corps de la requête ou utilisez la sortie de débogage de votre bibliothèque). Vérifiez que <code>isAutomated</code> apparaît comme un booléen simple, <code>\"isAutomated\": true</code>, et <strong class='text-white'>non</strong> comme une chaîne entre guillemets <code>\"isAutomated\": \"true\"</code>. Si votre framework met automatiquement les booléens entre guillemets, convertissez explicitement la valeur en un véritable booléen avant la sérialisation, ou utilisez le type documenté par votre wrapper d'API. Retestez et vérifiez que l'ordre est accepté. Si vous utilisez un pont ou un tiers, consultez sa documentation pour connaître le type exact attendu, certaines intégrations encodées en formulaire attendent une chaîne, alors vérifiez auprès de votre outil spécifique avant de présumer." },
+        { title: "Corriger les ordres bracket et stratégie", html: "Repérez votre générateur de requête <code>placeOSO</code> ou <code>placeOrderStrategy</code>. Ajoutez <code>isAutomated: true</code> à l'ordre d'entrée/parent de la stratégie, exactement comme vous le feriez pour un ordre unique. Les jambes de stop et de target rattachées héritent du contexte de la stratégie, mais l'indicateur appartient à l'ordre que vous soumettez. Envoyez un bracket de test en démo et vérifiez que toutes les jambes apparaissent comme prévu dans le rapport des ordres." },
+        { title: "Vérifier que l'ordre a été accepté et correctement étiqueté", html: "Après l'envoi, vérifiez dans la réponse de <code>placeOrder</code> la présence d'un <code>orderId</code> numérique (succès) plutôt que d'un <code>failureReason</code>. Ouvrez le module Ordres ou interrogez <code>/order/list</code> et confirmez que l'ordre apparaît comme accepté/en cours, et non rejeté. Sur les comptes réels, surveillez attentivement les premiers ordres automatisés pour vous assurer qu'ils sont désormais correctement acheminés maintenant que l'indicateur est défini." },
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Ce que cela signifie", "Correction"],
+      rows: [
+        ["isAutomated omis du payload", "Revient par défaut à false ; les ordres du bot sont étiquetés manuels (Tag 1028 = Y)", "Ajoutez isAutomated: true à chaque placeOrder automatisé"],
+        ["\"isAutomated\": \"true\" (chaîne)", "La valeur peut ne pas être interprétée comme un booléen ; peut être ignorée ou rejetée", "Envoyez le booléen JSON true, pas une chaîne entre guillemets"],
+        ["Indicateur manquant sur le parent OSO/OCO", "L'entrée bracket est acheminée comme un ordre automatisé non marqué", "Définissez isAutomated: true sur l'ordre parent de la stratégie"],
+        ["Même chemin de code pour l'UI et le bot", "Origine incorrecte signalée par ordre", "Définissez l'indicateur par ordre selon l'origine réelle au moment de l'envoi"],
+        ["Ordre signalé / problème de piste d'audit", "La désignation CME Tag 1028 est inexacte", "Assurez-vous que les ordres automatisés soient toujours signalés comme automatisés (N)"],
+        ["« Accès refusé » intermittent sur placeOrder", "Généralement lié à l'authentification/au compte/au symbole, pas à l'indicateur lui-même", "Corrigez l'authentification et utilisez l'identifiant de compte numérique ; gardez également l'indicateur correct"],
+      ],
+    },
+    { type: "heading", text: "Où PickMyTrade s'intègre" },
+    { type: "paragraph", html: "Si maintenir le contrat d'API brut à la main vous semble fragile, PickMyTrade relie directement les alertes TradingView à votre compte Tradovate et gère la tuyauterie des ordres pour vous :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Étiquetage d'automatisation correct</strong>, les ordres générés à partir de vos alertes sont soumis via le bon canal automatisé, de sorte que la désignation de la bourse est gérée sans coder l'indicateur à la main.",
+        "<strong class='text-white'>Validation du payload</strong>, les champs symbole, quantité et type d'ordre sont validés avant l'envoi de l'ordre, ce qui permet de détecter les erreurs situées juste à côté de <code>isAutomated</code> dans le corps.",
+        "<strong class='text-white'>Routage sûr vis-à-vis des limites de débit</strong>, le flux d'ordres est espacé pour que les rafales ne déclenchent pas les limites de requêtes de Tradovate.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, le même ordre validé est répliqué sur l'ensemble de vos comptes connectés au lieu que vous ayez à réimplémenter le payload pour chacun.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Instradando ordini verso Tradovate da un bot, un bridge webhook o uno script, un piccolo campo decide se la borsa tratta la vostra esecuzione come un ordine automatizzato corretto oppure come una violazione dell'audit trail: <code>isAutomated</code>. Lasciandolo al suo valore predefinito <code>false</code>, ogni ordine algoritmico che inviate viene silenziosamente etichettato in modo errato presso il CME come un clic umano. Inviandolo con il tipo di dato sbagliato, la richiesta può essere respinta prima ancora di raggiungere il matching engine. Nel 2026, con l'indicatore Manuale/Automatizzato del CME applicato a ogni singolo ordine, impostare correttamente questo booleano non è più facoltativo, ed è uno dei motivi più comuni per cui gli sviluppatori vedono i propri ordini automatizzati comportarsi in modo strano o venire segnalati. Ecco esattamente cosa fa il flag, perché esiste e come impostarlo affinché il vostro bot operi senza rifiuti." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per il flag isAutomated",
+      items: [
+        "<strong class='text-white'>È un bot, uno script o un webhook a inviare l'ordine?</strong> Impostate <code>isAutomated: true</code> su ogni chiamata a <code>/order/placeOrder</code>.",
+        "<strong class='text-white'>È una persona a cliccare un pulsante nella vostra interfaccia?</strong> <code>isAutomated</code> resta su <code>false</code> (il valore predefinito).",
+        "<strong class='text-white'>State inviando il valore con il tipo corretto?</strong> Lo schema lo definisce come booleano <code>true</code>, non come stringa <code>\"true\"</code>, verificate cosa serializza realmente il vostro client HTTP.",
+        "<strong class='text-white'>State usando una strategia bracket/OSO?</strong> Applicate il flag anche all'ordine principale in <code>placeOSO</code>/<code>placeOrderStrategy</code>, non solo agli ordini singoli.",
+        "<strong class='text-white'>Notate rifiuti anomali o “accesso negato”?</strong> Verificate prima il flag e il suo tipo, prima di dare la colpa ad autenticazione, simbolo o impostazioni di rischio.",
+        "<strong class='text-white'>Non siete sicuri di chi “possiede” l'ordine?</strong> Se nessuna persona lo ha attivato fisicamente in tempo reale, è automatizzato. Contrassegnatelo come tale.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa davvero il flag isAutomated" },
+    { type: "paragraph", html: "<code>isAutomated</code> è un campo booleano nel corpo della richiesta <code>placeOrder</code> di Tradovate. Indica a Tradovate, e tramite Tradovate al matching engine di CME Globex, se una persona reale ha avviato fisicamente l'ordine oppure se è stato generato da un software. Se il campo viene omesso, Tradovate lo tratta come <code>false</code>, il che è corretto solo per un ordine inserito da una persona che ha cliccato in un front-end." },
+    { type: "paragraph", html: "Nel momento in cui un algoritmo, un trading bot, un webhook di TradingView o qualsiasi processo impersonale genera l'ordine, quel valore predefinito è sbagliato. Il flag deve essere impostato per gli ordini inseriti da un algoritmo automatizzato, a differenza di quelli avviati manualmente con un clic. Impostare <code>isAutomated: true</code> è ciò che fa sì che la vostra richiesta venga associata alla designazione corretta della borsa." },
+    { type: "paragraph", html: "Non si tratta di una preferenza di Tradovate, ma di una regola della borsa. Dal 5 giugno 2011, il CME Group richiede che ogni ordine inserito in Globex indichi se è stato inserito con modalità manuale o automatizzata, riportato nel <strong class='text-white'>Tag 1028 (Manual Order Indicator)</strong> FIX. L'8 ottobre 2012, tale obbligo è stato codificato nella <strong class='text-white'>Rule 536.B</strong> di ciascuna borsa. I valori ammessi sono rigidi: gli ordini manuali inviano <code>Y</code>, gli ordini automatizzati inviano <code>N</code>, e nessun altro valore è consentito. Il vostro <code>isAutomated: true</code> è ciò che fa sì che Tradovate contrassegni il vostro ordine come automatizzato (<code>N</code>) sulla linea. Una trasmissione imprecisa di questo indicatore costituisce una violazione dell'audit trail che può comportare provvedimenti disciplinari ai sensi della CME Rule 512." },
+    { type: "heading", text: "Le cause principali di un flag isAutomated mancante o errato" },
+    { type: "heading", text: "1. Il campo viene semplicemente omesso" },
+    { type: "paragraph", html: "La causa più comune è omettere del tutto <code>isAutomated</code> dal payload. Tradovate lo imposta per default su <code>false</code>, quindi la richiesta ha comunque successo, ed è proprio per questo che è pericoloso. Gli ordini del vostro bot vengono instradati alla borsa etichettati come manuali (<code>Y</code>), anche se sono stati generati da un software. Non compare alcun errore, ma ogni esecuzione automatizzata risulta ora etichettata in modo errato nell'audit trail del CME." },
+    { type: "heading", text: "2. Il valore viene inviato con il tipo sbagliato" },
+    { type: "paragraph", html: "Lo schema degli ordini di Tradovate documenta <code>isAutomated</code> come booleano. Alcuni client HTTP, richieste con codifica form o wrapper di terze parti lo serializzano come stringa <code>\"true\"</code> anziché come booleano JSON <code>true</code>. A seconda di come il vostro stack costruisce il corpo della richiesta, un valore che l'API non riesce a interpretare come booleano può essere ignorato (tornando a <code>false</code>) oppure far fallire la richiesta. Inviate il tipo che la vostra libreria serializza effettivamente in JSON, un booleano vero, a meno che il vostro bridge non documenti diversamente." },
+    { type: "heading", text: "3. Il flag manca sugli ordini bracket/strategia" },
+    { type: "paragraph", html: "Gli sviluppatori spesso aggiungono <code>isAutomated</code> alle singole chiamate <code>placeOrder</code> ma lo dimenticano nelle richieste <code>placeOSO</code> e <code>placeOrderStrategy</code> (bracket OSO/OCO). L'ordine principale in una strategia resta comunque un ordine automatizzato e necessita del flag. Un ingresso bracket inviato senza di esso costituisce la stessa violazione di un ordine singolo non contrassegnato." },
+    { type: "heading", text: "4. Una confusione tra umano e bot nel percorso del codice" },
+    { type: "paragraph", html: "Se lo stesso percorso di codice gestisce sia le azioni manuali dell'interfaccia sia i segnali automatizzati, è facile impostare un valore fisso per entrambi. Il flag deve riflettere la vera origine di <em>ogni</em> ordine al momento dell'invio: <code>true</code> quando un segnale o un algoritmo lo ha generato, <code>false</code> solo quando una persona ha cliccato." },
+    { type: "heading", text: "Come correggere il flag isAutomated: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Correggere il flag mancante", html: "Aprite il codice che costruisce il corpo della richiesta <code>/order/placeOrder</code>. Aggiungete <code>isAutomated</code> accanto agli altri campi obbligatori, <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code> e <code>orderType</code>. Impostate il valore su <code>true</code> per qualsiasi ordine generato dal vostro bot, script o webhook. Lasciatelo su <code>false</code> solo per gli ordini attivati direttamente da una persona. Reinviate un ordine di prova nell'ambiente demo e confermate che la risposta sia un id ordine valido e non un errore. Un corpo <code>placeOrder</code> automatizzato minimo è simile a questo: <code>{ \"accountSpec\": \"YourUserName\", \"accountId\": 0, \"action\": \"Buy\", \"symbol\": \"MESU6\", \"orderQty\": 1, \"orderType\": \"Market\", \"isAutomated\": true }</code>" },
+        { title: "Correggere il tipo di dato sbagliato", html: "Ispezionate il JSON grezzo inviato dal vostro client (registrate il corpo della richiesta o usate l'output di debug della vostra libreria). Confermate che <code>isAutomated</code> compaia come booleano puro, <code>\"isAutomated\": true</code>, e <strong class='text-white'>non</strong> come stringa tra virgolette <code>\"isAutomated\": \"true\"</code>. Se il vostro framework racchiude automaticamente i booleani tra virgolette, convertite esplicitamente il valore in un booleano reale prima della serializzazione, oppure usate il tipo documentato dal vostro wrapper API. Ripetete il test e verificate che l'ordine venga accettato. Se utilizzate un bridge o terze parti, controllate la loro documentazione per il tipo esatto atteso, alcune integrazioni con codifica form si aspettano una forma stringa, quindi verificate con il vostro strumento specifico prima di dare per scontato." },
+        { title: "Correggere gli ordini bracket e strategia", html: "Individuate il vostro generatore di richieste <code>placeOSO</code> o <code>placeOrderStrategy</code>. Aggiungete <code>isAutomated: true</code> all'ordine di ingresso/principale della strategia, esattamente come fareste per un ordine singolo. Le gambe di stop e target collegate ereditano il contesto della strategia, ma il flag appartiene all'ordine che inviate. Inviate un bracket di prova in demo e confermate che tutte le gambe compaiano come previsto nel report degli ordini." },
+        { title: "Confermare che l'ordine sia stato accettato e correttamente contrassegnato", html: "Dopo l'invio, controllate nella risposta di <code>placeOrder</code> la presenza di un <code>orderId</code> numerico (successo) anziché di un <code>failureReason</code>. Aprite il modulo Ordini oppure interrogate <code>/order/list</code> e confermate che l'ordine risulti accettato/attivo, non rifiutato. Per i conti live, monitorate attentamente i primi ordini automatizzati per assicurarvi che ora, con il flag impostato, vengano instradati correttamente." },
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Cosa significa", "Soluzione"],
+      rows: [
+        ["isAutomated omesso dal payload", "Torna per default a false; gli ordini del bot vengono etichettati come manuali (Tag 1028 = Y)", "Aggiungete isAutomated: true a ogni placeOrder automatizzato"],
+        ["\"isAutomated\": \"true\" (stringa)", "Il valore potrebbe non essere interpretato come booleano; può essere ignorato o rifiutato", "Inviate il booleano JSON true, non una stringa tra virgolette"],
+        ["Flag mancante sul parent OSO/OCO", "L'ingresso bracket viene instradato come ordine automatizzato non contrassegnato", "Impostate isAutomated: true sull'ordine principale della strategia"],
+        ["Stesso percorso di codice per UI e bot", "Origine errata segnalata per ordine", "Impostate il flag per ogni ordine in base all'origine reale al momento dell'invio"],
+        ["Ordine segnalato / problema di audit trail", "La designazione CME Tag 1028 non è accurata", "Assicuratevi che gli ordini automatizzati vengano sempre segnalati come automatizzati (N)"],
+        ["“Accesso negato” intermittente su placeOrder", "Di solito autenticazione/account/simbolo, non il flag in sé", "Correggete l'autenticazione e usate l'id numerico dell'account; mantenete corretto anche il flag"],
+      ],
+    },
+    { type: "heading", text: "Dove si inserisce PickMyTrade" },
+    { type: "paragraph", html: "Se mantenere manualmente il contratto API grezzo vi sembra fragile, PickMyTrade collega gli avvisi di TradingView direttamente al vostro account Tradovate e gestisce per voi l'intera gestione degli ordini:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Etichettatura di automazione corretta</strong>, gli ordini generati dai vostri avvisi vengono inviati attraverso il percorso automatizzato corretto, così la designazione della borsa viene gestita senza dover codificare manualmente il flag.",
+        "<strong class='text-white'>Validazione del payload</strong>, i campi simbolo, quantità e tipo di ordine vengono validati prima dell'invio dell'ordine, individuando gli errori che si trovano proprio accanto a <code>isAutomated</code> nel body.",
+        "<strong class='text-white'>Instradamento sicuro rispetto ai rate limit</strong>, il flusso degli ordini viene distribuito nel tempo affinché le raffiche non superino i limiti di richiesta di Tradovate.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, lo stesso ordine validato viene replicato su tutti i vostri account collegati invece di dover reimplementare il payload per ciascuno.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Ablehnungsfrei handeln", es: "Opere sin rechazos", fr: "Tradez sans rejet", it: "Fate trading senza rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link alerts today and trade rejection-free.", de: "Starten Sie Ihre kostenlose 5-tägige Testversion, verknüpfen Sie noch heute Ihre Alerts und handeln Sie ablehnungsfrei.", es: "Comience su prueba gratuita de 5 días, conecte sus alertas hoy mismo y opere sin rechazos.", fr: "Démarrez votre essai gratuit de 5 jours, connectez vos alertes dès aujourd'hui et tradez sans rejet.", it: "Iniziate la vostra prova gratuita di 5 giorni, collegate oggi stesso i vostri avvisi e fate trading senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Iniziate la vostra prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does isAutomated do in the Tradovate API?", a: "It's a boolean in the placeOrder request body that reports whether a human or software generated the order. It maps to CME's FIX Tag 1028 Manual Order Indicator, so the exchange knows the order was automated." },
+    { q: "What happens if I don't set isAutomated for a bot order?", a: "The field defaults to false, so your automated order is tagged to CME as manually entered. That's an inaccurate audit-trail designation, which under CME Rule 536.B and Rule 512 can lead to disciplinary action." },
+    { q: "Should isAutomated be true or false?", a: "Use true for any order a bot, algorithm, script, or webhook generates. Use false only for orders a person physically triggers in real time." },
+    { q: "Is isAutomated a boolean or a string?", a: "The Tradovate order schema defines it as a boolean, so send true (not \"true\"). If you use a third-party bridge or form-encoded client, confirm the exact type it expects, since serialization can differ between tools." },
+    { q: "Does isAutomated apply to bracket (OSO/OCO) orders too?", a: "Yes. Set the flag on the parent/entry order of your placeOSO or placeOrderStrategy request, just as you would for a single order." },
+    { q: "Does a missing isAutomated flag cause an immediate order rejection?", a: "Not always. Because it defaults to false, many requests succeed but are mistagged. The bigger risk is a compliance and audit-trail violation. Sending the value as a type the API can't parse, however, can cause the request itself to fail." },
+    { q: "Why does CME care whether an order is automated?", a: "Since 2011, CME has required every Globex order to identify manual (Y) versus automated (N) entry for surveillance and audit-trail purposes. It was codified into Rule 536.B in 2012, and only Y or N are valid." },
+    { q: "I set the flag correctly but still get \"access is denied\", why?", a: "That error is usually about authentication, the account id, or the symbol rather than isAutomated. Keep the flag correct, but troubleshoot auth and account access separately." },
+  ], de: [
+    { q: "Was bewirkt isAutomated in der Tradovate-API?", a: "Es ist ein Boolean im placeOrder-Anfragetext, der angibt, ob ein Mensch oder eine Software die Order erzeugt hat. Es wird dem FIX-Tag-1028-Manual-Order-Indicator der CME zugeordnet, sodass die Börse weiß, dass die Order automatisiert war." },
+    { q: "Was passiert, wenn ich isAutomated bei einer Bot-Order nicht setze?", a: "Das Feld wird standardmäßig auf false gesetzt, sodass Ihre automatisierte Order gegenüber der CME als manuell eingegeben gekennzeichnet wird. Das ist eine ungenaue Audit-Trail-Kennzeichnung, die gemäß CME Rule 536.B und Rule 512 zu disziplinarischen Maßnahmen führen kann." },
+    { q: "Sollte isAutomated true oder false sein?", a: "Verwenden Sie true für jede Order, die ein Bot, Algorithmus, Skript oder Webhook erzeugt. Verwenden Sie false nur für Orders, die eine Person in Echtzeit physisch auslöst." },
+    { q: "Ist isAutomated ein Boolean oder eine Zeichenkette?", a: "Das Tradovate-Orderschema definiert es als Boolean, senden Sie also true (nicht \"true\"). Wenn Sie eine Bridge eines Drittanbieters oder einen formularkodierten Client verwenden, prüfen Sie den genau erwarteten Typ, da sich die Serialisierung zwischen Tools unterscheiden kann." },
+    { q: "Gilt isAutomated auch für Bracket-Orders (OSO/OCO)?", a: "Ja. Setzen Sie das Flag bei der übergeordneten/Einstiegs-Order Ihrer placeOSO- oder placeOrderStrategy-Anfrage, genau wie bei einer Einzelorder." },
+    { q: "Führt ein fehlendes isAutomated-Flag zu einer sofortigen Order-Ablehnung?", a: "Nicht immer. Da es standardmäßig auf false gesetzt wird, sind viele Anfragen erfolgreich, aber falsch gekennzeichnet. Das größere Risiko ist ein Compliance- und Audit-Trail-Verstoß. Wird der Wert jedoch in einem Typ gesendet, den die API nicht parsen kann, kann das die Anfrage selbst zum Scheitern bringen." },
+    { q: "Warum ist es für die CME wichtig, ob eine Order automatisiert ist?", a: "Seit 2011 verlangt die CME bei jeder Globex-Order die Angabe, ob es sich um eine manuelle (Y) oder automatisierte (N) Eingabe handelt, zu Überwachungs- und Audit-Trail-Zwecken. Dies wurde 2012 in Rule 536.B festgeschrieben, und nur Y oder N sind gültig." },
+    { q: "Ich habe das Flag korrekt gesetzt, erhalte aber trotzdem „Zugriff verweigert“, warum?", a: "Dieser Fehler betrifft in der Regel die Authentifizierung, die Konto-ID oder das Symbol und nicht isAutomated. Behalten Sie das Flag korrekt bei, beheben Sie Authentifizierungs- und Kontozugriffsprobleme aber separat." },
+  ], es: [
+    { q: "¿Qué hace isAutomated en la API de Tradovate?", a: "Es un booleano en el cuerpo de la solicitud placeOrder que indica si un humano o un software generó la orden. Se corresponde con el FIX Tag 1028 Manual Order Indicator de CME, de modo que el mercado sabe que la orden fue automatizada." },
+    { q: "¿Qué ocurre si no establezco isAutomated en una orden de bot?", a: "El campo se establece por defecto en false, por lo que su orden automatizada se marca ante CME como introducida manualmente. Es una designación de registro de auditoría inexacta, que según la CME Rule 536.B y la Rule 512 puede dar lugar a medidas disciplinarias." },
+    { q: "¿isAutomated debe ser true o false?", a: "Use true para cualquier orden generada por un bot, algoritmo, script o webhook. Use false solo para las órdenes que una persona activa físicamente en tiempo real." },
+    { q: "¿isAutomated es un booleano o una cadena?", a: "El esquema de órdenes de Tradovate lo define como booleano, así que envíe true (no \"true\"). Si utiliza un puente de terceros o un cliente con codificación de formulario, confirme el tipo exacto que espera, ya que la serialización puede diferir entre herramientas." },
+    { q: "¿isAutomated se aplica también a las órdenes bracket (OSO/OCO)?", a: "Sí. Establezca el indicador en la orden principal/de entrada de su solicitud placeOSO o placeOrderStrategy, igual que lo haría para una orden individual." },
+    { q: "¿La ausencia del indicador isAutomated provoca un rechazo inmediato de la orden?", a: "No siempre. Como su valor predeterminado es false, muchas solicitudes se completan con éxito pero quedan mal etiquetadas. El riesgo mayor es una infracción de cumplimiento y de registro de auditoría. Sin embargo, enviar el valor con un tipo que la API no pueda interpretar sí puede hacer que la solicitud falle." },
+    { q: "¿Por qué le importa a CME si una orden es automatizada?", a: "Desde 2011, CME exige que cada orden de Globex identifique la entrada manual (Y) frente a la automatizada (N) con fines de vigilancia y registro de auditoría. Se codificó en la Rule 536.B en 2012, y solo son válidos los valores Y o N." },
+    { q: "He configurado el indicador correctamente pero sigo recibiendo “acceso denegado”, ¿por qué?", a: "Ese error suele deberse a la autenticación, el id de cuenta o el símbolo, y no a isAutomated. Mantenga el indicador correcto, pero solucione los problemas de autenticación y acceso a la cuenta por separado." },
+  ], fr: [
+    { q: "Que fait isAutomated dans l'API Tradovate ?", a: "C'est un booléen dans le corps de la requête placeOrder qui indique si un humain ou un logiciel a généré l'ordre. Il correspond au FIX Tag 1028 Manual Order Indicator du CME, afin que la bourse sache que l'ordre était automatisé." },
+    { q: "Que se passe-t-il si je ne définis pas isAutomated pour un ordre de bot ?", a: "Le champ revient par défaut à false, de sorte que votre ordre automatisé est signalé au CME comme saisi manuellement. Il s'agit d'une désignation de piste d'audit inexacte, qui, en vertu de la CME Rule 536.B et de la Rule 512, peut entraîner des mesures disciplinaires." },
+    { q: "isAutomated doit-il être true ou false ?", a: "Utilisez true pour tout ordre généré par un bot, un algorithme, un script ou un webhook. Utilisez false uniquement pour les ordres qu'une personne déclenche physiquement en temps réel." },
+    { q: "isAutomated est-il un booléen ou une chaîne ?", a: "Le schéma des ordres de Tradovate le définit comme un booléen, envoyez donc true (et non \"true\"). Si vous utilisez un pont tiers ou un client encodé en formulaire, vérifiez le type exact attendu, car la sérialisation peut varier d'un outil à l'autre." },
+    { q: "isAutomated s'applique-t-il aussi aux ordres bracket (OSO/OCO) ?", a: "Oui. Définissez l'indicateur sur l'ordre parent/d'entrée de votre requête placeOSO ou placeOrderStrategy, exactement comme vous le feriez pour un ordre unique." },
+    { q: "L'absence de l'indicateur isAutomated entraîne-t-elle un rejet immédiat de l'ordre ?", a: "Pas toujours. Comme il revient par défaut à false, de nombreuses requêtes réussissent mais sont mal étiquetées. Le risque majeur est une infraction de conformité et de piste d'audit. En revanche, envoyer la valeur avec un type que l'API ne peut pas interpréter peut faire échouer la requête elle-même." },
+    { q: "Pourquoi le CME se soucie-t-il de savoir si un ordre est automatisé ?", a: "Depuis 2011, le CME exige que chaque ordre Globex identifie une saisie manuelle (Y) par opposition à automatisée (N), à des fins de surveillance et de piste d'audit. Cela a été codifié dans la Rule 536.B en 2012, et seuls Y ou N sont valides." },
+    { q: "J'ai correctement défini l'indicateur mais j'obtiens toujours « accès refusé », pourquoi ?", a: "Cette erreur concerne généralement l'authentification, l'identifiant de compte ou le symbole plutôt qu'isAutomated. Gardez l'indicateur correct, mais dépannez l'authentification et l'accès au compte séparément." },
+  ], it: [
+    { q: "Cosa fa isAutomated nell'API di Tradovate?", a: "È un booleano nel corpo della richiesta placeOrder che indica se l'ordine è stato generato da una persona o da un software. Corrisponde al FIX Tag 1028 Manual Order Indicator del CME, così la borsa sa che l'ordine era automatizzato." },
+    { q: "Cosa succede se non imposto isAutomated per un ordine di bot?", a: "Il campo torna per default a false, quindi il vostro ordine automatizzato viene segnalato al CME come inserito manualmente. Si tratta di una designazione dell'audit trail imprecisa, che ai sensi della CME Rule 536.B e della Rule 512 può comportare provvedimenti disciplinari." },
+    { q: "isAutomated deve essere true o false?", a: "Usate true per qualsiasi ordine generato da un bot, un algoritmo, uno script o un webhook. Usate false solo per gli ordini attivati fisicamente da una persona in tempo reale." },
+    { q: "isAutomated è un booleano o una stringa?", a: "Lo schema degli ordini di Tradovate lo definisce come booleano, quindi inviate true (non \"true\"). Se utilizzate un bridge di terze parti o un client con codifica form, verificate il tipo esatto atteso, poiché la serializzazione può differire tra gli strumenti." },
+    { q: "isAutomated si applica anche agli ordini bracket (OSO/OCO)?", a: "Sì. Impostate il flag sull'ordine principale/di ingresso della vostra richiesta placeOSO o placeOrderStrategy, esattamente come fareste per un ordine singolo." },
+    { q: "Un flag isAutomated mancante causa un rifiuto immediato dell'ordine?", a: "Non sempre. Poiché torna per default a false, molte richieste hanno successo ma vengono etichettate in modo errato. Il rischio maggiore è una violazione di conformità e di audit trail. Tuttavia, inviare il valore con un tipo che l'API non riesce a interpretare può far fallire la richiesta stessa." },
+    { q: "Perché al CME importa se un ordine è automatizzato?", a: "Dal 2011, il CME richiede che ogni ordine Globex identifichi l'inserimento manuale (Y) rispetto a quello automatizzato (N) per finalità di sorveglianza e audit trail. Ciò è stato codificato nella Rule 536.B nel 2012, e sono validi solo i valori Y o N." },
+    { q: "Ho impostato correttamente il flag ma continuo a ricevere “accesso negato”, perché?", a: "Di solito quell'errore riguarda l'autenticazione, l'id dell'account o il simbolo, non isAutomated. Mantenete corretto il flag, ma risolvete separatamente i problemi di autenticazione e accesso all'account." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. und wird von diesem Unternehmen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou sponsorisée par elle. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent dans le temps, confirmez donc toujours le processus actuel dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Fare trading su futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verificate sempre la procedura attuale sulla piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

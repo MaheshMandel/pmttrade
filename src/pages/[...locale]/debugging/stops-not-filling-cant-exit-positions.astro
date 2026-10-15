@@ -1,0 +1,539 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "stops-not-filling-cant-exit-positions";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Stops Not Filling / Can't Exit Positions";
+const META_DESCRIPTION =
+  "Tradovate stops not filling or stuck in a position? See why data drops freeze exits, how to flatten fast, and how to cap your risk.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Stops werden nicht ausgeführt / Positionen lassen sich nicht schließen", es: "Los stops de Tradovate no se ejecutan / No se pueden cerrar posiciones", fr: "Les stops Tradovate ne s'exécutent pas / Impossible de sortir des positions", it: "Gli stop di Tradovate non vengono eseguiti / Impossibile uscire dalle posizioni" },
+  dek: { en: "Price hits your stop and does not stop you out. This isn't a rare freak event, here's why a broker-side data drop freezes exits, and how to flatten a stuck position fast.", de: "Der Kurs erreicht Ihren Stop, und Sie werden trotzdem nicht ausgestoppt. Das ist kein seltener Ausnahmefall: Hier erfahren Sie, warum ein broker-seitiger Datenausfall Exits blockiert und wie Sie eine festgefahrene Position schnell glattstellen.", es: "El precio toca su stop y no le saca de la operación. No es un hecho raro y aislado: aquí le explicamos por qué una caída de datos del lado del bróker bloquea las salidas y cómo cerrar rápido una posición atascada.", fr: "Le prix touche votre stop et ne vous sort pas du marché. Ce n'est pas un événement rare : voici pourquoi une coupure de données côté courtier bloque les sorties et comment clôturer rapidement une position bloquée.", it: "Il prezzo tocca il suo stop e non la fa uscire dal mercato. Non è un evento raro: ecco perché un'interruzione dei dati lato broker blocca le uscite e come chiudere rapidamente una posizione bloccata." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "When you're scalping fast movers like ES or NQ, nothing rattles you like watching price blow through your stop while the platform just sits there. The market touches your stop, no fill comes back, the &ldquo;Exit at Market&rdquo; button does nothing, and you can't cancel or modify the working order either. Price hits your stop and does not stop you out. This has surfaced on Tradovate for years, and it isn't a rare freak event; it's a scenario that recurs and can put a real dent in an account if you're caught oversized. Here's the important part: the common thread is a <strong class='text-white'>data drop on Tradovate's side</strong>, not your internet, and the fix is different from a normal order rejection. This guide covers why Tradovate stops don't fill, how to exit a stuck position immediately, and how automation helps you cap your risk before the next outage hits." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Stops Not Filling",
+      items: [
+        "<strong class='text-white'>Confirm it's Tradovate, not you.</strong> If charts freeze, quotes stop ticking, or symbols look stale, it's a platform or data-feed problem, not a bad order.",
+        "<strong class='text-white'>Try the mobile app on cellular data.</strong> A second route, your phone on 4G/5G, sometimes reaches the servers when the desktop app can't.",
+        "<strong class='text-white'>Send a market order the opposite way.</strong> If you're long 2 and can't exit, a flat-out sell 2 market order often clears the position faster than the exit button.",
+        "<strong class='text-white'>Contact the Emergency Trade Desk by phone.</strong> Tradovate keeps a 24-hour emergency line so support can flatten you from their side during an outage.",
+        "<strong class='text-white'>Never trade on mental stops.</strong> Keep a real, hard protective stop resting at all times, sized to a loss you can survive if it can't fill for a few minutes.",
+        "<strong class='text-white'>Reconcile after the outage.</strong> Confirm your true position and cancel any orphaned or ghost orders once the feed recovers.",
+      ],
+    },
+    { type: "heading", text: "What “Price Hit My Stop and Did Not Stop Me Out” Means" },
+    { type: "paragraph", html: "This isn't the usual &ldquo;order rejected&rdquo; message with a clear reason attached. Your stop order is <strong class='text-white'>working and accepted</strong>, price trades through the trigger, and yet no fill comes back. At the same moment the manual exit controls stop responding, and any attempt to cancel or modify the order fails. It feels like the platform has locked up around your position specifically." },
+    { type: "paragraph", html: "The cause is almost always a <strong class='text-white'>market-data interruption at the broker level</strong>. Tradovate has historically routed its data through CQG, and outages of this kind have been attributed to a CQG data drop that happened during live market hours. When the data feed hiccups, the platform loses the price stream it needs to both trigger stops and confirm fills, so orders sit in limbo and the UI buttons look dead." },
+    { type: "paragraph", html: "Here's the distinction that matters: a <strong class='text-white'>hard stop order rests on Tradovate's servers, not on your local machine</strong>, so it normally survives if <em>your</em> internet drops. But when <em>Tradovate's own</em> feed or routing drops, even a server-side stop may not trigger, and no amount of clicking on your end forces it. That's why the real fix is getting a human on Tradovate's side to flatten you, and why prevention (small, hard stops and a backup route) matters more than any single button." },
+    { type: "heading", text: "Top Causes of Tradovate Stops Not Filling in 2026" },
+    { type: "heading", text: "1. A broker-side data drop (the main cause)" },
+    { type: "paragraph", html: "A CQG or market-data interruption stops the price stream, so stops don't trigger and fills don't confirm. This is the classic Tradovate outage, and it can recur." },
+    { type: "heading", text: "2. A frozen or disconnected session" },
+    { type: "paragraph", html: "The platform freezes mid-trade, charts go blank or stale, and the order panel stops responding, often paired with an &ldquo;Internal Server Error&rdquo; when you try to reconnect." },
+    { type: "heading", text: "3. The exit/cancel button not responding" },
+    { type: "paragraph", html: "During the freeze, the manual controls (Exit at Market, Flatten, Cancel) send a request that never round-trips, so nothing changes on screen no matter how hard you click." },
+    { type: "heading", text: "4. Partial or ghost fills on multi-contract orders" },
+    { type: "paragraph", html: "On a multi-contract stop, only part of the order fills, say 1 of a larger quantity, leaving a residual position you can't cleanly close until the feed recovers." },
+    { type: "heading", text: "5. A thin or illiquid contract (a smaller factor)" },
+    { type: "paragraph", html: "If you're in a low-volume contract or trading outside active hours, a resting stop can be slow to fill on real liquidity. That's a separate issue from an outage, but it looks the same on screen." },
+    { type: "heading", text: "How to Fix Tradovate Stops Not Filling and Exit a Stuck Position: Step-by-Step" },
+    { type: "heading", text: "Fixing an unfilled stop: flatten the position yourself first" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the position panel", html: "Open the position panel (Positions module, DOM, or the chart) and find the manual close control for the open position." },
+        { title: "Use flatten / close-at-market", html: "Use the flatten / close-at-market action to send a market order that offsets your entire position (long 2, sell 2 at market)." },
+        { title: "Place a manual counter-trade if unresponsive", html: "If the dedicated exit button is unresponsive, place a fresh, plain <strong class='text-white'>market order</strong> in the opposite direction and quantity as a manual counter-trade. It frequently clears faster than the exit shortcut." },
+        { title: "Confirm the fill", html: "Watch the Orders and Positions panels until the fill confirms and your net position reads flat." },
+      ],
+    },
+    { type: "heading", text: "Fixing a frozen session: switch to a backup route" },
+    {
+      type: "steps",
+      items: [
+        { title: "Stop hammering the same screen", html: "Don't keep hammering the same screen. A locked desktop app rarely recovers by clicking harder." },
+        { title: "Try mobile on cellular", html: "Open the Tradovate <strong class='text-white'>mobile app on cellular data</strong> (not the same Wi-Fi) and try to flatten from there; a different network path sometimes reaches the servers." },
+        { title: "Try any responsive connection", html: "If you run a second connection (mobile app, web app, or a platform like NinjaTrader on the same account), attempt the exit from whichever one is still responsive." },
+        { title: "Cancel orphaned orders once flat", html: "Cancel any orphaned working orders once you're flat, so a stale target or stop doesn't fill later." },
+      ],
+    },
+    { type: "heading", text: "Fixing a full outage: call the Emergency Trade Desk" },
+    {
+      type: "steps",
+      items: [
+        { title: "Contact Tradovate immediately", html: "If nothing on your end works, contact Tradovate immediately: in-app live chat if the app still loads, otherwise phone." },
+        { title: "Reach the Emergency Trade Desk", html: "Tradovate operates an <strong class='text-white'>Emergency Trade Desk</strong> that can flatten positions and cancel orders from their side during a data outage." },
+        { title: "Confirm hours and save the number", html: "The emergency line is generally reachable 24 hours a day during the trading week (Sunday afternoon through Friday afternoon, Central Time). <strong class='text-white'>Confirm the current number and hours on Tradovate's official contact page before you need it.</strong> A commonly listed emergency number is (312) 283-3100, but always verify it in advance and save it." },
+        { title: "Give them the account and position", html: "Give them your account and the open position; ask them to flatten and cancel all working orders, then reconcile once the platform is back." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "What it means", "Fix"],
+      rows: [
+        ["Price hit my stop and did not stop me out", "Broker-side data drop; the trigger price stream is interrupted", "Flatten manually with a market order; if unresponsive, call the Emergency Trade Desk"],
+        ["&ldquo;Exit at Market&rdquo; button does nothing", "The exit request isn't round-tripping to the frozen session", "Send a fresh opposite market order; try the mobile app on cellular"],
+        ["Can't cancel or modify a working order", "Order is stuck in limbo during the outage", "Place a manual offsetting market order; contact support to cancel from their side"],
+        ["Only 1 of several contracts filled", "Partial fill left a residual position", "Manually close the remaining contracts; cancel any orphaned target/stop"],
+        ["&ldquo;Internal Server Error&rdquo; on reconnect", "Platform/session outage in progress", "Wait for the outage to clear, monitor via a backup device, then reconcile"],
+        ["Position won't close after many tries", "Session-level freeze around your position", "Backup route or Emergency Trade Desk; don't add new entries meanwhile"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "No third-party tool can stop a broker-side data drop from happening. What you can control is never sitting in a naked, oversized position when one hits. PickMyTrade links your TradingView alerts straight to Tradovate and automates the risk discipline that saves accounts during outages:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Automatic hard stops on every entry.</strong> PickMyTrade attaches a real protective stop (a bracket) the moment a position opens, so you're never relying on a mental stop or a manual click.",
+        "<strong class='text-white'>Qty / Symbol Validation.</strong> Blocks orders that would push you into an oversized position before they're ever sent, keeping any unfillable stop small.",
+        "<strong class='text-white'>Multi-Account Sync.</strong> Mirrors a corrected exit across every connected account, so you don't have to flatten each one by hand under pressure.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing.</strong> Spaces out order flow so a flurry of modifications doesn't get you throttled at the worst possible moment.",
+      ],
+    },
+    { type: "paragraph", html: "The goal isn't to out-trade an outage. It's to keep every position small enough and stopped tightly enough that a few minutes of frozen exits can't blow up your account." },
+  ], de: [
+    { type: "paragraph",html: "Wenn Sie schnelle Werte wie ES oder NQ scalpen, beunruhigt Sie nichts so sehr, wie zuzusehen, wie der Kurs durch Ihren Stop rauscht, während die Plattform einfach stillsteht. Der Markt berührt Ihren Stop, es kommt keine Ausführung zurück, der Button &ldquo;Exit at Market&rdquo; reagiert nicht, und Sie können die aktive Order weder stornieren noch ändern. Der Kurs erreicht Ihren Stop, und Sie werden nicht ausgestoppt. Das tritt bei Tradovate seit Jahren auf und ist kein seltener Ausnahmefall; es ist ein Szenario, das sich wiederholt und dem Konto spürbar schaden kann, wenn Sie überdimensioniert unterwegs sind. Das Wichtigste vorweg: Der gemeinsame Nenner ist ein <strong class='text-white'>Datenausfall auf Seiten von Tradovate</strong>, nicht Ihr Internet, und die Lösung unterscheidet sich von einer normalen Order-Ablehnung. Diese Anleitung erklärt, warum Tradovate-Stops nicht ausgeführt werden, wie Sie eine festgefahrene Position sofort verlassen und wie Automatisierung hilft, Ihr Risiko vor dem nächsten Ausfall zu begrenzen." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste bei nicht ausgeführten Stops",
+      items: [
+        "<strong class='text-white'>Prüfen Sie, ob es an Tradovate liegt, nicht an Ihnen.</strong> Wenn Charts einfrieren, Kurse nicht mehr ticken oder Symbole veraltet wirken, ist es ein Problem der Plattform oder des Datenfeeds, keine fehlerhafte Order.",
+        "<strong class='text-white'>Versuchen Sie die mobile App über Mobilfunk.</strong> Eine zweite Route, Ihr Smartphone über 4G/5G, erreicht manchmal die Server, wenn die Desktop-App es nicht schafft.",
+        "<strong class='text-white'>Senden Sie eine Market-Order in Gegenrichtung.</strong> Wenn Sie Long 2 sind und nicht aussteigen können, räumt eine schlichte Market-Order „Sell 2“ die Position oft schneller als der Exit-Button.",
+        "<strong class='text-white'>Kontaktieren Sie den Emergency Trade Desk telefonisch.</strong> Tradovate unterhält eine 24-Stunden-Notfallleitung, damit der Support Sie bei einem Ausfall von seiner Seite aus glattstellen kann.",
+        "<strong class='text-white'>Handeln Sie niemals mit gedanklichen Stops.</strong> Halten Sie jederzeit einen echten, hinterlegten Hard Stop aktiv, dimensioniert auf einen Verlust, den Sie verkraften, falls er einige Minuten nicht ausgeführt werden kann.",
+        "<strong class='text-white'>Gleichen Sie nach dem Ausfall ab.</strong> Bestätigen Sie Ihre tatsächliche Position und stornieren Sie verwaiste oder Geisterorders, sobald der Feed wieder läuft.",
+      ],
+    },
+    { type: "heading",text: "Was „Der Kurs hat meinen Stop erreicht und mich nicht ausgestoppt“ bedeutet" },
+    { type: "paragraph",html: "Das ist nicht die übliche Meldung „Order abgelehnt“ mit klarer Begründung. Ihre Stop-Order ist <strong class='text-white'>aktiv und akzeptiert</strong>, der Kurs handelt durch den Auslöser, und dennoch kommt keine Ausführung zurück. Gleichzeitig reagieren die manuellen Exit-Bedienelemente nicht mehr, und jeder Versuch, die Order zu stornieren oder zu ändern, scheitert. Es fühlt sich an, als hätte sich die Plattform gezielt um Ihre Position herum festgefahren." },
+    { type: "paragraph",html: "Die Ursache ist fast immer eine <strong class='text-white'>Marktdaten-Unterbrechung auf Broker-Ebene</strong>. Tradovate hat seine Daten in der Vergangenheit über CQG geleitet, und Ausfälle dieser Art wurden einem CQG-Datenausfall während der laufenden Marktzeiten zugeschrieben. Stockt der Datenfeed, verliert die Plattform den Kursstrom, den sie braucht, um Stops auszulösen und Ausführungen zu bestätigen. Orders hängen dann in der Schwebe, und die Buttons der Oberfläche wirken tot." },
+    { type: "paragraph",html: "Entscheidend ist der Unterschied: Eine <strong class='text-white'>Hard-Stop-Order liegt auf den Servern von Tradovate, nicht auf Ihrem lokalen Rechner</strong>, und übersteht daher normalerweise einen Ausfall <em>Ihres</em> Internets. Fällt jedoch <em>der eigene</em> Feed oder das Routing von Tradovate aus, löst selbst ein serverseitiger Stop möglicherweise nicht aus, und kein Klicken auf Ihrer Seite erzwingt es. Deshalb besteht die eigentliche Lösung darin, dass ein Mensch bei Tradovate Sie glattstellt, und deshalb zählt Vorsorge (kleine Hard Stops und ein Ersatzweg) mehr als jeder einzelne Button." },
+    { type: "heading",text: "Die häufigsten Ursachen für nicht ausgeführte Tradovate-Stops 2026" },
+    { type: "heading",text: "1. Ein broker-seitiger Datenausfall (die Hauptursache)" },
+    { type: "paragraph",html: "Eine Unterbrechung bei CQG oder den Marktdaten stoppt den Kursstrom, sodass Stops nicht auslösen und Ausführungen nicht bestätigt werden. Das ist der klassische Tradovate-Ausfall, und er kann erneut auftreten." },
+    { type: "heading",text: "2. Eine eingefrorene oder getrennte Sitzung" },
+    { type: "paragraph",html: "Die Plattform friert mitten im Trade ein, Charts werden leer oder veraltet, und das Order-Panel reagiert nicht mehr, oft begleitet von einem &ldquo;Internal Server Error&rdquo; beim Wiederverbinden." },
+    { type: "heading",text: "3. Der Exit-/Cancel-Button reagiert nicht" },
+    { type: "paragraph",html: "Während des Einfrierens senden die manuellen Bedienelemente (Exit at Market, Flatten, Cancel) eine Anfrage, die nie zurückkommt, sodass sich auf dem Bildschirm nichts ändert, egal wie oft Sie klicken." },
+    { type: "heading",text: "4. Teil- oder Geisterausführungen bei Orders mit mehreren Kontrakten" },
+    { type: "paragraph",html: "Bei einem Stop über mehrere Kontrakte wird nur ein Teil der Order ausgeführt, etwa 1 von einer größeren Menge, und es bleibt eine Restposition, die Sie erst sauber schließen können, wenn der Feed wieder läuft." },
+    { type: "heading",text: "5. Ein dünner oder illiquider Kontrakt (ein geringerer Faktor)" },
+    { type: "paragraph",html: "Bei einem Kontrakt mit geringem Volumen oder außerhalb der aktiven Handelszeiten kann ein hinterlegter Stop bei echter Liquidität langsam ausgeführt werden. Das ist ein anderes Problem als ein Ausfall, sieht auf dem Bildschirm aber gleich aus." },
+    { type: "heading",text: "So beheben Sie nicht ausgeführte Tradovate-Stops und verlassen eine festgefahrene Position: Schritt für Schritt" },
+    { type: "heading",text: "Nicht ausgeführten Stop beheben: Position zuerst selbst glattstellen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Positions-Panel öffnen", html: "Öffnen Sie das Positions-Panel (Positions-Modul, DOM oder den Chart) und suchen Sie das manuelle Schließen-Bedienelement für die offene Position." },
+        { title: "Flatten bzw. Close-at-Market verwenden", html: "Nutzen Sie die Aktion Flatten bzw. Close-at-Market, um eine Market-Order zu senden, die Ihre gesamte Position ausgleicht (Long 2, Sell 2 zum Marktpreis)." },
+        { title: "Bei Nichtreagieren manuell gegenhandeln", html: "Reagiert der dedizierte Exit-Button nicht, platzieren Sie eine neue, einfache <strong class='text-white'>Market-Order</strong> in Gegenrichtung und mit derselben Stückzahl als manuellen Gegentrade. Sie wird häufig schneller verarbeitet als die Exit-Schaltfläche." },
+        { title: "Ausführung bestätigen", html: "Beobachten Sie die Panels Orders und Positions, bis die Ausführung bestätigt ist und Ihre Nettoposition flat anzeigt." },
+      ],
+    },
+    { type: "heading",text: "Eingefrorene Sitzung beheben: auf eine Ersatzroute wechseln" },
+    {
+      type: "steps",
+      items: [
+        { title: "Nicht weiter auf denselben Bildschirm hämmern", html: "Hämmern Sie nicht weiter auf denselben Bildschirm. Eine blockierte Desktop-App erholt sich selten, wenn Sie fester klicken." },
+        { title: "Mobil über Mobilfunk versuchen", html: "Öffnen Sie die <strong class='text-white'>mobile Tradovate-App über Mobilfunk</strong> (nicht über dasselbe WLAN) und versuchen Sie, dort glattzustellen; ein anderer Netzwerkpfad erreicht die Server manchmal." },
+        { title: "Jede reagierende Verbindung nutzen", html: "Wenn Sie eine zweite Verbindung betreiben (mobile App, Web-App oder eine Plattform wie NinjaTrader mit demselben Konto), versuchen Sie den Exit über diejenige, die noch reagiert." },
+        { title: "Verwaiste Orders nach dem Glattstellen stornieren", html: "Stornieren Sie verwaiste aktive Orders, sobald Sie flat sind, damit ein altes Ziel oder ein alter Stop nicht später noch ausgeführt wird." },
+      ],
+    },
+    { type: "heading",text: "Vollständigen Ausfall beheben: den Emergency Trade Desk anrufen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Tradovate sofort kontaktieren", html: "Wenn auf Ihrer Seite nichts funktioniert, kontaktieren Sie Tradovate sofort: per In-App-Live-Chat, falls die App noch lädt, sonst telefonisch." },
+        { title: "Den Emergency Trade Desk erreichen", html: "Tradovate betreibt einen <strong class='text-white'>Emergency Trade Desk</strong>, der bei einem Datenausfall von seiner Seite aus Positionen glattstellen und Orders stornieren kann." },
+        { title: "Zeiten bestätigen und Nummer speichern", html: "Die Notfallleitung ist in der Handelswoche (Sonntagnachmittag bis Freitagnachmittag, Central Time) in der Regel rund um die Uhr erreichbar. <strong class='text-white'>Prüfen Sie die aktuelle Nummer und die Zeiten auf der offiziellen Kontaktseite von Tradovate, bevor Sie sie brauchen.</strong> Eine häufig genannte Notfallnummer ist (312) 283-3100, doch prüfen Sie sie immer vorab und speichern Sie sie." },
+        { title: "Konto und Position nennen", html: "Nennen Sie Ihr Konto und die offene Position; bitten Sie darum, glattzustellen und alle aktiven Orders zu stornieren, und gleichen Sie anschließend ab, sobald die Plattform wieder läuft." },
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Symptom","Bedeutung","Lösung"], rows: [
+      ["Der Kurs hat meinen Stop erreicht und mich nicht ausgestoppt","Broker-seitiger Datenausfall; der Kursstrom für den Auslöser ist unterbrochen","Manuell per Market-Order glattstellen; bei Nichtreagieren den Emergency Trade Desk anrufen"],
+      ["Der Button &ldquo;Exit at Market&rdquo; tut nichts","Die Exit-Anfrage kommt nicht von der eingefrorenen Sitzung zurück","Neue Market-Order in Gegenrichtung senden; mobile App über Mobilfunk versuchen"],
+      ["Aktive Order lässt sich nicht stornieren oder ändern","Die Order hängt während des Ausfalls in der Schwebe","Manuelle Ausgleichs-Market-Order platzieren; den Support bitten, von seiner Seite zu stornieren"],
+      ["Nur 1 von mehreren Kontrakten wurde ausgeführt","Teilausführung hat eine Restposition hinterlassen","Verbleibende Kontrakte manuell schließen; verwaiste Ziele/Stops stornieren"],
+      ["&ldquo;Internal Server Error&rdquo; beim Wiederverbinden","Ausfall der Plattform bzw. Sitzung läuft","Ausfallende abwarten, über ein Ersatzgerät überwachen, dann abgleichen"],
+      ["Position lässt sich nach vielen Versuchen nicht schließen","Sitzungsweites Einfrieren rund um Ihre Position","Ersatzroute oder Emergency Trade Desk; währenddessen keine neuen Einstiege"],
+    ] },
+    { type: "heading",text: "Vorbeugen mit PickMyTrade" },
+    { type: "paragraph",html: "Kein Drittanbieter-Tool kann einen broker-seitigen Datenausfall verhindern. Sie können aber kontrollieren, dass Sie bei einem Ausfall nie in einer ungeschützten, überdimensionierten Position sitzen. PickMyTrade verbindet Ihre TradingView-Alerts direkt mit Tradovate und automatisiert die Risikodisziplin, die Konten bei Ausfällen rettet:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Automatische Hard Stops bei jedem Einstieg.</strong> PickMyTrade hängt in dem Moment, in dem eine Position eröffnet wird, einen echten Schutz-Stop (ein Bracket) an, sodass Sie sich nie auf einen gedanklichen Stop oder einen manuellen Klick verlassen müssen.",
+        "<strong class='text-white'>Mengen-/Symbolvalidierung.</strong> Blockiert Orders, die Sie in eine überdimensionierte Position drücken würden, bevor sie überhaupt gesendet werden, und hält so jeden nicht ausführbaren Stop klein.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung.</strong> Spiegelt einen korrigierten Exit auf alle verbundenen Konten, sodass Sie unter Druck nicht jedes einzeln von Hand glattstellen müssen.",
+        "<strong class='text-white'>Ratenlimit-sicheres Routing.</strong> Verteilt den Order-Fluss zeitlich, damit Sie im ungünstigsten Moment nicht durch eine Flut von Änderungen gedrosselt werden.",
+      ],
+    },
+    { type: "paragraph",html: "Das Ziel ist nicht, einen Ausfall auszuhandeln. Es geht darum, jede Position klein genug und eng genug abgesichert zu halten, damit einige Minuten eingefrorener Exits Ihr Konto nicht sprengen können." },
+  ], es: [
+    { type: "paragraph",html: "Cuando hace scalping en valores rápidos como ES o NQ, nada le pone más nervioso que ver cómo el precio atraviesa su stop mientras la plataforma se queda parada. El mercado toca su stop, no llega ninguna ejecución, el botón &ldquo;Exit at Market&rdquo; no hace nada y tampoco puede cancelar ni modificar la orden activa. El precio toca su stop y no le saca de la operación. Esto ocurre en Tradovate desde hace años y no es un hecho raro y aislado; es un escenario que se repite y que puede dañar seriamente una cuenta si le sorprende sobredimensionado. Lo importante es esto: el hilo común es una <strong class='text-white'>caída de datos del lado de Tradovate</strong>, no su internet, y la solución es distinta de la de un rechazo de orden normal. Esta guía explica por qué los stops de Tradovate no se ejecutan, cómo salir de inmediato de una posición atascada y cómo la automatización le ayuda a limitar su riesgo antes de la próxima caída." },
+    {
+      type: "checklist",
+      heading: "Lista rápida cuando los stops no se ejecutan",
+      items: [
+        "<strong class='text-white'>Confirme que es Tradovate, no usted.</strong> Si los gráficos se congelan, las cotizaciones dejan de moverse o los símbolos parecen obsoletos, es un problema de la plataforma o del feed de datos, no una orden defectuosa.",
+        "<strong class='text-white'>Pruebe la aplicación móvil con datos móviles.</strong> Una segunda vía, su teléfono con 4G/5G, a veces llega a los servidores cuando la aplicación de escritorio no puede.",
+        "<strong class='text-white'>Envíe una orden de mercado en sentido contrario.</strong> Si está largo 2 y no puede salir, una simple orden de mercado de venta de 2 suele liberar la posición más rápido que el botón de salida.",
+        "<strong class='text-white'>Llame por teléfono al Emergency Trade Desk.</strong> Tradovate mantiene una línea de emergencia las 24 horas para que soporte pueda cerrar sus posiciones desde su lado durante una caída.",
+        "<strong class='text-white'>No opere nunca con stops mentales.</strong> Mantenga siempre un stop de protección real y fijo, dimensionado para una pérdida que pueda soportar si no se ejecuta durante unos minutos.",
+        "<strong class='text-white'>Concilie tras la caída.</strong> Confirme su posición real y cancele las órdenes huérfanas o fantasma cuando se recupere el feed.",
+      ],
+    },
+    { type: "heading",text: "Qué significa “El precio tocó mi stop y no me sacó de la operación”" },
+    { type: "paragraph",html: "Este no es el habitual mensaje de &ldquo;orden rechazada&rdquo; con un motivo claro. Su orden stop está <strong class='text-white'>activa y aceptada</strong>, el precio atraviesa el disparador y, aun así, no llega ninguna ejecución. En ese mismo momento los controles manuales de salida dejan de responder y cualquier intento de cancelar o modificar la orden falla. Parece que la plataforma se hubiera bloqueado justo alrededor de su posición." },
+    { type: "paragraph",html: "La causa es casi siempre una <strong class='text-white'>interrupción de los datos de mercado a nivel del bróker</strong>. Históricamente Tradovate ha enviado sus datos a través de CQG, y las caídas de este tipo se han atribuido a una caída de datos de CQG durante el horario de mercado. Cuando el feed de datos falla, la plataforma pierde el flujo de precios que necesita tanto para activar stops como para confirmar ejecuciones, de modo que las órdenes quedan en el limbo y los botones de la interfaz parecen muertos." },
+    { type: "paragraph",html: "Esta es la distinción que importa: una <strong class='text-white'>orden stop fija reside en los servidores de Tradovate, no en su equipo local</strong>, por lo que normalmente sobrevive si se cae <em>su</em> internet. Pero cuando falla el feed o el enrutamiento <em>propio de Tradovate</em>, incluso un stop del lado del servidor puede no activarse, y ningún clic de su parte lo fuerza. Por eso la verdadera solución es que una persona de Tradovate cierre sus posiciones, y por eso la prevención (stops fijos pequeños y una vía alternativa) importa más que cualquier botón." },
+    { type: "heading",text: "Principales causas de que los stops de Tradovate no se ejecuten en 2026" },
+    { type: "heading",text: "1. Una caída de datos del lado del bróker (la causa principal)" },
+    { type: "paragraph",html: "Una interrupción de CQG o de los datos de mercado detiene el flujo de precios, de modo que los stops no se activan y las ejecuciones no se confirman. Es la caída clásica de Tradovate, y puede repetirse." },
+    { type: "heading",text: "2. Una sesión congelada o desconectada" },
+    { type: "paragraph",html: "La plataforma se congela en mitad de la operación, los gráficos se quedan en blanco u obsoletos y el panel de órdenes deja de responder, a menudo acompañado de un &ldquo;Internal Server Error&rdquo; al intentar reconectar." },
+    { type: "heading",text: "3. El botón de salida/cancelación no responde" },
+    { type: "paragraph",html: "Durante el bloqueo, los controles manuales (Exit at Market, Flatten, Cancel) envían una solicitud que nunca regresa, así que nada cambia en pantalla por mucho que haga clic." },
+    { type: "heading",text: "4. Ejecuciones parciales o fantasma en órdenes de varios contratos" },
+    { type: "paragraph",html: "En un stop de varios contratos solo se ejecuta una parte de la orden, por ejemplo 1 de una cantidad mayor, y queda una posición residual que no puede cerrar con limpieza hasta que se recupere el feed." },
+    { type: "heading",text: "5. Un contrato poco líquido (un factor menor)" },
+    { type: "paragraph",html: "Si opera un contrato de poco volumen o fuera del horario activo, un stop en reposo puede tardar en ejecutarse con liquidez real. Es un problema distinto de una caída, pero en pantalla se ve igual." },
+    { type: "heading",text: "Cómo solucionar los stops de Tradovate que no se ejecutan y salir de una posición atascada: paso a paso" },
+    { type: "heading",text: "Solucionar un stop sin ejecutar: cierre primero la posición usted mismo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra el panel de posiciones", html: "Abra el panel de posiciones (módulo Positions, DOM o el gráfico) y localice el control de cierre manual de la posición abierta." },
+        { title: "Use flatten / cierre a mercado", html: "Use la acción flatten / cierre a mercado para enviar una orden de mercado que compense toda su posición (largo 2, venda 2 a mercado)." },
+        { title: "Haga una contraoperación manual si no responde", html: "Si el botón de salida dedicado no responde, coloque una nueva y sencilla <strong class='text-white'>orden de mercado</strong> en sentido contrario y con la misma cantidad como contraoperación manual. Con frecuencia se libera antes que el atajo de salida." },
+        { title: "Confirme la ejecución", html: "Observe los paneles Orders y Positions hasta que la ejecución se confirme y su posición neta aparezca en cero." },
+      ],
+    },
+    { type: "heading",text: "Solucionar una sesión congelada: cambie a una vía alternativa" },
+    {
+      type: "steps",
+      items: [
+        { title: "Deje de insistir en la misma pantalla", html: "No siga golpeando la misma pantalla. Una aplicación de escritorio bloqueada rara vez se recupera por hacer clic con más fuerza." },
+        { title: "Pruebe el móvil con datos móviles", html: "Abra la <strong class='text-white'>aplicación móvil de Tradovate con datos móviles</strong> (no con el mismo Wi-Fi) e intente cerrar desde allí; una ruta de red distinta a veces llega a los servidores." },
+        { title: "Pruebe cualquier conexión que responda", html: "Si tiene una segunda conexión (aplicación móvil, aplicación web o una plataforma como NinjaTrader con la misma cuenta), intente la salida desde la que siga respondiendo." },
+        { title: "Cancele las órdenes huérfanas al quedar sin posición", html: "Cancele las órdenes activas huérfanas cuando esté sin posición, para que un objetivo o stop antiguo no se ejecute más tarde." },
+      ],
+    },
+    { type: "heading",text: "Solucionar una caída total: llame al Emergency Trade Desk" },
+    {
+      type: "steps",
+      items: [
+        { title: "Contacte con Tradovate de inmediato", html: "Si nada funciona de su lado, contacte con Tradovate de inmediato: por chat en vivo dentro de la aplicación si todavía carga y, si no, por teléfono." },
+        { title: "Llegue al Emergency Trade Desk", html: "Tradovate opera un <strong class='text-white'>Emergency Trade Desk</strong> que puede cerrar posiciones y cancelar órdenes desde su lado durante una caída de datos." },
+        { title: "Confirme el horario y guarde el número", html: "La línea de emergencia suele estar disponible las 24 horas durante la semana de negociación (de domingo por la tarde a viernes por la tarde, hora central). <strong class='text-white'>Confirme el número y el horario vigentes en la página oficial de contacto de Tradovate antes de necesitarlos.</strong> Un número de emergencia que suele figurar es el (312) 283-3100, pero verifíquelo siempre con antelación y guárdelo." },
+        { title: "Indíqueles la cuenta y la posición", html: "Indíqueles su cuenta y la posición abierta; pídales que cierren y cancelen todas las órdenes activas y concilie después, cuando la plataforma vuelva a funcionar." },
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma","Qué significa","Solución"], rows: [
+      ["El precio tocó mi stop y no me sacó de la operación","Caída de datos del lado del bróker; el flujo de precios del disparador está interrumpido","Cierre manualmente con una orden de mercado; si no responde, llame al Emergency Trade Desk"],
+      ["El botón &ldquo;Exit at Market&rdquo; no hace nada","La solicitud de salida no regresa de la sesión congelada","Envíe una nueva orden de mercado en sentido contrario; pruebe la aplicación móvil con datos móviles"],
+      ["No puedo cancelar ni modificar una orden activa","La orden está en el limbo durante la caída","Coloque una orden de mercado compensatoria manual; pida a soporte que cancele desde su lado"],
+      ["Solo se ejecutó 1 de varios contratos","La ejecución parcial dejó una posición residual","Cierre manualmente los contratos restantes; cancele cualquier objetivo/stop huérfano"],
+      ["&ldquo;Internal Server Error&rdquo; al reconectar","Hay una caída de la plataforma o de la sesión en curso","Espere a que se resuelva, supervise desde un dispositivo alternativo y luego concilie"],
+      ["La posición no se cierra tras muchos intentos","Bloqueo de sesión alrededor de su posición","Vía alternativa o Emergency Trade Desk; no añada nuevas entradas mientras tanto"],
+    ] },
+    { type: "heading",text: "Prevéngalo con PickMyTrade" },
+    { type: "paragraph",html: "Ninguna herramienta de terceros puede evitar que ocurra una caída de datos del lado del bróker. Lo que sí puede controlar es no estar nunca en una posición desprotegida y sobredimensionada cuando ocurra. PickMyTrade conecta sus alertas de TradingView directamente con Tradovate y automatiza la disciplina de riesgo que salva cuentas durante las caídas:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Stops fijos automáticos en cada entrada.</strong> PickMyTrade adjunta un stop de protección real (un bracket) en cuanto se abre una posición, de modo que nunca dependa de un stop mental ni de un clic manual.",
+        "<strong class='text-white'>Validación de cantidad y símbolo.</strong> Bloquea las órdenes que le llevarían a una posición sobredimensionada antes de que se envíen, manteniendo pequeño cualquier stop que no pueda ejecutarse.",
+        "<strong class='text-white'>Sincronización multicuenta.</strong> Replica una salida corregida en todas las cuentas conectadas, para que no tenga que cerrar cada una a mano bajo presión.",
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de frecuencia.</strong> Espacia el flujo de órdenes para que una ráfaga de modificaciones no le limite en el peor momento posible.",
+      ],
+    },
+    { type: "paragraph",html: "El objetivo no es ganarle la partida a una caída. Es mantener cada posición lo bastante pequeña y con un stop lo bastante ajustado para que unos minutos de salidas congeladas no puedan arruinar su cuenta." },
+  ], fr: [
+    { type: "paragraph",html: "Quand vous scalpez des valeurs rapides comme ES ou NQ, rien ne vous déstabilise autant que de voir le prix traverser votre stop pendant que la plateforme reste figée. Le marché touche votre stop, aucune exécution ne revient, le bouton &ldquo;Exit at Market&rdquo; ne fait rien, et vous ne pouvez ni annuler ni modifier l'ordre actif. Le prix touche votre stop et ne vous sort pas du marché. Cela se produit sur Tradovate depuis des années et ce n'est pas un événement rare ; c'est un scénario qui se répète et qui peut sérieusement entamer un compte si vous êtes surdimensionné. Voici l'essentiel : le point commun est une <strong class='text-white'>coupure de données du côté de Tradovate</strong>, et non votre connexion internet, et la solution diffère d'un rejet d'ordre classique. Ce guide explique pourquoi les stops Tradovate ne s'exécutent pas, comment sortir immédiatement d'une position bloquée et comment l'automatisation vous aide à plafonner votre risque avant la prochaine panne." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide en cas de stops non exécutés",
+      items: [
+        "<strong class='text-white'>Vérifiez que c'est Tradovate, pas vous.</strong> Si les graphiques se figent, que les cotations ne bougent plus ou que les symboles semblent périmés, c'est un problème de plateforme ou de flux de données, pas un mauvais ordre.",
+        "<strong class='text-white'>Essayez l'application mobile en données cellulaires.</strong> Une seconde voie, votre téléphone en 4G/5G, atteint parfois les serveurs quand l'application de bureau n'y parvient pas.",
+        "<strong class='text-white'>Envoyez un ordre au marché dans le sens opposé.</strong> Si vous êtes long 2 et ne pouvez pas sortir, un simple ordre de vente de 2 au marché libère souvent la position plus vite que le bouton de sortie.",
+        "<strong class='text-white'>Contactez l'Emergency Trade Desk par téléphone.</strong> Tradovate maintient une ligne d'urgence 24 heures sur 24 afin que le support puisse vous mettre à plat de son côté pendant une panne.",
+        "<strong class='text-white'>Ne tradez jamais avec des stops mentaux.</strong> Gardez en permanence un vrai stop de protection fixe en attente, dimensionné pour une perte que vous pouvez supporter s'il ne peut pas s'exécuter pendant quelques minutes.",
+        "<strong class='text-white'>Rapprochez après la panne.</strong> Confirmez votre position réelle et annulez les ordres orphelins ou fantômes une fois le flux rétabli.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « Le prix a touché mon stop et ne m'a pas sorti »" },
+    { type: "paragraph",html: "Ce n'est pas le message habituel d'&ldquo;ordre rejeté&rdquo; avec un motif clair. Votre ordre stop est <strong class='text-white'>actif et accepté</strong>, le prix traverse le déclencheur et pourtant aucune exécution ne revient. Au même moment, les commandes de sortie manuelles cessent de répondre et toute tentative d'annuler ou de modifier l'ordre échoue. On a l'impression que la plateforme s'est bloquée précisément autour de votre position." },
+    { type: "paragraph",html: "La cause est presque toujours une <strong class='text-white'>interruption des données de marché au niveau du courtier</strong>. Tradovate a historiquement acheminé ses données via CQG, et des pannes de ce type ont été attribuées à une coupure de données CQG survenue en pleine séance. Lorsque le flux de données vacille, la plateforme perd le flux de prix dont elle a besoin pour déclencher les stops comme pour confirmer les exécutions ; les ordres restent donc en suspens et les boutons de l'interface semblent morts." },
+    { type: "paragraph",html: "Voici la distinction qui compte : un <strong class='text-white'>ordre stop fixe réside sur les serveurs de Tradovate, pas sur votre machine locale</strong>, et survit donc normalement à une coupure de <em>votre</em> internet. Mais lorsque le flux ou le routage <em>propre à Tradovate</em> tombe, même un stop côté serveur peut ne pas se déclencher, et aucun clic de votre part ne le force. C'est pourquoi la vraie solution consiste à faire intervenir une personne chez Tradovate pour vous mettre à plat, et pourquoi la prévention (des stops fixes modestes et une voie de secours) compte plus que n'importe quel bouton." },
+    { type: "heading",text: "Principales causes des stops Tradovate non exécutés en 2026" },
+    { type: "heading",text: "1. Une coupure de données côté courtier (la cause principale)" },
+    { type: "paragraph",html: "Une interruption de CQG ou des données de marché stoppe le flux de prix : les stops ne se déclenchent pas et les exécutions ne sont pas confirmées. C'est la panne classique de Tradovate, et elle peut se reproduire." },
+    { type: "heading",text: "2. Une session figée ou déconnectée" },
+    { type: "paragraph",html: "La plateforme se fige en plein trade, les graphiques deviennent vides ou périmés et le panneau d'ordres cesse de répondre, souvent accompagné d'une &ldquo;Internal Server Error&rdquo; lorsque vous essayez de vous reconnecter." },
+    { type: "heading",text: "3. Le bouton de sortie/annulation ne répond pas" },
+    { type: "paragraph",html: "Pendant le blocage, les commandes manuelles (Exit at Market, Flatten, Cancel) envoient une requête qui ne revient jamais ; rien ne change donc à l'écran, quelle que soit l'insistance de vos clics." },
+    { type: "heading",text: "4. Exécutions partielles ou fantômes sur les ordres multi-contrats" },
+    { type: "paragraph",html: "Sur un stop multi-contrats, seule une partie de l'ordre s'exécute, par exemple 1 sur une quantité plus importante, laissant une position résiduelle que vous ne pouvez pas clôturer proprement avant le retour du flux." },
+    { type: "heading",text: "5. Un contrat peu liquide (un facteur mineur)" },
+    { type: "paragraph",html: "Si vous êtes sur un contrat à faible volume ou hors des heures actives, un stop en attente peut être lent à s'exécuter sur une liquidité réelle. C'est un problème distinct d'une panne, mais il se présente de la même façon à l'écran." },
+    { type: "heading",text: "Comment corriger les stops Tradovate non exécutés et sortir d'une position bloquée : pas à pas" },
+    { type: "heading",text: "Corriger un stop non exécuté : aplatissez d'abord la position vous-même" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez le panneau des positions", html: "Ouvrez le panneau des positions (module Positions, DOM ou le graphique) et repérez la commande de clôture manuelle de la position ouverte." },
+        { title: "Utilisez flatten / clôture au marché", html: "Utilisez l'action flatten / clôture au marché pour envoyer un ordre au marché qui compense toute votre position (long 2, vendez 2 au marché)." },
+        { title: "Passez une contre-opération manuelle si rien ne répond", html: "Si le bouton de sortie dédié ne répond pas, passez un nouvel <strong class='text-white'>ordre au marché</strong> simple dans le sens opposé et pour la même quantité, en contre-opération manuelle. Il passe fréquemment plus vite que le raccourci de sortie." },
+        { title: "Confirmez l'exécution", html: "Surveillez les panneaux Orders et Positions jusqu'à ce que l'exécution soit confirmée et que votre position nette indique zéro." },
+      ],
+    },
+    { type: "heading",text: "Corriger une session figée : basculez sur une voie de secours" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cessez de marteler le même écran", html: "Ne continuez pas à marteler le même écran. Une application de bureau bloquée se rétablit rarement si vous cliquez plus fort." },
+        { title: "Essayez le mobile en données cellulaires", html: "Ouvrez l'<strong class='text-white'>application mobile Tradovate en données cellulaires</strong> (pas sur le même Wi-Fi) et essayez d'aplatir depuis celle-ci ; un chemin réseau différent atteint parfois les serveurs." },
+        { title: "Essayez toute connexion qui répond", html: "Si vous disposez d'une seconde connexion (application mobile, application web ou une plateforme comme NinjaTrader sur le même compte), tentez la sortie depuis celle qui répond encore." },
+        { title: "Annulez les ordres orphelins une fois à plat", html: "Annulez les ordres actifs orphelins une fois à plat, afin qu'un objectif ou un stop périmé ne s'exécute pas plus tard." },
+      ],
+    },
+    { type: "heading",text: "Corriger une panne totale : appelez l'Emergency Trade Desk" },
+    {
+      type: "steps",
+      items: [
+        { title: "Contactez Tradovate immédiatement", html: "Si rien ne fonctionne de votre côté, contactez Tradovate immédiatement : par chat en direct dans l'application si elle charge encore, sinon par téléphone." },
+        { title: "Joignez l'Emergency Trade Desk", html: "Tradovate exploite un <strong class='text-white'>Emergency Trade Desk</strong> qui peut aplatir des positions et annuler des ordres de son côté pendant une panne de données." },
+        { title: "Confirmez les horaires et enregistrez le numéro", html: "La ligne d'urgence est généralement joignable 24 heures sur 24 pendant la semaine de trading (du dimanche après-midi au vendredi après-midi, heure centrale). <strong class='text-white'>Confirmez le numéro et les horaires actuels sur la page de contact officielle de Tradovate avant d'en avoir besoin.</strong> Un numéro d'urgence couramment indiqué est le (312) 283-3100, mais vérifiez-le toujours à l'avance et enregistrez-le." },
+        { title: "Indiquez votre compte et la position", html: "Donnez votre compte et la position ouverte ; demandez qu'on aplatisse et qu'on annule tous les ordres actifs, puis rapprochez une fois la plateforme rétablie." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme","Signification","Solution"], rows: [
+      ["Le prix a touché mon stop et ne m'a pas sorti","Coupure de données côté courtier ; le flux de prix du déclencheur est interrompu","Aplatissez manuellement avec un ordre au marché ; sans réponse, appelez l'Emergency Trade Desk"],
+      ["Le bouton &ldquo;Exit at Market&rdquo; ne fait rien","La requête de sortie ne revient pas de la session figée","Envoyez un nouvel ordre au marché opposé ; essayez l'application mobile en données cellulaires"],
+      ["Impossible d'annuler ou de modifier un ordre actif","L'ordre est en suspens pendant la panne","Passez un ordre au marché compensatoire manuel ; demandez au support d'annuler de son côté"],
+      ["Seul 1 contrat sur plusieurs a été exécuté","L'exécution partielle a laissé une position résiduelle","Clôturez manuellement les contrats restants ; annulez tout objectif/stop orphelin"],
+      ["&ldquo;Internal Server Error&rdquo; à la reconnexion","Panne de plateforme ou de session en cours","Attendez la fin de la panne, surveillez depuis un appareil de secours, puis rapprochez"],
+      ["La position ne se ferme pas après de nombreux essais","Blocage de session autour de votre position","Voie de secours ou Emergency Trade Desk ; n'ajoutez pas de nouvelles entrées entre-temps"],
+    ] },
+    { type: "heading",text: "Prévenez cela avec PickMyTrade" },
+    { type: "paragraph",html: "Aucun outil tiers ne peut empêcher une coupure de données côté courtier. Ce que vous pouvez contrôler, c'est ne jamais vous retrouver dans une position surdimensionnée et sans protection quand elle survient. PickMyTrade relie vos alertes TradingView directement à Tradovate et automatise la discipline de risque qui sauve des comptes pendant les pannes :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Stops fixes automatiques sur chaque entrée.</strong> PickMyTrade associe un véritable stop de protection (un bracket) dès l'ouverture d'une position, de sorte que vous ne dépendiez jamais d'un stop mental ni d'un clic manuel.",
+        "<strong class='text-white'>Validation de la quantité et du symbole.</strong> Bloque les ordres qui vous feraient entrer dans une position surdimensionnée avant même leur envoi, gardant ainsi modeste tout stop qui ne peut pas s'exécuter.",
+        "<strong class='text-white'>Synchronisation multi-comptes.</strong> Reproduit une sortie corrigée sur tous les comptes connectés, pour que vous n'ayez pas à aplatir chacun à la main sous pression.",
+        "<strong class='text-white'>Routage respectueux des limites de débit.</strong> Espace le flux d'ordres afin qu'une rafale de modifications ne vous fasse pas limiter au pire moment.",
+      ],
+    },
+    { type: "paragraph",html: "Le but n'est pas de déjouer une panne. C'est de garder chaque position assez modeste et assez serrée en stop pour que quelques minutes de sorties figées ne puissent pas faire exploser votre compte." },
+  ], it: [
+    { type: "paragraph",html: "Quando fa scalping su strumenti veloci come ES o NQ, niente la turba quanto vedere il prezzo attraversare il suo stop mentre la piattaforma resta ferma. Il mercato tocca il suo stop, non torna alcuna esecuzione, il pulsante &ldquo;Exit at Market&rdquo; non fa nulla e non può né annullare né modificare l'ordine attivo. Il prezzo tocca il suo stop e non la fa uscire. Succede su Tradovate da anni e non è un evento raro; è uno scenario che si ripete e che può danneggiare seriamente un conto se si è sovradimensionati. Ecco il punto importante: il filo conduttore è un'<strong class='text-white'>interruzione dei dati lato Tradovate</strong>, non la sua connessione internet, e la soluzione è diversa da un normale rifiuto dell'ordine. Questa guida spiega perché gli stop di Tradovate non vengono eseguiti, come uscire subito da una posizione bloccata e come l'automazione aiuta a limitare il rischio prima della prossima interruzione." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per stop non eseguiti",
+      items: [
+        "<strong class='text-white'>Verifichi che sia Tradovate, non lei.</strong> Se i grafici si bloccano, le quotazioni non si aggiornano più o i simboli sembrano obsoleti, è un problema della piattaforma o del feed di dati, non un ordine sbagliato.",
+        "<strong class='text-white'>Provi l'app mobile con dati cellulari.</strong> Una seconda via, il suo telefono in 4G/5G, a volte raggiunge i server quando l'app desktop non ci riesce.",
+        "<strong class='text-white'>Invii un ordine a mercato nella direzione opposta.</strong> Se è long 2 e non riesce a uscire, un semplice ordine di vendita di 2 a mercato spesso libera la posizione più in fretta del pulsante di uscita.",
+        "<strong class='text-white'>Contatti telefonicamente l'Emergency Trade Desk.</strong> Tradovate mantiene una linea di emergenza attiva 24 ore su 24 affinché il supporto possa azzerarla dal proprio lato durante un'interruzione.",
+        "<strong class='text-white'>Non operi mai con stop mentali.</strong> Tenga sempre uno stop di protezione reale e fisso, dimensionato su una perdita che può sostenere se non può essere eseguito per qualche minuto.",
+        "<strong class='text-white'>Riconcili dopo l'interruzione.</strong> Confermi la sua posizione reale e annulli eventuali ordini orfani o fantasma una volta ripristinato il feed.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa “Il prezzo ha toccato il mio stop e non mi ha fatto uscire”" },
+    { type: "paragraph",html: "Questo non è il solito messaggio di &ldquo;ordine rifiutato&rdquo; con un motivo chiaro. Il suo ordine stop è <strong class='text-white'>attivo e accettato</strong>, il prezzo attraversa il trigger e tuttavia non torna alcuna esecuzione. Nello stesso momento i controlli di uscita manuali smettono di rispondere e ogni tentativo di annullare o modificare l'ordine fallisce. Sembra che la piattaforma si sia bloccata proprio attorno alla sua posizione." },
+    { type: "paragraph",html: "La causa è quasi sempre un'<strong class='text-white'>interruzione dei dati di mercato a livello di broker</strong>. Tradovate ha storicamente instradato i propri dati tramite CQG e interruzioni di questo tipo sono state attribuite a un'interruzione dei dati CQG avvenuta durante l'orario di mercato. Quando il feed di dati si inceppa, la piattaforma perde il flusso di prezzi che le serve sia per attivare gli stop sia per confermare le esecuzioni, quindi gli ordini restano in sospeso e i pulsanti dell'interfaccia sembrano morti." },
+    { type: "paragraph",html: "Ecco la distinzione che conta: un <strong class='text-white'>ordine stop fisso risiede sui server di Tradovate, non sul suo computer locale</strong>, quindi di norma sopravvive se cade <em>la sua</em> connessione internet. Ma quando cadono il feed o il routing <em>di Tradovate stessa</em>, anche uno stop lato server potrebbe non attivarsi e nessun clic da parte sua lo forza. Per questo la vera soluzione è far intervenire una persona di Tradovate che la azzeri, e per questo la prevenzione (stop fissi piccoli e una via alternativa) conta più di qualsiasi singolo pulsante." },
+    { type: "heading",text: "Principali cause degli stop di Tradovate non eseguiti nel 2026" },
+    { type: "heading",text: "1. Un'interruzione dei dati lato broker (la causa principale)" },
+    { type: "paragraph",html: "Un'interruzione di CQG o dei dati di mercato blocca il flusso di prezzi, quindi gli stop non si attivano e le esecuzioni non vengono confermate. È la classica interruzione di Tradovate e può ripetersi." },
+    { type: "heading",text: "2. Una sessione bloccata o disconnessa" },
+    { type: "paragraph",html: "La piattaforma si blocca a metà operazione, i grafici diventano vuoti o obsoleti e il pannello ordini smette di rispondere, spesso insieme a un &ldquo;Internal Server Error&rdquo; quando prova a riconnettersi." },
+    { type: "heading",text: "3. Il pulsante di uscita/annullamento non risponde" },
+    { type: "paragraph",html: "Durante il blocco, i controlli manuali (Exit at Market, Flatten, Cancel) inviano una richiesta che non torna mai indietro, quindi nulla cambia a schermo per quanto faccia clic." },
+    { type: "heading",text: "4. Esecuzioni parziali o fantasma su ordini multi-contratto" },
+    { type: "paragraph",html: "Su uno stop multi-contratto viene eseguita solo una parte dell'ordine, per esempio 1 su una quantità maggiore, lasciando una posizione residua che non può chiudere in modo pulito finché il feed non si riprende." },
+    { type: "heading",text: "5. Un contratto sottile o illiquido (un fattore minore)" },
+    { type: "paragraph",html: "Se opera su un contratto a basso volume o fuori dagli orari attivi, uno stop a riposo può essere lento a eseguirsi su liquidità reale. È un problema distinto da un'interruzione, ma a schermo appare identico." },
+    { type: "heading",text: "Come risolvere gli stop di Tradovate non eseguiti e uscire da una posizione bloccata: passo dopo passo" },
+    { type: "heading",text: "Risolvere uno stop non eseguito: azzeri prima la posizione da sé" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra il pannello delle posizioni", html: "Apra il pannello delle posizioni (modulo Positions, DOM o il grafico) e trovi il controllo di chiusura manuale per la posizione aperta." },
+        { title: "Usi flatten / chiusura a mercato", html: "Usi l'azione flatten / chiusura a mercato per inviare un ordine a mercato che compensi l'intera posizione (long 2, venda 2 a mercato)." },
+        { title: "Faccia un'operazione contraria manuale se non risponde", html: "Se il pulsante di uscita dedicato non risponde, inserisca un nuovo <strong class='text-white'>ordine a mercato</strong> semplice nella direzione opposta e con la stessa quantità come operazione contraria manuale. Spesso si libera più in fretta della scorciatoia di uscita." },
+        { title: "Confermi l'esecuzione", html: "Osservi i pannelli Orders e Positions finché l'esecuzione non è confermata e la sua posizione netta risulta flat." },
+      ],
+    },
+    { type: "heading",text: "Risolvere una sessione bloccata: passi a una via alternativa" },
+    {
+      type: "steps",
+      items: [
+        { title: "Smetta di martellare la stessa schermata", html: "Non continui a martellare la stessa schermata. Un'app desktop bloccata raramente si riprende facendo clic più forte." },
+        { title: "Provi il mobile con dati cellulari", html: "Apra l'<strong class='text-white'>app mobile di Tradovate con dati cellulari</strong> (non sullo stesso Wi-Fi) e provi ad azzerare da lì; un percorso di rete diverso a volte raggiunge i server." },
+        { title: "Provi qualsiasi connessione che risponde", html: "Se dispone di una seconda connessione (app mobile, app web o una piattaforma come NinjaTrader sullo stesso conto), tenti l'uscita da quella che risponde ancora." },
+        { title: "Annulli gli ordini orfani una volta flat", html: "Annulli gli ordini attivi orfani una volta flat, in modo che un target o uno stop obsoleto non venga eseguito in seguito." },
+      ],
+    },
+    { type: "heading",text: "Risolvere un'interruzione totale: chiami l'Emergency Trade Desk" },
+    {
+      type: "steps",
+      items: [
+        { title: "Contatti subito Tradovate", html: "Se dal suo lato nulla funziona, contatti subito Tradovate: tramite chat dal vivo nell'app se si carica ancora, altrimenti per telefono." },
+        { title: "Raggiunga l'Emergency Trade Desk", html: "Tradovate gestisce un <strong class='text-white'>Emergency Trade Desk</strong> che può azzerare le posizioni e annullare gli ordini dal proprio lato durante un'interruzione dei dati." },
+        { title: "Confermi gli orari e salvi il numero", html: "La linea di emergenza è in genere raggiungibile 24 ore su 24 durante la settimana di negoziazione (da domenica pomeriggio a venerdì pomeriggio, ora centrale). <strong class='text-white'>Confermi il numero e gli orari attuali sulla pagina dei contatti ufficiale di Tradovate prima di averne bisogno.</strong> Un numero di emergenza comunemente indicato è (312) 283-3100, ma lo verifichi sempre in anticipo e lo salvi." },
+        { title: "Comunichi conto e posizione", html: "Comunichi il suo conto e la posizione aperta; chieda di azzerare e di annullare tutti gli ordini attivi, poi riconcili quando la piattaforma torna operativa." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo","Cosa significa","Soluzione"], rows: [
+      ["Il prezzo ha toccato il mio stop e non mi ha fatto uscire","Interruzione dei dati lato broker; il flusso di prezzi del trigger è interrotto","Azzeri manualmente con un ordine a mercato; se non risponde, chiami l'Emergency Trade Desk"],
+      ["Il pulsante &ldquo;Exit at Market&rdquo; non fa nulla","La richiesta di uscita non torna indietro dalla sessione bloccata","Invii un nuovo ordine a mercato opposto; provi l'app mobile con dati cellulari"],
+      ["Non riesco ad annullare o modificare un ordine attivo","L'ordine è in sospeso durante l'interruzione","Inserisca un ordine a mercato compensativo manuale; chieda al supporto di annullare dal proprio lato"],
+      ["È stato eseguito solo 1 contratto su più","L'esecuzione parziale ha lasciato una posizione residua","Chiuda manualmente i contratti rimanenti; annulli ogni target/stop orfano"],
+      ["&ldquo;Internal Server Error&rdquo; alla riconnessione","Interruzione della piattaforma o della sessione in corso","Attenda che l'interruzione rientri, monitori da un dispositivo alternativo, poi riconcili"],
+      ["La posizione non si chiude dopo molti tentativi","Blocco a livello di sessione attorno alla sua posizione","Via alternativa o Emergency Trade Desk; nel frattempo non aggiunga nuovi ingressi"],
+    ] },
+    { type: "heading",text: "Prevenga tutto questo con PickMyTrade" },
+    { type: "paragraph",html: "Nessuno strumento di terze parti può impedire che si verifichi un'interruzione dei dati lato broker. Ciò che può controllare è non trovarsi mai in una posizione sovradimensionata e priva di protezione quando accade. PickMyTrade collega i suoi alert di TradingView direttamente a Tradovate e automatizza la disciplina di rischio che salva i conti durante le interruzioni:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Stop fissi automatici su ogni ingresso.</strong> PickMyTrade associa un vero stop di protezione (un bracket) nel momento in cui si apre una posizione, così non dipende mai da uno stop mentale o da un clic manuale.",
+        "<strong class='text-white'>Validazione di quantità e simbolo.</strong> Blocca gli ordini che la porterebbero in una posizione sovradimensionata prima ancora che vengano inviati, mantenendo piccolo qualsiasi stop non eseguibile.",
+        "<strong class='text-white'>Sincronizzazione multi-conto.</strong> Replica un'uscita corretta su tutti i conti collegati, così non deve azzerare ciascuno a mano sotto pressione.",
+        "<strong class='text-white'>Instradamento a prova di limiti di frequenza.</strong> Distanzia il flusso di ordini in modo che una raffica di modifiche non la faccia limitare nel momento peggiore.",
+      ],
+    },
+    { type: "paragraph",html: "L'obiettivo non è battere un'interruzione. È mantenere ogni posizione abbastanza piccola e con uno stop abbastanza stretto perché qualche minuto di uscite bloccate non possa far saltare il suo conto." },
+  ] },
+  ctaHeading: { en: "Attach a Hard Stop to Every Entry", de: "Hängen Sie an jeden Einstieg einen Hard Stop", es: "Adjunte un stop fijo a cada entrada", fr: "Associez un stop fixe à chaque entrée", it: "Associ uno stop fisso a ogni ingresso" },
+  ctaText: { en: "Start your free 7-day trial, attach a hard stop to every Tradovate entry automatically so a frozen exit button can't sink an oversized position.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase und hängen Sie automatisch an jeden Tradovate-Einstieg einen Hard Stop, damit ein eingefrorener Exit-Button keine überdimensionierte Position ruinieren kann.", es: "Comience su prueba gratuita de 7 días y adjunte automáticamente un stop fijo a cada entrada de Tradovate, para que un botón de salida congelado no hunda una posición sobredimensionada.", fr: "Commencez votre essai gratuit de 7 jours et associez automatiquement un stop fixe à chaque entrée Tradovate, afin qu'un bouton de sortie figé ne fasse pas couler une position surdimensionnée.", it: "Inizi la prova gratuita di 7 giorni e associ automaticamente uno stop fisso a ogni ingresso su Tradovate, così un pulsante di uscita bloccato non affonda una posizione sovradimensionata." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why did my Tradovate stop not fill when price clearly hit it?", a: "The usual culprit is a market-data interruption on Tradovate's side, historically a CQG data drop. Without a live price stream, the platform can't trigger your stop or confirm a fill, so a working order sits in limbo even though the market traded straight through it." },
+    { q: "Do Tradovate stop orders rest on my computer or on the server?", a: "Hard stop and limit orders rest on Tradovate's servers, so they normally survive if your own internet drops. The failure case is different: when Tradovate's own data or routing drops, even a server-side stop may not trigger until the feed recovers." },
+    { q: "How do I exit a position when the Exit at Market button won't work?", a: "Place a fresh, plain market order in the opposite direction and quantity to offset the position: long 2 means sell 2 at market. A new market order often clears faster than the frozen exit shortcut. If that also fails, switch to a backup route or call support." },
+    { q: "Can Tradovate close my position for me during an outage?", a: "Yes. Tradovate runs an Emergency Trade Desk that can flatten positions and cancel orders from their side during a data outage. Confirm the current emergency number and hours on Tradovate's contact page and save them before you ever need them." },
+    { q: "Will a hard stop protect me if this happens again?", a: "A hard resting stop is still your best protection because it lives on the server and can fill without you clicking anything. But during a broker-side data drop it may not trigger, which is why you should also keep positions small and have a backup way to reach support." },
+    { q: "Is stops not filling a common Tradovate problem?", a: "It's a recurring one. It shows up across desktop, web, and TradingView-connected setups, and it can hit again. Treat it as a scenario to plan for, not a one-off." },
+    { q: "Should I keep retrying the same screen or shut down and restart?", a: "Don't just hammer a frozen screen. Try a different route first: the mobile app on cellular, a second connection, or the Emergency Trade Desk. Restarting the desktop app can help after a freeze, but it costs time you may not have with an open position." },
+    { q: "How do I avoid ghost orders after the outage clears?", a: "Once you're flat, review the Orders panel and cancel any leftover working stop or target. During outages, orders you thought were cancelled can still fill later, so reconcile your true position before you trade again." },
+  ], de: [
+    { q: "Warum wurde mein Tradovate-Stop nicht ausgeführt, obwohl der Kurs ihn eindeutig erreicht hat?", a: "Meist liegt eine Marktdaten-Unterbrechung auf Seiten von Tradovate vor, in der Vergangenheit ein Datenausfall bei CQG. Ohne einen Live-Kursstrom kann die Plattform Ihren Stop weder auslösen noch eine Ausführung bestätigen, sodass eine aktive Order in der Schwebe bleibt, obwohl der Markt direkt hindurchgehandelt hat." },
+    { q: "Liegen Tradovate-Stop-Orders auf meinem Computer oder auf dem Server?", a: "Hard-Stop- und Limit-Orders liegen auf den Servern von Tradovate und bleiben daher normalerweise bestehen, wenn Ihre eigene Internetverbindung abbricht. Der Fehlerfall ist ein anderer: Wenn die eigenen Daten oder das Routing von Tradovate ausfallen, löst selbst ein serverseitiger Stop möglicherweise erst aus, wenn der Feed wieder läuft." },
+    { q: "Wie schließe ich eine Position, wenn der Button „Exit at Market“ nicht funktioniert?", a: "Platzieren Sie eine neue, einfache Market-Order in Gegenrichtung und mit derselben Stückzahl, um die Position auszugleichen: Bei Long 2 verkaufen Sie 2 zum Marktpreis. Eine neue Market-Order wird oft schneller verarbeitet als die eingefrorene Exit-Schaltfläche. Falls auch das scheitert, wechseln Sie auf eine Ersatzverbindung oder rufen Sie den Support an." },
+    { q: "Kann Tradovate meine Position während eines Ausfalls für mich schließen?", a: "Ja. Tradovate betreibt einen Emergency Trade Desk, der bei einem Datenausfall von seiner Seite aus Positionen glattstellen und Orders stornieren kann. Prüfen Sie die aktuelle Notfallnummer und die Zeiten auf der Kontaktseite von Tradovate und speichern Sie sie, bevor Sie sie jemals brauchen." },
+    { q: "Schützt mich ein Hard Stop, falls das wieder passiert?", a: "Ein hinterlegter Hard Stop ist weiterhin Ihr bester Schutz, da er auf dem Server liegt und ohne Ihr Zutun ausgeführt werden kann. Bei einem broker-seitigen Datenausfall löst er jedoch eventuell nicht aus. Deshalb sollten Sie Positionen zusätzlich klein halten und einen Ersatzweg zum Support bereithaben." },
+    { q: "Sind nicht ausgeführte Stops ein häufiges Tradovate-Problem?", a: "Es kommt immer wieder vor. Es tritt auf Desktop-, Web- und mit TradingView verbundenen Setups auf und kann erneut passieren. Behandeln Sie es als Szenario, auf das Sie sich vorbereiten, nicht als einmaligen Ausreißer." },
+    { q: "Sollte ich denselben Bildschirm weiter versuchen oder alles herunterfahren und neu starten?", a: "Hämmern Sie nicht einfach auf einen eingefrorenen Bildschirm. Versuchen Sie zuerst einen anderen Weg: die mobile App über Mobilfunk, eine zweite Verbindung oder den Emergency Trade Desk. Ein Neustart der Desktop-App kann nach einem Einfrieren helfen, kostet aber Zeit, die Sie bei einer offenen Position möglicherweise nicht haben." },
+    { q: "Wie vermeide ich Geisterorders, nachdem der Ausfall behoben ist?", a: "Sobald Sie glattgestellt sind, prüfen Sie das Orders-Panel und stornieren Sie übrig gebliebene aktive Stops oder Ziele. Bei Ausfällen können Orders, die Sie für storniert hielten, später noch ausgeführt werden. Gleichen Sie daher Ihre tatsächliche Position ab, bevor Sie wieder handeln." },
+  ], es: [
+    { q: "¿Por qué mi stop de Tradovate no se ejecutó cuando el precio lo tocó claramente?", a: "El culpable habitual es una interrupción de los datos de mercado por parte de Tradovate, históricamente una caída de datos de CQG. Sin un flujo de precios en vivo, la plataforma no puede activar su stop ni confirmar una ejecución, por lo que una orden activa queda en el limbo aunque el mercado haya pasado de largo." },
+    { q: "¿Las órdenes stop de Tradovate residen en mi ordenador o en el servidor?", a: "Las órdenes stop fijas y limit residen en los servidores de Tradovate, por lo que normalmente sobreviven si se cae su propia conexión a internet. El caso de fallo es distinto: cuando fallan los datos o el enrutamiento de Tradovate, incluso un stop del lado del servidor puede no activarse hasta que se recupere el feed." },
+    { q: "¿Cómo salgo de una posición cuando el botón Exit at Market no funciona?", a: "Coloque una orden de mercado nueva y sencilla en sentido contrario y con la misma cantidad para compensar la posición: si está largo 2, venda 2 a mercado. Una nueva orden de mercado suele liberarse antes que el atajo de salida congelado. Si eso también falla, cambie a una vía alternativa o llame a soporte." },
+    { q: "¿Puede Tradovate cerrar mi posición por mí durante una caída?", a: "Sí. Tradovate cuenta con un Emergency Trade Desk que puede cerrar posiciones y cancelar órdenes desde su lado durante una caída de datos. Confirme el número de emergencia y el horario vigentes en la página de contacto de Tradovate y guárdelos antes de necesitarlos." },
+    { q: "¿Me protegerá un stop fijo si vuelve a ocurrir?", a: "Un stop fijo en reposo sigue siendo su mejor protección porque reside en el servidor y puede ejecutarse sin que usted haga clic en nada. Pero durante una caída de datos del lado del bróker puede que no se active, por eso conviene además mantener posiciones pequeñas y tener una vía alternativa para contactar con soporte." },
+    { q: "¿Es habitual que los stops no se ejecuten en Tradovate?", a: "Es un problema recurrente. Aparece en configuraciones de escritorio, web y conectadas a TradingView, y puede volver a ocurrir. Trátelo como un escenario para el que planificar, no como un hecho aislado." },
+    { q: "¿Debo seguir reintentando en la misma pantalla o cerrar y reiniciar?", a: "No se limite a golpear una pantalla congelada. Pruebe primero otra vía: la aplicación móvil con datos móviles, una segunda conexión o el Emergency Trade Desk. Reiniciar la aplicación de escritorio puede ayudar tras un bloqueo, pero cuesta un tiempo que quizá no tenga con una posición abierta." },
+    { q: "¿Cómo evito las órdenes fantasma cuando se resuelve la caída?", a: "Una vez que esté sin posición, revise el panel Orders y cancele cualquier stop u objetivo activo que haya quedado. Durante las caídas, órdenes que creía canceladas pueden ejecutarse más tarde, así que concilie su posición real antes de volver a operar." },
+  ], fr: [
+    { q: "Pourquoi mon stop Tradovate ne s'est-il pas exécuté alors que le prix l'a clairement touché ?", a: "Le coupable habituel est une interruption des données de marché du côté de Tradovate, historiquement une coupure de données CQG. Sans flux de prix en direct, la plateforme ne peut ni déclencher votre stop ni confirmer une exécution : un ordre actif reste donc en suspens alors que le marché est passé directement au travers." },
+    { q: "Les ordres stop Tradovate se trouvent-ils sur mon ordinateur ou sur le serveur ?", a: "Les ordres stop fixes et limit résident sur les serveurs de Tradovate ; ils survivent donc normalement à une coupure de votre propre connexion internet. Le cas d'échec est différent : lorsque les données ou le routage de Tradovate lui-même tombent, même un stop côté serveur peut ne pas se déclencher avant le retour du flux." },
+    { q: "Comment sortir d'une position lorsque le bouton Exit at Market ne fonctionne pas ?", a: "Passez un nouvel ordre au marché simple, dans le sens opposé et pour la même quantité, afin de compenser la position : si vous êtes long 2, vendez 2 au marché. Un nouvel ordre au marché passe souvent plus vite que le raccourci de sortie figé. Si cela échoue aussi, basculez sur une voie de secours ou appelez le support." },
+    { q: "Tradovate peut-il clôturer ma position à ma place pendant une panne ?", a: "Oui. Tradovate exploite un Emergency Trade Desk qui peut aplatir des positions et annuler des ordres de son côté pendant une panne de données. Confirmez le numéro d'urgence et les horaires actuels sur la page de contact de Tradovate et enregistrez-les avant d'en avoir besoin." },
+    { q: "Un stop fixe me protégera-t-il si cela se reproduit ?", a: "Un stop fixe en attente reste votre meilleure protection, car il se trouve sur le serveur et peut s'exécuter sans que vous cliquiez sur quoi que ce soit. Mais lors d'une coupure de données côté courtier, il peut ne pas se déclencher ; c'est pourquoi vous devez aussi garder des positions modestes et disposer d'un moyen de secours pour joindre le support." },
+    { q: "Les stops qui ne s'exécutent pas sont-ils un problème courant chez Tradovate ?", a: "C'est un problème récurrent. Il apparaît sur les configurations bureau, web et connectées à TradingView, et peut se reproduire. Considérez-le comme un scénario à anticiper, pas comme un incident isolé." },
+    { q: "Dois-je continuer à réessayer sur le même écran ou tout arrêter et redémarrer ?", a: "Ne martelez pas un écran figé. Essayez d'abord une autre voie : l'application mobile en données cellulaires, une seconde connexion ou l'Emergency Trade Desk. Redémarrer l'application de bureau peut aider après un blocage, mais cela coûte un temps dont vous ne disposez peut-être pas avec une position ouverte." },
+    { q: "Comment éviter les ordres fantômes une fois la panne résolue ?", a: "Une fois à plat, passez en revue le panneau Orders et annulez tout stop ou objectif encore actif. Pendant les pannes, des ordres que vous pensiez annulés peuvent encore s'exécuter plus tard ; rapprochez donc votre position réelle avant de retrader." },
+  ], it: [
+    { q: "Perché il mio stop di Tradovate non è stato eseguito anche se il prezzo lo ha chiaramente toccato?", a: "Il colpevole abituale è un'interruzione dei dati di mercato da parte di Tradovate, storicamente un'interruzione dei dati CQG. Senza un flusso di prezzi in tempo reale, la piattaforma non può attivare il suo stop né confermare un'esecuzione, quindi un ordine attivo resta in sospeso anche se il mercato lo ha attraversato." },
+    { q: "Gli ordini stop di Tradovate risiedono sul mio computer o sul server?", a: "Gli ordini stop fissi e limit risiedono sui server di Tradovate, quindi di norma sopravvivono se cade la sua connessione internet. Il caso di errore è diverso: quando cadono i dati o il routing di Tradovate stessa, anche uno stop lato server potrebbe non attivarsi finché il feed non si riprende." },
+    { q: "Come esco da una posizione quando il pulsante Exit at Market non funziona?", a: "Inserisca un nuovo ordine a mercato semplice nella direzione opposta e con la stessa quantità per compensare la posizione: se è long 2, venda 2 a mercato. Un nuovo ordine a mercato spesso si libera più in fretta della scorciatoia di uscita bloccata. Se anche questo fallisce, passi a una via alternativa o chiami il supporto." },
+    { q: "Tradovate può chiudere la mia posizione al posto mio durante un'interruzione?", a: "Sì. Tradovate gestisce un Emergency Trade Desk che può azzerare le posizioni e annullare gli ordini dal proprio lato durante un'interruzione dei dati. Confermi il numero di emergenza e gli orari attuali sulla pagina dei contatti di Tradovate e li salvi prima di averne bisogno." },
+    { q: "Uno stop fisso mi proteggerà se succede di nuovo?", a: "Uno stop fisso a riposo resta la sua migliore protezione perché risiede sul server e può essere eseguito senza che lei faccia clic su nulla. Ma durante un'interruzione dei dati lato broker potrebbe non attivarsi, ed è per questo che dovrebbe anche mantenere posizioni piccole e avere un modo alternativo per contattare il supporto." },
+    { q: "Gli stop non eseguiti sono un problema comune di Tradovate?", a: "È un problema ricorrente. Compare su configurazioni desktop, web e collegate a TradingView e può ripresentarsi. Lo consideri uno scenario per cui pianificare, non un evento isolato." },
+    { q: "Devo continuare a riprovare sulla stessa schermata o spegnere e riavviare?", a: "Non si limiti a martellare una schermata bloccata. Provi prima un'altra via: l'app mobile con dati cellulari, una seconda connessione o l'Emergency Trade Desk. Riavviare l'app desktop può aiutare dopo un blocco, ma costa un tempo che potrebbe non avere con una posizione aperta." },
+    { q: "Come evito gli ordini fantasma dopo che l'interruzione è rientrata?", a: "Una volta flat, controlli il pannello Orders e annulli ogni stop o target attivo rimasto. Durante le interruzioni, ordini che pensava annullati possono ancora essere eseguiti in seguito, quindi riconcili la sua posizione reale prima di operare di nuovo." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von dieser weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni uniquement à des fins éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée, ni parrainée par elle. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; confirmez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

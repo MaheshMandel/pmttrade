@@ -1,0 +1,565 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-oso-oco-bracket-fail";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API Bracket (OSO/OCO) Orders Fail";
+const META_DESCRIPTION =
+  "Tradovate API bracket orders failing? Fix OSO/OCO 404s and 'Wrong OCO combination' rejects with the right endpoint, fields, and a proven fallback.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate-API-Bracket-Orders (OSO/OCO) schlagen fehl", es: "Fallan las órdenes bracket (OSO/OCO) de la API de Tradovate", fr: "Les ordres bracket (OSO/OCO) de l'API Tradovate échouent", it: "Gli ordini bracket (OSO/OCO) dell'API Tradovate falliscono" },
+  dek: { en: "Your entry fills on ES or NQ and the stop-loss or take-profit never shows up. Here's what the 200 OK, the 404, and the 'Wrong OCO combination' reject actually mean, and how to fix each one.", de: "Ihre Eröffnung wird auf ES oder NQ ausgeführt, und der Stop-Loss oder Take-Profit taucht nie auf. Hier erfahren Sie, was der 200 OK, der 404 und die 'Wrong OCO combination'-Ablehnung wirklich bedeuten, und wie Sie jedes einzelne beheben.", es: "Su entrada se ejecuta en ES o NQ y el stop-loss o el take-profit nunca aparece. Esto es lo que realmente significan el 200 OK, el 404 y el rechazo 'Wrong OCO combination', y cómo corregir cada uno.", fr: "Votre entrée s'exécute sur ES ou NQ et le stop-loss ou le take-profit n'apparaît jamais. Voici ce que signifient réellement le 200 OK, le 404 et le rejet 'Wrong OCO combination', et comment corriger chacun d'eux.", it: "La sua entrata viene eseguita su ES o NQ e lo stop-loss o il take-profit non compare mai. Ecco cosa significano davvero il 200 OK, il 404 e il rifiuto 'Wrong OCO combination', e come correggere ciascuno di essi." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Your automation fires a Tradovate API bracket order, the entry fills on ES or NQ, and then&hellip; nothing. No stop-loss, no take-profit. You're now one bad tick away from an uncapped position, and your log says the order &ldquo;sent fine.&rdquo; That's the trap. In 2026 the classic failure isn't a red error screen, it's a <code>200 OK</code> HTTP status hiding a <code>failureReason</code> and <code>failureText</code> in the body, or an <code>orderStrategy</code> call that comes back as a bare <code>404</code>. The variants you'll hit most: a <code>404 (undocumented)</code> from <code>startOrderStrategy</code>, an <code>Invalid JSON</code> parse error, a <code>Wrong OCO combination</code> reject, and the nastiest one, a silent half-fill where only the entry survives. Here's what each error actually means, how to fix the endpoint and field problems behind them, and how PickMyTrade keeps an unprotected fill from ever reaching your account." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Failing Bracket (OSO/OCO) Orders",
+      items: [
+        "<strong class='text-white'>Read the response body, not just the HTTP code.</strong> Tradovate hands you <code>200 OK</code> even when the order is dead on arrival. The truth lives in <code>failureReason</code> / <code>failureText</code>.",
+        "<strong class='text-white'>Confirm the endpoint.</strong> Use <code>order/placeOSO</code> for an entry that sends stop/target legs, <code>order/placeOCO</code> for two linked exits, and <code>orderStrategy/startOrderStrategy</code> for a server-side bracket.",
+        "<strong class='text-white'>Send both account fields.</strong> You need the numeric <code>accountId</code> (from <code>account/list</code>) <em>and</em> the <code>accountSpec</code> account name. Miss one, or mismatch them, and you get <code>Access is denied</code>.",
+        "<strong class='text-white'>Serialize real JSON.</strong> Post a JSON body (<code>json=</code> in Python <code>requests</code>), not a raw dict, otherwise it's <code>Invalid JSON: expected '{'</code>.",
+        "<strong class='text-white'>Use <code>orderStrategyTypeId: 2</code>.</strong> It's the only valid value. A <code>1</code> gets you a <code>404 (undocumented)</code>.",
+        "<strong class='text-white'>Keep a fallback ready.</strong> If the strategy endpoint keeps failing, place the entry, then attach a stop/target <code>placeOCO</code> once you're holding the position.",
+      ],
+    },
+    { type: "heading", text: "What “Wrong OCO Combination” and the 404 Errors Mean" },
+    { type: "paragraph", html: "Tradovate gives you several ways to submit protected orders, and each one fails in its own way. A <strong class='text-white'>bracket</strong> is an entry order plus two child legs, a protective stop and a profit target, where filling or cancelling one child cancels the other. On the REST API you build that with <code>order/placeOSO</code> (One-Sends-Other): a parent order carries <code>bracket1</code> and <code>bracket2</code> objects that only wake up after the parent fills. <code>order/placeOCO</code> (One-Cancels-Other) links two orders so a fill on one cancels the other, handy for bolting a stop and target onto a position you already hold." },
+    { type: "paragraph", html: "The confusing part: these endpoints happily return <code>200 OK</code> while still rejecting the order. Tradovate reports business-logic failures inside the response body, not in the HTTP status. So a payload that reaches the server cleanly can still come back with <code>{\"failureReason\": \"InvalidPrice\", \"failureText\": \"Wrong OCO combination\"}</code>, meaning the price levels or order-type pairing you chose aren't a legal OCO. A stop and a limit sitting on the wrong side of the market will do it. Treat any body containing <code>failureReason</code> as a rejection, full stop, no matter what the status line says." },
+    { type: "paragraph", html: "The <code>orderStrategy/startOrderStrategy</code> endpoint is a different animal. It runs a <em>server-side</em> bracket strategy, the API equivalent of an ATM strategy, and it's far pickier about its payload. Send the wrong <code>orderStrategyTypeId</code>, or call it over plain REST when it wants a WebSocket frame, and you get an unhelpful <code>404 (undocumented)</code>. It looks like a missing route, but it's really a rejected request." },
+    { type: "heading", text: "Top Causes of Tradovate API Bracket Orders Failing" },
+    { type: "heading", text: "1. You only checked the HTTP status, not the body" },
+    { type: "paragraph", html: "This is the number-one trap. Your client sees <code>200 OK</code>, logs &ldquo;order sent,&rdquo; and walks away, but the entry was rejected, or only the parent order made it through. Parse every OSO/OCO response for <code>failureReason</code> and <code>failureText</code> before you call the bracket live." },
+    { type: "heading", text: "2. Wrong orderStrategyTypeId on startOrderStrategy" },
+    { type: "paragraph", html: "A lot of people try <code>orderStrategyTypeId: 1</code> and get a <code>404 (undocumented)</code> for their trouble. There's only one valid value, and it's <code>2</code>. Anything else is rejected before the strategy is ever built." },
+    { type: "heading", text: "3. Calling startOrderStrategy over REST instead of WebSocket" },
+    { type: "paragraph", html: "Even with the right type id, this endpoint is unreliable over plain HTTP REST. It's built to run over a WebSocket, and it works reliably when you drive it that way. A REST call that keeps 404-ing will often succeed, unchanged, the moment you send it as a WebSocket frame." },
+    { type: "heading", text: "4. Malformed JSON or a raw dict instead of a JSON body" },
+    { type: "paragraph", html: "A common <code>placeOCO</code> failure is <code>Invalid JSON: expected '{', offset: 0x00000075</code>. That happens when the request ships a form-encoded dictionary instead of a serialized JSON string, in Python, passing <code>data=payload</code> instead of <code>json=payload</code> (or forgetting <code>json.dumps()</code>). The server never sees valid JSON, so it throws out the whole bracket." },
+    { type: "heading", text: "5. Missing accountSpec, wrong accountId, or an illegal price combination" },
+    { type: "paragraph", html: "Bracket endpoints want both the numeric <code>accountId</code> (pulled from <code>account/list</code>) and the string <code>accountSpec</code> (your account name). Drop either one and you're looking at <code>Access is denied</code>. Separately, <code>placeOCO</code> and <code>placeOSO</code> check that the two legs form a legal combination, a stop and limit priced on the wrong side of the market come back as <code>Wrong OCO combination</code>. Market-entry brackets add one more wrinkle: because the API needs concrete price levels for the child legs, you generally can't attach tick-relative TP/SL to a plain <code>Market</code> entry through <code>placeOSO</code>. You either compute the price levels yourself, or let the strategy engine handle the offsets." },
+    { type: "heading", text: "How to Fix Tradovate API Bracket Orders: Step-by-Step" },
+    { type: "heading", text: "Fixing the “200 OK but no legs” trap" },
+    {
+      type: "list",
+      items: [
+        "After every <code>placeOSO</code> / <code>placeOCO</code> / <code>startOrderStrategy</code> call, parse the JSON body.",
+        "Check for a <code>failureReason</code> key. If it's there, treat the order as <strong class='text-white'>rejected</strong> and read <code>failureText</code> for the cause.",
+        "Only mark the bracket live once you've got confirmed order IDs for the parent <em>and</em> both child legs, poll <code>order/list</code> or subscribe to order events over WebSocket.",
+        "Log the full body, not the status code, so half-fills show up in your audit trail.",
+      ],
+    },
+    { type: "heading", text: "Fixing startOrderStrategy 404s" },
+    {
+      type: "list",
+      items: [
+        "Set <code>orderStrategyTypeId</code> to <code>2</code>, the only value it accepts.",
+        "Send both <code>accountId</code> and <code>accountSpec</code>, plus <code>symbol</code>, <code>action</code>, and the <code>params</code> object (with your <code>entryVersion</code> and <code>brackets</code>).",
+        "Submit the request as a <strong class='text-white'>WebSocket</strong> frame rather than a REST POST. This endpoint is designed to run over the WebSocket, and the frame format it expects is well documented.",
+        "Retry the identical payload over the socket before you assume your JSON is broken, the 404 is usually transport, not schema.",
+      ],
+    },
+    { type: "heading", text: "Fixing Invalid JSON and Wrong OCO combination" },
+    {
+      type: "list",
+      items: [
+        "Serialize the payload as JSON. In Python <code>requests</code>, use <code>requests.post(url, headers=..., json=payload)</code>, never <code>data=payload</code> with a dict.",
+        "Confirm the <code>Content-Type: application/json</code> header is set.",
+        "For <code>placeOCO</code>, check the geometry of the two legs: the stop and the limit have to sit on opposite, valid sides of the current price for the position's direction. If you see <code>Wrong OCO combination</code>, swap the leg that's on the wrong side.",
+        "For a <code>Market</code> entry, either wait for the fill and attach a <code>placeOCO</code> stop/target to the resulting position, or switch to <code>startOrderStrategy</code>, which accepts relative offsets.",
+      ],
+    },
+    { type: "heading", text: "The reliable fallback: separate entry + OCO" },
+    { type: "paragraph", html: "When a native bracket just won't cooperate, decouple the entry from the exits. Place the entry order on its own with <code>order/placeOrder</code>, confirm the fill, then submit a <code>placeOCO</code> that pairs the protective stop with the profit target against the now-open position. It's one extra round trip, but it sidesteps the strategy endpoint entirely and gives you explicit control over each leg." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error", "Meaning", "Fix"],
+      rows: [
+        ["200 OK with failureReason in body", "Order rejected at the business layer despite a clean HTTP status", "Parse the body; never trust the status code alone"],
+        ["404 (undocumented) on startOrderStrategy", "Wrong orderStrategyTypeId, or REST used where WebSocket is expected", "Set orderStrategyTypeId: 2 and submit over WebSocket"],
+        ["Invalid JSON: expected '{', offset: 0x...", "A raw dict / form body was sent instead of serialized JSON", "Post a JSON body (json= in requests) or json.dumps() first"],
+        ["failureReason: InvalidPrice, failureText: Wrong OCO combination", "The two OCO legs are not a legal price/type pairing", "Reprice so stop and limit sit on valid opposite sides"],
+        ["Access is denied", "Missing/incorrect accountId or accountSpec", "Send the numeric accountId from account/list plus the accountSpec name"],
+        ["Entry fills, no stop/target appear", "Child legs silently rejected while parent accepted", "Confirm all three order IDs, or fall back to entry + placeOCO"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "Hand-rolling OSO/OCO payloads means you own every one of the failure modes above. PickMyTrade sits between your TradingView alerts and Tradovate and handles the bracket plumbing for you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Bracket &amp; OCO Handling</strong>, attaches stop-loss and take-profit legs correctly, so an entry never lands unprotected.",
+        "<strong class='text-white'>Response Validation</strong>, inspects the full order response, not just the HTTP status, and surfaces real rejections instead of a false &ldquo;success.&rdquo;",
+        "<strong class='text-white'>Entitlement &amp; Risk Filters</strong>, respects your account's data-agreement state and prop-firm limits before an order is routed.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, spaces out order flow so bracket legs don't bounce off request caps.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors the same protected bracket across every connected account.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Ihre Automatisierung sendet eine Tradovate-API-Bracket-Order, die Eröffnung wird auf ES oder NQ ausgeführt, und dann&hellip; nichts. Kein Stop-Loss, kein Take-Profit. Sie sind jetzt einen schlechten Tick von einer ungesicherten Position entfernt, und Ihr Log meldet, die Order sei &ldquo;erfolgreich gesendet&rdquo; worden. Das ist die Falle. 2026 ist der klassische Fehler kein rotes Fehlerbild mehr, sondern ein <code>200 OK</code> HTTP-Status, der einen <code>failureReason</code> und <code>failureText</code> im Body verbirgt, oder ein <code>orderStrategy</code>-Aufruf, der als nackter <code>404</code> zurückkommt. Die häufigsten Varianten: ein <code>404 (undocumented)</code> von <code>startOrderStrategy</code>, ein <code>Invalid JSON</code>-Parsing-Fehler, eine <code>Wrong OCO combination</code>-Ablehnung, und die tückischste, eine stille Teilausführung, bei der nur die Eröffnung übrig bleibt. Hier erfahren Sie, was jeder Fehler wirklich bedeutet, wie Sie die dahinterliegenden Endpoint- und Feldprobleme beheben, und wie PickMyTrade verhindert, dass eine ungesicherte Ausführung jemals in Ihrem Konto ankommt." },
+    {
+      type: "checklist",
+      heading: "Schnell-Checkliste für fehlschlagende Bracket-Orders (OSO/OCO)",
+      items: [
+        "<strong class='text-white'>Lesen Sie den Response-Body, nicht nur den HTTP-Code.</strong> Tradovate liefert Ihnen <code>200 OK</code>, selbst wenn die Order von Anfang an tot ist. Die Wahrheit steckt in <code>failureReason</code> / <code>failureText</code>.",
+        "<strong class='text-white'>Prüfen Sie den Endpoint.</strong> Verwenden Sie <code>order/placeOSO</code> für eine Eröffnung, die Stop-/Target-Legs sendet, <code>order/placeOCO</code> für zwei verknüpfte Exits, und <code>orderStrategy/startOrderStrategy</code> für eine serverseitige Bracket-Strategie.",
+        "<strong class='text-white'>Senden Sie beide Konto-Felder.</strong> Sie benötigen die numerische <code>accountId</code> (aus <code>account/list</code>) <em>und</em> den Kontonamen <code>accountSpec</code>. Fehlt eines oder stimmen sie nicht überein, erhalten Sie <code>Access is denied</code>.",
+        "<strong class='text-white'>Serialisieren Sie echtes JSON.</strong> Senden Sie einen JSON-Body (<code>json=</code> in Python <code>requests</code>), kein rohes Dictionary, sonst erhalten Sie <code>Invalid JSON: expected '{'</code>.",
+        "<strong class='text-white'>Verwenden Sie <code>orderStrategyTypeId: 2</code>.</strong> Das ist der einzig gültige Wert. Eine <code>1</code> bringt Ihnen einen <code>404 (undocumented)</code> ein.",
+        "<strong class='text-white'>Halten Sie einen Fallback bereit.</strong> Wenn der Strategy-Endpoint weiterhin fehlschlägt, platzieren Sie die Eröffnung und hängen Sie danach ein Stop-/Target-<code>placeOCO</code> an, sobald Sie die Position halten.",
+      ],
+    },
+    { type: "heading", text: "Was „Wrong OCO Combination“ und die 404-Fehler bedeuten" },
+    { type: "paragraph", html: "Tradovate bietet Ihnen mehrere Möglichkeiten, geschützte Orders einzureichen, und jede scheitert auf ihre eigene Art. Ein <strong class='text-white'>Bracket</strong> ist eine Eröffnungsorder plus zwei Kind-Legs, ein schützender Stop und ein Gewinnziel, wobei die Ausführung oder Stornierung eines Kindes das andere storniert. Auf der REST-API bauen Sie das mit <code>order/placeOSO</code> (One-Sends-Other): Eine übergeordnete Order trägt <code>bracket1</code>- und <code>bracket2</code>-Objekte, die erst aktiv werden, nachdem die übergeordnete Order ausgeführt wurde. <code>order/placeOCO</code> (One-Cancels-Other) verknüpft zwei Orders so, dass eine Ausführung bei einer die andere storniert, praktisch, um einen Stop und ein Ziel an eine bereits gehaltene Position anzuhängen." },
+    { type: "paragraph", html: "Das Verwirrende daran: Diese Endpoints liefern anstandslos <code>200 OK</code>, während sie die Order trotzdem ablehnen. Tradovate meldet Business-Logic-Fehler im Response-Body, nicht im HTTP-Status. Ein Payload, der sauber beim Server ankommt, kann also trotzdem mit <code>{\"failureReason\": \"InvalidPrice\", \"failureText\": \"Wrong OCO combination\"}</code> zurückkommen, was bedeutet, dass die gewählten Preisniveaus oder die Order-Typ-Kombination keine gültige OCO ergeben. Ein Stop und ein Limit auf der falschen Marktseite reichen dafür aus. Behandeln Sie jeden Body mit <code>failureReason</code> als Ablehnung, ganz gleich, was die Statuszeile sagt." },
+    { type: "paragraph", html: "Der Endpoint <code>orderStrategy/startOrderStrategy</code> ist ein anderes Kaliber. Er führt eine <em>serverseitige</em> Bracket-Strategie aus, das API-Äquivalent einer ATM-Strategie, und ist bei seinem Payload deutlich wählerischer. Senden Sie die falsche <code>orderStrategyTypeId</code>, oder rufen Sie ihn über einfaches REST auf, obwohl er einen WebSocket-Frame erwartet, erhalten Sie einen wenig hilfreichen <code>404 (undocumented)</code>. Das sieht nach einer fehlenden Route aus, ist aber tatsächlich eine abgelehnte Anfrage." },
+    { type: "heading", text: "Häufigste Ursachen für fehlschlagende Tradovate-API-Bracket-Orders" },
+    { type: "heading", text: "1. Sie haben nur den HTTP-Status geprüft, nicht den Body" },
+    { type: "paragraph", html: "Das ist die Falle Nummer eins. Ihr Client sieht <code>200 OK</code>, protokolliert &bdquo;Order gesendet&ldquo; und macht weiter, dabei wurde die Eröffnung abgelehnt, oder nur die übergeordnete Order kam durch. Parsen Sie jede OSO/OCO-Antwort auf <code>failureReason</code> und <code>failureText</code>, bevor Sie das Bracket als live einstufen." },
+    { type: "heading", text: "2. Falsche orderStrategyTypeId bei startOrderStrategy" },
+    { type: "paragraph", html: "Viele probieren <code>orderStrategyTypeId: 1</code> und ernten dafür einen <code>404 (undocumented)</code>. Es gibt nur einen gültigen Wert, und das ist <code>2</code>. Alles andere wird abgelehnt, bevor die Strategie überhaupt aufgebaut wird." },
+    { type: "heading", text: "3. Aufruf von startOrderStrategy über REST statt WebSocket" },
+    { type: "paragraph", html: "Selbst mit der richtigen Type-ID ist dieser Endpoint über einfaches HTTP-REST unzuverlässig. Er ist dafür gebaut, über einen WebSocket zu laufen, und funktioniert zuverlässig, wenn Sie ihn so ansteuern. Ein REST-Aufruf, der ständig mit 404 fehlschlägt, gelingt oft unverändert, sobald Sie ihn als WebSocket-Frame senden." },
+    { type: "heading", text: "4. Fehlerhaftes JSON oder ein rohes Dictionary statt eines JSON-Bodys" },
+    { type: "paragraph", html: "Ein häufiger <code>placeOCO</code>-Fehler ist <code>Invalid JSON: expected '{', offset: 0x00000075</code>. Das passiert, wenn die Anfrage ein formkodiertes Dictionary statt eines serialisierten JSON-Strings verschickt, in Python etwa, wenn Sie <code>data=payload</code> statt <code>json=payload</code> übergeben (oder <code>json.dumps()</code> vergessen). Der Server sieht nie gültiges JSON und verwirft das gesamte Bracket." },
+    { type: "heading", text: "5. Fehlendes accountSpec, falsche accountId oder eine unzulässige Preiskombination" },
+    { type: "paragraph", html: "Bracket-Endpoints verlangen sowohl die numerische <code>accountId</code> (aus <code>account/list</code>) als auch den String <code>accountSpec</code> (Ihr Kontoname). Fehlt eines von beiden, erhalten Sie <code>Access is denied</code>. Unabhängig davon prüfen <code>placeOCO</code> und <code>placeOSO</code>, ob die beiden Legs eine gültige Kombination bilden, ein Stop und ein Limit, die auf der falschen Marktseite bepreist sind, kommen als <code>Wrong OCO combination</code> zurück. Market-Entry-Brackets bringen noch eine weitere Komplikation mit: Weil die API konkrete Preisniveaus für die Kind-Legs benötigt, können Sie in der Regel kein Tick-relatives TP/SL an eine reine <code>Market</code>-Eröffnung über <code>placeOSO</code> anhängen. Sie berechnen die Preisniveaus entweder selbst, oder überlassen die Offsets der Strategy-Engine." },
+    { type: "heading", text: "So beheben Sie Tradovate-API-Bracket-Orders: Schritt für Schritt" },
+    { type: "heading", text: "Die Falle „200 OK, aber keine Legs“ beheben" },
+    {
+      type: "list",
+      items: [
+        "Parsen Sie nach jedem Aufruf von <code>placeOSO</code> / <code>placeOCO</code> / <code>startOrderStrategy</code> den JSON-Body.",
+        "Prüfen Sie auf einen <code>failureReason</code>-Schlüssel. Ist er vorhanden, behandeln Sie die Order als <strong class='text-white'>abgelehnt</strong> und lesen Sie <code>failureText</code> für die Ursache.",
+        "Markieren Sie das Bracket erst dann als live, wenn Sie bestätigte Order-IDs für die übergeordnete Order <em>und</em> beide Kind-Legs haben, pollen Sie dafür <code>order/list</code> oder abonnieren Sie Order-Events über WebSocket.",
+        "Protokollieren Sie den vollständigen Body, nicht nur den Statuscode, damit Teilausführungen in Ihrem Audit-Trail sichtbar werden.",
+      ],
+    },
+    { type: "heading", text: "startOrderStrategy-404-Fehler beheben" },
+    {
+      type: "list",
+      items: [
+        "Setzen Sie <code>orderStrategyTypeId</code> auf <code>2</code>, den einzigen akzeptierten Wert.",
+        "Senden Sie sowohl <code>accountId</code> als auch <code>accountSpec</code>, dazu <code>symbol</code>, <code>action</code> und das <code>params</code>-Objekt (mit Ihrer <code>entryVersion</code> und <code>brackets</code>).",
+        "Senden Sie die Anfrage als <strong class='text-white'>WebSocket</strong>-Frame statt als REST-POST. Dieser Endpoint ist dafür ausgelegt, über den WebSocket zu laufen, und das erwartete Frame-Format ist gut dokumentiert.",
+        "Wiederholen Sie denselben Payload über den Socket, bevor Sie annehmen, Ihr JSON sei fehlerhaft, der 404 liegt meist am Transport, nicht am Schema.",
+      ],
+    },
+    { type: "heading", text: "Invalid JSON und Wrong OCO combination beheben" },
+    {
+      type: "list",
+      items: [
+        "Serialisieren Sie den Payload als JSON. Verwenden Sie in Python <code>requests</code> <code>requests.post(url, headers=..., json=payload)</code>, niemals <code>data=payload</code> mit einem Dictionary.",
+        "Stellen Sie sicher, dass der Header <code>Content-Type: application/json</code> gesetzt ist.",
+        "Prüfen Sie bei <code>placeOCO</code> die Geometrie der beiden Legs: Stop und Limit müssen für die Richtung der Position auf entgegengesetzten, gültigen Seiten des aktuellen Preises liegen. Sehen Sie <code>Wrong OCO combination</code>, tauschen Sie das Leg auf der falschen Seite aus.",
+        "Warten Sie bei einer <code>Market</code>-Eröffnung entweder auf die Ausführung und hängen Sie ein <code>placeOCO</code>-Stop/Target an die entstandene Position, oder wechseln Sie zu <code>startOrderStrategy</code>, das relative Offsets akzeptiert.",
+      ],
+    },
+    { type: "heading", text: "Der zuverlässige Fallback: getrennte Eröffnung + OCO" },
+    { type: "paragraph", html: "Wenn ein natives Bracket einfach nicht mitspielen will, entkoppeln Sie die Eröffnung von den Exits. Platzieren Sie die Eröffnungsorder eigenständig mit <code>order/placeOrder</code>, bestätigen Sie die Ausführung, und senden Sie dann ein <code>placeOCO</code>, das den schützenden Stop mit dem Gewinnziel gegen die nun offene Position koppelt. Das ist ein zusätzlicher Roundtrip, umgeht aber den Strategy-Endpoint vollständig und gibt Ihnen explizite Kontrolle über jedes Leg." },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Fehler", "Bedeutung", "Lösung"],
+      rows: [
+        ["200 OK mit failureReason im Body", "Order auf der Business-Ebene abgelehnt trotz sauberem HTTP-Status", "Body parsen; niemals nur dem Statuscode vertrauen"],
+        ["404 (undocumented) bei startOrderStrategy", "Falsche orderStrategyTypeId, oder REST verwendet, wo WebSocket erwartet wird", "orderStrategyTypeId: 2 setzen und über WebSocket senden"],
+        ["Invalid JSON: expected '{', offset: 0x...", "Ein rohes Dictionary / ein Formular-Body wurde statt serialisiertem JSON gesendet", "JSON-Body senden (json= in requests) oder vorher json.dumps() anwenden"],
+        ["failureReason: InvalidPrice, failureText: Wrong OCO combination", "Die beiden OCO-Legs bilden keine gültige Preis-/Typ-Kombination", "Neu bepreisen, sodass Stop und Limit auf gültigen, entgegengesetzten Seiten liegen"],
+        ["Access is denied", "Fehlende/falsche accountId oder accountSpec", "Die numerische accountId aus account/list plus den accountSpec-Namen senden"],
+        ["Eröffnung wird ausgeführt, kein Stop/Target erscheint", "Kind-Legs wurden still abgelehnt, während die übergeordnete Order akzeptiert wurde", "Alle drei Order-IDs bestätigen, oder auf Eröffnung + placeOCO zurückfallen"],
+      ],
+    },
+    { type: "heading", text: "So verhindert PickMyTrade das" },
+    { type: "paragraph", html: "Wenn Sie OSO/OCO-Payloads selbst bauen, tragen Sie die Verantwortung für jeden der oben genannten Fehlermodi. PickMyTrade sitzt zwischen Ihren TradingView-Alerts und Tradovate und übernimmt die Bracket-Verkabelung für Sie:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Bracket- &amp; OCO-Handling</strong>, hängt Stop-Loss- und Take-Profit-Legs korrekt an, sodass eine Eröffnung nie ungeschützt bleibt.",
+        "<strong class='text-white'>Response-Validierung</strong>, prüft die vollständige Order-Antwort, nicht nur den HTTP-Status, und deckt echte Ablehnungen auf statt eines falschen &bdquo;Erfolgs&ldquo;.",
+        "<strong class='text-white'>Entitlement- &amp; Risikofilter</strong>, berücksichtigt den Datenvereinbarungsstatus Ihres Kontos und Prop-Firm-Limits, bevor eine Order weitergeleitet wird.",
+        "<strong class='text-white'>Rate-Limit-sicheres Routing</strong>, staffelt den Order-Flow, damit Bracket-Legs nicht an Request-Obergrenzen abprallen.",
+        "<strong class='text-white'>Multi-Account-Sync</strong>, spiegelt dasselbe geschützte Bracket über alle verbundenen Konten hinweg.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Su automatización envía una orden bracket de la API de Tradovate, la entrada se ejecuta en ES o NQ y luego&hellip; nada. Sin stop-loss, sin take-profit. Ahora está a un mal tick de distancia de una posición sin protección, y su registro indica que la orden se &ldquo;envió correctamente&rdquo;. Esa es la trampa. En 2026 el fallo clásico ya no es una pantalla de error roja, sino un estado HTTP <code>200 OK</code> que oculta un <code>failureReason</code> y un <code>failureText</code> en el cuerpo, o una llamada a <code>orderStrategy</code> que vuelve como un simple <code>404</code>. Las variantes más frecuentes: un <code>404 (undocumented)</code> de <code>startOrderStrategy</code>, un error de análisis <code>Invalid JSON</code>, un rechazo <code>Wrong OCO combination</code>, y el más traicionero, una ejecución parcial silenciosa en la que solo sobrevive la entrada. A continuación, lo que significa realmente cada error, cómo corregir los problemas de endpoint y de campos detrás de ellos, y cómo PickMyTrade evita que una ejecución sin protección llegue a su cuenta." },
+    {
+      type: "checklist",
+      heading: "Lista rápida de verificación para órdenes bracket (OSO/OCO) que fallan",
+      items: [
+        "<strong class='text-white'>Lea el cuerpo de la respuesta, no solo el código HTTP.</strong> Tradovate le devuelve <code>200 OK</code> incluso cuando la orden nace muerta. La verdad está en <code>failureReason</code> / <code>failureText</code>.",
+        "<strong class='text-white'>Confirme el endpoint.</strong> Use <code>order/placeOSO</code> para una entrada que envía piernas de stop/objetivo, <code>order/placeOCO</code> para dos salidas vinculadas, y <code>orderStrategy/startOrderStrategy</code> para un bracket del lado del servidor.",
+        "<strong class='text-white'>Envíe ambos campos de cuenta.</strong> Necesita el <code>accountId</code> numérico (de <code>account/list</code>) <em>y</em> el nombre de cuenta <code>accountSpec</code>. Si omite uno, o no coinciden, obtendrá <code>Access is denied</code>.",
+        "<strong class='text-white'>Serialice JSON real.</strong> Envíe un cuerpo JSON (<code>json=</code> en Python <code>requests</code>), no un diccionario en bruto, de lo contrario obtendrá <code>Invalid JSON: expected '{'</code>.",
+        "<strong class='text-white'>Use <code>orderStrategyTypeId: 2</code>.</strong> Es el único valor válido. Un <code>1</code> le dará un <code>404 (undocumented)</code>.",
+        "<strong class='text-white'>Tenga un plan de respaldo listo.</strong> Si el endpoint de estrategia sigue fallando, coloque la entrada y luego adjunte un <code>placeOCO</code> de stop/objetivo en cuanto mantenga la posición.",
+      ],
+    },
+    { type: "heading", text: "Qué significan «Wrong OCO Combination» y los errores 404" },
+    { type: "paragraph", html: "Tradovate le ofrece varias formas de enviar órdenes protegidas, y cada una falla a su manera. Un <strong class='text-white'>bracket</strong> es una orden de entrada más dos piernas hijas, un stop protector y un objetivo de beneficio, donde ejecutar o cancelar una hija cancela la otra. En la API REST, esto se construye con <code>order/placeOSO</code> (One-Sends-Other): una orden padre lleva objetos <code>bracket1</code> y <code>bracket2</code> que solo se activan tras la ejecución de la orden padre. <code>order/placeOCO</code> (One-Cancels-Other) vincula dos órdenes de forma que la ejecución de una cancela la otra, útil para añadir un stop y un objetivo a una posición que ya mantiene." },
+    { type: "paragraph", html: "Lo confuso: estos endpoints devuelven alegremente <code>200 OK</code> mientras siguen rechazando la orden. Tradovate informa los fallos de lógica de negocio dentro del cuerpo de la respuesta, no en el estado HTTP. Así, un payload que llega limpio al servidor puede volver con <code>{\"failureReason\": \"InvalidPrice\", \"failureText\": \"Wrong OCO combination\"}</code>, lo que significa que los niveles de precio o el emparejamiento de tipos de orden elegidos no forman una OCO válida. Un stop y un límite situados en el lado equivocado del mercado bastan para provocarlo. Trate cualquier cuerpo que contenga <code>failureReason</code> como un rechazo, sin excepción, sin importar lo que diga la línea de estado." },
+    { type: "paragraph", html: "El endpoint <code>orderStrategy/startOrderStrategy</code> es harina de otro costal. Ejecuta una estrategia bracket <em>del lado del servidor</em>, el equivalente en API de una estrategia ATM, y es mucho más exigente con su payload. Si envía el <code>orderStrategyTypeId</code> incorrecto, o lo llama por REST plano cuando espera un frame de WebSocket, obtendrá un <code>404 (undocumented)</code> poco útil. Parece una ruta inexistente, pero en realidad es una solicitud rechazada." },
+    { type: "heading", text: "Principales causas de fallo en las órdenes bracket de la API de Tradovate" },
+    { type: "heading", text: "1. Solo comprobó el estado HTTP, no el cuerpo" },
+    { type: "paragraph", html: "Esta es la trampa número uno. Su cliente ve <code>200 OK</code>, registra &ldquo;orden enviada&rdquo; y sigue adelante, pero la entrada fue rechazada, o solo la orden padre se completó. Analice cada respuesta OSO/OCO en busca de <code>failureReason</code> y <code>failureText</code> antes de dar el bracket por activo." },
+    { type: "heading", text: "2. orderStrategyTypeId incorrecto en startOrderStrategy" },
+    { type: "paragraph", html: "Mucha gente prueba <code>orderStrategyTypeId: 1</code> y solo consigue un <code>404 (undocumented)</code> por sus molestias. Solo hay un valor válido, y es <code>2</code>. Cualquier otro se rechaza antes de que la estrategia siquiera se construya." },
+    { type: "heading", text: "3. Llamar a startOrderStrategy por REST en lugar de WebSocket" },
+    { type: "paragraph", html: "Incluso con el id de tipo correcto, este endpoint no es fiable por HTTP REST plano. Está diseñado para funcionar sobre un WebSocket, y funciona de forma fiable cuando se controla así. Una llamada REST que sigue devolviendo 404 suele tener éxito, sin cambios, en el momento en que la envía como frame de WebSocket." },
+    { type: "heading", text: "4. JSON mal formado o un diccionario en bruto en lugar de un cuerpo JSON" },
+    { type: "paragraph", html: "Un fallo habitual de <code>placeOCO</code> es <code>Invalid JSON: expected '{', offset: 0x00000075</code>. Esto ocurre cuando la solicitud envía un diccionario codificado como formulario en lugar de una cadena JSON serializada, en Python, al pasar <code>data=payload</code> en vez de <code>json=payload</code> (o al olvidar <code>json.dumps()</code>). El servidor nunca ve JSON válido, así que descarta todo el bracket." },
+    { type: "heading", text: "5. accountSpec ausente, accountId incorrecto o una combinación de precios ilegal" },
+    { type: "paragraph", html: "Los endpoints de bracket requieren tanto el <code>accountId</code> numérico (extraído de <code>account/list</code>) como la cadena <code>accountSpec</code> (el nombre de su cuenta). Omita cualquiera de los dos y se encontrará con <code>Access is denied</code>. Por separado, <code>placeOCO</code> y <code>placeOSO</code> comprueban que las dos piernas formen una combinación válida, un stop y un límite con precio en el lado equivocado del mercado vuelven como <code>Wrong OCO combination</code>. Los brackets con entrada Market añaden una complicación más: como la API necesita niveles de precio concretos para las piernas hijas, en general no puede adjuntar un TP/SL relativo en ticks a una entrada <code>Market</code> simple mediante <code>placeOSO</code>. O calcula los niveles de precio usted mismo, o deja que el motor de estrategias gestione los offsets." },
+    { type: "heading", text: "Cómo corregir las órdenes bracket de la API de Tradovate: paso a paso" },
+    { type: "heading", text: "Cómo corregir la trampa «200 OK, pero sin piernas»" },
+    {
+      type: "list",
+      items: [
+        "Tras cada llamada a <code>placeOSO</code> / <code>placeOCO</code> / <code>startOrderStrategy</code>, analice el cuerpo JSON.",
+        "Compruebe si existe una clave <code>failureReason</code>. Si está presente, trate la orden como <strong class='text-white'>rechazada</strong> y lea <code>failureText</code> para conocer la causa.",
+        "Marque el bracket como activo solo cuando tenga los IDs de orden confirmados para el padre <em>y</em> ambas piernas hijas, consulte <code>order/list</code> o suscríbase a los eventos de orden por WebSocket.",
+        "Registre el cuerpo completo, no solo el código de estado, para que las ejecuciones parciales aparezcan en su registro de auditoría.",
+      ],
+    },
+    { type: "heading", text: "Cómo corregir los 404 de startOrderStrategy" },
+    {
+      type: "list",
+      items: [
+        "Establezca <code>orderStrategyTypeId</code> en <code>2</code>, el único valor que acepta.",
+        "Envíe tanto <code>accountId</code> como <code>accountSpec</code>, además de <code>symbol</code>, <code>action</code> y el objeto <code>params</code> (con su <code>entryVersion</code> y <code>brackets</code>).",
+        "Envíe la solicitud como un frame de <strong class='text-white'>WebSocket</strong> en lugar de un POST REST. Este endpoint está diseñado para funcionar sobre WebSocket, y el formato de frame que espera está bien documentado.",
+        "Reintente el mismo payload por el socket antes de asumir que su JSON está mal formado, el 404 suele ser un problema de transporte, no de esquema.",
+      ],
+    },
+    { type: "heading", text: "Cómo corregir Invalid JSON y Wrong OCO combination" },
+    {
+      type: "list",
+      items: [
+        "Serialice el payload como JSON. En Python <code>requests</code>, use <code>requests.post(url, headers=..., json=payload)</code>, nunca <code>data=payload</code> con un diccionario.",
+        "Confirme que el encabezado <code>Content-Type: application/json</code> esté configurado.",
+        "Para <code>placeOCO</code>, revise la geometría de las dos piernas: el stop y el límite deben situarse en lados opuestos y válidos del precio actual según la dirección de la posición. Si ve <code>Wrong OCO combination</code>, cambie la pierna que está en el lado equivocado.",
+        "Para una entrada <code>Market</code>, espere a la ejecución y adjunte un stop/objetivo <code>placeOCO</code> a la posición resultante, o cambie a <code>startOrderStrategy</code>, que acepta offsets relativos.",
+      ],
+    },
+    { type: "heading", text: "El respaldo fiable: entrada separada + OCO" },
+    { type: "paragraph", html: "Cuando un bracket nativo simplemente no coopera, desacople la entrada de las salidas. Coloque la orden de entrada por separado con <code>order/placeOrder</code>, confirme la ejecución y después envíe un <code>placeOCO</code> que empareje el stop protector con el objetivo de beneficio contra la posición ya abierta. Es un viaje de ida y vuelta adicional, pero evita por completo el endpoint de estrategia y le da control explícito sobre cada pierna." },
+    { type: "heading", text: "Tabla de resolución de problemas" },
+    {
+      type: "table",
+      headers: ["Error", "Significado", "Solución"],
+      rows: [
+        ["200 OK con failureReason en el cuerpo", "Orden rechazada en la capa de negocio pese a un estado HTTP limpio", "Analice el cuerpo; nunca confíe solo en el código de estado"],
+        ["404 (undocumented) en startOrderStrategy", "orderStrategyTypeId incorrecto, o se usó REST cuando se esperaba WebSocket", "Establezca orderStrategyTypeId: 2 y envíe por WebSocket"],
+        ["Invalid JSON: expected '{', offset: 0x...", "Se envió un diccionario en bruto / cuerpo de formulario en lugar de JSON serializado", "Envíe un cuerpo JSON (json= en requests) o aplique json.dumps() primero"],
+        ["failureReason: InvalidPrice, failureText: Wrong OCO combination", "Las dos piernas OCO no forman un emparejamiento de precio/tipo válido", "Reprecie de forma que el stop y el límite queden en lados opuestos válidos"],
+        ["Access is denied", "accountId o accountSpec ausente o incorrecto", "Envíe el accountId numérico de account/list junto con el nombre accountSpec"],
+        ["La entrada se ejecuta, no aparece stop/objetivo", "Las piernas hijas fueron rechazadas silenciosamente mientras el padre se aceptó", "Confirme los tres IDs de orden, o recurra a entrada + placeOCO"],
+      ],
+    },
+    { type: "heading", text: "Cómo prevenirlo con PickMyTrade" },
+    { type: "paragraph", html: "Construir a mano los payloads OSO/OCO significa asumir usted mismo cada uno de los modos de fallo anteriores. PickMyTrade se sitúa entre sus alertas de TradingView y Tradovate y gestiona por usted la instalación del bracket:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Gestión de brackets y OCO</strong>, adjunta correctamente las piernas de stop-loss y take-profit, de modo que una entrada nunca queda sin protección.",
+        "<strong class='text-white'>Validación de respuestas</strong>, inspecciona la respuesta completa de la orden, no solo el estado HTTP, y muestra los rechazos reales en lugar de un falso &ldquo;éxito&rdquo;.",
+        "<strong class='text-white'>Filtros de habilitación y riesgo</strong>, respeta el estado del acuerdo de datos de su cuenta y los límites de la prop firm antes de enrutar una orden.",
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de tasa</strong>, espacia el flujo de órdenes para que las piernas del bracket no choquen con los topes de solicitudes.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replica el mismo bracket protegido en todas las cuentas conectadas.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Votre automatisation envoie un ordre bracket de l'API Tradovate, l'entrée est exécutée sur ES ou NQ, puis&hellip; rien. Pas de stop-loss, pas de take-profit. Vous êtes désormais à un mauvais tick d'une position non protégée, et votre journal indique que l'ordre a été &ldquo;envoyé avec succès&rdquo;. C'est le piège. En 2026, l'échec classique n'est plus un écran d'erreur rouge, mais un statut HTTP <code>200 OK</code> qui cache un <code>failureReason</code> et un <code>failureText</code> dans le corps, ou un appel <code>orderStrategy</code> qui revient sous forme d'un simple <code>404</code>. Les variantes les plus fréquentes : un <code>404 (undocumented)</code> venant de <code>startOrderStrategy</code>, une erreur d'analyse <code>Invalid JSON</code>, un rejet <code>Wrong OCO combination</code>, et la plus sournoise, une exécution partielle silencieuse où seule l'entrée survit. Voici ce que chaque erreur signifie réellement, comment corriger les problèmes d'endpoint et de champs qui les causent, et comment PickMyTrade empêche une exécution non protégée d'atteindre jamais votre compte." },
+    {
+      type: "checklist",
+      heading: "Check-list rapide pour les ordres bracket (OSO/OCO) en échec",
+      items: [
+        "<strong class='text-white'>Lisez le corps de la réponse, pas seulement le code HTTP.</strong> Tradovate vous renvoie <code>200 OK</code> même quand l'ordre est mort-né. La vérité se trouve dans <code>failureReason</code> / <code>failureText</code>.",
+        "<strong class='text-white'>Vérifiez l'endpoint.</strong> Utilisez <code>order/placeOSO</code> pour une entrée qui envoie des jambes stop/cible, <code>order/placeOCO</code> pour deux sorties liées, et <code>orderStrategy/startOrderStrategy</code> pour un bracket côté serveur.",
+        "<strong class='text-white'>Envoyez les deux champs de compte.</strong> Vous avez besoin de l'<code>accountId</code> numérique (issu de <code>account/list</code>) <em>et</em> du nom de compte <code>accountSpec</code>. Si l'un manque, ou s'ils ne correspondent pas, vous obtenez <code>Access is denied</code>.",
+        "<strong class='text-white'>Sérialisez du vrai JSON.</strong> Envoyez un corps JSON (<code>json=</code> en Python <code>requests</code>), pas un dict brut, sinon c'est <code>Invalid JSON: expected '{'</code>.",
+        "<strong class='text-white'>Utilisez <code>orderStrategyTypeId: 2</code>.</strong> C'est la seule valeur valide. Un <code>1</code> vous vaut un <code>404 (undocumented)</code>.",
+        "<strong class='text-white'>Gardez un repli prêt.</strong> Si l'endpoint de stratégie continue d'échouer, placez l'entrée, puis attachez un <code>placeOCO</code> stop/cible dès que vous détenez la position.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifient « Wrong OCO Combination » et les erreurs 404" },
+    { type: "paragraph", html: "Tradovate vous offre plusieurs façons de soumettre des ordres protégés, et chacune échoue à sa manière. Un <strong class='text-white'>bracket</strong> est un ordre d'entrée plus deux jambes enfants, un stop protecteur et un objectif de profit, où l'exécution ou l'annulation de l'une annule l'autre. Sur l'API REST, vous le construisez avec <code>order/placeOSO</code> (One-Sends-Other) : un ordre parent porte des objets <code>bracket1</code> et <code>bracket2</code> qui ne s'activent qu'après l'exécution du parent. <code>order/placeOCO</code> (One-Cancels-Other) lie deux ordres pour que l'exécution de l'un annule l'autre, pratique pour attacher un stop et un objectif à une position que vous détenez déjà." },
+    { type: "paragraph", html: "Ce qui prête à confusion : ces endpoints renvoient allègrement <code>200 OK</code> tout en rejetant quand même l'ordre. Tradovate signale les échecs de logique métier dans le corps de la réponse, pas dans le statut HTTP. Ainsi, un payload qui atteint le serveur proprement peut malgré tout revenir avec <code>{\"failureReason\": \"InvalidPrice\", \"failureText\": \"Wrong OCO combination\"}</code>, ce qui signifie que les niveaux de prix ou l'appariement de types d'ordre choisis ne forment pas un OCO valide. Un stop et une limite situés du mauvais côté du marché suffisent à le provoquer. Traitez tout corps contenant <code>failureReason</code> comme un rejet, point final, quoi que dise la ligne de statut." },
+    { type: "paragraph", html: "L'endpoint <code>orderStrategy/startOrderStrategy</code> est une autre bête. Il exécute une stratégie bracket <em>côté serveur</em>, l'équivalent API d'une stratégie ATM, et il est bien plus exigeant sur son payload. Envoyez le mauvais <code>orderStrategyTypeId</code>, ou appelez-le en REST simple alors qu'il attend une frame WebSocket, et vous obtenez un <code>404 (undocumented)</code> peu utile. Cela ressemble à une route manquante, mais c'est en réalité une requête rejetée." },
+    { type: "heading", text: "Principales causes d'échec des ordres bracket de l'API Tradovate" },
+    { type: "heading", text: "1. Vous n'avez vérifié que le statut HTTP, pas le corps" },
+    { type: "paragraph", html: "C'est le piège numéro un. Votre client voit <code>200 OK</code>, consigne &ldquo;ordre envoyé&rdquo; et passe à autre chose, alors que l'entrée a été rejetée, ou que seul l'ordre parent est passé. Analysez chaque réponse OSO/OCO à la recherche de <code>failureReason</code> et <code>failureText</code> avant de considérer le bracket comme actif." },
+    { type: "heading", text: "2. orderStrategyTypeId incorrect sur startOrderStrategy" },
+    { type: "paragraph", html: "Beaucoup essaient <code>orderStrategyTypeId: 1</code> et n'obtiennent pour leur peine qu'un <code>404 (undocumented)</code>. Il n'existe qu'une seule valeur valide, et c'est <code>2</code>. Tout le reste est rejeté avant même que la stratégie soit construite." },
+    { type: "heading", text: "3. Appel de startOrderStrategy en REST au lieu de WebSocket" },
+    { type: "paragraph", html: "Même avec le bon id de type, cet endpoint n'est pas fiable en HTTP REST simple. Il est conçu pour fonctionner via un WebSocket, et il fonctionne de manière fiable lorsqu'il est piloté ainsi. Un appel REST qui échoue sans cesse en 404 réussit souvent, sans aucun changement, dès que vous l'envoyez sous forme de frame WebSocket." },
+    { type: "heading", text: "4. JSON malformé ou dict brut au lieu d'un corps JSON" },
+    { type: "paragraph", html: "Un échec courant de <code>placeOCO</code> est <code>Invalid JSON: expected '{', offset: 0x00000075</code>. Cela se produit lorsque la requête envoie un dictionnaire encodé en formulaire au lieu d'une chaîne JSON sérialisée, en Python, en passant <code>data=payload</code> au lieu de <code>json=payload</code> (ou en oubliant <code>json.dumps()</code>). Le serveur ne voit jamais de JSON valide, donc il rejette tout le bracket." },
+    { type: "heading", text: "5. accountSpec manquant, accountId erroné, ou combinaison de prix illégale" },
+    { type: "paragraph", html: "Les endpoints de bracket exigent à la fois l'<code>accountId</code> numérique (extrait de <code>account/list</code>) et la chaîne <code>accountSpec</code> (le nom de votre compte). Omettez l'un ou l'autre et vous obtenez <code>Access is denied</code>. Par ailleurs, <code>placeOCO</code> et <code>placeOSO</code> vérifient que les deux jambes forment une combinaison légale, un stop et une limite au prix situé du mauvais côté du marché reviennent sous la forme <code>Wrong OCO combination</code>. Les brackets à entrée Market ajoutent une complication supplémentaire : comme l'API a besoin de niveaux de prix concrets pour les jambes enfants, vous ne pouvez généralement pas attacher un TP/SL relatif en ticks à une entrée <code>Market</code> simple via <code>placeOSO</code>. Vous calculez vous-même les niveaux de prix, ou vous laissez le moteur de stratégie gérer les décalages." },
+    { type: "heading", text: "Comment corriger les ordres bracket de l'API Tradovate : étape par étape" },
+    { type: "heading", text: "Corriger le piège « 200 OK mais pas de jambes »" },
+    {
+      type: "list",
+      items: [
+        "Après chaque appel <code>placeOSO</code> / <code>placeOCO</code> / <code>startOrderStrategy</code>, analysez le corps JSON.",
+        "Vérifiez la présence d'une clé <code>failureReason</code>. Si elle est présente, traitez l'ordre comme <strong class='text-white'>rejeté</strong> et lisez <code>failureText</code> pour en connaître la cause.",
+        "Ne marquez le bracket comme actif qu'une fois que vous disposez des IDs d'ordre confirmés pour le parent <em>et</em> les deux jambes enfants, interrogez <code>order/list</code> ou abonnez-vous aux événements d'ordre via WebSocket.",
+        "Consignez le corps complet, pas seulement le code de statut, afin que les exécutions partielles apparaissent dans votre piste d'audit.",
+      ],
+    },
+    { type: "heading", text: "Corriger les 404 de startOrderStrategy" },
+    {
+      type: "list",
+      items: [
+        "Réglez <code>orderStrategyTypeId</code> sur <code>2</code>, la seule valeur acceptée.",
+        "Envoyez à la fois <code>accountId</code> et <code>accountSpec</code>, plus <code>symbol</code>, <code>action</code>, et l'objet <code>params</code> (avec votre <code>entryVersion</code> et vos <code>brackets</code>).",
+        "Soumettez la requête sous forme de frame <strong class='text-white'>WebSocket</strong> plutôt qu'un POST REST. Cet endpoint est conçu pour fonctionner via WebSocket, et le format de frame attendu est bien documenté.",
+        "Réessayez le même payload via le socket avant de supposer que votre JSON est cassé, le 404 est généralement dû au transport, pas au schéma.",
+      ],
+    },
+    { type: "heading", text: "Corriger Invalid JSON et Wrong OCO combination" },
+    {
+      type: "list",
+      items: [
+        "Sérialisez le payload en JSON. En Python <code>requests</code>, utilisez <code>requests.post(url, headers=..., json=payload)</code>, jamais <code>data=payload</code> avec un dict.",
+        "Vérifiez que l'en-tête <code>Content-Type: application/json</code> est bien défini.",
+        "Pour <code>placeOCO</code>, vérifiez la géométrie des deux jambes : le stop et la limite doivent se situer de part et d'autre, du bon côté valide du prix actuel selon le sens de la position. Si vous voyez <code>Wrong OCO combination</code>, inversez la jambe du mauvais côté.",
+        "Pour une entrée <code>Market</code>, attendez l'exécution et attachez un stop/objectif <code>placeOCO</code> à la position résultante, ou passez à <code>startOrderStrategy</code>, qui accepte des décalages relatifs.",
+      ],
+    },
+    { type: "heading", text: "Le repli fiable : entrée séparée + OCO" },
+    { type: "paragraph", html: "Lorsqu'un bracket natif refuse tout simplement de coopérer, dissociez l'entrée des sorties. Placez l'ordre d'entrée seul avec <code>order/placeOrder</code>, confirmez l'exécution, puis soumettez un <code>placeOCO</code> qui associe le stop protecteur à l'objectif de profit sur la position désormais ouverte. C'est un aller-retour supplémentaire, mais cela contourne entièrement l'endpoint de stratégie et vous donne un contrôle explicite sur chaque jambe." },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Erreur", "Signification", "Correction"],
+      rows: [
+        ["200 OK avec failureReason dans le corps", "Ordre rejeté au niveau métier malgré un statut HTTP propre", "Analysez le corps ; ne faites jamais confiance au seul code de statut"],
+        ["404 (undocumented) sur startOrderStrategy", "orderStrategyTypeId incorrect, ou REST utilisé alors que WebSocket est attendu", "Réglez orderStrategyTypeId: 2 et envoyez via WebSocket"],
+        ["Invalid JSON: expected '{', offset: 0x...", "Un dict brut / corps de formulaire a été envoyé au lieu de JSON sérialisé", "Envoyez un corps JSON (json= dans requests) ou appliquez d'abord json.dumps()"],
+        ["failureReason: InvalidPrice, failureText: Wrong OCO combination", "Les deux jambes OCO ne forment pas un appariement prix/type valide", "Repositionnez les prix pour que le stop et la limite soient du bon côté opposé"],
+        ["Access is denied", "accountId ou accountSpec manquant ou incorrect", "Envoyez l'accountId numérique issu de account/list ainsi que le nom accountSpec"],
+        ["L'entrée s'exécute, aucun stop/objectif n'apparaît", "Jambes enfants rejetées silencieusement alors que le parent a été accepté", "Confirmez les trois IDs d'ordre, ou repliez-vous sur entrée + placeOCO"],
+      ],
+    },
+    { type: "heading", text: "Comment PickMyTrade évite ce problème" },
+    { type: "paragraph", html: "Construire à la main des payloads OSO/OCO signifie assumer chacun des modes d'échec ci-dessus. PickMyTrade se place entre vos alertes TradingView et Tradovate et gère la plomberie du bracket à votre place :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Gestion des brackets et OCO</strong>, attache correctement les jambes stop-loss et take-profit, afin qu'une entrée ne reste jamais sans protection.",
+        "<strong class='text-white'>Validation des réponses</strong>, examine la réponse complète de l'ordre, pas seulement le statut HTTP, et fait remonter les vrais rejets au lieu d'un faux &ldquo;succès&rdquo;.",
+        "<strong class='text-white'>Filtres d'habilitation et de risque</strong>, respecte l'état de l'accord de données de votre compte et les limites de la prop firm avant qu'un ordre soit acheminé.",
+        "<strong class='text-white'>Routage sécurisé face aux limites de débit</strong>, espace le flux d'ordres pour que les jambes du bracket ne se heurtent pas aux plafonds de requêtes.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, réplique le même bracket protégé sur chaque compte connecté.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "La sua automazione invia un ordine bracket dell'API Tradovate, l'entrata viene eseguita su ES o NQ, e poi&hellip; nulla. Niente stop-loss, niente take-profit. Ora si trova a un tick sbagliato da una posizione priva di protezione, e il suo log riporta che l'ordine è stato &ldquo;inviato correttamente&rdquo;. Questa è la trappola. Nel 2026 l'errore classico non è più una schermata rossa di errore, ma uno stato HTTP <code>200 OK</code> che nasconde un <code>failureReason</code> e un <code>failureText</code> nel corpo, oppure una chiamata a <code>orderStrategy</code> che torna come un semplice <code>404</code>. Le varianti più comuni: un <code>404 (undocumented)</code> da <code>startOrderStrategy</code>, un errore di parsing <code>Invalid JSON</code>, un rifiuto <code>Wrong OCO combination</code>, e il più insidioso, un'esecuzione parziale silenziosa in cui sopravvive solo l'entrata. Ecco cosa significa davvero ciascun errore, come correggere i problemi di endpoint e di campo che li causano, e come PickMyTrade impedisce che un'esecuzione priva di protezione arrivi mai al suo conto." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per gli ordini bracket (OSO/OCO) che falliscono",
+      items: [
+        "<strong class='text-white'>Legga il corpo della risposta, non solo il codice HTTP.</strong> Tradovate le restituisce <code>200 OK</code> anche quando l'ordine è già morto in partenza. La verità si trova in <code>failureReason</code> / <code>failureText</code>.",
+        "<strong class='text-white'>Confermi l'endpoint.</strong> Usi <code>order/placeOSO</code> per un'entrata che invia gambe di stop/target, <code>order/placeOCO</code> per due uscite collegate, e <code>orderStrategy/startOrderStrategy</code> per un bracket lato server.",
+        "<strong class='text-white'>Invii entrambi i campi account.</strong> Servono sia l'<code>accountId</code> numerico (da <code>account/list</code>) <em>sia</em> il nome account <code>accountSpec</code>. Se ne manca uno, o non corrispondono, otterrà <code>Access is denied</code>.",
+        "<strong class='text-white'>Serializzi JSON reale.</strong> Invii un corpo JSON (<code>json=</code> in Python <code>requests</code>), non un dict grezzo, altrimenti otterrà <code>Invalid JSON: expected '{'</code>.",
+        "<strong class='text-white'>Usi <code>orderStrategyTypeId: 2</code>.</strong> È l'unico valore valido. Un <code>1</code> le procura un <code>404 (undocumented)</code>.",
+        "<strong class='text-white'>Tenga pronto un fallback.</strong> Se l'endpoint di strategia continua a fallire, piazzi l'entrata, poi alleghi uno stop/target <code>placeOCO</code> non appena è aperta la posizione.",
+      ],
+    },
+    { type: "heading", text: "Cosa significano «Wrong OCO Combination» e gli errori 404" },
+    { type: "paragraph", html: "Tradovate offre diversi modi per inviare ordini protetti, e ciascuno fallisce a modo suo. Un <strong class='text-white'>bracket</strong> è un ordine di entrata più due gambe figlie, uno stop protettivo e un obiettivo di profitto, dove l'esecuzione o l'annullamento di una figlia annulla l'altra. Sull'API REST lo si costruisce con <code>order/placeOSO</code> (One-Sends-Other): un ordine padre porta oggetti <code>bracket1</code> e <code>bracket2</code> che si attivano solo dopo l'esecuzione del padre. <code>order/placeOCO</code> (One-Cancels-Other) collega due ordini in modo che l'esecuzione di uno annulli l'altro, comodo per agganciare uno stop e un target a una posizione già detenuta." },
+    { type: "paragraph", html: "La parte confusa: questi endpoint restituiscono allegramente <code>200 OK</code> pur rifiutando comunque l'ordine. Tradovate segnala gli errori di logica di business all'interno del corpo della risposta, non nello stato HTTP. Quindi un payload che raggiunge il server in modo pulito può comunque tornare con <code>{\"failureReason\": \"InvalidPrice\", \"failureText\": \"Wrong OCO combination\"}</code>, il che significa che i livelli di prezzo o l'abbinamento di tipi d'ordine scelti non formano un OCO valido. Uno stop e un limite posti sul lato sbagliato del mercato bastano a provocarlo. Consideri qualsiasi corpo contenente <code>failureReason</code> come un rifiuto, punto, indipendentemente da ciò che dice la riga di stato." },
+    { type: "paragraph", html: "L'endpoint <code>orderStrategy/startOrderStrategy</code> è tutta un'altra bestia. Esegue una strategia bracket <em>lato server</em>, l'equivalente API di una strategia ATM, ed è molto più esigente riguardo al proprio payload. Se invia l'<code>orderStrategyTypeId</code> sbagliato, o lo chiama via REST semplice quando si aspetta un frame WebSocket, ottiene un <code>404 (undocumented)</code> poco utile. Sembra una rotta mancante, ma in realtà è una richiesta rifiutata." },
+    { type: "heading", text: "Principali cause di fallimento degli ordini bracket dell'API Tradovate" },
+    { type: "heading", text: "1. Ha controllato solo lo stato HTTP, non il corpo" },
+    { type: "paragraph", html: "Questa è la trappola numero uno. Il suo client vede <code>200 OK</code>, registra &ldquo;ordine inviato&rdquo; e prosegue, ma l'entrata è stata rifiutata, oppure è passato solo l'ordine padre. Analizzi ogni risposta OSO/OCO alla ricerca di <code>failureReason</code> e <code>failureText</code> prima di considerare il bracket attivo." },
+    { type: "heading", text: "2. orderStrategyTypeId errato su startOrderStrategy" },
+    { type: "paragraph", html: "Molti provano con <code>orderStrategyTypeId: 1</code> e ottengono solo un <code>404 (undocumented)</code> per il disturbo. Esiste un solo valore valido, ed è <code>2</code>. Qualsiasi altro valore viene rifiutato prima ancora che la strategia venga costruita." },
+    { type: "heading", text: "3. Chiamare startOrderStrategy via REST invece che via WebSocket" },
+    { type: "paragraph", html: "Anche con l'id di tipo corretto, questo endpoint non è affidabile via HTTP REST semplice. È costruito per funzionare su un WebSocket, e funziona in modo affidabile quando lo si pilota in quel modo. Una chiamata REST che continua a restituire 404 spesso ha successo, invariata, nel momento in cui la si invia come frame WebSocket." },
+    { type: "heading", text: "4. JSON malformato o un dict grezzo invece di un corpo JSON" },
+    { type: "paragraph", html: "Un errore comune di <code>placeOCO</code> è <code>Invalid JSON: expected '{', offset: 0x00000075</code>. Ciò accade quando la richiesta invia un dizionario codificato come form invece di una stringa JSON serializzata, in Python, ad esempio passando <code>data=payload</code> invece di <code>json=payload</code> (o dimenticando <code>json.dumps()</code>). Il server non vede mai JSON valido, quindi scarta l'intero bracket." },
+    { type: "heading", text: "5. accountSpec mancante, accountId errato o combinazione di prezzo illegale" },
+    { type: "paragraph", html: "Gli endpoint bracket richiedono sia l'<code>accountId</code> numerico (ricavato da <code>account/list</code>) sia la stringa <code>accountSpec</code> (il nome del suo account). Ometta uno dei due e otterrà <code>Access is denied</code>. Separatamente, <code>placeOCO</code> e <code>placeOSO</code> controllano che le due gambe formino una combinazione legale, uno stop e un limite quotati sul lato sbagliato del mercato tornano come <code>Wrong OCO combination</code>. I bracket con entrata Market aggiungono un'ulteriore complicazione: poiché l'API richiede livelli di prezzo concreti per le gambe figlie, generalmente non è possibile agganciare un TP/SL relativo in tick a una semplice entrata <code>Market</code> tramite <code>placeOSO</code>. O calcola lei stesso i livelli di prezzo, oppure lascia che sia il motore di strategia a gestire gli scostamenti." },
+    { type: "heading", text: "Come correggere gli ordini bracket dell'API Tradovate: passo dopo passo" },
+    { type: "heading", text: "Correggere la trappola «200 OK ma nessuna gamba»" },
+    {
+      type: "list",
+      items: [
+        "Dopo ogni chiamata a <code>placeOSO</code> / <code>placeOCO</code> / <code>startOrderStrategy</code>, analizzi il corpo JSON.",
+        "Verifichi la presenza di una chiave <code>failureReason</code>. Se c'è, tratti l'ordine come <strong class='text-white'>rifiutato</strong> e legga <code>failureText</code> per la causa.",
+        "Consideri il bracket attivo solo quando ha gli ID ordine confermati sia per il padre <em>sia</em> per entrambe le gambe figlie, esegua polling su <code>order/list</code> oppure si iscriva agli eventi ordine via WebSocket.",
+        "Registri il corpo completo, non solo il codice di stato, in modo che le esecuzioni parziali compaiano nella sua traccia di audit.",
+      ],
+    },
+    { type: "heading", text: "Correggere i 404 di startOrderStrategy" },
+    {
+      type: "list",
+      items: [
+        "Imposti <code>orderStrategyTypeId</code> su <code>2</code>, l'unico valore accettato.",
+        "Invii sia <code>accountId</code> sia <code>accountSpec</code>, oltre a <code>symbol</code>, <code>action</code> e l'oggetto <code>params</code> (con la sua <code>entryVersion</code> e i <code>brackets</code>).",
+        "Invii la richiesta come frame <strong class='text-white'>WebSocket</strong> anziché come POST REST. Questo endpoint è progettato per funzionare via WebSocket, e il formato di frame atteso è ben documentato.",
+        "Riprovi lo stesso payload tramite il socket prima di presumere che il suo JSON sia malformato, il 404 è di solito un problema di trasporto, non di schema.",
+      ],
+    },
+    { type: "heading", text: "Correggere Invalid JSON e Wrong OCO combination" },
+    {
+      type: "list",
+      items: [
+        "Serializzi il payload come JSON. In Python <code>requests</code>, usi <code>requests.post(url, headers=..., json=payload)</code>, mai <code>data=payload</code> con un dict.",
+        "Confermi che l'header <code>Content-Type: application/json</code> sia impostato.",
+        "Per <code>placeOCO</code>, controlli la geometria delle due gambe: lo stop e il limite devono trovarsi su lati opposti e validi rispetto al prezzo attuale, in base alla direzione della posizione. Se vede <code>Wrong OCO combination</code>, inverta la gamba sul lato sbagliato.",
+        "Per un'entrata <code>Market</code>, attenda l'esecuzione e alleghi uno stop/target <code>placeOCO</code> alla posizione risultante, oppure passi a <code>startOrderStrategy</code>, che accetta scostamenti relativi.",
+      ],
+    },
+    { type: "heading", text: "Il fallback affidabile: entrata separata + OCO" },
+    { type: "paragraph", html: "Quando un bracket nativo semplicemente non collabora, disaccoppi l'entrata dalle uscite. Piazzi l'ordine di entrata da solo con <code>order/placeOrder</code>, confermi l'esecuzione, quindi invii un <code>placeOCO</code> che abbina lo stop protettivo all'obiettivo di profitto sulla posizione ormai aperta. È un giro di andata e ritorno in più, ma aggira completamente l'endpoint di strategia e le dà un controllo esplicito su ogni gamba." },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Errore", "Significato", "Soluzione"],
+      rows: [
+        ["200 OK con failureReason nel corpo", "Ordine rifiutato a livello di business logic nonostante uno stato HTTP pulito", "Analizzi il corpo; non si fidi mai solo del codice di stato"],
+        ["404 (undocumented) su startOrderStrategy", "orderStrategyTypeId errato, oppure REST usato dove è previsto WebSocket", "Imposti orderStrategyTypeId: 2 e invii via WebSocket"],
+        ["Invalid JSON: expected '{', offset: 0x...", "È stato inviato un dict grezzo / corpo form invece di JSON serializzato", "Invii un corpo JSON (json= in requests) o applichi prima json.dumps()"],
+        ["failureReason: InvalidPrice, failureText: Wrong OCO combination", "Le due gambe OCO non formano un abbinamento prezzo/tipo valido", "Riquoti in modo che stop e limite siano su lati opposti validi"],
+        ["Access is denied", "accountId o accountSpec mancante o errato", "Invii l'accountId numerico da account/list insieme al nome accountSpec"],
+        ["L'entrata viene eseguita, nessuno stop/target appare", "Le gambe figlie sono state rifiutate silenziosamente mentre il padre è stato accettato", "Confermi tutti e tre gli ID ordine, oppure ripieghi su entrata + placeOCO"],
+      ],
+    },
+    { type: "heading", text: "Come previene tutto questo PickMyTrade" },
+    { type: "paragraph", html: "Costruire manualmente i payload OSO/OCO significa farsi carico di ciascuna delle modalità di errore sopra descritte. PickMyTrade si posiziona tra i suoi alert TradingView e Tradovate e gestisce per lei l'idraulica del bracket:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Gestione bracket e OCO</strong>, allega correttamente le gambe di stop-loss e take-profit, così un'entrata non resta mai priva di protezione.",
+        "<strong class='text-white'>Validazione delle risposte</strong>, ispeziona l'intera risposta dell'ordine, non solo lo stato HTTP, e fa emergere i rifiuti reali invece di un falso &ldquo;successo&rdquo;.",
+        "<strong class='text-white'>Filtri di entitlement e rischio</strong>, rispetta lo stato dell'accordo dati del suo account e i limiti della prop firm prima che un ordine venga instradato.",
+        "<strong class='text-white'>Instradamento sicuro rispetto ai rate limit</strong>, distanzia il flusso di ordini così che le gambe del bracket non urtino i tetti di richiesta.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replica lo stesso bracket protetto su ogni account collegato.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Ablehnungsfrei handeln", es: "Opere sin rechazos", fr: "Tradez sans rejets", it: "Faccia trading senza rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and let PickMyTrade attach stop-loss and take-profit correctly every time.", de: "Starten Sie Ihre kostenlose 5-Tage-Testphase, verknüpfen Sie noch heute Ihre Alerts und lassen Sie PickMyTrade Stop-Loss und Take-Profit jedes Mal korrekt anhängen.", es: "Inicie su prueba gratuita de 5 días, conecte hoy mismo sus alertas y deje que PickMyTrade adjunte el stop-loss y el take-profit correctamente cada vez.", fr: "Démarrez votre essai gratuit de 5 jours, connectez vos alertes dès aujourd'hui et laissez PickMyTrade attacher correctement le stop-loss et le take-profit à chaque fois.", it: "Avvii la sua prova gratuita di 5 giorni, colleghi oggi stesso i suoi alert e lasci che PickMyTrade agganci correttamente stop-loss e take-profit ogni volta." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testphase", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvii la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Which Tradovate API endpoint should I use for a bracket order?", a: "Use order/placeOSO when a single entry should send a stop and target as bracket1 and bracket2. Use order/placeOCO to link two exit orders so filling one cancels the other. Use orderStrategy/startOrderStrategy for a server-side bracket strategy with relative offsets." },
+    { q: "Why does my bracket return 200 OK but no stop or target?", a: "Tradovate reports business-logic rejections inside the response body, not in the HTTP status. Parse the body for failureReason and failureText, and only treat the bracket as live once you have confirmed order IDs for the parent and both child legs." },
+    { q: "What does Wrong OCO combination mean?", a: "It's an InvalidPrice rejection meaning your two OCO legs aren't a legal pairing, typically the stop and limit are priced on the wrong side of the market for the position's direction. Reprice the offending leg." },
+    { q: "Why do I get a 404 from startOrderStrategy?", a: "Almost always a wrong orderStrategyTypeId (it must be 2) or a REST call where Tradovate expects a WebSocket frame. Fix the type id and resend over the WebSocket." },
+    { q: "How do I fix Invalid JSON: expected '{'?", a: "You're sending a raw dictionary or form-encoded body. Serialize the payload to JSON first, in Python requests, pass json=payload instead of data=payload." },
+    { q: "Can I attach tick-based TP/SL to a Market entry via placeOSO?", a: "Not directly, placeOSO expects concrete price levels for its child legs. Either compute the exact prices before submitting, wait for the fill and attach a placeOCO, or use startOrderStrategy, which accepts relative offsets." },
+    { q: "What is the most reliable way to place a protected order if strategies keep failing?", a: "Decouple the flow. Place the entry with order/placeOrder, confirm the fill, then submit a placeOCO that pairs the stop and target against the open position. It avoids the strategy endpoint entirely." },
+    { q: "Do I need both accountId and accountSpec?", a: "Yes. Bracket endpoints expect the numeric accountId from account/list and the string accountSpec account name. Omitting either returns Access is denied." },
+  ], de: [
+    { q: "Welchen Tradovate-API-Endpoint sollte ich für eine Bracket-Order verwenden?", a: "Verwenden Sie order/placeOSO, wenn eine einzelne Eröffnung einen Stop und ein Ziel als bracket1 und bracket2 senden soll. Verwenden Sie order/placeOCO, um zwei Exit-Orders so zu verknüpfen, dass die Ausführung der einen die andere storniert. Verwenden Sie orderStrategy/startOrderStrategy für eine serverseitige Bracket-Strategie mit relativen Offsets." },
+    { q: "Warum liefert mein Bracket 200 OK, aber keinen Stop oder kein Ziel?", a: "Tradovate meldet Business-Logic-Ablehnungen im Response-Body, nicht im HTTP-Status. Parsen Sie den Body auf failureReason und failureText, und behandeln Sie das Bracket erst dann als live, wenn Sie bestätigte Order-IDs für die übergeordnete Order und beide Kind-Legs haben." },
+    { q: "Was bedeutet Wrong OCO combination?", a: "Es handelt sich um eine InvalidPrice-Ablehnung, die bedeutet, dass Ihre beiden OCO-Legs keine gültige Kombination bilden, typischerweise sind Stop und Limit für die Richtung der Position auf der falschen Marktseite bepreist. Bepreisen Sie das betroffene Leg neu." },
+    { q: "Warum erhalte ich einen 404 von startOrderStrategy?", a: "Fast immer eine falsche orderStrategyTypeId (sie muss 2 sein) oder ein REST-Aufruf, wo Tradovate einen WebSocket-Frame erwartet. Korrigieren Sie die Type-ID und senden Sie erneut über den WebSocket." },
+    { q: "Wie behebe ich Invalid JSON: expected '{'?", a: "Sie senden ein rohes Dictionary oder einen formkodierten Body. Serialisieren Sie den Payload zuerst zu JSON, übergeben Sie in Python requests json=payload statt data=payload." },
+    { q: "Kann ich ein tick-basiertes TP/SL über placeOSO an eine Market-Eröffnung anhängen?", a: "Nicht direkt, placeOSO erwartet konkrete Preisniveaus für seine Kind-Legs. Berechnen Sie entweder die exakten Preise vor dem Senden, warten Sie auf die Ausführung und hängen Sie ein placeOCO an, oder verwenden Sie startOrderStrategy, das relative Offsets akzeptiert." },
+    { q: "Was ist der zuverlässigste Weg, eine geschützte Order zu platzieren, wenn Strategien immer wieder fehlschlagen?", a: "Entkoppeln Sie den Ablauf. Platzieren Sie die Eröffnung mit order/placeOrder, bestätigen Sie die Ausführung, und senden Sie dann ein placeOCO, das Stop und Ziel gegen die offene Position koppelt. Das umgeht den Strategy-Endpoint vollständig." },
+    { q: "Benötige ich sowohl accountId als auch accountSpec?", a: "Ja. Bracket-Endpoints erwarten die numerische accountId aus account/list und den String-Kontonamen accountSpec. Fehlt eines von beiden, erhalten Sie Access is denied." },
+  ], es: [
+    { q: "¿Qué endpoint de la API de Tradovate debo usar para una orden bracket?", a: "Use order/placeOSO cuando una sola entrada deba enviar un stop y un objetivo como bracket1 y bracket2. Use order/placeOCO para vincular dos órdenes de salida de modo que la ejecución de una cancele la otra. Use orderStrategy/startOrderStrategy para una estrategia bracket del lado del servidor con offsets relativos." },
+    { q: "¿Por qué mi bracket devuelve 200 OK pero sin stop ni objetivo?", a: "Tradovate informa los rechazos de lógica de negocio dentro del cuerpo de la respuesta, no en el estado HTTP. Analice el cuerpo en busca de failureReason y failureText, y trate el bracket como activo solo cuando tenga los IDs de orden confirmados para el padre y ambas piernas hijas." },
+    { q: "¿Qué significa Wrong OCO combination?", a: "Es un rechazo InvalidPrice que significa que sus dos piernas OCO no forman un emparejamiento válido, normalmente el stop y el límite tienen precio en el lado equivocado del mercado para la dirección de la posición. Reprecie la pierna problemática." },
+    { q: "¿Por qué obtengo un 404 de startOrderStrategy?", a: "Casi siempre por un orderStrategyTypeId incorrecto (debe ser 2) o por una llamada REST donde Tradovate espera un frame de WebSocket. Corrija el id de tipo y reenvíe por WebSocket." },
+    { q: "¿Cómo corrijo Invalid JSON: expected '{'?", a: "Está enviando un diccionario en bruto o un cuerpo codificado como formulario. Serialice primero el payload a JSON, en Python requests, pase json=payload en lugar de data=payload." },
+    { q: "¿Puedo adjuntar un TP/SL basado en ticks a una entrada Market mediante placeOSO?", a: "No directamente, placeOSO espera niveles de precio concretos para sus piernas hijas. O calcule los precios exactos antes de enviar, espere a la ejecución y adjunte un placeOCO, o use startOrderStrategy, que acepta offsets relativos." },
+    { q: "¿Cuál es la forma más fiable de colocar una orden protegida si las estrategias siguen fallando?", a: "Desacople el flujo. Coloque la entrada con order/placeOrder, confirme la ejecución y después envíe un placeOCO que empareje el stop y el objetivo contra la posición abierta. Evita por completo el endpoint de estrategia." },
+    { q: "¿Necesito tanto accountId como accountSpec?", a: "Sí. Los endpoints de bracket esperan el accountId numérico de account/list y el nombre de cuenta accountSpec en formato de cadena. Omitir cualquiera de los dos devuelve Access is denied." },
+  ], fr: [
+    { q: "Quel endpoint de l'API Tradovate dois-je utiliser pour un ordre bracket ?", a: "Utilisez order/placeOSO lorsqu'une seule entrée doit envoyer un stop et un objectif en tant que bracket1 et bracket2. Utilisez order/placeOCO pour lier deux ordres de sortie de sorte que l'exécution de l'un annule l'autre. Utilisez orderStrategy/startOrderStrategy pour une stratégie bracket côté serveur avec des décalages relatifs." },
+    { q: "Pourquoi mon bracket renvoie-t-il 200 OK mais aucun stop ni objectif ?", a: "Tradovate signale les rejets de logique métier dans le corps de la réponse, pas dans le statut HTTP. Analysez le corps à la recherche de failureReason et failureText, et ne considérez le bracket comme actif qu'une fois que vous avez les IDs d'ordre confirmés pour le parent et les deux jambes enfants." },
+    { q: "Que signifie Wrong OCO combination ?", a: "C'est un rejet InvalidPrice signifiant que vos deux jambes OCO ne forment pas un appariement légal, généralement le stop et la limite sont au prix du mauvais côté du marché pour le sens de la position. Repositionnez le prix de la jambe fautive." },
+    { q: "Pourquoi est-ce que j'obtiens un 404 de startOrderStrategy ?", a: "Presque toujours un orderStrategyTypeId incorrect (il doit être 2) ou un appel REST alors que Tradovate attend une frame WebSocket. Corrigez l'id de type et renvoyez via le WebSocket." },
+    { q: "Comment corriger Invalid JSON: expected '{' ?", a: "Vous envoyez un dictionnaire brut ou un corps encodé en formulaire. Sérialisez d'abord le payload en JSON, en Python requests, passez json=payload au lieu de data=payload." },
+    { q: "Puis-je attacher un TP/SL basé sur des ticks à une entrée Market via placeOSO ?", a: "Pas directement, placeOSO attend des niveaux de prix concrets pour ses jambes enfants. Calculez vous-même les prix exacts avant l'envoi, attendez l'exécution puis attachez un placeOCO, ou utilisez startOrderStrategy, qui accepte des décalages relatifs." },
+    { q: "Quelle est la manière la plus fiable de placer un ordre protégé si les stratégies continuent d'échouer ?", a: "Dissociez le flux. Placez l'entrée avec order/placeOrder, confirmez l'exécution, puis soumettez un placeOCO qui associe le stop et l'objectif à la position ouverte. Cela évite entièrement l'endpoint de stratégie." },
+    { q: "Ai-je besoin à la fois de accountId et de accountSpec ?", a: "Oui. Les endpoints de bracket attendent l'accountId numérique issu de account/list et le nom de compte accountSpec sous forme de chaîne. Omettre l'un ou l'autre renvoie Access is denied." },
+  ], it: [
+    { q: "Quale endpoint dell'API Tradovate devo usare per un ordine bracket?", a: "Usi order/placeOSO quando una singola entrata deve inviare uno stop e un target come bracket1 e bracket2. Usi order/placeOCO per collegare due ordini di uscita in modo che l'esecuzione di uno annulli l'altro. Usi orderStrategy/startOrderStrategy per una strategia bracket lato server con scostamenti relativi." },
+    { q: "Perché il mio bracket restituisce 200 OK ma nessuno stop o target?", a: "Tradovate segnala i rifiuti di business logic all'interno del corpo della risposta, non nello stato HTTP. Analizzi il corpo alla ricerca di failureReason e failureText, e consideri il bracket attivo solo quando ha gli ID ordine confermati per il padre ed entrambe le gambe figlie." },
+    { q: "Cosa significa Wrong OCO combination?", a: "È un rifiuto InvalidPrice che significa che le sue due gambe OCO non formano un abbinamento legale, tipicamente lo stop e il limite sono quotati sul lato sbagliato del mercato rispetto alla direzione della posizione. Riquoti la gamba incriminata." },
+    { q: "Perché ricevo un 404 da startOrderStrategy?", a: "Quasi sempre un orderStrategyTypeId errato (deve essere 2) oppure una chiamata REST dove Tradovate si aspetta un frame WebSocket. Corregga l'id di tipo e reinvii via WebSocket." },
+    { q: "Come correggo Invalid JSON: expected '{'?", a: "Sta inviando un dizionario grezzo o un corpo codificato come form. Serializzi prima il payload in JSON, in Python requests, passi json=payload invece di data=payload." },
+    { q: "Posso agganciare un TP/SL basato su tick a un'entrata Market tramite placeOSO?", a: "Non direttamente, placeOSO si aspetta livelli di prezzo concreti per le sue gambe figlie. O calcoli lei stesso i prezzi esatti prima dell'invio, attenda l'esecuzione e alleghi un placeOCO, oppure usi startOrderStrategy, che accetta scostamenti relativi." },
+    { q: "Qual è il modo più affidabile per piazzare un ordine protetto se le strategie continuano a fallire?", a: "Disaccoppi il flusso. Piazzi l'entrata con order/placeOrder, confermi l'esecuzione, quindi invii un placeOCO che abbina stop e target alla posizione aperta. Evita completamente l'endpoint di strategia." },
+    { q: "Ho bisogno sia di accountId sia di accountSpec?", a: "Sì. Gli endpoint bracket si aspettano l'accountId numerico da account/list e il nome account accountSpec come stringa. Omettere uno dei due restituisce Access is denied." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich zu Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird nicht von diesen unterstützt oder gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich mit der Zeit, bestätigen Sie daher vor dem Handeln stets den aktuellen Prozess in der offiziellen Plattformdokumentation.", es: "Esta guía tiene únicamente fines educativos e informativos y no constituye asesoramiento financiero, de inversión o de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de futures et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée, ni approuvée, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, veuillez donc toujours vérifier le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a ogni investitore. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre il processo attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

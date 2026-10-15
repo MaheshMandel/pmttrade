@@ -1,0 +1,669 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "volume-profile-indicator-not-working";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Volume Profile Indicator Not Working";
+const META_DESCRIPTION =
+  "Tradovate Volume Profile not showing or won't hide? Toggle POC in the profile settings to force a redraw, or remove and re-add the indicator to fix it.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate Volume-Profile-Indikator funktioniert nicht", es: "El indicador Volume Profile de Tradovate no funciona", fr: "L'indicateur Volume Profile de Tradovate ne fonctionne pas", it: "L'indicatore Volume Profile di Tradovate non funziona" },
+  dek: { en: "The Volume Profile either never draws or won't disappear once you turn it off. In nearly every case the data is fine and the chart just didn't repaint, here's the redraw trick that clears it in seconds.", de: "Das Volume Profile wird entweder nie gezeichnet oder verschwindet nicht, wenn Sie es ausschalten. In fast allen Fällen sind die Daten in Ordnung und der Chart wurde nur nicht neu gezeichnet. Hier ist der Neuzeichnen-Trick, der das in Sekunden behebt.", es: "El Volume Profile nunca se dibuja o no desaparece cuando lo desactiva. En casi todos los casos los datos están bien y el gráfico simplemente no se volvió a dibujar. Este es el truco de redibujado que lo soluciona en segundos.", fr: "Le Volume Profile ne s'affiche jamais ou ne disparaît pas lorsque vous le désactivez. Dans presque tous les cas, les données sont correctes et le graphique ne s'est simplement pas redessiné. Voici l'astuce de redessin qui règle cela en quelques secondes.", it: "Il Volume Profile non viene mai disegnato oppure non scompare quando lo disattiva. Quasi sempre i dati sono a posto e il grafico semplicemente non si è ridisegnato. Ecco il trucco del ridisegno che risolve tutto in pochi secondi." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-10",
+  blocks: { en: [
+    { type: "paragraph", html: "You add the Volume Profile to your chart, hit save, and nothing shows up. Or worse, you turn it off and the histogram just sits there stuck on the right edge. Either way, the profile is one of Tradovate's more temperamental indicators, and it was still acting up in 2026. Here's the good news before you start: in nearly every case the indicator isn't broken and your data is fine. The chart just didn't repaint the profile after you changed something. Force a redraw and it snaps back. This guide covers the two flavors you'll hit, the profile that never appears and the one that won't disappear, the settings that quietly hide POC and Value Area, and how to keep a flaky indicator out of your trades." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for a Broken Volume Profile",
+      items: [
+        "<strong class='text-white'>Force a redraw with the POC toggle</strong>, open the Volume Profile settings, check or uncheck <strong class='text-white'>POC</strong>, and click <strong class='text-white'>Apply</strong>. This is the single fastest fix for a profile that's stuck or won't hide.",
+        "<strong class='text-white'>Remove and re-add the indicator</strong>, if it never draws after you save, delete it and add it fresh from the <strong class='text-white'>Indicators</strong> menu.",
+        "<strong class='text-white'>Check what's toggled on</strong>, POC, Value Area, and the developing lines each have their own switch, so a &ldquo;missing&rdquo; profile is often just switched off.",
+        "<strong class='text-white'>Refresh the chart</strong>, press F5 on web, or restart the desktop app, to clear a one-off rendering hiccup.",
+        "<strong class='text-white'>Try the other chart engine</strong>, the current Chart module and the older Legacy Chart render profiles differently, so test the one you're not using.",
+        "<strong class='text-white'>Confirm your data feed is live</strong>, no market-data subscription or a delayed (orange) symbol means little or no volume to build the profile from.",
+      ],
+    },
+    { type: "heading", text: "What \"Volume Profile Not Working\" Usually Means" },
+    { type: "paragraph", html: "The Volume Profile draws a horizontal histogram of how much volume traded at each price, with the <strong class='text-white'>POC (Point of Control)</strong> marking the busiest price and the <strong class='text-white'>Value Area</strong> shading the band where roughly 70% of the volume changed hands. It's calculated live off your market data. When people say it's &ldquo;not working,&rdquo; they almost always mean one of two things." },
+    { type: "paragraph", html: "The first is a profile that <strong class='text-white'>never appears</strong>. You pick Volume Profile from the indicator list, adjust a setting or two, click save, and the chart comes back with no histogram at all. It doesn't show on a 5-minute chart, it doesn't show on any timeframe, and reopening the chart settings sometimes doesn't even list it. Switching browsers or the desktop app doesn't help. That's a save-and-render failure, not a data outage." },
+    { type: "paragraph", html: "The second is a profile that <strong class='text-white'>won't turn off</strong>. You toggle the indicator's visibility from on to off, expecting the histogram to vanish, and the current day's profile stubbornly stays pinned to the right side of the chart. The switch says off, the profile says otherwise. Both problems trace back to the same root: the chart isn't repainting when its state changes. The fix for both is to make it repaint." },
+    { type: "heading", text: "Top Causes of a Volume Profile That Won't Render in 2026" },
+    { type: "heading", text: "1. The chart didn't repaint after a settings change" },
+    { type: "paragraph", html: "This is the big one. You change a setting, or flip the indicator on or off, and the chart keeps showing its old state. A profile that was drawn stays drawn even after you hide it, and a profile you just enabled doesn't paint until something forces the chart to recalculate. It's a stale-render bug, which is exactly why the POC-toggle trick below works." },
+    { type: "heading", text: "2. The indicator saved into a broken state" },
+    { type: "paragraph", html: "Sometimes the profile is applied but arrives half-initialized. It's on the chart in name but produces nothing, and no amount of scrolling or zooming brings it out. When an indicator lands in this state, nudging its settings won't help, it needs to be removed and added again from scratch." },
+    { type: "heading", text: "3. The display elements are switched off" },
+    { type: "paragraph", html: "A profile can render and still look like it's missing pieces. POC, Value Area, the value-area high and low, and the developing lines are all independent toggles. Turn the histogram opacity way down or switch off the parts you care about, and the profile technically works but shows almost nothing, which reads as &ldquo;broken&rdquo; when it's really just near-invisible." },
+    { type: "heading", text: "4. You're on the chart engine that's glitching" },
+    { type: "paragraph", html: "Tradovate runs a newer Chart module (the default) alongside an older <strong class='text-white'>Legacy Chart</strong>. They don't render indicators with the same code, so a redraw bug that hits the profile on one engine can be completely absent on the other. If the profile is fighting you on the current Chart, test the same symbol on Legacy Chart before you spend an hour on settings." },
+    { type: "heading", text: "5. There's no live volume to build from" },
+    { type: "paragraph", html: "The profile is only as good as the data behind it. Without an active exchange market-data subscription, or on a symbol running on delayed data, often flagged by an orange symbol name, there may be little or no volume for the indicator to plot. A thin or empty profile on a delayed feed isn't a bug in the indicator; it's a data feed to fix first." },
+    { type: "heading", text: "How to Fix the Volume Profile in Tradovate: Step-by-Step" },
+    { type: "heading", text: "Fix 1: Force a Redraw with the POC Toggle" },
+    { type: "paragraph", html: "This clears the stuck-profile and won't-hide problems, and it's worth trying first because it takes about five seconds." },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the profile's settings", html: "Double-click the Volume Profile on the chart, or open the chart's <strong class='text-white'>configure/gear</strong> icon and pick the profile, to open its settings." },
+        { title: "Toggle the POC checkbox", html: "Find the <strong class='text-white'>POC</strong> (Point of Control) option and check or uncheck it, it doesn't matter which way, you're just changing the state." },
+        { title: "Click Apply", html: "Click <strong class='text-white'>Apply</strong>." },
+        { title: "Let it redraw", html: "The chart recalculates and repaints. A profile that was stuck on the right edge clears, and one that wasn't drawing paints correctly." },
+      ],
+    },
+    { type: "paragraph", html: "If you wanted POC visible, toggle it back and Apply again, the Apply click is what forces the redraw." },
+    { type: "heading", text: "Fix 2: Remove the Indicator and Add It Back" },
+    { type: "paragraph", html: "If the profile never appears after saving, or the POC toggle does nothing, the indicator saved into a bad state and needs a clean re-add." },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the indicator list", html: "Open the indicator list on the chart (the <strong class='text-white'>Indicators</strong> icon on the chart toolbar, or the chart's configure menu)." },
+        { title: "Delete the existing Volume Profile", html: "Use the trash/remove control next to it. Removing an indicator can't be undone, so you're starting fresh on purpose." },
+        { title: "Refresh the chart", html: "Press <strong class='text-white'>F5</strong> on the web platform, or close and reopen the desktop app." },
+        { title: "Add Volume Profile back", html: "Add it back from the Indicators menu, leave the defaults for now, and confirm it draws before you re-customize it." },
+      ],
+    },
+    { type: "paragraph", html: "Adding it back on defaults first tells you whether the indicator itself is fine. Once it's drawing, layer your POC, Value Area, and type preferences back in one at a time." },
+    { type: "heading", text: "Fix 3: Check the Display Toggles" },
+    { type: "paragraph", html: "If the profile draws but looks incomplete, the pieces you're missing are almost certainly switched off rather than broken." },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the Volume Profile settings", html: "Open the Volume Profile settings." },
+        { title: "Enable the elements you expect to see", html: "Enable <strong class='text-white'>POC</strong>, <strong class='text-white'>Value Area</strong>, value-area high/low, and any developing lines." },
+        { title: "Check the histogram width and opacity", html: "Check the histogram width and opacity aren't set so low the bars are invisible." },
+        { title: "Click Apply", html: "Click <strong class='text-white'>Apply</strong>, which also triggers the redraw from Fix 1 as a bonus." },
+      ],
+    },
+    { type: "heading", text: "Fix 4: Switch Chart Engines and Refresh" },
+    { type: "paragraph", html: "When one engine keeps glitching, move the problem to the other." },
+    {
+      type: "steps",
+      items: [
+        { title: "Note your current engine", html: "Note whether you're on the current <strong class='text-white'>Chart</strong> module or <strong class='text-white'>Legacy Chart</strong>." },
+        { title: "Load the same symbol on the other engine", html: "Load the same symbol on the other engine and re-add the Volume Profile there." },
+        { title: "Keep it there or refresh and re-add", html: "If it behaves on the alternate engine, keep it there for that symbol, or refresh your original chart and re-add the indicator to reset the render." },
+      ],
+    },
+    { type: "paragraph", html: "Menu wording shifts between updates, so if an option isn't where you expect, check the current Indicators and settings menus rather than assuming it was removed." },
+    { type: "heading", text: "Fix 5: Confirm Your Market Data" },
+    { type: "paragraph", html: "Rule out the data feed before you keep fighting the indicator." },
+    {
+      type: "steps",
+      items: [
+        { title: "Check for a delayed symbol", html: "Check that the symbol isn't showing as delayed, an orange symbol name is the usual tell." },
+        { title: "Confirm your data subscription", html: "Make sure you have an active exchange market-data subscription for that product." },
+        { title: "Check with your firm on a prop account", html: "On a prop or evaluation account, remember market data is often controlled by the firm, so a data gap there may need the firm to enable it, not you." },
+      ],
+    },
+    { type: "paragraph", html: "Once live volume is flowing, rebuild the profile and it should populate properly." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "What it means", "Fix"],
+      rows: [
+        ["Profile won't hide after toggling visibility off", "Chart didn't repaint the current session's profile", "Settings → check/uncheck POC → Apply"],
+        ["Profile never appears after saving", "Indicator saved into a broken/half-loaded state", "Remove it, refresh, and re-add from the Indicators menu"],
+        ["Doesn't show on any timeframe", "Stale render or bad indicator state", "POC-toggle redraw first, then remove and re-add"],
+        ["Histogram shows but POC/Value Area missing", "Those elements are toggled off", "Enable POC/Value Area in settings and Apply"],
+        ["Works on one chart type but not the other", "Different render engines (Chart vs Legacy)", "Use the engine that renders it, or refresh and re-add"],
+        ["Profile is empty or paper-thin", "No live volume, delayed or unsubscribed data", "Fix the market-data feed, then rebuild the profile"],
+      ],
+    },
+    { type: "heading", text: "Keep a Flaky Indicator Out of Your Execution" },
+    { type: "paragraph", html: "A Volume Profile that won't redraw is annoying when you're reading the market and a real problem when you're supposed to be <em>acting</em> on it, a POC or Value Area edge that isn't on screen is an entry you can miss. PickMyTrade keeps execution independent of whether Tradovate's chart decided to repaint:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Build your levels where they stay put</strong>, define POC, Value Area, and key prices in TradingView, which stores them server-side across every device.",
+        "<strong class='text-white'>Alerts fire from those levels</strong>, a price reaching your line triggers an alert instead of waiting on Tradovate to re-render an indicator.",
+        "<strong class='text-white'>Automated execution to Tradovate</strong>, that alert becomes a live order on your account with no manual clicks at the moment it matters.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirror the same entry across several Tradovate accounts at once, so a stuck chart never leaves one account out of step.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie fügen Ihrem Chart das Volume Profile hinzu, speichern, und es erscheint nichts. Oder schlimmer: Sie schalten es aus und das Histogramm bleibt am rechten Rand hängen. In beiden Fällen gehört das Profil zu den launischeren Indikatoren von Tradovate und machte auch 2026 noch Probleme. Die gute Nachricht vorab: In fast allen Fällen ist der Indikator nicht defekt und Ihre Daten sind in Ordnung. Der Chart hat das Profil nach einer Änderung nur nicht neu gezeichnet. Erzwingen Sie ein Neuzeichnen, und es ist sofort wieder da. Dieser Leitfaden behandelt die beiden Varianten, die Ihnen begegnen, das Profil, das nie erscheint, und das, das nicht verschwindet, die Einstellungen, die POC und Value Area stillschweigend ausblenden, und wie Sie einen unzuverlässigen Indikator aus Ihren Trades heraushalten." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste für ein defektes Volume Profile",
+      items: [
+        "<strong class='text-white'>Neuzeichnen mit dem POC-Schalter erzwingen</strong>, öffnen Sie die Volume-Profile-Einstellungen, aktivieren oder deaktivieren Sie <strong class='text-white'>POC</strong> und klicken Sie auf <strong class='text-white'>Apply</strong>. Das ist die schnellste Lösung für ein Profil, das hängt oder sich nicht ausblenden lässt.",
+        "<strong class='text-white'>Indikator entfernen und erneut hinzufügen</strong>, wird er nach dem Speichern nie gezeichnet, löschen Sie ihn und fügen Sie ihn neu über das <strong class='text-white'>Indicators</strong>-Menü hinzu.",
+        "<strong class='text-white'>Prüfen, was eingeschaltet ist</strong>, POC, Value Area und die Developing-Linien haben jeweils einen eigenen Schalter, ein &ldquo;fehlendes&rdquo; Profil ist daher oft nur ausgeschaltet.",
+        "<strong class='text-white'>Chart aktualisieren</strong>, drücken Sie F5 im Web oder starten Sie die Desktop-App neu, um einen einmaligen Darstellungsfehler zu beseitigen.",
+        "<strong class='text-white'>Die andere Chart-Engine testen</strong>, das aktuelle Chart-Modul und der ältere Legacy Chart stellen Profile unterschiedlich dar, testen Sie also die Engine, die Sie nicht verwenden.",
+        "<strong class='text-white'>Prüfen, ob Ihr Datenfeed live ist</strong>, ohne Marktdaten-Abonnement oder mit einem verzögerten (orangefarbenen) Symbol gibt es kaum oder kein Volumen, aus dem das Profil aufgebaut werden kann.",
+      ],
+    },
+    { type: "heading",text: "Was „Volume Profile funktioniert nicht“ meistens bedeutet" },
+    { type: "paragraph",html: "Das Volume Profile zeichnet ein horizontales Histogramm darüber, wie viel Volumen auf jedem Preis gehandelt wurde. Der <strong class='text-white'>POC (Point of Control)</strong> markiert den Preis mit dem meisten Handel, und die <strong class='text-white'>Value Area</strong> schattiert den Bereich, in dem ungefähr 70 % des Volumens den Besitzer gewechselt haben. Es wird live aus Ihren Marktdaten berechnet. Wenn Nutzer sagen, es &ldquo;funktioniere nicht&rdquo;, meinen sie fast immer eines von zwei Dingen." },
+    { type: "paragraph",html: "Das erste ist ein Profil, das <strong class='text-white'>nie erscheint</strong>. Sie wählen Volume Profile aus der Indikatorenliste, passen ein oder zwei Einstellungen an, klicken auf Speichern, und der Chart kommt ganz ohne Histogramm zurück. Es erscheint nicht im 5-Minuten-Chart, in keinem Zeitrahmen, und manchmal wird es beim erneuten Öffnen der Chart-Einstellungen nicht einmal aufgelistet. Ein Wechsel von Browser oder Desktop-App hilft nicht. Das ist ein Speicher- und Darstellungsfehler, kein Datenausfall." },
+    { type: "paragraph",html: "Das zweite ist ein Profil, das <strong class='text-white'>sich nicht ausschalten lässt</strong>. Sie schalten die Sichtbarkeit des Indikators von ein auf aus und erwarten, dass das Histogramm verschwindet, doch das Profil des aktuellen Tages bleibt hartnäckig an der rechten Seite des Charts haften. Der Schalter sagt aus, das Profil sagt etwas anderes. Beide Probleme haben dieselbe Ursache: Der Chart zeichnet sich bei einer Zustandsänderung nicht neu. Die Lösung für beide ist, ihn zum Neuzeichnen zu bringen." },
+    { type: "heading",text: "Die häufigsten Ursachen für ein Volume Profile, das 2026 nicht dargestellt wird" },
+    { type: "heading",text: "1. Der Chart wurde nach einer Einstellungsänderung nicht neu gezeichnet" },
+    { type: "paragraph",html: "Das ist die häufigste Ursache. Sie ändern eine Einstellung oder schalten den Indikator ein oder aus, und der Chart zeigt weiter seinen alten Zustand. Ein bereits gezeichnetes Profil bleibt sichtbar, selbst nachdem Sie es ausgeblendet haben, und ein gerade aktiviertes Profil wird erst gezeichnet, wenn etwas den Chart zur Neuberechnung zwingt. Es ist ein Fehler bei veralteter Darstellung, genau deshalb funktioniert der unten beschriebene POC-Trick." },
+    { type: "heading",text: "2. Der Indikator wurde in einem fehlerhaften Zustand gespeichert" },
+    { type: "paragraph",html: "Manchmal wird das Profil angewendet, kommt aber nur halb initialisiert an. Es ist dem Namen nach im Chart, liefert aber nichts, und kein Scrollen oder Zoomen bringt es hervor. Befindet sich ein Indikator in diesem Zustand, hilft das Anstupsen seiner Einstellungen nicht, er muss entfernt und von Grund auf neu hinzugefügt werden." },
+    { type: "heading",text: "3. Die Anzeigeelemente sind ausgeschaltet" },
+    { type: "paragraph",html: "Ein Profil kann dargestellt werden und trotzdem unvollständig aussehen. POC, Value Area, das Value-Area-Hoch und -Tief sowie die Developing-Linien sind alle unabhängige Schalter. Wenn Sie die Histogramm-Deckkraft stark verringern oder die Teile ausschalten, die Sie brauchen, funktioniert das Profil technisch, zeigt aber fast nichts, was wie &ldquo;defekt&rdquo; wirkt, obwohl es nur kaum sichtbar ist." },
+    { type: "heading",text: "4. Sie nutzen die Chart-Engine, die gerade Fehler macht" },
+    { type: "paragraph",html: "Tradovate betreibt ein neueres Chart-Modul (die Standardeinstellung) neben einem älteren <strong class='text-white'>Legacy Chart</strong>. Sie stellen Indikatoren nicht mit demselben Code dar, sodass ein Neuzeichnen-Fehler, der das Profil in der einen Engine trifft, in der anderen völlig fehlen kann. Wenn das Profil im aktuellen Chart Probleme macht, testen Sie dasselbe Symbol im Legacy Chart, bevor Sie eine Stunde mit Einstellungen verbringen." },
+    { type: "heading",text: "5. Es gibt kein Live-Volumen als Grundlage" },
+    { type: "paragraph",html: "Das Profil ist nur so gut wie die Daten dahinter. Ohne aktives Börsen-Marktdaten-Abonnement oder bei einem Symbol mit verzögerten Daten, oft an einem orangefarbenen Symbolnamen erkennbar, gibt es für den Indikator womöglich wenig oder gar kein Volumen zum Darstellen. Ein dünnes oder leeres Profil bei verzögertem Feed ist kein Fehler des Indikators, sondern ein Datenfeed, den Sie zuerst beheben sollten." },
+    { type: "heading",text: "So beheben Sie das Volume Profile in Tradovate: Schritt für Schritt" },
+    { type: "heading",text: "Lösung 1: Neuzeichnen mit dem POC-Schalter erzwingen" },
+    { type: "paragraph",html: "Das behebt die Probleme mit hängendem und nicht ausblendbarem Profil und sollte zuerst versucht werden, da es etwa fünf Sekunden dauert." },
+    {
+      type: "steps",
+      items: [
+        { title: "Die Einstellungen des Profils öffnen", html: "Doppelklicken Sie im Chart auf das Volume Profile oder öffnen Sie das <strong class='text-white'>Konfigurations-/Zahnrad</strong>-Symbol des Charts und wählen Sie das Profil, um dessen Einstellungen zu öffnen." },
+        { title: "Das POC-Kontrollkästchen umschalten", html: "Suchen Sie die Option <strong class='text-white'>POC</strong> (Point of Control) und aktivieren oder deaktivieren Sie sie, die Richtung spielt keine Rolle, Sie ändern nur den Zustand." },
+        { title: "Auf Apply klicken", html: "Klicken Sie auf <strong class='text-white'>Apply</strong>." },
+        { title: "Neu zeichnen lassen", html: "Der Chart berechnet neu und zeichnet neu. Ein am rechten Rand hängendes Profil verschwindet, und eines, das nicht gezeichnet wurde, wird korrekt dargestellt." },
+      ],
+    },
+    { type: "paragraph",html: "Wollten Sie POC sichtbar haben, schalten Sie es wieder um und klicken Sie erneut auf Apply, der Klick auf Apply erzwingt das Neuzeichnen." },
+    { type: "heading",text: "Lösung 2: Indikator entfernen und erneut hinzufügen" },
+    { type: "paragraph",html: "Wird das Profil nach dem Speichern nie angezeigt oder bewirkt der POC-Schalter nichts, wurde der Indikator in einem fehlerhaften Zustand gespeichert und muss sauber neu hinzugefügt werden." },
+    {
+      type: "steps",
+      items: [
+        { title: "Die Indikatorenliste öffnen", html: "Öffnen Sie die Indikatorenliste im Chart (das <strong class='text-white'>Indicators</strong>-Symbol in der Chart-Symbolleiste oder das Konfigurationsmenü des Charts)." },
+        { title: "Das vorhandene Volume Profile löschen", html: "Verwenden Sie die Papierkorb-/Entfernen-Schaltfläche daneben. Das Entfernen eines Indikators kann nicht rückgängig gemacht werden, Sie beginnen also bewusst von vorn." },
+        { title: "Den Chart aktualisieren", html: "Drücken Sie <strong class='text-white'>F5</strong> in der Web-Plattform oder schließen Sie die Desktop-App und öffnen Sie sie erneut." },
+        { title: "Volume Profile wieder hinzufügen", html: "Fügen Sie es über das Indicators-Menü wieder hinzu, belassen Sie vorerst die Standardwerte und prüfen Sie, ob es gezeichnet wird, bevor Sie es erneut anpassen." },
+      ],
+    },
+    { type: "paragraph",html: "Wenn Sie es zuerst mit den Standardwerten hinzufügen, sehen Sie, ob der Indikator selbst in Ordnung ist. Sobald es gezeichnet wird, fügen Sie Ihre POC-, Value-Area- und Typ-Einstellungen nacheinander wieder hinzu." },
+    { type: "heading",text: "Lösung 3: Die Anzeigeschalter prüfen" },
+    { type: "paragraph",html: "Wird das Profil gezeichnet, wirkt aber unvollständig, sind die fehlenden Teile mit ziemlicher Sicherheit ausgeschaltet und nicht defekt." },
+    {
+      type: "steps",
+      items: [
+        { title: "Die Volume-Profile-Einstellungen öffnen", html: "Öffnen Sie die Volume-Profile-Einstellungen." },
+        { title: "Die erwarteten Elemente aktivieren", html: "Aktivieren Sie <strong class='text-white'>POC</strong>, <strong class='text-white'>Value Area</strong>, das Value-Area-Hoch/-Tief und alle Developing-Linien." },
+        { title: "Breite und Deckkraft des Histogramms prüfen", html: "Prüfen Sie, dass Breite und Deckkraft des Histogramms nicht so niedrig eingestellt sind, dass die Balken unsichtbar sind." },
+        { title: "Auf Apply klicken", html: "Klicken Sie auf <strong class='text-white'>Apply</strong>, das zugleich als Bonus das Neuzeichnen aus Lösung 1 auslöst." },
+      ],
+    },
+    { type: "heading",text: "Lösung 4: Chart-Engine wechseln und aktualisieren" },
+    { type: "paragraph",html: "Wenn eine Engine ständig Fehler macht, verlagern Sie das Problem auf die andere." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ihre aktuelle Engine feststellen", html: "Stellen Sie fest, ob Sie das aktuelle <strong class='text-white'>Chart</strong>-Modul oder den <strong class='text-white'>Legacy Chart</strong> verwenden." },
+        { title: "Dasselbe Symbol in der anderen Engine laden", html: "Laden Sie dasselbe Symbol in der anderen Engine und fügen Sie dort das Volume Profile erneut hinzu." },
+        { title: "Dort bleiben oder aktualisieren und neu hinzufügen", html: "Verhält es sich in der anderen Engine korrekt, behalten Sie es für dieses Symbol dort, oder aktualisieren Sie Ihren ursprünglichen Chart und fügen Sie den Indikator erneut hinzu, um die Darstellung zurückzusetzen." },
+      ],
+    },
+    { type: "paragraph",html: "Die Menübezeichnungen ändern sich zwischen Updates. Befindet sich eine Option nicht dort, wo Sie sie erwarten, prüfen Sie die aktuellen Menüs für Indikatoren und Einstellungen, statt anzunehmen, sie sei entfernt worden." },
+    { type: "heading",text: "Lösung 5: Ihre Marktdaten bestätigen" },
+    { type: "paragraph",html: "Schließen Sie den Datenfeed als Ursache aus, bevor Sie weiter mit dem Indikator kämpfen." },
+    {
+      type: "steps",
+      items: [
+        { title: "Auf ein verzögertes Symbol prüfen", html: "Prüfen Sie, dass das Symbol nicht als verzögert angezeigt wird, ein orangefarbener Symbolname ist das übliche Anzeichen." },
+        { title: "Ihr Datenabonnement bestätigen", html: "Stellen Sie sicher, dass Sie ein aktives Börsen-Marktdaten-Abonnement für dieses Produkt haben." },
+        { title: "Bei einem Prop-Konto Rücksprache mit Ihrer Firma halten", html: "Bedenken Sie bei einem Prop- oder Evaluierungskonto, dass die Marktdaten oft von der Firma gesteuert werden. Eine Datenlücke dort muss daher möglicherweise von der Firma freigeschaltet werden, nicht von Ihnen." },
+      ],
+    },
+    { type: "paragraph",html: "Sobald Live-Volumen fließt, bauen Sie das Profil neu auf, und es sollte korrekt befüllt werden." },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Symptom","Was es bedeutet","Lösung"], rows: [
+      ["Profil verschwindet nicht, nachdem die Sichtbarkeit ausgeschaltet wurde","Der Chart hat das Profil der aktuellen Sitzung nicht neu gezeichnet","Einstellungen → POC aktivieren/deaktivieren → Apply"],
+      ["Profil erscheint nach dem Speichern nie","Indikator wurde in einem fehlerhaften/halb geladenen Zustand gespeichert","Entfernen, aktualisieren und über das Indicators-Menü erneut hinzufügen"],
+      ["Wird in keinem Zeitrahmen angezeigt","Veraltete Darstellung oder fehlerhafter Indikatorzustand","Zuerst POC-Umschalten mit Neuzeichnen, dann entfernen und erneut hinzufügen"],
+      ["Histogramm wird angezeigt, aber POC/Value Area fehlen","Diese Elemente sind ausgeschaltet","POC/Value Area in den Einstellungen aktivieren und Apply klicken"],
+      ["Funktioniert in einem Charttyp, im anderen nicht","Unterschiedliche Darstellungs-Engines (Chart vs. Legacy)","Die Engine verwenden, die es darstellt, oder aktualisieren und erneut hinzufügen"],
+      ["Profil ist leer oder hauchdünn","Kein Live-Volumen, verzögerte oder nicht abonnierte Daten","Den Marktdatenfeed beheben, dann das Profil neu aufbauen"],
+    ] },
+    { type: "heading",text: "Halten Sie einen unzuverlässigen Indikator aus Ihrer Ausführung heraus" },
+    { type: "paragraph",html: "Ein Volume Profile, das sich nicht neu zeichnet, ist lästig, wenn Sie den Markt lesen, und ein echtes Problem, wenn Sie darauf <em>handeln</em> sollen: Ein POC oder Value-Area-Rand, der nicht auf dem Bildschirm ist, ist ein Einstieg, den Sie verpassen können. PickMyTrade hält die Ausführung unabhängig davon, ob Tradovates Chart sich neu zeichnen will:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Bauen Sie Ihre Levels dort, wo sie bleiben</strong>, definieren Sie POC, Value Area und wichtige Preise in TradingView, das sie serverseitig auf allen Geräten speichert.",
+        "<strong class='text-white'>Alarme werden von diesen Levels ausgelöst</strong>, erreicht der Preis Ihre Linie, löst das einen Alarm aus, statt darauf zu warten, dass Tradovate einen Indikator neu darstellt.",
+        "<strong class='text-white'>Automatisierte Ausführung an Tradovate</strong>, dieser Alarm wird zu einer Live-Order auf Ihrem Konto, ohne manuelle Klicks im entscheidenden Moment.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, spiegeln Sie denselben Einstieg gleichzeitig auf mehrere Tradovate-Konten, damit ein hängender Chart nie ein Konto aus dem Takt bringt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Añade el Volume Profile a su gráfico, guarda y no aparece nada. O peor: lo desactiva y el histograma se queda atascado en el borde derecho. Sea como sea, el perfil es uno de los indicadores más caprichosos de Tradovate y en 2026 seguía dando problemas. La buena noticia antes de empezar: en casi todos los casos el indicador no está roto y sus datos están bien. El gráfico simplemente no volvió a dibujar el perfil después de cambiar algo. Fuerce un redibujado y vuelve a aparecer. Esta guía cubre los dos casos que encontrará, el perfil que nunca aparece y el que no desaparece, los ajustes que ocultan en silencio POC y Value Area, y cómo mantener un indicador poco fiable fuera de sus operaciones." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para un Volume Profile que falla",
+      items: [
+        "<strong class='text-white'>Fuerce el redibujado con el interruptor de POC</strong>, abra la configuración del Volume Profile, marque o desmarque <strong class='text-white'>POC</strong> y haga clic en <strong class='text-white'>Apply</strong>. Es la solución más rápida para un perfil atascado o que no se oculta.",
+        "<strong class='text-white'>Elimine y vuelva a añadir el indicador</strong>, si nunca se dibuja tras guardar, bórrelo y añádalo de nuevo desde el menú <strong class='text-white'>Indicators</strong>.",
+        "<strong class='text-white'>Compruebe qué está activado</strong>, POC, Value Area y las líneas developing tienen cada uno su propio interruptor, así que un perfil &ldquo;ausente&rdquo; suele estar simplemente desactivado.",
+        "<strong class='text-white'>Actualice el gráfico</strong>, pulse F5 en la web o reinicie la aplicación de escritorio para eliminar un fallo de renderizado puntual.",
+        "<strong class='text-white'>Pruebe el otro motor de gráficos</strong>, el módulo Chart actual y el antiguo Legacy Chart dibujan los perfiles de forma distinta, así que pruebe el que no está usando.",
+        "<strong class='text-white'>Confirme que su fuente de datos está en vivo</strong>, sin suscripción de datos de mercado o con un símbolo con retraso (naranja) hay poco o ningún volumen para construir el perfil.",
+      ],
+    },
+    { type: "heading",text: "Qué suele significar «el Volume Profile no funciona»" },
+    { type: "paragraph",html: "El Volume Profile dibuja un histograma horizontal de cuánto volumen se negoció en cada precio, con el <strong class='text-white'>POC (Point of Control)</strong> marcando el precio más activo y el <strong class='text-white'>Value Area</strong> sombreando la franja en la que cambió de manos aproximadamente el 70 % del volumen. Se calcula en vivo a partir de sus datos de mercado. Cuando la gente dice que &ldquo;no funciona&rdquo;, casi siempre se refiere a una de dos cosas." },
+    { type: "paragraph",html: "La primera es un perfil que <strong class='text-white'>nunca aparece</strong>. Elige Volume Profile en la lista de indicadores, ajusta uno o dos parámetros, hace clic en guardar y el gráfico vuelve sin ningún histograma. No aparece en un gráfico de 5 minutos, no aparece en ningún marco temporal y, a veces, al volver a abrir la configuración del gráfico ni siquiera figura en la lista. Cambiar de navegador o de aplicación de escritorio no ayuda. Es un fallo de guardado y renderizado, no una caída de datos." },
+    { type: "paragraph",html: "La segunda es un perfil que <strong class='text-white'>no se desactiva</strong>. Cambia la visibilidad del indicador de activado a desactivado esperando que el histograma desaparezca, y el perfil del día actual sigue obstinadamente fijado en el lado derecho del gráfico. El interruptor dice que está apagado, el perfil dice lo contrario. Ambos problemas tienen la misma raíz: el gráfico no se vuelve a dibujar cuando cambia su estado. La solución para ambos es hacer que se redibuje." },
+    { type: "heading",text: "Principales causas de un Volume Profile que no se dibuja en 2026" },
+    { type: "heading",text: "1. El gráfico no se redibujó tras un cambio de configuración" },
+    { type: "paragraph",html: "Esta es la más frecuente. Cambia un ajuste, o activa o desactiva el indicador, y el gráfico sigue mostrando su estado anterior. Un perfil que estaba dibujado sigue dibujado incluso después de ocultarlo, y un perfil recién activado no se pinta hasta que algo obliga al gráfico a recalcular. Es un error de renderizado obsoleto, y por eso funciona el truco del POC que se describe más abajo." },
+    { type: "heading",text: "2. El indicador se guardó en un estado defectuoso" },
+    { type: "paragraph",html: "A veces el perfil se aplica, pero llega a medio inicializar. Está en el gráfico de nombre, pero no produce nada, y ningún desplazamiento ni zoom lo hace aparecer. Cuando un indicador cae en este estado, retocar su configuración no sirve, hay que eliminarlo y añadirlo de nuevo desde cero." },
+    { type: "heading",text: "3. Los elementos de visualización están desactivados" },
+    { type: "paragraph",html: "Un perfil puede dibujarse y aun así parecer incompleto. POC, Value Area, el máximo y mínimo del value area y las líneas developing son interruptores independientes. Si reduce mucho la opacidad del histograma o desactiva las partes que le interesan, el perfil técnicamente funciona pero casi no muestra nada, lo que parece &ldquo;roto&rdquo; cuando en realidad es casi invisible." },
+    { type: "heading",text: "4. Está en el motor de gráficos que falla" },
+    { type: "paragraph",html: "Tradovate ejecuta un módulo de gráficos más reciente (el predeterminado) junto con un <strong class='text-white'>Legacy Chart</strong> más antiguo. No dibujan los indicadores con el mismo código, por lo que un error de redibujado que afecta al perfil en un motor puede estar completamente ausente en el otro. Si el perfil le da problemas en el Chart actual, pruebe el mismo símbolo en Legacy Chart antes de perder una hora con los ajustes." },
+    { type: "heading",text: "5. No hay volumen en vivo con el que construir" },
+    { type: "paragraph",html: "El perfil es tan bueno como los datos que lo respaldan. Sin una suscripción activa de datos de mercado del mercado, o con un símbolo con datos retrasados, a menudo señalado por un nombre de símbolo naranja, puede haber poco o ningún volumen que el indicador pueda trazar. Un perfil escaso o vacío con una fuente retrasada no es un fallo del indicador, es una fuente de datos que hay que arreglar primero." },
+    { type: "heading",text: "Cómo arreglar el Volume Profile en Tradovate: paso a paso" },
+    { type: "heading",text: "Solución 1: fuerce un redibujado con el interruptor de POC" },
+    { type: "paragraph",html: "Esto resuelve los problemas de perfil atascado y que no se oculta, y conviene probarlo primero porque lleva unos cinco segundos." },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra la configuración del perfil", html: "Haga doble clic en el Volume Profile del gráfico, o abra el icono de <strong class='text-white'>configuración/engranaje</strong> del gráfico y elija el perfil, para abrir sus ajustes." },
+        { title: "Alterne la casilla POC", html: "Busque la opción <strong class='text-white'>POC</strong> (Point of Control) y márquela o desmárquela, da igual en qué sentido, solo está cambiando el estado." },
+        { title: "Haga clic en Apply", html: "Haga clic en <strong class='text-white'>Apply</strong>." },
+        { title: "Deje que se redibuje", html: "El gráfico recalcula y vuelve a dibujar. Un perfil atascado en el borde derecho desaparece, y uno que no se dibujaba se pinta correctamente." },
+      ],
+    },
+    { type: "paragraph",html: "Si quería ver POC, vuelva a alternarlo y haga clic en Apply de nuevo, el clic en Apply es lo que fuerza el redibujado." },
+    { type: "heading",text: "Solución 2: elimine el indicador y vuelva a añadirlo" },
+    { type: "paragraph",html: "Si el perfil nunca aparece tras guardar, o el interruptor de POC no hace nada, el indicador se guardó en un estado defectuoso y necesita añadirse de nuevo limpiamente." },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra la lista de indicadores", html: "Abra la lista de indicadores del gráfico (el icono de <strong class='text-white'>Indicators</strong> de la barra de herramientas del gráfico, o el menú de configuración del gráfico)." },
+        { title: "Elimine el Volume Profile existente", html: "Use el control de papelera/eliminar junto a él. Eliminar un indicador no se puede deshacer, así que empieza de cero a propósito." },
+        { title: "Actualice el gráfico", html: "Pulse <strong class='text-white'>F5</strong> en la plataforma web, o cierre y vuelva a abrir la aplicación de escritorio." },
+        { title: "Vuelva a añadir Volume Profile", html: "Vuelva a añadirlo desde el menú Indicators, deje los valores predeterminados por ahora y confirme que se dibuja antes de personalizarlo de nuevo." },
+      ],
+    },
+    { type: "paragraph",html: "Añadirlo primero con los valores predeterminados le indica si el indicador en sí está bien. Una vez que se dibuje, vuelva a aplicar una a una sus preferencias de POC, Value Area y tipo." },
+    { type: "heading",text: "Solución 3: revise los interruptores de visualización" },
+    { type: "paragraph",html: "Si el perfil se dibuja pero parece incompleto, lo más probable es que las partes que faltan estén desactivadas y no rotas." },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra la configuración del Volume Profile", html: "Abra la configuración del Volume Profile." },
+        { title: "Active los elementos que espera ver", html: "Active <strong class='text-white'>POC</strong>, <strong class='text-white'>Value Area</strong>, el máximo/mínimo del value area y cualquier línea developing." },
+        { title: "Compruebe el ancho y la opacidad del histograma", html: "Compruebe que el ancho y la opacidad del histograma no estén tan bajos que las barras sean invisibles." },
+        { title: "Haga clic en Apply", html: "Haga clic en <strong class='text-white'>Apply</strong>, que además activa el redibujado de la Solución 1 como beneficio adicional." },
+      ],
+    },
+    { type: "heading",text: "Solución 4: cambie de motor de gráficos y actualice" },
+    { type: "paragraph",html: "Cuando un motor sigue fallando, traslade el problema al otro." },
+    {
+      type: "steps",
+      items: [
+        { title: "Anote su motor actual", html: "Anote si está en el módulo <strong class='text-white'>Chart</strong> actual o en <strong class='text-white'>Legacy Chart</strong>." },
+        { title: "Cargue el mismo símbolo en el otro motor", html: "Cargue el mismo símbolo en el otro motor y vuelva a añadir allí el Volume Profile." },
+        { title: "Manténgalo allí o actualice y vuelva a añadirlo", html: "Si se comporta bien en el otro motor, déjelo allí para ese símbolo, o actualice su gráfico original y vuelva a añadir el indicador para restablecer el renderizado." },
+      ],
+    },
+    { type: "paragraph",html: "Los nombres de los menús cambian entre actualizaciones, así que si una opción no está donde la espera, revise los menús actuales de indicadores y ajustes en lugar de suponer que se eliminó." },
+    { type: "heading",text: "Solución 5: confirme sus datos de mercado" },
+    { type: "paragraph",html: "Descarte la fuente de datos antes de seguir peleando con el indicador." },
+    {
+      type: "steps",
+      items: [
+        { title: "Compruebe si hay un símbolo con retraso", html: "Compruebe que el símbolo no aparezca con retraso, un nombre de símbolo naranja es la señal habitual." },
+        { title: "Confirme su suscripción de datos", html: "Asegúrese de tener una suscripción activa de datos de mercado de la bolsa para ese producto." },
+        { title: "Consulte con su firma en una cuenta prop", html: "En una cuenta prop o de evaluación, recuerde que los datos de mercado suelen estar controlados por la firma, por lo que una carencia de datos allí puede requerir que la firma los habilite, no usted." },
+      ],
+    },
+    { type: "paragraph",html: "Una vez que fluya el volumen en vivo, reconstruya el perfil y debería poblarse correctamente." },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma","Qué significa","Solución"], rows: [
+      ["El perfil no se oculta al desactivar la visibilidad","El gráfico no volvió a dibujar el perfil de la sesión actual","Configuración → marcar/desmarcar POC → Apply"],
+      ["El perfil nunca aparece tras guardar","El indicador se guardó en un estado defectuoso/cargado a medias","Elimínelo, actualice y vuelva a añadirlo desde el menú Indicators"],
+      ["No aparece en ningún marco temporal","Renderizado obsoleto o estado defectuoso del indicador","Primero el redibujado con el interruptor de POC, luego eliminar y volver a añadir"],
+      ["Se muestra el histograma pero faltan POC/Value Area","Esos elementos están desactivados","Active POC/Value Area en la configuración y haga clic en Apply"],
+      ["Funciona en un tipo de gráfico pero no en el otro","Motores de renderizado distintos (Chart vs. Legacy)","Use el motor que lo dibuja, o actualice y vuelva a añadirlo"],
+      ["El perfil está vacío o es muy delgado","Sin volumen en vivo, datos con retraso o sin suscripción","Arregle la fuente de datos de mercado y luego reconstruya el perfil"],
+    ] },
+    { type: "heading",text: "Mantenga un indicador poco fiable fuera de su ejecución" },
+    { type: "paragraph",html: "Un Volume Profile que no se redibuja es molesto cuando está leyendo el mercado y un problema real cuando se supone que debe <em>actuar</em> sobre él, un borde de POC o de Value Area que no está en pantalla es una entrada que puede perder. PickMyTrade mantiene la ejecución independiente de si el gráfico de Tradovate decidió o no redibujarse:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Construya sus niveles donde permanezcan</strong>, defina POC, Value Area y precios clave en TradingView, que los almacena en el servidor para todos sus dispositivos.",
+        "<strong class='text-white'>Las alertas se disparan desde esos niveles</strong>, un precio que llega a su línea dispara una alerta en lugar de esperar a que Tradovate vuelva a dibujar un indicador.",
+        "<strong class='text-white'>Ejecución automatizada en Tradovate</strong>, esa alerta se convierte en una orden real en su cuenta sin clics manuales en el momento en que importa.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, replique la misma entrada en varias cuentas de Tradovate a la vez, para que un gráfico atascado nunca deje una cuenta desincronizada.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous ajoutez le Volume Profile à votre graphique, vous enregistrez, et rien n'apparaît. Ou pire, vous le désactivez et l'histogramme reste bloqué sur le bord droit. Dans les deux cas, le profil est l'un des indicateurs les plus capricieux de Tradovate, et il posait encore problème en 2026. La bonne nouvelle avant de commencer : dans presque tous les cas, l'indicateur n'est pas cassé et vos données sont correctes. Le graphique n'a simplement pas redessiné le profil après une modification. Forcez un redessin et il réapparaît. Ce guide couvre les deux cas de figure que vous rencontrerez, le profil qui n'apparaît jamais et celui qui ne disparaît pas, les paramètres qui masquent discrètement POC et Value Area, et la façon de garder un indicateur capricieux à l'écart de vos trades." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour un Volume Profile défaillant",
+      items: [
+        "<strong class='text-white'>Forcez un redessin avec l'option POC</strong>, ouvrez les paramètres du Volume Profile, cochez ou décochez <strong class='text-white'>POC</strong> et cliquez sur <strong class='text-white'>Apply</strong>. C'est la solution la plus rapide pour un profil bloqué ou qui ne se masque pas.",
+        "<strong class='text-white'>Supprimez et rajoutez l'indicateur</strong>, s'il ne s'affiche jamais après l'enregistrement, supprimez-le et ajoutez-le à nouveau depuis le menu <strong class='text-white'>Indicators</strong>.",
+        "<strong class='text-white'>Vérifiez ce qui est activé</strong>, POC, Value Area et les lignes developing ont chacun leur propre interrupteur ; un profil &ldquo;manquant&rdquo; est donc souvent simplement désactivé.",
+        "<strong class='text-white'>Actualisez le graphique</strong>, appuyez sur F5 sur le web ou redémarrez l'application de bureau pour effacer un défaut d'affichage ponctuel.",
+        "<strong class='text-white'>Essayez l'autre moteur de graphiques</strong>, le module Chart actuel et l'ancien Legacy Chart dessinent les profils différemment ; testez donc celui que vous n'utilisez pas.",
+        "<strong class='text-white'>Vérifiez que votre flux de données est en direct</strong>, sans abonnement aux données de marché ou avec un symbole en différé (orange), il y a peu ou pas de volume pour construire le profil.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie généralement « le Volume Profile ne fonctionne pas »" },
+    { type: "paragraph",html: "Le Volume Profile dessine un histogramme horizontal du volume échangé à chaque prix, le <strong class='text-white'>POC (Point of Control)</strong> marquant le prix le plus actif et la <strong class='text-white'>Value Area</strong> ombrant la zone où environ 70 % du volume a changé de mains. Il est calculé en direct à partir de vos données de marché. Quand on dit qu'il &ldquo;ne fonctionne pas&rdquo;, on veut presque toujours dire l'une de ces deux choses." },
+    { type: "paragraph",html: "La première est un profil qui <strong class='text-white'>n'apparaît jamais</strong>. Vous choisissez Volume Profile dans la liste des indicateurs, ajustez un paramètre ou deux, cliquez sur enregistrer, et le graphique revient sans aucun histogramme. Il ne s'affiche pas sur un graphique de 5 minutes, ni sur aucune autre unité de temps, et rouvrir les paramètres du graphique ne le liste parfois même pas. Changer de navigateur ou d'application de bureau n'y change rien. C'est un échec d'enregistrement et d'affichage, pas une panne de données." },
+    { type: "paragraph",html: "La seconde est un profil qui <strong class='text-white'>refuse de s'éteindre</strong>. Vous faites passer la visibilité de l'indicateur de activé à désactivé en attendant que l'histogramme disparaisse, et le profil du jour reste obstinément collé sur le côté droit du graphique. L'interrupteur indique désactivé, le profil dit le contraire. Les deux problèmes ont la même origine : le graphique ne se redessine pas lorsque son état change. La solution, dans les deux cas, est de le forcer à se redessiner." },
+    { type: "heading",text: "Principales causes d'un Volume Profile qui ne s'affiche pas en 2026" },
+    { type: "heading",text: "1. Le graphique ne s'est pas redessiné après un changement de paramètres" },
+    { type: "paragraph",html: "C'est la cause numéro un. Vous modifiez un paramètre, ou vous activez ou désactivez l'indicateur, et le graphique continue d'afficher son ancien état. Un profil qui était dessiné reste dessiné même après l'avoir masqué, et un profil que vous venez d'activer ne s'affiche pas tant que quelque chose ne force pas le graphique à recalculer. C'est un bug d'affichage obsolète, c'est précisément pourquoi l'astuce POC ci-dessous fonctionne." },
+    { type: "heading",text: "2. L'indicateur a été enregistré dans un état défectueux" },
+    { type: "paragraph",html: "Parfois, le profil est appliqué mais arrive à moitié initialisé. Il figure sur le graphique de nom, mais ne produit rien, et aucun défilement ni zoom ne le fait apparaître. Lorsqu'un indicateur tombe dans cet état, modifier ses paramètres n'aide pas, il faut le supprimer et le rajouter de zéro." },
+    { type: "heading",text: "3. Les éléments d'affichage sont désactivés" },
+    { type: "paragraph",html: "Un profil peut s'afficher et sembler pourtant incomplet. POC, Value Area, le haut et le bas de la value area et les lignes developing sont des interrupteurs indépendants. Réduisez fortement l'opacité de l'histogramme ou désactivez les éléments qui vous intéressent, et le profil fonctionne techniquement mais n'affiche presque rien, ce qui passe pour &ldquo;cassé&rdquo; alors qu'il est simplement quasi invisible." },
+    { type: "heading",text: "4. Vous êtes sur le moteur de graphiques qui bugue" },
+    { type: "paragraph",html: "Tradovate propose un module Chart plus récent (par défaut) en parallèle d'un <strong class='text-white'>Legacy Chart</strong> plus ancien. Ils ne dessinent pas les indicateurs avec le même code, de sorte qu'un bug de redessin qui touche le profil sur un moteur peut être totalement absent sur l'autre. Si le profil vous pose problème sur le Chart actuel, testez le même symbole sur le Legacy Chart avant de passer une heure sur les paramètres." },
+    { type: "heading",text: "5. Il n'y a pas de volume en direct pour construire le profil" },
+    { type: "paragraph",html: "Le profil ne vaut que par les données qui le nourrissent. Sans abonnement actif aux données de marché de la bourse, ou sur un symbole en données différées, souvent signalé par un nom de symbole orange, il peut y avoir peu ou pas de volume à tracer pour l'indicateur. Un profil mince ou vide sur un flux différé n'est pas un bug de l'indicateur, c'est un flux de données à corriger en premier." },
+    { type: "heading",text: "Comment réparer le Volume Profile dans Tradovate : pas à pas" },
+    { type: "heading",text: "Solution 1 : forcer un redessin avec l'option POC" },
+    { type: "paragraph",html: "Cela règle les problèmes de profil bloqué ou impossible à masquer, et mérite d'être essayé en premier car cela prend environ cinq secondes." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez les paramètres du profil", html: "Double-cliquez sur le Volume Profile du graphique, ou ouvrez l'icône de <strong class='text-white'>configuration/engrenage</strong> du graphique et choisissez le profil, pour ouvrir ses paramètres." },
+        { title: "Basculez la case POC", html: "Repérez l'option <strong class='text-white'>POC</strong> (Point of Control) et cochez-la ou décochez-la, peu importe le sens, vous ne faites que changer l'état." },
+        { title: "Cliquez sur Apply", html: "Cliquez sur <strong class='text-white'>Apply</strong>." },
+        { title: "Laissez-le se redessiner", html: "Le graphique recalcule et se redessine. Un profil bloqué sur le bord droit disparaît, et un profil qui ne s'affichait pas se dessine correctement." },
+      ],
+    },
+    { type: "paragraph",html: "Si vous souhaitiez conserver POC visible, rebasculez-le et cliquez à nouveau sur Apply, c'est le clic sur Apply qui force le redessin." },
+    { type: "heading",text: "Solution 2 : supprimer l'indicateur et le rajouter" },
+    { type: "paragraph",html: "Si le profil n'apparaît jamais après l'enregistrement, ou si le basculement de POC ne fait rien, l'indicateur a été enregistré dans un état défectueux et doit être rajouté proprement." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez la liste des indicateurs", html: "Ouvrez la liste des indicateurs du graphique (l'icône <strong class='text-white'>Indicators</strong> de la barre d'outils du graphique, ou le menu de configuration du graphique)." },
+        { title: "Supprimez le Volume Profile existant", html: "Utilisez la commande corbeille/suppression à côté. La suppression d'un indicateur est irréversible, vous repartez donc volontairement de zéro." },
+        { title: "Actualisez le graphique", html: "Appuyez sur <strong class='text-white'>F5</strong> sur la plateforme web, ou fermez et rouvrez l'application de bureau." },
+        { title: "Rajoutez le Volume Profile", html: "Rajoutez-le depuis le menu Indicators, laissez les valeurs par défaut pour l'instant et vérifiez qu'il s'affiche avant de le personnaliser à nouveau." },
+      ],
+    },
+    { type: "paragraph",html: "L'ajouter d'abord avec les valeurs par défaut vous indique si l'indicateur lui-même fonctionne. Une fois qu'il s'affiche, réintégrez vos préférences POC, Value Area et type, une à la fois." },
+    { type: "heading",text: "Solution 3 : vérifier les interrupteurs d'affichage" },
+    { type: "paragraph",html: "Si le profil s'affiche mais semble incomplet, les éléments manquants sont presque certainement désactivés plutôt que défaillants." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez les paramètres du Volume Profile", html: "Ouvrez les paramètres du Volume Profile." },
+        { title: "Activez les éléments que vous vous attendez à voir", html: "Activez <strong class='text-white'>POC</strong>, <strong class='text-white'>Value Area</strong>, le haut/bas de la value area et toutes les lignes developing." },
+        { title: "Vérifiez la largeur et l'opacité de l'histogramme", html: "Vérifiez que la largeur et l'opacité de l'histogramme ne sont pas réglées si bas que les barres deviennent invisibles." },
+        { title: "Cliquez sur Apply", html: "Cliquez sur <strong class='text-white'>Apply</strong>, ce qui déclenche aussi, en prime, le redessin de la Solution 1." },
+      ],
+    },
+    { type: "heading",text: "Solution 4 : changer de moteur de graphiques et actualiser" },
+    { type: "paragraph",html: "Lorsqu'un moteur continue de bugger, déplacez le problème vers l'autre." },
+    {
+      type: "steps",
+      items: [
+        { title: "Notez votre moteur actuel", html: "Notez si vous êtes sur le module <strong class='text-white'>Chart</strong> actuel ou sur le <strong class='text-white'>Legacy Chart</strong>." },
+        { title: "Chargez le même symbole sur l'autre moteur", html: "Chargez le même symbole sur l'autre moteur et rajoutez-y le Volume Profile." },
+        { title: "Gardez-le là ou actualisez et rajoutez-le", html: "S'il se comporte bien sur l'autre moteur, gardez-le là pour ce symbole, ou actualisez votre graphique d'origine et rajoutez l'indicateur pour réinitialiser l'affichage." },
+      ],
+    },
+    { type: "paragraph",html: "Les intitulés de menu évoluent d'une mise à jour à l'autre ; si une option n'est pas là où vous l'attendez, consultez les menus actuels des indicateurs et des paramètres au lieu de supposer qu'elle a été supprimée." },
+    { type: "heading",text: "Solution 5 : confirmer vos données de marché" },
+    { type: "paragraph",html: "Écartez le flux de données avant de continuer à vous battre avec l'indicateur." },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifiez la présence d'un symbole en différé", html: "Vérifiez que le symbole ne s'affiche pas en différé, un nom de symbole orange en est le signe habituel." },
+        { title: "Confirmez votre abonnement aux données", html: "Assurez-vous d'avoir un abonnement actif aux données de marché de la bourse pour ce produit." },
+        { title: "Vérifiez auprès de votre société sur un compte prop", html: "Sur un compte prop ou d'évaluation, n'oubliez pas que les données de marché sont souvent contrôlées par la société ; un manque de données peut donc nécessiter que la société les active, et non vous." },
+      ],
+    },
+    { type: "paragraph",html: "Une fois le volume en direct rétabli, reconstruisez le profil et il devrait se remplir correctement." },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme","Ce que cela signifie","Solution"], rows: [
+      ["Le profil ne se masque pas après désactivation de la visibilité","Le graphique n'a pas redessiné le profil de la session en cours","Paramètres → cocher/décocher POC → Apply"],
+      ["Le profil n'apparaît jamais après l'enregistrement","L'indicateur a été enregistré dans un état défectueux/à moitié chargé","Supprimez-le, actualisez et rajoutez-le depuis le menu Indicators"],
+      ["Ne s'affiche sur aucune unité de temps","Affichage obsolète ou mauvais état de l'indicateur","D'abord le redessin par basculement de POC, puis suppression et rajout"],
+      ["L'histogramme s'affiche mais POC/Value Area manquent","Ces éléments sont désactivés","Activez POC/Value Area dans les paramètres et cliquez sur Apply"],
+      ["Fonctionne sur un type de graphique mais pas sur l'autre","Moteurs d'affichage différents (Chart vs Legacy)","Utilisez le moteur qui l'affiche, ou actualisez et rajoutez-le"],
+      ["Le profil est vide ou très mince","Pas de volume en direct, données différées ou non souscrites","Corrigez le flux de données de marché, puis reconstruisez le profil"],
+    ] },
+    { type: "heading",text: "Gardez un indicateur capricieux à l'écart de votre exécution" },
+    { type: "paragraph",html: "Un Volume Profile qui ne se redessine pas est agaçant quand vous lisez le marché et un vrai problème quand vous êtes censé <em>agir</em> dessus, un bord de POC ou de Value Area qui n'est pas à l'écran est une entrée que vous pouvez manquer. PickMyTrade rend l'exécution indépendante du fait que le graphique de Tradovate ait décidé de se redessiner ou non :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Construisez vos niveaux là où ils restent</strong>, définissez POC, Value Area et prix clés dans TradingView, qui les stocke côté serveur sur tous vos appareils.",
+        "<strong class='text-white'>Les alertes se déclenchent à partir de ces niveaux</strong>, un prix atteignant votre ligne déclenche une alerte au lieu d'attendre que Tradovate redessine un indicateur.",
+        "<strong class='text-white'>Exécution automatisée vers Tradovate</strong>, cette alerte devient un ordre réel sur votre compte sans aucun clic manuel au moment décisif.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, répliquez la même entrée sur plusieurs comptes Tradovate à la fois, afin qu'un graphique bloqué ne laisse jamais un compte désynchronisé.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Aggiunge il Volume Profile al suo grafico, salva e non compare nulla. O peggio, lo disattiva e l'istogramma resta bloccato sul bordo destro. In entrambi i casi il profilo è uno degli indicatori più capricciosi di Tradovate e nel 2026 dava ancora problemi. La buona notizia prima di iniziare: quasi sempre l'indicatore non è rotto e i suoi dati sono a posto. Il grafico semplicemente non ha ridisegnato il profilo dopo una modifica. Forzi un ridisegno e tutto torna al suo posto. Questa guida illustra i due casi in cui si imbatterà, il profilo che non compare mai e quello che non scompare, le impostazioni che nascondono in silenzio POC e Value Area, e come tenere un indicatore instabile fuori dai suoi trade." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per un Volume Profile che non funziona",
+      items: [
+        "<strong class='text-white'>Forzi il ridisegno con l'interruttore POC</strong>, apra le impostazioni del Volume Profile, attivi o disattivi <strong class='text-white'>POC</strong> e clicchi su <strong class='text-white'>Apply</strong>. È la soluzione più rapida per un profilo bloccato o che non si nasconde.",
+        "<strong class='text-white'>Rimuova e aggiunga di nuovo l'indicatore</strong>, se non viene mai disegnato dopo il salvataggio, lo elimini e lo aggiunga da zero dal menu <strong class='text-white'>Indicators</strong>.",
+        "<strong class='text-white'>Controlli cosa è attivato</strong>, POC, Value Area e le linee developing hanno ciascuno il proprio interruttore, quindi un profilo &ldquo;mancante&rdquo; è spesso solo disattivato.",
+        "<strong class='text-white'>Aggiorni il grafico</strong>, prema F5 sul web o riavvii l'app desktop per eliminare un difetto di rendering occasionale.",
+        "<strong class='text-white'>Provi l'altro motore grafico</strong>, il modulo Chart attuale e il vecchio Legacy Chart disegnano i profili in modo diverso, quindi provi quello che non sta usando.",
+        "<strong class='text-white'>Verifichi che il feed dati sia in tempo reale</strong>, senza abbonamento ai dati di mercato o con un simbolo ritardato (arancione) c'è poco o nessun volume da cui costruire il profilo.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa di solito «il Volume Profile non funziona»" },
+    { type: "paragraph",html: "Il Volume Profile disegna un istogramma orizzontale di quanto volume è stato scambiato a ciascun prezzo, con il <strong class='text-white'>POC (Point of Control)</strong> che indica il prezzo più attivo e la <strong class='text-white'>Value Area</strong> che ombreggia la fascia in cui è passato di mano circa il 70% del volume. Viene calcolato in tempo reale dai suoi dati di mercato. Quando si dice che &ldquo;non funziona&rdquo;, quasi sempre si intende una di due cose." },
+    { type: "paragraph",html: "La prima è un profilo che <strong class='text-white'>non compare mai</strong>. Sceglie Volume Profile dall'elenco degli indicatori, modifica un paio di impostazioni, clicca su salva e il grafico torna senza alcun istogramma. Non compare su un grafico a 5 minuti, non compare su nessun timeframe e, riaprendo le impostazioni del grafico, a volte non risulta nemmeno elencato. Cambiare browser o app desktop non aiuta. È un errore di salvataggio e rendering, non un'interruzione dei dati." },
+    { type: "paragraph",html: "La seconda è un profilo che <strong class='text-white'>non si spegne</strong>. Porta la visibilità dell'indicatore da attivo a disattivo aspettandosi che l'istogramma scompaia, ma il profilo del giorno corrente resta ostinatamente fissato sul lato destro del grafico. L'interruttore dice spento, il profilo dice altro. Entrambi i problemi hanno la stessa origine: il grafico non si ridisegna quando il suo stato cambia. La soluzione per entrambi è farlo ridisegnare." },
+    { type: "heading",text: "Principali cause di un Volume Profile che non viene disegnato nel 2026" },
+    { type: "heading",text: "1. Il grafico non si è ridisegnato dopo una modifica delle impostazioni" },
+    { type: "paragraph",html: "È la causa più comune. Modifica un'impostazione, oppure attiva o disattiva l'indicatore, e il grafico continua a mostrare il vecchio stato. Un profilo che era disegnato resta disegnato anche dopo averlo nascosto, e un profilo appena attivato non viene disegnato finché qualcosa non costringe il grafico a ricalcolare. È un bug di rendering obsoleto, ed è esattamente per questo che funziona il trucco del POC descritto sotto." },
+    { type: "heading",text: "2. L'indicatore è stato salvato in uno stato difettoso" },
+    { type: "paragraph",html: "A volte il profilo viene applicato ma arriva inizializzato a metà. È sul grafico di nome, ma non produce nulla, e nessuno scorrimento o zoom lo fa emergere. Quando un indicatore finisce in questo stato, ritoccarne le impostazioni non serve, va rimosso e aggiunto di nuovo da zero." },
+    { type: "heading",text: "3. Gli elementi di visualizzazione sono disattivati" },
+    { type: "paragraph",html: "Un profilo può essere disegnato e sembrare comunque incompleto. POC, Value Area, massimo e minimo della value area e le linee developing sono tutti interruttori indipendenti. Se riduce molto l'opacità dell'istogramma o disattiva le parti che le interessano, il profilo tecnicamente funziona ma mostra quasi nulla, il che sembra &ldquo;rotto&rdquo; quando in realtà è quasi invisibile." },
+    { type: "heading",text: "4. Sta usando il motore grafico che ha problemi" },
+    { type: "paragraph",html: "Tradovate offre un modulo Chart più recente (quello predefinito) accanto a un <strong class='text-white'>Legacy Chart</strong> più vecchio. Non disegnano gli indicatori con lo stesso codice, quindi un bug di ridisegno che colpisce il profilo su un motore può essere del tutto assente sull'altro. Se il profilo le dà problemi sul Chart attuale, provi lo stesso simbolo su Legacy Chart prima di perdere un'ora con le impostazioni." },
+    { type: "heading",text: "5. Non c'è volume in tempo reale da cui costruire" },
+    { type: "paragraph",html: "Il profilo vale quanto i dati che lo alimentano. Senza un abbonamento attivo ai dati di mercato della borsa, o su un simbolo con dati ritardati, spesso segnalato da un nome di simbolo arancione, potrebbe esserci poco o nessun volume da tracciare per l'indicatore. Un profilo sottile o vuoto su un feed ritardato non è un bug dell'indicatore, è un feed dati da sistemare per primo." },
+    { type: "heading",text: "Come riparare il Volume Profile in Tradovate: passo dopo passo" },
+    { type: "heading",text: "Soluzione 1: forzare il ridisegno con l'interruttore POC" },
+    { type: "paragraph",html: "Questo risolve i problemi di profilo bloccato e che non si nasconde, ed è bene provarlo per primo perché richiede circa cinque secondi." },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra le impostazioni del profilo", html: "Faccia doppio clic sul Volume Profile nel grafico, oppure apra l'icona di <strong class='text-white'>configurazione/ingranaggio</strong> del grafico e scelga il profilo, per aprirne le impostazioni." },
+        { title: "Attivi o disattivi la casella POC", html: "Trovi l'opzione <strong class='text-white'>POC</strong> (Point of Control) e la attivi o disattivi, non importa in quale direzione, sta solo cambiando lo stato." },
+        { title: "Clicchi su Apply", html: "Clicchi su <strong class='text-white'>Apply</strong>." },
+        { title: "Lasci che si ridisegni", html: "Il grafico ricalcola e ridisegna. Un profilo bloccato sul bordo destro scompare e uno che non veniva disegnato viene disegnato correttamente." },
+      ],
+    },
+    { type: "paragraph",html: "Se voleva POC visibile, lo riattivi e clicchi di nuovo su Apply, è il clic su Apply a forzare il ridisegno." },
+    { type: "heading",text: "Soluzione 2: rimuovere l'indicatore e aggiungerlo di nuovo" },
+    { type: "paragraph",html: "Se il profilo non compare mai dopo il salvataggio, o l'interruttore POC non fa nulla, l'indicatore è stato salvato in uno stato difettoso e va aggiunto di nuovo in modo pulito." },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra l'elenco degli indicatori", html: "Apra l'elenco degli indicatori sul grafico (l'icona <strong class='text-white'>Indicators</strong> nella barra degli strumenti del grafico, oppure il menu di configurazione del grafico)." },
+        { title: "Elimini il Volume Profile esistente", html: "Usi il controllo cestino/rimuovi accanto ad esso. La rimozione di un indicatore non può essere annullata, quindi sta ripartendo da zero di proposito." },
+        { title: "Aggiorni il grafico", html: "Prema <strong class='text-white'>F5</strong> sulla piattaforma web, oppure chiuda e riapra l'app desktop." },
+        { title: "Aggiunga di nuovo il Volume Profile", html: "Lo aggiunga di nuovo dal menu Indicators, lasci per ora i valori predefiniti e verifichi che venga disegnato prima di personalizzarlo di nuovo." },
+      ],
+    },
+    { type: "paragraph",html: "Aggiungerlo prima con i valori predefiniti le dice se l'indicatore in sé funziona. Una volta che viene disegnato, reintroduca le sue preferenze di POC, Value Area e tipo, una alla volta." },
+    { type: "heading",text: "Soluzione 3: controllare gli interruttori di visualizzazione" },
+    { type: "paragraph",html: "Se il profilo viene disegnato ma sembra incompleto, le parti mancanti sono quasi certamente disattivate e non rotte." },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra le impostazioni del Volume Profile", html: "Apra le impostazioni del Volume Profile." },
+        { title: "Attivi gli elementi che si aspetta di vedere", html: "Attivi <strong class='text-white'>POC</strong>, <strong class='text-white'>Value Area</strong>, massimo/minimo della value area ed eventuali linee developing." },
+        { title: "Controlli larghezza e opacità dell'istogramma", html: "Controlli che larghezza e opacità dell'istogramma non siano impostate così basse da rendere le barre invisibili." },
+        { title: "Clicchi su Apply", html: "Clicchi su <strong class='text-white'>Apply</strong>, che come bonus innesca anche il ridisegno della Soluzione 1." },
+      ],
+    },
+    { type: "heading",text: "Soluzione 4: cambiare motore grafico e aggiornare" },
+    { type: "paragraph",html: "Quando un motore continua ad avere problemi, sposti il problema sull'altro." },
+    {
+      type: "steps",
+      items: [
+        { title: "Annoti il motore attuale", html: "Annoti se sta usando il modulo <strong class='text-white'>Chart</strong> attuale o <strong class='text-white'>Legacy Chart</strong>." },
+        { title: "Carichi lo stesso simbolo sull'altro motore", html: "Carichi lo stesso simbolo sull'altro motore e aggiunga di nuovo lì il Volume Profile." },
+        { title: "Lo tenga lì oppure aggiorni e lo aggiunga di nuovo", html: "Se si comporta bene sull'altro motore, lo tenga lì per quel simbolo, oppure aggiorni il grafico originale e aggiunga di nuovo l'indicatore per reimpostare il rendering." },
+      ],
+    },
+    { type: "paragraph",html: "Le diciture dei menu cambiano tra un aggiornamento e l'altro, quindi se un'opzione non si trova dove si aspetta, controlli gli attuali menu di indicatori e impostazioni invece di presumere che sia stata rimossa." },
+    { type: "heading",text: "Soluzione 5: confermare i dati di mercato" },
+    { type: "paragraph",html: "Escluda il feed dati prima di continuare a lottare con l'indicatore." },
+    {
+      type: "steps",
+      items: [
+        { title: "Verifichi la presenza di un simbolo ritardato", html: "Verifichi che il simbolo non risulti ritardato, un nome di simbolo arancione è il segnale abituale." },
+        { title: "Confermi il suo abbonamento ai dati", html: "Si assicuri di avere un abbonamento attivo ai dati di mercato della borsa per quel prodotto." },
+        { title: "Verifichi con la sua società su un conto prop", html: "Su un conto prop o di valutazione, ricordi che i dati di mercato sono spesso controllati dalla società, quindi una mancanza di dati lì può richiedere che sia la società ad abilitarli, non Lei." },
+      ],
+    },
+    { type: "paragraph",html: "Una volta che il volume in tempo reale scorre, ricostruisca il profilo e dovrebbe popolarsi correttamente." },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo","Cosa significa","Soluzione"], rows: [
+      ["Il profilo non si nasconde dopo aver disattivato la visibilità","Il grafico non ha ridisegnato il profilo della sessione corrente","Impostazioni → attivare/disattivare POC → Apply"],
+      ["Il profilo non compare mai dopo il salvataggio","L'indicatore è stato salvato in uno stato difettoso/caricato a metà","Rimuoverlo, aggiornare e aggiungerlo di nuovo dal menu Indicators"],
+      ["Non compare su nessun timeframe","Rendering obsoleto o stato dell'indicatore difettoso","Prima il ridisegno con l'interruttore POC, poi rimuovere e aggiungere di nuovo"],
+      ["L'istogramma compare ma mancano POC/Value Area","Quegli elementi sono disattivati","Attivare POC/Value Area nelle impostazioni e cliccare su Apply"],
+      ["Funziona su un tipo di grafico ma non sull'altro","Motori di rendering diversi (Chart vs Legacy)","Usare il motore che lo disegna, oppure aggiornare e aggiungere di nuovo"],
+      ["Il profilo è vuoto o sottilissimo","Nessun volume in tempo reale, dati ritardati o non sottoscritti","Sistemare il feed dei dati di mercato, poi ricostruire il profilo"],
+    ] },
+    { type: "heading",text: "Tenga un indicatore instabile fuori dalla sua esecuzione" },
+    { type: "paragraph",html: "Un Volume Profile che non si ridisegna è fastidioso quando legge il mercato ed è un vero problema quando dovrebbe <em>agire</em> su di esso, un bordo di POC o Value Area che non è sullo schermo è un ingresso che può perdere. PickMyTrade mantiene l'esecuzione indipendente dal fatto che il grafico di Tradovate abbia deciso di ridisegnarsi o meno:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Costruisca i suoi livelli dove restano al loro posto</strong>, definisca POC, Value Area e prezzi chiave in TradingView, che li memorizza lato server su tutti i dispositivi.",
+        "<strong class='text-white'>Gli alert scattano da quei livelli</strong>, un prezzo che raggiunge la sua linea attiva un alert invece di attendere che Tradovate ridisegni un indicatore.",
+        "<strong class='text-white'>Esecuzione automatizzata verso Tradovate</strong>, quell'alert diventa un ordine reale sul suo conto senza clic manuali nel momento che conta.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, replichi lo stesso ingresso su più conti Tradovate contemporaneamente, così un grafico bloccato non lascia mai un conto fuori sincrono.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Your Levels Automatically", de: "Handeln Sie Ihre Levels automatisch", es: "Opere sus niveles automáticamente", fr: "Tradez vos niveaux automatiquement", it: "Faccia trading sui suoi livelli in automatico" },
+  ctaText: { en: "Start your free 7-day trial, trade your volume levels automatically, even when the profile won't redraw.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase und handeln Sie Ihre Volumen-Levels automatisch, auch wenn das Profil nicht neu gezeichnet wird.", es: "Comience su prueba gratuita de 7 días y opere sus niveles de volumen automáticamente, incluso cuando el perfil no se redibuja.", fr: "Commencez votre essai gratuit de 7 jours et tradez vos niveaux de volume automatiquement, même lorsque le profil ne se redessine pas.", it: "Inizi la prova gratuita di 7 giorni e faccia trading sui suoi livelli di volume in automatico, anche quando il profilo non si ridisegna." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why isn't the Volume Profile showing on my Tradovate chart?", a: "Most of the time it's a render glitch, not a data problem. The indicator is applied but the chart didn't repaint it. Open the Volume Profile settings, check or uncheck the POC option and click Apply to force a redraw. If it never draws at all, remove the indicator and add it back from the Indicators menu." },
+    { q: "How do I force the Volume Profile to redraw in Tradovate?", a: "Open the profile's settings, toggle the POC (Point of Control) checkbox on or off, and click Apply. Changing any visible setting and applying it forces the chart to recalculate and repaint the profile, which clears a stale or half-drawn state." },
+    { q: "Why does the profile stay on the right side after I turn it off?", a: "Turning the visibility off sometimes fails to clear the current session's profile from the right edge of the chart. Go into the Volume Profile settings, check or uncheck POC, and click Apply. That forces the visibility state to update and the leftover profile disappears." },
+    { q: "Where is the Volume Profile indicator in Tradovate?", a: "It's in the chart's Indicators menu, opened from the indicators icon on the chart toolbar. Some builds also expose a session or drawing-based volume profile, so if you can't find it under one menu, check the other. Once it's on the chart, double-click it or use the chart's configure/gear icon to open its settings." },
+    { q: "Does the Volume Profile need a market data subscription to work?", a: "Yes. The profile is built from traded volume, so it needs live exchange data. If your symbol shows as delayed (often flagged by an orange symbol name) or you have no market-data subscription, the profile can render empty or thin. Confirm your data feed before assuming the indicator is broken." },
+    { q: "Why is my POC or Value Area line missing but the histogram shows?", a: "Those elements are toggled separately in the profile settings. POC, Value Area, and the developing lines each have their own on/off switch. Open the settings, enable the ones you want, and click Apply. Applying the change also forces the redraw that brings them back." },
+    { q: "Does switching to Legacy Chart fix the Volume Profile?", a: "It can. The newer chart module and the older Legacy Chart render the profile with different engines, so a glitch on one is sometimes absent on the other. If the profile won't behave on the current Chart module, load your symbol on Legacy Chart (or vice versa) as a quick test." },
+    { q: "Has Tradovate permanently fixed the Volume Profile redraw bug?", a: "The redraw and won't-hide behavior has come and gone across platform updates, and as of 2026 there's no guaranteed permanent fix. The POC-toggle redraw and the remove-and-re-add steps are the reliable ways to clear it when it shows up." },
+  ], de: [
+    { q: "Warum wird das Volume Profile in meinem Tradovate-Chart nicht angezeigt?", a: "Meistens ist es ein Darstellungsfehler und kein Datenproblem. Der Indikator ist angewendet, aber der Chart hat ihn nicht neu gezeichnet. Öffnen Sie die Volume-Profile-Einstellungen, aktivieren oder deaktivieren Sie die Option POC und klicken Sie auf Apply, um ein Neuzeichnen zu erzwingen. Wird es gar nicht gezeichnet, entfernen Sie den Indikator und fügen Sie ihn über das Indicators-Menü erneut hinzu." },
+    { q: "Wie erzwinge ich in Tradovate ein Neuzeichnen des Volume Profile?", a: "Öffnen Sie die Einstellungen des Profils, schalten Sie das Kontrollkästchen POC (Point of Control) ein oder aus und klicken Sie auf Apply. Jede geänderte und angewendete sichtbare Einstellung zwingt den Chart, das Profil neu zu berechnen und neu zu zeichnen, wodurch ein veralteter oder halb gezeichneter Zustand verschwindet." },
+    { q: "Warum bleibt das Profil auf der rechten Seite, nachdem ich es ausgeschaltet habe?", a: "Beim Ausschalten der Sichtbarkeit wird das Profil der aktuellen Sitzung manchmal nicht vom rechten Rand des Charts entfernt. Gehen Sie in die Volume-Profile-Einstellungen, aktivieren oder deaktivieren Sie POC und klicken Sie auf Apply. Dadurch wird der Sichtbarkeitsstatus aktualisiert und das verbliebene Profil verschwindet." },
+    { q: "Wo finde ich den Volume-Profile-Indikator in Tradovate?", a: "Er befindet sich im Indicators-Menü des Charts, das Sie über das Indikator-Symbol in der Chart-Symbolleiste öffnen. Einige Versionen bieten zusätzlich ein Sitzungs- oder zeichnungsbasiertes Volume Profile. Finden Sie es in einem Menü nicht, prüfen Sie das andere. Sobald es im Chart ist, doppelklicken Sie darauf oder verwenden Sie das Konfigurations-/Zahnrad-Symbol des Charts, um die Einstellungen zu öffnen." },
+    { q: "Benötigt das Volume Profile ein Marktdaten-Abonnement?", a: "Ja. Das Profil wird aus dem gehandelten Volumen aufgebaut und braucht daher Live-Börsendaten. Wird Ihr Symbol verzögert angezeigt (oft durch einen orangefarbenen Symbolnamen gekennzeichnet) oder haben Sie kein Marktdaten-Abonnement, kann das Profil leer oder dünn dargestellt werden. Prüfen Sie Ihren Datenfeed, bevor Sie annehmen, der Indikator sei defekt." },
+    { q: "Warum fehlt meine POC- oder Value-Area-Linie, obwohl das Histogramm angezeigt wird?", a: "Diese Elemente werden in den Profil-Einstellungen separat geschaltet. POC, Value Area und die Developing-Linien haben jeweils einen eigenen Ein/Aus-Schalter. Öffnen Sie die Einstellungen, aktivieren Sie die gewünschten Elemente und klicken Sie auf Apply. Die Änderung erzwingt zugleich das Neuzeichnen, das sie wieder einblendet." },
+    { q: "Behebt der Wechsel zum Legacy Chart das Volume Profile?", a: "Möglicherweise. Das neuere Chart-Modul und der ältere Legacy Chart stellen das Profil mit unterschiedlichen Engines dar, sodass ein Fehler auf der einen Seite auf der anderen manchmal nicht auftritt. Verhält sich das Profil im aktuellen Chart-Modul nicht richtig, laden Sie Ihr Symbol als schnellen Test im Legacy Chart (oder umgekehrt)." },
+    { q: "Hat Tradovate den Neuzeichnen-Fehler des Volume Profile dauerhaft behoben?", a: "Das Verhalten, dass das Profil nicht neu gezeichnet wird oder nicht verschwindet, kam und ging über Plattform-Updates hinweg, und Stand 2026 gibt es keine garantierte dauerhafte Lösung. Das POC-Umschalten mit Neuzeichnen und das Entfernen und erneute Hinzufügen sind die verlässlichen Wege, das Problem zu beheben, wenn es auftritt." },
+  ], es: [
+    { q: "¿Por qué no aparece el Volume Profile en mi gráfico de Tradovate?", a: "La mayoría de las veces es un fallo de renderizado, no un problema de datos. El indicador está aplicado, pero el gráfico no lo volvió a dibujar. Abra la configuración del Volume Profile, marque o desmarque la opción POC y haga clic en Apply para forzar un redibujado. Si nunca se dibuja, elimine el indicador y vuelva a añadirlo desde el menú Indicators." },
+    { q: "¿Cómo fuerzo el redibujado del Volume Profile en Tradovate?", a: "Abra la configuración del perfil, active o desactive la casilla POC (Point of Control) y haga clic en Apply. Cambiar cualquier ajuste visible y aplicarlo obliga al gráfico a recalcular y volver a dibujar el perfil, lo que elimina un estado obsoleto o dibujado a medias." },
+    { q: "¿Por qué el perfil se queda en el lado derecho después de desactivarlo?", a: "A veces, al desactivar la visibilidad no se borra del borde derecho del gráfico el perfil de la sesión actual. Entre en la configuración del Volume Profile, marque o desmarque POC y haga clic en Apply. Eso fuerza la actualización del estado de visibilidad y el perfil sobrante desaparece." },
+    { q: "¿Dónde está el indicador Volume Profile en Tradovate?", a: "Está en el menú Indicators del gráfico, que se abre desde el icono de indicadores de la barra de herramientas del gráfico. Algunas versiones también ofrecen un volume profile de sesión o basado en dibujo, así que si no lo encuentra en un menú, revise el otro. Una vez en el gráfico, haga doble clic sobre él o use el icono de configuración/engranaje del gráfico para abrir sus ajustes." },
+    { q: "¿Necesita el Volume Profile una suscripción de datos de mercado para funcionar?", a: "Sí. El perfil se construye a partir del volumen negociado, por lo que necesita datos en vivo del mercado. Si su símbolo aparece con retraso (a menudo indicado por un nombre de símbolo naranja) o no tiene suscripción de datos de mercado, el perfil puede mostrarse vacío o escaso. Confirme su fuente de datos antes de suponer que el indicador está roto." },
+    { q: "¿Por qué falta mi línea de POC o Value Area aunque se muestra el histograma?", a: "Esos elementos se activan por separado en la configuración del perfil. POC, Value Area y las líneas developing tienen cada uno su propio interruptor. Abra la configuración, active los que desee y haga clic en Apply. Aplicar el cambio también fuerza el redibujado que los vuelve a mostrar." },
+    { q: "¿Cambiar a Legacy Chart arregla el Volume Profile?", a: "Puede ser. El módulo de gráficos más reciente y el antiguo Legacy Chart dibujan el perfil con motores distintos, así que un fallo en uno a veces no aparece en el otro. Si el perfil no se comporta bien en el módulo de gráficos actual, cargue su símbolo en Legacy Chart (o viceversa) como prueba rápida." },
+    { q: "¿Ha corregido Tradovate de forma definitiva el error de redibujado del Volume Profile?", a: "El comportamiento de no redibujarse o no ocultarse ha ido y venido con las actualizaciones de la plataforma y, a 2026, no hay una solución permanente garantizada. Alternar POC para forzar el redibujado y eliminar y volver a añadir el indicador son las formas fiables de resolverlo cuando aparece." },
+  ], fr: [
+    { q: "Pourquoi le Volume Profile ne s'affiche-t-il pas sur mon graphique Tradovate ?", a: "La plupart du temps, il s'agit d'un défaut d'affichage et non d'un problème de données. L'indicateur est appliqué, mais le graphique ne l'a pas redessiné. Ouvrez les paramètres du Volume Profile, cochez ou décochez l'option POC et cliquez sur Apply pour forcer un redessin. S'il ne s'affiche jamais, supprimez l'indicateur et rajoutez-le depuis le menu Indicators." },
+    { q: "Comment forcer le redessin du Volume Profile dans Tradovate ?", a: "Ouvrez les paramètres du profil, cochez ou décochez la case POC (Point of Control), puis cliquez sur Apply. Modifier n'importe quel paramètre visible et l'appliquer force le graphique à recalculer et à redessiner le profil, ce qui efface un état obsolète ou à moitié dessiné." },
+    { q: "Pourquoi le profil reste-t-il sur le côté droit après que je l'ai désactivé ?", a: "Désactiver la visibilité n'efface parfois pas le profil de la session en cours du bord droit du graphique. Allez dans les paramètres du Volume Profile, cochez ou décochez POC, puis cliquez sur Apply. Cela force la mise à jour de l'état de visibilité et le profil résiduel disparaît." },
+    { q: "Où se trouve l'indicateur Volume Profile dans Tradovate ?", a: "Il se trouve dans le menu Indicators du graphique, ouvert depuis l'icône des indicateurs de la barre d'outils du graphique. Certaines versions proposent aussi un volume profile de session ou basé sur un tracé ; si vous ne le trouvez pas dans un menu, vérifiez l'autre. Une fois sur le graphique, double-cliquez dessus ou utilisez l'icône de configuration/engrenage du graphique pour ouvrir ses paramètres." },
+    { q: "Le Volume Profile nécessite-t-il un abonnement aux données de marché pour fonctionner ?", a: "Oui. Le profil est construit à partir du volume échangé, il a donc besoin de données de bourse en direct. Si votre symbole s'affiche en différé (souvent signalé par un nom de symbole orange) ou si vous n'avez aucun abonnement aux données de marché, le profil peut apparaître vide ou clairsemé. Vérifiez votre flux de données avant de supposer que l'indicateur est défaillant." },
+    { q: "Pourquoi ma ligne POC ou Value Area manque-t-elle alors que l'histogramme s'affiche ?", a: "Ces éléments s'activent séparément dans les paramètres du profil. POC, Value Area et les lignes developing ont chacun leur propre interrupteur. Ouvrez les paramètres, activez ceux que vous voulez et cliquez sur Apply. Appliquer la modification force aussi le redessin qui les fait réapparaître." },
+    { q: "Passer au Legacy Chart corrige-t-il le Volume Profile ?", a: "C'est possible. Le module de graphiques récent et l'ancien Legacy Chart dessinent le profil avec des moteurs différents, si bien qu'un défaut sur l'un est parfois absent sur l'autre. Si le profil se comporte mal sur le module Chart actuel, chargez votre symbole sur le Legacy Chart (ou l'inverse) pour un test rapide." },
+    { q: "Tradovate a-t-il corrigé définitivement le bug de redessin du Volume Profile ?", a: "Le comportement de non-redessin ou de non-masquage va et vient au gré des mises à jour de la plateforme et, en 2026, il n'existe aucun correctif permanent garanti. Le basculement de POC pour forcer le redessin et la suppression puis le rajout de l'indicateur sont les moyens fiables d'y remédier lorsque cela se produit." },
+  ], it: [
+    { q: "Perché il Volume Profile non compare sul mio grafico Tradovate?", a: "Nella maggior parte dei casi si tratta di un problema di rendering, non di dati. L'indicatore è applicato, ma il grafico non lo ha ridisegnato. Apra le impostazioni del Volume Profile, attivi o disattivi l'opzione POC e clicchi su Apply per forzare un ridisegno. Se non viene mai disegnato, rimuova l'indicatore e lo aggiunga di nuovo dal menu Indicators." },
+    { q: "Come forzo il ridisegno del Volume Profile in Tradovate?", a: "Apra le impostazioni del profilo, attivi o disattivi la casella POC (Point of Control) e clicchi su Apply. Modificare un'impostazione visibile e applicarla costringe il grafico a ricalcolare e ridisegnare il profilo, eliminando uno stato obsoleto o disegnato a metà." },
+    { q: "Perché il profilo resta sul lato destro dopo che l'ho disattivato?", a: "A volte disattivando la visibilità il profilo della sessione corrente non viene rimosso dal bordo destro del grafico. Vada nelle impostazioni del Volume Profile, attivi o disattivi POC e clicchi su Apply. Questo forza l'aggiornamento dello stato di visibilità e il profilo residuo scompare." },
+    { q: "Dove si trova l'indicatore Volume Profile in Tradovate?", a: "Si trova nel menu Indicators del grafico, che si apre dall'icona degli indicatori nella barra degli strumenti del grafico. Alcune versioni offrono anche un volume profile di sessione o basato sui disegni, quindi se non lo trova in un menu, controlli l'altro. Una volta sul grafico, faccia doppio clic su di esso oppure usi l'icona di configurazione/ingranaggio del grafico per aprirne le impostazioni." },
+    { q: "Il Volume Profile richiede un abbonamento ai dati di mercato per funzionare?", a: "Sì. Il profilo viene costruito a partire dal volume negoziato, quindi richiede dati di borsa in tempo reale. Se il suo simbolo risulta ritardato (spesso segnalato da un nome di simbolo arancione) oppure non ha un abbonamento ai dati di mercato, il profilo può risultare vuoto o scarno. Verifichi il suo feed dati prima di dare per scontato che l'indicatore sia guasto." },
+    { q: "Perché la linea POC o Value Area manca anche se l'istogramma compare?", a: "Quegli elementi si attivano separatamente nelle impostazioni del profilo. POC, Value Area e le linee developing hanno ciascuno il proprio interruttore. Apra le impostazioni, attivi quelli che desidera e clicchi su Apply. Applicare la modifica forza anche il ridisegno che li fa ricomparire." },
+    { q: "Passare a Legacy Chart risolve il Volume Profile?", a: "Può farlo. Il modulo grafici più recente e il vecchio Legacy Chart disegnano il profilo con motori diversi, quindi un difetto presente in uno talvolta è assente nell'altro. Se il profilo non si comporta bene sul modulo Chart attuale, carichi il suo simbolo su Legacy Chart (o viceversa) come test rapido." },
+    { q: "Tradovate ha corretto in modo definitivo il bug di ridisegno del Volume Profile?", a: "Il comportamento di mancato ridisegno o di mancata scomparsa va e viene con gli aggiornamenti della piattaforma e, al 2026, non esiste una correzione permanente garantita. L'attivazione/disattivazione di POC per forzare il ridisegno e la rimozione con successiva riaggiunta dell'indicatore sono i modi affidabili per risolverlo quando si presenta." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. \"Tradovate\" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von diesem weder unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und Abläufe ändern sich im Laufe der Zeit. Bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones de la plataforma y los pasos cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. « Tradovate » ainsi que tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités de la plateforme et les étapes évoluent avec le temps ; confirmez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha esclusivamente finalità educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né approvata o sponsorizzata da essa. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità della piattaforma e le procedure cambiano nel tempo, quindi verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-10",
+  dateModified: "2026-07-10",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

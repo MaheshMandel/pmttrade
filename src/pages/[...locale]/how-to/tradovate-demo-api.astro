@@ -1,0 +1,275 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-demo-api";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Test on the Tradovate Demo API Environment";
+const META_DESCRIPTION =
+  "Point your Tradovate API calls at the demo host to paper-test orders, tokens, and WebSockets safely before you flip to a live funded account.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Auf der Tradovate-Demo-API-Umgebung testen", es: "Pruebe en el entorno de la API demo de Tradovate", fr: "Tester sur l'environnement API démo de Tradovate", it: "Testare sull'ambiente API demo di Tradovate" },
+  dek: { en: "Before a single order from your bot touches real money, run it through Tradovate's demo environment first. Same API, same endpoints, same auth flow, just a different hostname. Here's how to point every call, and your WebSockets, at demo.", de: "Bevor auch nur eine Order Ihres Bots echtes Geld berührt, lassen Sie ihn zuerst durch Tradovates Demo-Umgebung laufen. Dieselbe API, dieselben Endpunkte, derselbe Authentifizierungsablauf, nur ein anderer Hostname. So richten Sie jeden Aufruf und Ihre WebSockets auf die Demo aus.", es: "Antes de que una sola orden de su bot toque dinero real, ejecútelo primero en el entorno demo de Tradovate. La misma API, los mismos endpoints, el mismo flujo de autenticación, solo cambia el nombre de host. Así se apuntan todas las llamadas, y sus WebSockets, a demo.", fr: "Avant qu'un seul ordre de votre bot ne touche de l'argent réel, faites-le d'abord passer par l'environnement démo de Tradovate. Même API, mêmes endpoints, même flux d'authentification, seul le nom d'hôte change. Voici comment diriger chaque appel, ainsi que vos WebSockets, vers la démo.", it: "Prima che un solo ordine del suo bot tocchi denaro reale, lo faccia girare nell'ambiente demo di Tradovate. Stessa API, stessi endpoint, stesso flusso di autenticazione, cambia solo l'hostname. Ecco come indirizzare ogni chiamata, e i suoi WebSocket, verso la demo." },
+  readTime: { en: "6 min read", de: "6 Min. Lesezeit", es: "Lectura de 6 min", fr: "Lecture : 6 min", it: "Lettura di 6 min" },
+  lastUpdated: "2026-07-10",
+  blocks: { en: [
+    { type: "paragraph", html: "Before a single order from your bot touches real money, run it through Tradovate's demo environment first. It's the same API, same endpoints, same JSON, same auth flow, just pointed at a simulation host that fills against paper money instead of your funded balance. Get every request working there, then swap one hostname to go live." },
+    { type: "heading", text: "What Is the Tradovate Demo API Environment?" },
+    { type: "paragraph", html: "Tradovate runs two parallel API environments. The demo (or simulation) environment mirrors the live one almost exactly, but every fill, position, and P&amp;L is simulated, nothing reaches the exchange and nothing touches your wallet. You authenticate the same way and call the same paths; only the host you send requests to changes. That makes demo the natural place to shake out bugs in your order logic, token handling, and WebSocket reconnects while the stakes are zero." },
+    { type: "heading", text: "Point Your API Calls at Demo: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirm API Access and a Simulation Account", html: "You need two things: the <strong class='text-white'>API Access add-on</strong> enabled, that's where your API Key (<code>cid</code>) and Secret (<code>sec</code>) come from, and a simulated account to trade against. New Tradovate signups get a simulation account by default, and prop-firm evaluations run on them too. If you haven't switched on API access yet, do that first, then note your <code>cid</code> and <code>sec</code>." },
+        { title: "Swap in the Demo Base URL", html: "Everything routes through the demo host instead of the live one. The paths after <code>/v1</code> are identical across both environments, <code>/auth/accessTokenRequest</code>, <code>/order/placeOrder</code>, and the rest don't change; only the hostname does. Market data streams over its own <code>md</code> host, so if quotes won't connect on a simulation account, confirm the current demo market-data host in Tradovate's docs, it has shipped both a shared endpoint and a separate demo one." },
+        { title: "Request an Access Token From the Demo Host", html: "POST your credentials, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code>, and a stable <code>deviceId</code>, to <code>/v1/auth/accessTokenRequest</code> on the demo host. A token minted on demo only works on demo; it won't authorize the live host, and vice versa. Reuse the same <code>deviceId</code> (a fixed UUID) every time so Tradovate's device checks stay happy." },
+        { title: "Point Your WebSockets at Demo Too", html: "REST isn't the whole story. If your app streams orders, fills, or quotes, open the trading socket at <code>wss://demo.tradovateapi.com/v1/websocket</code> and send your demo access token through the authorize frame right after connecting. Market data rides its own socket on the <code>md</code> host, authorized with the <code>mdAccessToken</code> from the same login response. Mixing a demo token with a live socket is a common source of 401s." },
+        { title: "Verify You're Simulated, Then Flip to Live", html: "Place a small test order and confirm it shows up in your simulation account, with the fill, position, and P&amp;L updating the way you expect. Once your bot behaves, tokens renewing, sockets reconnecting, orders and brackets filling, going live is close to a one-line change: swap <code>demo.tradovateapi.com</code> for <code>live.tradovateapi.com</code> and re-authenticate. One heads-up: live enforces <a href='https://pickmytrade.trade/debugging/api-401-live-device-approval/'>device approval that demo waves through</a>, so your first live login may ask you to confirm the device from the email Tradovate sends." },
+      ],
+    },
+    { type: "table", headers: ["Purpose", "Demo (simulation)", "Live (funded)"], rows: [
+      ["REST base", "https://demo.tradovateapi.com/v1", "https://live.tradovateapi.com/v1"],
+      ["Trading WebSocket", "wss://demo.tradovateapi.com/v1/websocket", "wss://live.tradovateapi.com/v1/websocket"],
+      ["Market-data WebSocket", "wss://md.tradovateapi.com/v1/websocket", "wss://md.tradovateapi.com/v1/websocket"],
+    ] },
+    { type: "quote", html: "<strong class='text-white'>No-code shortcut for quick checks:</strong> Open <strong class='text-white'>Application Settings &rsaquo; API Access</strong> and click the <strong class='text-white'>API Doc</strong> link for your key. It's a pre-authorized, interactive version of the API docs, authenticate once with the token button up top, hit <strong class='text-white'>Interact</strong> on any operation, and try the request and response before you wire it into code." },
+    { type: "heading", text: "Why Test on Demo First" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Debug order, bracket, and OCO logic</strong> without risking a funded balance.",
+        "<strong class='text-white'>Confirm token requests, renewals, and expiry handling</strong> behave under real timing.",
+        "<strong class='text-white'>Test WebSocket reconnects and message parsing</strong> against live-shaped data.",
+        "<strong class='text-white'>Dry-run a new strategy</strong> before it trades real size.",
+        "<strong class='text-white'>Reproduce a production bug safely</strong> on a simulation account.",
+      ],
+    },
+    { type: "heading", text: "Automate This With PickMyTrade" },
+    { type: "paragraph", html: "If you'd rather not build and babysit all this plumbing, token renewals, environment switching, socket reconnects, <strong class='text-white'>PickMyTrade wires your TradingView alerts straight to Tradovate</strong> and manages the connection for you. Test on a simulated account, then point it at your funded account, no API code required." },
+  ], de: [
+    { type: "paragraph",html: "Bevor auch nur eine Order Ihres Bots echtes Geld berührt, lassen Sie ihn zuerst durch Tradovates Demo-Umgebung laufen. Es ist dieselbe API, dieselben Endpunkte, dasselbe JSON, derselbe Authentifizierungsablauf, nur auf einen Simulations-Host gerichtet, der gegen Spielgeld statt gegen Ihr Echtgeld-Guthaben füllt. Bringen Sie dort jede Anfrage zum Laufen und tauschen Sie dann einen einzigen Hostnamen aus, um live zu gehen." },
+    { type: "heading",text: "Was ist die Tradovate-Demo-API-Umgebung?" },
+    { type: "paragraph",html: "Tradovate betreibt zwei parallele API-Umgebungen. Die Demo- (bzw. Simulations-)Umgebung spiegelt die Live-Umgebung nahezu exakt, aber jeder Fill, jede Position und jede G&amp;V ist simuliert, nichts erreicht die Börse und nichts berührt Ihr Konto. Sie authentifizieren sich auf dieselbe Weise und rufen dieselben Pfade auf; nur der Host, an den Sie Ihre Anfragen senden, ändert sich. Damit ist die Demo der ideale Ort, um Fehler in Ihrer Order-Logik, Token-Verwaltung und WebSocket-Reconnects aufzuspüren, solange nichts auf dem Spiel steht." },
+    { type: "heading",text: "API-Aufrufe auf die Demo ausrichten: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "API-Zugang und Simulationskonto bestätigen", html: "Sie benötigen zwei Dinge: das aktivierte <strong class='text-white'>API Access</strong>-Add-on, über das Sie Ihren API-Schlüssel (<code>cid</code>) und das Secret (<code>sec</code>) erhalten, sowie ein simuliertes Konto, mit dem Sie handeln. Neue Tradovate-Nutzer erhalten standardmäßig ein Simulationskonto, und auch Prop-Firm-Evaluierungen laufen darauf. Falls Sie den API-Zugang noch nicht aktiviert haben, tun Sie das zuerst und notieren Sie dann Ihre <code>cid</code> und <code>sec</code>." },
+        { title: "Die Demo-Basis-URL einsetzen", html: "Alles läuft über den Demo-Host statt über den Live-Host. Die Pfade nach <code>/v1</code> sind in beiden Umgebungen identisch, <code>/auth/accessTokenRequest</code>, <code>/order/placeOrder</code> und alle anderen bleiben gleich; nur der Hostname ändert sich. Marktdaten werden über einen eigenen <code>md</code>-Host gestreamt. Wenn also keine Kurse auf einem Simulationskonto ankommen, prüfen Sie in der Tradovate-Dokumentation den aktuellen Demo-Marktdaten-Host, es gab dafür bereits sowohl einen gemeinsamen als auch einen separaten Demo-Endpunkt." },
+        { title: "Access-Token vom Demo-Host anfordern", html: "Senden Sie Ihre Zugangsdaten, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> und eine stabile <code>deviceId</code>, per POST an <code>/v1/auth/accessTokenRequest</code> auf dem Demo-Host. Ein auf der Demo erzeugtes Token funktioniert nur dort; es autorisiert nicht den Live-Host und umgekehrt. Verwenden Sie immer dieselbe <code>deviceId</code> (eine feste UUID), damit die Geräteprüfungen von Tradovate zufrieden bleiben." },
+        { title: "Auch die WebSockets auf die Demo richten", html: "REST ist nicht alles. Wenn Ihre App Orders, Fills oder Kurse streamt, öffnen Sie den Trading-Socket unter <code>wss://demo.tradovateapi.com/v1/websocket</code> und senden Sie Ihr Demo-Access-Token direkt nach dem Verbindungsaufbau im Authorize-Frame. Marktdaten laufen über einen eigenen Socket auf dem <code>md</code>-Host, autorisiert mit dem <code>mdAccessToken</code> aus derselben Login-Antwort. Ein Demo-Token an einem Live-Socket zu verwenden ist eine häufige Ursache für 401-Fehler." },
+        { title: "Simulation prüfen, dann auf Live umschalten", html: "Platzieren Sie eine kleine Testorder und vergewissern Sie sich, dass sie in Ihrem Simulationskonto erscheint und Fill, Position und G&amp;V sich wie erwartet aktualisieren. Sobald Ihr Bot sich richtig verhält, Tokens erneuert werden, Sockets sich wieder verbinden, Orders und Brackets gefüllt werden, ist der Wechsel auf Live fast nur eine einzige Zeile: Ersetzen Sie <code>demo.tradovateapi.com</code> durch <code>live.tradovateapi.com</code> und authentifizieren Sie sich neu. Ein Hinweis: Live erzwingt eine <a href='https://pickmytrade.trade/debugging/api-401-live-device-approval/'>Geräte-Freigabe, die die Demo durchwinkt</a>, daher kann Ihre erste Live-Anmeldung verlangen, dass Sie das Gerät über die E-Mail von Tradovate bestätigen." },
+      ],
+    },
+    { type: "table", headers: ["Zweck","Demo (Simulation)","Live (Echtgeld)"], rows: [
+      ["REST-Basis","https://demo.tradovateapi.com/v1","https://live.tradovateapi.com/v1"],
+      ["Trading-WebSocket","wss://demo.tradovateapi.com/v1/websocket","wss://live.tradovateapi.com/v1/websocket"],
+      ["Marktdaten-WebSocket","wss://md.tradovateapi.com/v1/websocket","wss://md.tradovateapi.com/v1/websocket"],
+    ] },
+    { type: "quote",html: "<strong class='text-white'>No-Code-Abkürzung für schnelle Prüfungen:</strong> Öffnen Sie <strong class='text-white'>Application Settings &rsaquo; API Access</strong> und klicken Sie für Ihren Schlüssel auf den Link <strong class='text-white'>API Doc</strong>. Das ist eine vorautorisierte, interaktive Version der API-Dokumentation: Authentifizieren Sie sich einmal über die Token-Schaltfläche oben, klicken Sie bei einer beliebigen Operation auf <strong class='text-white'>Interact</strong> und probieren Sie Anfrage und Antwort aus, bevor Sie sie in Code einbauen." },
+    { type: "heading",text: "Warum zuerst auf der Demo testen?" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Order-, Bracket- und OCO-Logik debuggen</strong>, ohne ein Echtgeld-Guthaben zu riskieren.",
+        "<strong class='text-white'>Token-Anfragen, Erneuerungen und Ablaufbehandlung bestätigen</strong> unter realistischem Timing.",
+        "<strong class='text-white'>WebSocket-Reconnects und Nachrichtenverarbeitung testen</strong> mit live-ähnlichen Daten.",
+        "<strong class='text-white'>Eine neue Strategie probeweise durchlaufen lassen</strong>, bevor sie mit echter Größe handelt.",
+        "<strong class='text-white'>Einen Produktionsfehler gefahrlos nachstellen</strong> auf einem Simulationskonto.",
+      ],
+    },
+    { type: "heading",text: "Automatisieren Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Wenn Sie diesen Unterbau lieber nicht selbst bauen und betreuen möchten, Token-Erneuerung, Umgebungswechsel, Socket-Reconnects, <strong class='text-white'>verbindet PickMyTrade Ihre TradingView-Alerts direkt mit Tradovate</strong> und verwaltet die Verbindung für Sie. Testen Sie auf einem simulierten Konto und richten Sie es dann auf Ihr Echtgeldkonto, ganz ohne API-Code." },
+  ], es: [
+    { type: "paragraph",html: "Antes de que una sola orden de su bot toque dinero real, ejecútelo primero en el entorno demo de Tradovate. Es la misma API, los mismos endpoints, el mismo JSON, el mismo flujo de autenticación, solo que apuntando a un host de simulación que ejecuta contra dinero virtual en lugar de su saldo con fondos. Haga que cada solicitud funcione allí y después cambie un único nombre de host para pasar a real." },
+    { type: "heading",text: "¿Qué es el entorno de la API demo de Tradovate?" },
+    { type: "paragraph",html: "Tradovate mantiene dos entornos de API paralelos. El entorno demo (o de simulación) refleja casi exactamente el real, pero cada ejecución, posición y P&amp;L es simulado: nada llega al mercado y nada toca su cuenta. Usted se autentica de la misma manera y llama a las mismas rutas; solo cambia el host al que envía las solicitudes. Eso convierte a demo en el lugar natural para detectar errores en su lógica de órdenes, la gestión de tokens y las reconexiones de WebSocket mientras no hay nada en juego." },
+    { type: "heading",text: "Apunte sus llamadas a la API a demo: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirme el acceso a la API y una cuenta de simulación", html: "Necesita dos cosas: el complemento <strong class='text-white'>API Access</strong> activado, de donde salen su clave de API (<code>cid</code>) y su Secret (<code>sec</code>), y una cuenta simulada con la que operar. Los nuevos registros en Tradovate reciben una cuenta de simulación por defecto, y las evaluaciones de las prop firms también se ejecutan en ellas. Si aún no ha activado el acceso a la API, hágalo primero y anote su <code>cid</code> y su <code>sec</code>." },
+        { title: "Cambie a la URL base de demo", html: "Todo se enruta por el host demo en lugar del real. Las rutas posteriores a <code>/v1</code> son idénticas en ambos entornos, <code>/auth/accessTokenRequest</code>, <code>/order/placeOrder</code> y el resto no cambian; solo cambia el nombre de host. Los datos de mercado se transmiten por su propio host <code>md</code>, así que si las cotizaciones no se conectan en una cuenta de simulación, confirme en la documentación de Tradovate el host de datos de mercado demo vigente, ya que ha tenido tanto un endpoint compartido como uno demo independiente." },
+        { title: "Solicite un token de acceso al host demo", html: "Envíe sus credenciales, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> y un <code>deviceId</code> estable, mediante POST a <code>/v1/auth/accessTokenRequest</code> en el host demo. Un token generado en demo solo funciona en demo; no autoriza el host real, ni a la inversa. Reutilice siempre el mismo <code>deviceId</code> (un UUID fijo) para que las comprobaciones de dispositivo de Tradovate no den problemas." },
+        { title: "Apunte también sus WebSockets a demo", html: "REST no es toda la historia. Si su aplicación transmite órdenes, ejecuciones o cotizaciones, abra el socket de trading en <code>wss://demo.tradovateapi.com/v1/websocket</code> y envíe su token de acceso demo mediante el mensaje authorize justo después de conectar. Los datos de mercado viajan por su propio socket en el host <code>md</code>, autorizado con el <code>mdAccessToken</code> de la misma respuesta de inicio de sesión. Mezclar un token demo con un socket real es una fuente habitual de errores 401." },
+        { title: "Verifique que está en simulación y luego pase a real", html: "Envíe una pequeña orden de prueba y confirme que aparece en su cuenta de simulación, con la ejecución, la posición y el P&amp;L actualizándose como espera. Cuando su bot se comporte bien, con tokens que se renuevan, sockets que se reconectan y órdenes y brackets que se ejecutan, pasar a real es casi un cambio de una sola línea: sustituya <code>demo.tradovateapi.com</code> por <code>live.tradovateapi.com</code> y vuelva a autenticarse. Un aviso: el entorno real exige una <a href='https://pickmytrade.trade/debugging/api-401-live-device-approval/'>aprobación de dispositivo que demo deja pasar</a>, por lo que su primer inicio de sesión real puede pedirle que confirme el dispositivo desde el correo que envía Tradovate." },
+      ],
+    },
+    { type: "table", headers: ["Finalidad","Demo (simulación)","Real (con fondos)"], rows: [
+      ["Base REST","https://demo.tradovateapi.com/v1","https://live.tradovateapi.com/v1"],
+      ["WebSocket de trading","wss://demo.tradovateapi.com/v1/websocket","wss://live.tradovateapi.com/v1/websocket"],
+      ["WebSocket de datos de mercado","wss://md.tradovateapi.com/v1/websocket","wss://md.tradovateapi.com/v1/websocket"],
+    ] },
+    { type: "quote",html: "<strong class='text-white'>Atajo sin código para comprobaciones rápidas:</strong> Abra <strong class='text-white'>Application Settings &rsaquo; API Access</strong> y haga clic en el enlace <strong class='text-white'>API Doc</strong> de su clave. Es una versión interactiva y preautorizada de la documentación de la API: autentíquese una vez con el botón del token de arriba, pulse <strong class='text-white'>Interact</strong> en cualquier operación y pruebe la solicitud y la respuesta antes de integrarla en el código." },
+    { type: "heading",text: "Por qué probar primero en demo" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Depure la lógica de órdenes, brackets y OCO</strong> sin arriesgar un saldo con fondos.",
+        "<strong class='text-white'>Confirme que las solicitudes de token, las renovaciones y la gestión de la caducidad</strong> funcionan con tiempos reales.",
+        "<strong class='text-white'>Pruebe las reconexiones de WebSocket y el análisis de mensajes</strong> con datos con formato real.",
+        "<strong class='text-white'>Ensaye una nueva estrategia</strong> antes de que opere con tamaño real.",
+        "<strong class='text-white'>Reproduzca un error de producción de forma segura</strong> en una cuenta de simulación.",
+      ],
+    },
+    { type: "heading",text: "Automatice esto con PickMyTrade" },
+    { type: "paragraph",html: "Si prefiere no construir ni vigilar toda esta infraestructura, renovaciones de token, cambio de entorno, reconexiones de sockets, <strong class='text-white'>PickMyTrade conecta sus alertas de TradingView directamente con Tradovate</strong> y gestiona la conexión por usted. Pruebe en una cuenta simulada y luego apúntelo a su cuenta con fondos, sin necesidad de código de API." },
+  ], fr: [
+    { type: "paragraph",html: "Avant qu'un seul ordre de votre bot ne touche de l'argent réel, faites-le d'abord passer par l'environnement démo de Tradovate. C'est la même API, les mêmes endpoints, le même JSON, le même flux d'authentification, simplement dirigés vers un hôte de simulation qui exécute les ordres avec de l'argent virtuel plutôt qu'avec votre solde financé. Faites fonctionner chaque requête là-bas, puis changez un seul nom d'hôte pour passer en réel." },
+    { type: "heading",text: "Qu'est-ce que l'environnement API démo de Tradovate ?" },
+    { type: "paragraph",html: "Tradovate exploite deux environnements d'API parallèles. L'environnement démo (ou de simulation) reflète presque exactement l'environnement réel, mais chaque exécution, position et P&amp;L est simulé : rien n'atteint la bourse et rien ne touche votre compte. Vous vous authentifiez de la même manière et appelez les mêmes chemins ; seul l'hôte auquel vous envoyez les requêtes change. La démo est donc l'endroit naturel pour débusquer les bugs de votre logique d'ordres, de votre gestion des jetons et de vos reconnexions WebSocket tant que les enjeux sont nuls." },
+    { type: "heading",text: "Diriger vos appels API vers la démo : pas à pas" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirmer l'accès API et un compte de simulation", html: "Il vous faut deux choses : l'option <strong class='text-white'>API Access</strong> activée, c'est de là que viennent votre clé API (<code>cid</code>) et votre Secret (<code>sec</code>), ainsi qu'un compte simulé sur lequel trader. Les nouveaux inscrits Tradovate reçoivent un compte de simulation par défaut, et les évaluations des prop firms s'y déroulent aussi. Si vous n'avez pas encore activé l'accès API, faites-le d'abord, puis notez votre <code>cid</code> et votre <code>sec</code>." },
+        { title: "Remplacer l'URL de base par celle de la démo", html: "Tout passe par l'hôte démo au lieu de l'hôte réel. Les chemins après <code>/v1</code> sont identiques dans les deux environnements, <code>/auth/accessTokenRequest</code>, <code>/order/placeOrder</code> et les autres ne changent pas ; seul le nom d'hôte change. Les données de marché transitent par leur propre hôte <code>md</code> ; si les cotations ne se connectent pas sur un compte de simulation, vérifiez dans la documentation de Tradovate l'hôte de données de marché démo en vigueur, il a existé à la fois sous forme de point d'accès partagé et de point d'accès démo distinct." },
+        { title: "Demander un jeton d'accès à l'hôte démo", html: "Envoyez vos identifiants, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> et un <code>deviceId</code> stable, en POST vers <code>/v1/auth/accessTokenRequest</code> sur l'hôte démo. Un jeton généré sur la démo ne fonctionne que sur la démo ; il n'autorise pas l'hôte réel, et inversement. Réutilisez toujours le même <code>deviceId</code> (un UUID fixe) afin que les contrôles d'appareil de Tradovate restent satisfaits." },
+        { title: "Diriger aussi vos WebSockets vers la démo", html: "REST ne fait pas tout. Si votre application diffuse des ordres, des exécutions ou des cotations, ouvrez le socket de trading sur <code>wss://demo.tradovateapi.com/v1/websocket</code> et envoyez votre jeton d'accès démo via la trame authorize juste après la connexion. Les données de marché passent par leur propre socket sur l'hôte <code>md</code>, autorisé avec le <code>mdAccessToken</code> issu de la même réponse de connexion. Mélanger un jeton démo avec un socket réel est une source fréquente d'erreurs 401." },
+        { title: "Vérifier que vous êtes en simulation, puis passer en réel", html: "Passez un petit ordre de test et vérifiez qu'il apparaît dans votre compte de simulation, avec l'exécution, la position et le P&amp;L qui se mettent à jour comme prévu. Une fois que votre bot se comporte bien, jetons renouvelés, sockets reconnectés, ordres et brackets exécutés, le passage en réel tient presque en une seule ligne : remplacez <code>demo.tradovateapi.com</code> par <code>live.tradovateapi.com</code> et réauthentifiez-vous. Un point d'attention : le réel impose une <a href='https://pickmytrade.trade/debugging/api-401-live-device-approval/'>approbation d'appareil que la démo laisse passer</a> ; votre première connexion réelle pourra donc vous demander de confirmer l'appareil depuis l'e-mail envoyé par Tradovate." },
+      ],
+    },
+    { type: "table", headers: ["Objectif","Démo (simulation)","Réel (financé)"], rows: [
+      ["Base REST","https://demo.tradovateapi.com/v1","https://live.tradovateapi.com/v1"],
+      ["WebSocket de trading","wss://demo.tradovateapi.com/v1/websocket","wss://live.tradovateapi.com/v1/websocket"],
+      ["WebSocket de données de marché","wss://md.tradovateapi.com/v1/websocket","wss://md.tradovateapi.com/v1/websocket"],
+    ] },
+    { type: "quote",html: "<strong class='text-white'>Raccourci sans code pour les vérifications rapides :</strong> Ouvrez <strong class='text-white'>Application Settings &rsaquo; API Access</strong> et cliquez sur le lien <strong class='text-white'>API Doc</strong> de votre clé. C'est une version interactive et préautorisée de la documentation de l'API : authentifiez-vous une fois avec le bouton de jeton en haut, cliquez sur <strong class='text-white'>Interact</strong> sur n'importe quelle opération et essayez la requête et la réponse avant de l'intégrer au code." },
+    { type: "heading",text: "Pourquoi tester d'abord sur la démo" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Déboguer la logique des ordres, brackets et OCO</strong> sans risquer un solde financé.",
+        "<strong class='text-white'>Vérifier que les demandes de jeton, les renouvellements et la gestion de l'expiration</strong> se comportent correctement avec des délais réels.",
+        "<strong class='text-white'>Tester les reconnexions WebSocket et l'analyse des messages</strong> avec des données au format réel.",
+        "<strong class='text-white'>Répéter une nouvelle stratégie</strong> avant qu'elle ne trade en taille réelle.",
+        "<strong class='text-white'>Reproduire un bug de production en toute sécurité</strong> sur un compte de simulation.",
+      ],
+    },
+    { type: "heading",text: "Automatisez tout cela avec PickMyTrade" },
+    { type: "paragraph",html: "Si vous préférez ne pas construire et surveiller toute cette plomberie, renouvellement des jetons, changement d'environnement, reconnexions des sockets, <strong class='text-white'>PickMyTrade relie vos alertes TradingView directement à Tradovate</strong> et gère la connexion pour vous. Testez sur un compte simulé, puis dirigez-le vers votre compte financé, sans aucun code d'API." },
+  ], it: [
+    { type: "paragraph",html: "Prima che un solo ordine del suo bot tocchi denaro reale, lo faccia girare nell'ambiente demo di Tradovate. È la stessa API, gli stessi endpoint, lo stesso JSON, lo stesso flusso di autenticazione, solo puntati a un host di simulazione che esegue con denaro virtuale anziché con il suo saldo reale. Faccia funzionare ogni richiesta lì, poi cambi un solo hostname per passare al reale." },
+    { type: "heading",text: "Che cos'è l'ambiente API demo di Tradovate?" },
+    { type: "paragraph",html: "Tradovate gestisce due ambienti API paralleli. L'ambiente demo (o di simulazione) rispecchia quasi esattamente quello reale, ma ogni esecuzione, posizione e P&amp;L è simulato: nulla raggiunge la borsa e nulla tocca il suo conto. Lei si autentica allo stesso modo e chiama gli stessi percorsi; cambia solo l'host a cui invia le richieste. Questo rende la demo il luogo naturale in cui individuare i bug nella logica degli ordini, nella gestione dei token e nelle riconnessioni WebSocket mentre la posta in gioco è zero." },
+    { type: "heading",text: "Puntare le chiamate API alla demo: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confermare l'accesso API e un account di simulazione", html: "Servono due cose: il componente aggiuntivo <strong class='text-white'>API Access</strong> attivato, da cui provengono la sua chiave API (<code>cid</code>) e il Secret (<code>sec</code>), e un account simulato su cui operare. I nuovi iscritti a Tradovate ricevono un account di simulazione per impostazione predefinita, e anche le valutazioni delle prop firm vi si svolgono. Se non ha ancora attivato l'accesso API, lo faccia prima e poi annoti il suo <code>cid</code> e il suo <code>sec</code>." },
+        { title: "Sostituire l'URL di base con quello demo", html: "Tutto passa dall'host demo anziché da quello reale. I percorsi dopo <code>/v1</code> sono identici in entrambi gli ambienti, <code>/auth/accessTokenRequest</code>, <code>/order/placeOrder</code> e gli altri non cambiano; cambia solo l'hostname. I dati di mercato passano da un host <code>md</code> dedicato, quindi se le quotazioni non si collegano su un account di simulazione, verifichi nella documentazione di Tradovate l'host dei dati di mercato demo attuale, in passato è esistito sia un endpoint condiviso sia uno demo separato." },
+        { title: "Richiedere un token di accesso all'host demo", html: "Invii le sue credenziali, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> e un <code>deviceId</code> stabile, con una POST a <code>/v1/auth/accessTokenRequest</code> sull'host demo. Un token generato sulla demo funziona solo sulla demo; non autorizza l'host reale e viceversa. Riutilizzi sempre lo stesso <code>deviceId</code> (un UUID fisso) in modo che i controlli sul dispositivo di Tradovate restino soddisfatti." },
+        { title: "Puntare alla demo anche i WebSocket", html: "REST non è tutto. Se la sua app trasmette ordini, esecuzioni o quotazioni, apra il socket di trading su <code>wss://demo.tradovateapi.com/v1/websocket</code> e invii il suo token di accesso demo tramite il frame authorize subito dopo la connessione. I dati di mercato viaggiano su un socket dedicato sull'host <code>md</code>, autorizzato con il <code>mdAccessToken</code> della stessa risposta di login. Mescolare un token demo con un socket reale è una causa frequente di errori 401." },
+        { title: "Verificare di essere in simulazione, poi passare al reale", html: "Inserisca un piccolo ordine di prova e verifichi che compaia nel suo account di simulazione, con esecuzione, posizione e P&amp;L che si aggiornano come previsto. Quando il bot si comporta bene, token rinnovati, socket che si riconnettono, ordini e bracket eseguiti, passare al reale è quasi una modifica di una sola riga: sostituisca <code>demo.tradovateapi.com</code> con <code>live.tradovateapi.com</code> e si autentichi di nuovo. Un avviso: l'ambiente reale impone una <a href='https://pickmytrade.trade/debugging/api-401-live-device-approval/'>approvazione del dispositivo che la demo lascia passare</a>, quindi il primo login reale potrebbe chiederle di confermare il dispositivo dall'e-mail inviata da Tradovate." },
+      ],
+    },
+    { type: "table", headers: ["Scopo","Demo (simulazione)","Reale (con fondi)"], rows: [
+      ["Base REST","https://demo.tradovateapi.com/v1","https://live.tradovateapi.com/v1"],
+      ["WebSocket di trading","wss://demo.tradovateapi.com/v1/websocket","wss://live.tradovateapi.com/v1/websocket"],
+      ["WebSocket dei dati di mercato","wss://md.tradovateapi.com/v1/websocket","wss://md.tradovateapi.com/v1/websocket"],
+    ] },
+    { type: "quote",html: "<strong class='text-white'>Scorciatoia senza codice per verifiche rapide:</strong> Apra <strong class='text-white'>Application Settings &rsaquo; API Access</strong> e faccia clic sul link <strong class='text-white'>API Doc</strong> della sua chiave. È una versione interattiva e preautorizzata della documentazione API: si autentichi una volta con il pulsante del token in alto, faccia clic su <strong class='text-white'>Interact</strong> su una qualsiasi operazione e provi richiesta e risposta prima di integrarla nel codice." },
+    { type: "heading",text: "Perché testare prima sulla demo" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Eseguire il debug della logica di ordini, bracket e OCO</strong> senza rischiare un saldo reale.",
+        "<strong class='text-white'>Verificare che richieste di token, rinnovi e gestione della scadenza</strong> si comportino bene con tempistiche reali.",
+        "<strong class='text-white'>Testare le riconnessioni WebSocket e l'analisi dei messaggi</strong> con dati in formato reale.",
+        "<strong class='text-white'>Provare a secco una nuova strategia</strong> prima che operi con dimensioni reali.",
+        "<strong class='text-white'>Riprodurre un bug di produzione in sicurezza</strong> su un account di simulazione.",
+      ],
+    },
+    { type: "heading",text: "Automatizzi tutto questo con PickMyTrade" },
+    { type: "paragraph",html: "Se preferisce non costruire e sorvegliare tutta questa infrastruttura, rinnovo dei token, cambio di ambiente, riconnessioni dei socket, <strong class='text-white'>PickMyTrade collega i suoi alert di TradingView direttamente a Tradovate</strong> e gestisce la connessione per lei. Testi su un account simulato e poi lo punti al suo account con fondi, senza alcun codice API." },
+  ] },
+  ctaHeading: { en: "Skip the API Plumbing Entirely", de: "Verzichten Sie ganz auf API-Aufwand", es: "Olvídese por completo de la infraestructura de la API", fr: "Oubliez complètement la plomberie API", it: "Salti del tutto l'infrastruttura API" },
+  ctaText: { en: "Let PickMyTrade wire your TradingView alerts straight to Tradovate and manage the connection for you, demo or live.", de: "Lassen Sie PickMyTrade Ihre TradingView-Alerts direkt mit Tradovate verbinden und die Verbindung für Sie verwalten, ob Demo oder Live.", es: "Deje que PickMyTrade conecte sus alertas de TradingView directamente con Tradovate y gestione la conexión por usted, en demo o en real.", fr: "Laissez PickMyTrade relier vos alertes TradingView directement à Tradovate et gérer la connexion pour vous, en démo comme en réel.", it: "Lasci che PickMyTrade colleghi i suoi alert di TradingView direttamente a Tradovate e gestisca la connessione per lei, in demo o in reale." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Do I need a separate account to test on the Tradovate demo API?", a: "No. Your simulation account is enough. Point your requests at the demo host and sign in with your normal Tradovate credentials, the demo environment fills everything with paper money." },
+    { q: "Will a demo access token work on the live host?", a: "No. A token is only valid on the environment that issued it. Request one from the demo host for simulation and a fresh one from the live host for a funded account." },
+    { q: "What actually changes when I go from demo to live?", a: "Mostly the hostname, demo.tradovateapi.com becomes live.tradovateapi.com, plus a re-authentication against live. Live also enforces device approval and, of course, real fills and margin, so test thoroughly before you switch." },
+  ], de: [
+    { q: "Brauche ich ein separates Konto, um die Tradovate-Demo-API zu testen?", a: "Nein. Ihr Simulationskonto genügt. Richten Sie Ihre Anfragen an den Demo-Host und melden Sie sich mit Ihren normalen Tradovate-Zugangsdaten an; die Demo-Umgebung wickelt alles mit Spielgeld ab." },
+    { q: "Funktioniert ein Demo-Access-Token auch auf dem Live-Host?", a: "Nein. Ein Token ist nur in der Umgebung gültig, die es ausgestellt hat. Fordern Sie für die Simulation eines vom Demo-Host an und für ein Echtgeldkonto ein neues vom Live-Host." },
+    { q: "Was ändert sich konkret beim Wechsel von Demo zu Live?", a: "Hauptsächlich der Hostname: Aus demo.tradovateapi.com wird live.tradovateapi.com, dazu kommt eine erneute Authentifizierung am Live-Host. Live erzwingt zudem die Geräte-Freigabe und bringt natürlich echte Fills und Margin mit, testen Sie daher gründlich, bevor Sie umschalten." },
+  ], es: [
+    { q: "¿Necesito una cuenta aparte para probar la API demo de Tradovate?", a: "No. Su cuenta de simulación es suficiente. Dirija sus solicitudes al host demo e inicie sesión con sus credenciales habituales de Tradovate; el entorno demo lo ejecuta todo con dinero virtual." },
+    { q: "¿Funciona un token de acceso demo en el host real?", a: "No. Un token solo es válido en el entorno que lo emitió. Solicite uno al host demo para simulación y uno nuevo al host real para una cuenta con fondos." },
+    { q: "¿Qué cambia realmente al pasar de demo a real?", a: "Sobre todo el nombre de host: demo.tradovateapi.com pasa a ser live.tradovateapi.com, además de una nueva autenticación en el entorno real. El entorno real también exige la aprobación del dispositivo y, por supuesto, implica ejecuciones y margen reales, así que pruebe a fondo antes de cambiar." },
+  ], fr: [
+    { q: "Ai-je besoin d'un compte distinct pour tester l'API démo de Tradovate ?", a: "Non. Votre compte de simulation suffit. Dirigez vos requêtes vers l'hôte démo et connectez-vous avec vos identifiants Tradovate habituels ; l'environnement démo exécute tout avec de l'argent virtuel." },
+    { q: "Un jeton d'accès démo fonctionne-t-il sur l'hôte réel ?", a: "Non. Un jeton n'est valable que dans l'environnement qui l'a émis. Demandez-en un à l'hôte démo pour la simulation et un nouveau à l'hôte réel pour un compte financé." },
+    { q: "Qu'est-ce qui change réellement en passant de la démo au réel ?", a: "Principalement le nom d'hôte : demo.tradovateapi.com devient live.tradovateapi.com, avec une nouvelle authentification sur l'environnement réel. Le réel impose aussi l'approbation de l'appareil et, bien sûr, des exécutions et une marge réelles ; testez donc soigneusement avant de basculer." },
+  ], it: [
+    { q: "Ho bisogno di un account separato per testare l'API demo di Tradovate?", a: "No. Il suo account di simulazione è sufficiente. Indirizzi le richieste all'host demo e acceda con le sue normali credenziali Tradovate; l'ambiente demo esegue tutto con denaro virtuale." },
+    { q: "Un token di accesso demo funziona sull'host reale?", a: "No. Un token è valido solo nell'ambiente che lo ha emesso. Ne richieda uno all'host demo per la simulazione e uno nuovo all'host reale per un account con fondi." },
+    { q: "Cosa cambia davvero passando da demo a reale?", a: "Soprattutto l'hostname: demo.tradovateapi.com diventa live.tradovateapi.com, più una nuova autenticazione sull'ambiente reale. L'ambiente reale impone inoltre l'approvazione del dispositivo e, naturalmente, esecuzioni e margini reali, quindi testi a fondo prima di passare." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von Tradovate, Inc. unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par elle. « Tradovate » et l'ensemble des noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né da essa approvata o sponsorizzata. «Tradovate» e tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e le procedure della piattaforma cambiano nel tempo, perciò verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-10",
+  dateModified: "2026-07-10",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

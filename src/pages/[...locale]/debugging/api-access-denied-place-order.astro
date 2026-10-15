@@ -1,0 +1,490 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-access-denied-place-order";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API 'Access Is Denied' on Place Order";
+const META_DESCRIPTION =
+  "Tradovate API 'Access Is Denied' on place order? Grant Orders Full Access, use the numeric account id, and hit the correct demo/live host to fix it fast.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API: 'Access is denied' bei der Orderplatzierung", es: "API de Tradovate: 'Access is denied' al colocar una orden", fr: "API Tradovate : 'Access is denied' lors du passage d'ordre", it: "API Tradovate: 'Access is denied' nell'invio dell'ordine" },
+  dek: { en: "Your credentials work, your token is valid, and /order/placeOrder still rejects every fill with Access is denied. It's almost never a broken key, it's one of four boring, fixable mistakes.", de: "Ihre Zugangsdaten funktionieren, Ihr Token ist gültig, und /order/placeOrder lehnt trotzdem jede Order mit Access is denied ab. Es liegt fast nie an einem defekten Schlüssel, sondern an einem von vier banalen, leicht behebbaren Fehlern.", es: "Sus credenciales funcionan, su token es válido, y /order/placeOrder sigue rechazando cada orden con Access is denied. Casi nunca se trata de una clave rota, sino de uno de cuatro errores comunes y fáciles de corregir.", fr: "Vos identifiants fonctionnent, votre jeton est valide, et /order/placeOrder rejette pourtant chaque ordre avec Access is denied. Ce n'est presque jamais une clé défectueuse, mais l'une de quatre erreurs banales et faciles à corriger.", it: "Le Sue credenziali funzionano, il Suo token è valido, eppure /order/placeOrder rifiuta ogni ordine con Access is denied. Quasi mai si tratta di una chiave non valida: è uno dei quattro errori banali e facilmente risolvibili." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You wire a bot up to the Tradovate REST API, the first live order goes out, and back comes <code>Access is denied</code>. It feels like a wall. Your credentials worked. Authentication handed you a token. You can even see your positions. Yet <code>/order/placeOrder</code> rejects every fill with that same terse string, sometimes as a <code>401</code>, sometimes as an HTTP <code>200</code> carrying <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>. Here's the good news: this is almost never a &ldquo;your key is broken&rdquo; problem. It's one of four boring, fixable mistakes, the wrong account id, an under-scoped Orders permission, the wrong demo/live host, or a mishandled <code>isAutomated</code> flag. Below you'll find the full checklist, what the error actually means, every root cause with a step-by-step fix, and how PickMyTrade sidesteps this whole class of problem so your TradingView alerts route to Tradovate without you debugging JSON at the open." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for \"Access Is Denied\"",
+      items: [
+        "<strong class='text-white'>Wrong account id</strong>, read the numeric <code>id</code> from <code>/account/list</code>, never the display name (like &ldquo;DEMO1235&rdquo;).",
+        "<strong class='text-white'>Orders permission too low</strong>, the API key's <strong class='text-white'>Orders</strong> entitlement has to be set to <strong class='text-white'>Full Access</strong>, not read-only.",
+        "<strong class='text-white'>Host mismatch</strong>, mint the token <em>and</em> send the order on the same host: <code>demo.tradovateapi.com</code> for sim, <code>live.tradovateapi.com</code> for live.",
+        "<strong class='text-white'><code>isAutomated</code> wrong</strong>, include the flag and set it <code>true</code> for any bot or algorithmic order, and watch the data type when you form-encode.",
+        "<strong class='text-white'>Stale or wrong symbol</strong>, use the active front-month contract (or its contract id), not an expired or continuous symbol.",
+        "<strong class='text-white'>Live device not approved</strong>, live strictly enforces a known, stable <code>deviceId</code>; demo is lenient about it.",
+      ],
+    },
+    { type: "heading", text: "What \"Access Is Denied\" Means" },
+    { type: "paragraph", html: "<code>Access is denied</code> is Tradovate's generic &ldquo;this request isn't authorized to do that&rdquo; response. The trap is that it's <em>not</em> an authentication error in the usual sense, you can hold a perfectly valid, unexpired access token and still get it. It fires at the point where Tradovate checks whether <em>this token</em> is allowed to place <em>this order</em> on <em>this account</em>. Any break in that chain, an account id the token doesn't own, an API key that was never granted order-placement rights, or a token minted against the demo host and then replayed against live, surfaces as the same three words." },
+    { type: "paragraph", html: "Two response shapes matter here. A raw <code>401 Access Denied</code> usually points at the token or the host: the token's expired, it was requested from the wrong base URL, or (on live) the device isn't approved. A <code>200 OK</code> whose body reads <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code> means the request <em>authenticated</em> fine but the order itself got refused at the entitlement layer, classically a wrong <code>accountId</code> or a missing Orders permission." },
+    { type: "paragraph", html: "Because both variants print the identical string, it's easy to burn an hour re-checking passwords when the real fault is one field in the request body. Read the HTTP status first, then work the causes below in order." },
+    { type: "heading", text: "Top Causes of \"Access Is Denied\" on Place Order" },
+    { type: "heading", text: "1. You're Sending the Display Name Instead of the Numeric Account Id" },
+    { type: "paragraph", html: "This is the single most common cause. Your account <em>shows</em> a name like <code>DEMO1235</code> or <code>TRAD123456</code>, and it's tempting to pass the trailing number as <code>accountId</code>. But <code>accountId</code> is Tradovate's internal <strong class='text-white'>entity id</strong>, a separate numeric value that has nothing to do with the digits in the display name. Pass the wrong one and the token doesn't &ldquo;own&rdquo; that account, so the order is denied." },
+    { type: "paragraph", html: "The fix is to read both identifiers from <code>/account/list</code>. Each account object returns an <code>id</code> (the numeric entity id you put in <code>accountId</code>) and a <code>name</code> (the human-readable label you put in <code>accountSpec</code>). Put simply: the account id is not the number your account happens to be named after. Never hard-code it, always fetch it." },
+    { type: "heading", text: "2. The API Key's Orders Permission Isn't Full Access" },
+    { type: "paragraph", html: "Tradovate lets you scope an API key per capability. A key can read positions, read account info, and read the contract library while still having <strong class='text-white'>Orders</strong> set to something less than Full Access, which is exactly enough to authenticate, list accounts, and <em>look</em> healthy, yet be blocked the instant it tries to place an order. The fix is direct: grant the key <strong class='text-white'>Orders → Full Access</strong> in your Tradovate application/API settings, then re-issue the token so the new entitlement is baked in." },
+    { type: "heading", text: "3. You Minted the Token on One Host and Are Ordering on Another" },
+    { type: "paragraph", html: "Tradovate runs two fully separate environments with two base URLs:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Demo / simulation:</strong> <code>https://demo.tradovateapi.com/v1</code>",
+        "<strong class='text-white'>Live:</strong> <code>https://live.tradovateapi.com/v1</code>",
+      ],
+    },
+    { type: "paragraph", html: "A token requested from the demo host is only valid against the demo host. Point that token at the live <code>/order/placeOrder</code> (or the other way around) and you get <code>Access is denied</code>. The classic slip is calling <code>auth/accessTokenRequest</code> on a malformed or mismatched base URL, then wondering why every subsequent order fails. Confirm your auth call and your order call share the same host string, character for character, and that the host matches the account you actually intend to trade." },
+    { type: "heading", text: "4. isAutomated Is Missing or the Wrong Type" },
+    { type: "paragraph", html: "If a bot, algorithm, or any impersonal process triggers the order, CME rules require <code>isAutomated: true</code>; a human clicking a UI button is <code>false</code>. Beyond simply <em>including</em> the flag, watch the data type. When you POST JSON, <code>isAutomated</code> is a boolean (<code>true</code>). But if you form-encode the body (<code>data=</code> instead of <code>json=</code> in Python's <code>requests</code>), everything serializes to strings, so it has to go over the wire as the string <code>\"true\"</code>. A boolean that silently drops to <code>False</code>, or a type the server won't parse, lands you right back at <code>Access is denied</code>." },
+    { type: "heading", text: "5. Symbol Format, and (On Live) an Unapproved Device" },
+    { type: "paragraph", html: "Two lower-frequency causes round out the list. First, symbol format: passing an expired or malformed contract, an old expiration code, or a continuous/rollover symbol the API can't route, can read as a denial rather than a clean &ldquo;bad symbol&rdquo; error. Switching to the active front-month contract (or its contract id) clears it. Second, <strong class='text-white'>device id on live</strong>: live strictly enforces that orders come from a known, approved <code>deviceId</code> supplied at <code>auth/accessTokenRequest</code>, while demo largely ignores it. If your code places orders in demo but is denied only in live, that's the tell." },
+    { type: "heading", text: "How to Fix \"Access Is Denied\": Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Fixing the account id", html: "Authenticate and grab your access token from the correct host. Call <code>GET /account/list</code> on that same host. In the response, locate your account object. Copy the <strong class='text-white'><code>id</code></strong> value, that numeric entity id is your <code>accountId</code>. Copy the <strong class='text-white'><code>name</code></strong> value (typically your Tradovate username or the account label), that's your <code>accountSpec</code>. Put both into the order body. Don't reuse the digits from the display name." },
+        { title: "Granting Orders Full Access, then re-issuing the token", html: "Open your Tradovate application / API key settings where the per-capability permissions are listed. Set the <strong class='text-white'>Orders</strong> permission to <strong class='text-white'>Full Access</strong> (leave read scopes as needed). Save, then request a <strong class='text-white'>fresh</strong> access token, permission changes only take effect on tokens issued afterward. Sanity-check with a read call like <code>GET /position/list</code> before you retry the order." },
+        { title: "Matching the demo/live host", html: "Decide which environment the account lives in (sim vs live). Use <code>demo.tradovateapi.com/v1</code> for sim and <code>live.tradovateapi.com/v1</code> for live, for <strong class='text-white'>both</strong> the auth call and the order call. If you switch environments, re-authenticate; never carry a demo token to live. Remember that tokens are short-lived (roughly 90 minutes). If a previously working script starts failing mid-session, renew the token rather than re-diagnosing permissions." },
+        { title: "Passing isAutomated correctly", html: "Always include <code>isAutomated</code> in the order body. Set it <code>true</code> for bot/algorithmic orders, <code>false</code> only for genuine human-triggered UI actions. If you send JSON, keep it a boolean. If you form-encode, send the string <code>\"true\"</code>. Re-send the order and confirm the response is a real order id, not a <code>failureText</code>." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error", "Meaning", "Fix"],
+      rows: [
+        ["401 Access Denied", "Token invalid, expired, or minted on the wrong host", "Re-auth on the matching demo/live host; renew before the ~90-min expiry"],
+        ["200 + {\"failureText\":\"Access is denied\"}", "Authenticated, but the order was refused at the entitlement layer", "Use the numeric accountId from /account/list and grant Orders Full Access"],
+        ["Access is denied after granting Orders permission", "accountId is the display-name number, not the entity id", "Read the id field from /account/list"],
+        ["Works in demo, denied in live", "Live device id not approved", "Send a stable deviceId at auth and approve the device"],
+        ["Access is denied with a correct account", "isAutomated missing or wrong data type", "Include isAutomated; true for bots; correct type for JSON vs form-encoded"],
+        ["Denied on a valid-looking symbol", "Expired, continuous, or malformed contract", "Use the active front-month contract or its contract id"],
+      ],
+    },
+    { type: "heading", text: "Where PickMyTrade Fits" },
+    { type: "paragraph", html: "Most &ldquo;Access is denied&rdquo; tickets come from hand-rolling the auth-and-order plumbing. PickMyTrade removes that surface area entirely by brokering the Tradovate connection for you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Managed Auth & Host Routing</strong>, the correct demo/live host and a fresh, unexpired token are handled automatically, so a stale session never masquerades as a permission error.",
+        "<strong class='text-white'>Account & Entitlement Resolution</strong>, the right numeric account id and Orders entitlement are resolved from your linked account, not guessed from a display name.",
+        "<strong class='text-white'>Compliant isAutomated Handling</strong>, automated orders are flagged correctly for exchange rules every time, with no boolean-vs-string foot-guns.",
+        "<strong class='text-white'>Symbol & Contract Validation</strong>, alerts map to a valid, active contract before an order is ever sent, cutting the &ldquo;denied on a bad symbol&rdquo; class of failure.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie verbinden einen Bot mit der Tradovate-REST-API, die erste Live-Order geht raus, und zurück kommt <code>Access is denied</code>. Das fühlt sich wie eine Mauer an. Ihre Zugangsdaten haben funktioniert. Die Authentifizierung hat Ihnen ein Token gegeben. Sie können sogar Ihre Positionen sehen. Trotzdem lehnt <code>/order/placeOrder</code> jede Order mit derselben knappen Meldung ab, mal als <code>401</code>, mal als HTTP <code>200</code> mit <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code> im Body. Die gute Nachricht: Das ist fast nie ein Problem mit einem &ldquo;defekten Schlüssel&rdquo;. Es ist einer von vier banalen, leicht behebbaren Fehlern: die falsche Account-ID, eine zu knapp bemessene Orders-Berechtigung, der falsche Demo-/Live-Host oder ein falsch gesetztes <code>isAutomated</code>-Flag. Im Folgenden finden Sie die vollständige Checkliste, was der Fehler wirklich bedeutet, jede Ursache mit einer schrittweisen Lösung und wie PickMyTrade diese ganze Fehlerklasse umgeht, damit Ihre TradingView-Alerts ohne JSON-Debugging bei Marktöffnung an Tradovate weitergeleitet werden." },
+    {
+      type: "checklist",
+      heading: "Schnelle Checkliste für \"Access is denied\"",
+      items: [
+        "<strong class='text-white'>Falsche Account-ID</strong>, lesen Sie die numerische <code>id</code> aus <code>/account/list</code>, niemals den Anzeigenamen (wie &ldquo;DEMO1235&rdquo;).",
+        "<strong class='text-white'>Orders-Berechtigung zu niedrig</strong>, die <strong class='text-white'>Orders</strong>-Berechtigung des API-Keys muss auf <strong class='text-white'>Full Access</strong> gesetzt sein, nicht nur lesend.",
+        "<strong class='text-white'>Host-Konflikt</strong>, fordern Sie das Token <em>und</em> senden Sie die Order auf demselben Host: <code>demo.tradovateapi.com</code> für Sim, <code>live.tradovateapi.com</code> für Live.",
+        "<strong class='text-white'><code>isAutomated</code> falsch</strong>, geben Sie das Flag an und setzen Sie es für jede Bot- oder algorithmische Order auf <code>true</code>, und achten Sie beim Form-Encoding auf den Datentyp.",
+        "<strong class='text-white'>Veraltetes oder falsches Symbol</strong>, verwenden Sie den aktiven Frontmonat-Kontrakt (oder dessen Kontrakt-ID), kein abgelaufenes oder fortlaufendes Symbol.",
+        "<strong class='text-white'>Live-Gerät nicht freigegeben</strong>, im Live-Modus wird eine bekannte, stabile <code>deviceId</code> strikt durchgesetzt; im Demo-Modus ist das nachsichtiger.",
+      ],
+    },
+    { type: "heading", text: "Was \"Access is denied\" bedeutet" },
+    { type: "paragraph", html: "<code>Access is denied</code> ist Tradovates generische Antwort im Sinne von &ldquo;diese Anfrage ist dazu nicht berechtigt&rdquo;. Die Falle dabei: Es ist <em>kein</em> Authentifizierungsfehler im üblichen Sinne, Sie können ein völlig gültiges, nicht abgelaufenes Access Token besitzen und die Meldung trotzdem bekommen. Sie tritt genau dann auf, wenn Tradovate prüft, ob <em>dieses Token</em> berechtigt ist, <em>diese Order</em> auf <em>diesem Account</em> zu platzieren. Jeder Bruch in dieser Kette, eine Account-ID, die dem Token nicht gehört, ein API-Key, dem nie das Recht zur Orderplatzierung erteilt wurde, oder ein Token, das gegen den Demo-Host ausgestellt und dann gegen Live verwendet wird, erscheint als dieselben drei Wörter." },
+    { type: "paragraph", html: "Hier sind zwei Antwortformen relevant. Ein rohes <code>401 Access Denied</code> deutet meist auf das Token oder den Host hin: Das Token ist abgelaufen, wurde von der falschen Base-URL angefordert, oder (im Live-Modus) das Gerät ist nicht freigegeben. Ein <code>200 OK</code>, dessen Body <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code> enthält, bedeutet, dass die Anfrage <em>authentifiziert</em> wurde, die Order selbst aber auf Berechtigungsebene abgelehnt wurde, klassischerweise wegen einer falschen <code>accountId</code> oder einer fehlenden Orders-Berechtigung." },
+    { type: "paragraph", html: "Da beide Varianten dieselbe Meldung ausgeben, verbringt man leicht eine Stunde damit, Passwörter zu überprüfen, obwohl der eigentliche Fehler in einem einzigen Feld des Request-Bodys liegt. Prüfen Sie zuerst den HTTP-Status und arbeiten Sie dann die unten genannten Ursachen der Reihe nach durch." },
+    { type: "heading", text: "Top-Ursachen für \"Access is denied\" beim Place Order" },
+    { type: "heading", text: "1. Sie senden den Anzeigenamen statt der numerischen Account-ID" },
+    { type: "paragraph", html: "Das ist die mit Abstand häufigste Ursache. Ihr Account <em>zeigt</em> einen Namen wie <code>DEMO1235</code> oder <code>TRAD123456</code> an, und es ist verlockend, die abschließende Zahl als <code>accountId</code> zu übergeben. Aber <code>accountId</code> ist Tradovates interne <strong class='text-white'>Entity-ID</strong>, ein separater numerischer Wert, der nichts mit den Ziffern im Anzeigenamen zu tun hat. Übergeben Sie die falsche ID, gehört der Account dem Token nicht &ldquo;offiziell&rdquo;, und die Order wird abgelehnt." },
+    { type: "paragraph", html: "Die Lösung besteht darin, beide Kennungen aus <code>/account/list</code> auszulesen. Jedes Account-Objekt liefert eine <code>id</code> (die numerische Entity-ID, die Sie in <code>accountId</code> eintragen) und einen <code>name</code> (die lesbare Bezeichnung, die Sie in <code>accountSpec</code> eintragen). Kurz gesagt: Die Account-ID ist nicht die Zahl, nach der Ihr Account zufällig benannt ist. Codieren Sie sie niemals fest, sondern rufen Sie sie immer ab." },
+    { type: "heading", text: "2. Die Orders-Berechtigung des API-Keys ist nicht Full Access" },
+    { type: "paragraph", html: "Bei Tradovate lässt sich ein API-Key pro Fähigkeit einschränken. Ein Key kann Positionen lesen, Account-Informationen lesen und die Kontraktbibliothek lesen, während <strong class='text-white'>Orders</strong> trotzdem auf weniger als Full Access gesetzt ist, was genau ausreicht, um sich zu authentifizieren, Accounts aufzulisten und <em>gesund</em> zu wirken, aber sofort blockiert wird, sobald eine Order platziert werden soll. Die Lösung ist direkt: Gewähren Sie dem Key in Ihren Tradovate-Anwendungs-/API-Einstellungen <strong class='text-white'>Orders → Full Access</strong> und stellen Sie das Token danach neu aus, damit die neue Berechtigung wirksam wird." },
+    { type: "heading", text: "3. Sie haben das Token auf einem Host erstellt und bestellen auf einem anderen" },
+    { type: "paragraph", html: "Tradovate betreibt zwei vollständig getrennte Umgebungen mit zwei Base-URLs:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Demo / Simulation:</strong> <code>https://demo.tradovateapi.com/v1</code>",
+        "<strong class='text-white'>Live:</strong> <code>https://live.tradovateapi.com/v1</code>",
+      ],
+    },
+    { type: "paragraph", html: "Ein Token, das vom Demo-Host angefordert wurde, ist nur gegenüber dem Demo-Host gültig. Richten Sie dieses Token auf das Live-<code>/order/placeOrder</code> (oder umgekehrt), erhalten Sie <code>Access is denied</code>. Der klassische Fehler besteht darin, <code>auth/accessTokenRequest</code> mit einer fehlerhaften oder nicht passenden Base-URL aufzurufen und sich dann zu fragen, warum jede folgende Order fehlschlägt. Stellen Sie sicher, dass Ihr Auth-Aufruf und Ihr Order-Aufruf denselben Host-String verwenden, Zeichen für Zeichen, und dass der Host zu dem Account passt, mit dem Sie tatsächlich handeln möchten." },
+    { type: "heading", text: "4. isAutomated fehlt oder hat den falschen Typ" },
+    { type: "paragraph", html: "Löst ein Bot, ein Algorithmus oder ein anderer unpersönlicher Prozess die Order aus, verlangen die CME-Regeln <code>isAutomated: true</code>; ein Mensch, der auf einen UI-Button klickt, ist <code>false</code>. Neben dem bloßen <em>Angeben</em> des Flags müssen Sie auf den Datentyp achten. Wenn Sie JSON per POST senden, ist <code>isAutomated</code> ein Boolean (<code>true</code>). Wenn Sie den Body aber form-encodieren (<code>data=</code> statt <code>json=</code> in Pythons <code>requests</code>), wird alles in Strings serialisiert, sodass der Wert als String <code>\"true\"</code> übertragen werden muss. Ein Boolean, der stillschweigend auf <code>False</code> fällt, oder ein Typ, den der Server nicht parsen kann, führt Sie direkt zurück zu <code>Access is denied</code>." },
+    { type: "heading", text: "5. Symbolformat und (bei Live) ein nicht freigegebenes Gerät" },
+    { type: "paragraph", html: "Zwei seltenere Ursachen runden die Liste ab. Erstens das Symbolformat: Ein abgelaufener oder fehlerhafter Kontrakt, ein alter Verfallscode oder ein fortlaufendes/Rollover-Symbol, das die API nicht routen kann, kann als Ablehnung erscheinen statt als eindeutiger &ldquo;ungültiges Symbol&rdquo;-Fehler. Der Wechsel zum aktiven Frontmonat-Kontrakt (oder dessen Kontrakt-ID) behebt das. Zweitens die <strong class='text-white'>Geräte-ID im Live-Modus</strong>: Live wird strikt durchgesetzt, dass Orders von einer bekannten, freigegebenen <code>deviceId</code> kommen, die bei <code>auth/accessTokenRequest</code> übergeben wurde, während Demo dies weitgehend ignoriert. Wenn Ihr Code im Demo-Modus Orders platziert, aber nur im Live-Modus abgelehnt wird, ist das der Hinweis." },
+    { type: "heading", text: "So beheben Sie \"Access is denied\": Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Die Account-ID korrigieren", html: "Authentifizieren Sie sich und holen Sie sich Ihr Access Token vom richtigen Host. Rufen Sie <code>GET /account/list</code> auf demselben Host auf. Suchen Sie in der Antwort Ihr Account-Objekt. Kopieren Sie den Wert von <strong class='text-white'><code>id</code></strong>, diese numerische Entity-ID ist Ihre <code>accountId</code>. Kopieren Sie den Wert von <strong class='text-white'><code>name</code></strong> (in der Regel Ihr Tradovate-Benutzername oder die Account-Bezeichnung), das ist Ihre <code>accountSpec</code>. Tragen Sie beides in den Order-Body ein. Verwenden Sie nicht erneut die Ziffern aus dem Anzeigenamen." },
+        { title: "Orders auf Full Access setzen und das Token neu ausstellen", html: "Öffnen Sie Ihre Tradovate-Anwendungs-/API-Key-Einstellungen, in denen die Berechtigungen pro Fähigkeit aufgelistet sind. Setzen Sie die <strong class='text-white'>Orders</strong>-Berechtigung auf <strong class='text-white'>Full Access</strong> (Lesezugriffe nach Bedarf belassen). Speichern Sie, und fordern Sie dann ein <strong class='text-white'>neues</strong> Access Token an, Berechtigungsänderungen wirken sich nur auf danach ausgestellte Tokens aus. Prüfen Sie zur Sicherheit mit einem Lese-Call wie <code>GET /position/list</code>, bevor Sie die Order erneut versuchen." },
+        { title: "Demo-/Live-Host abgleichen", html: "Entscheiden Sie, in welcher Umgebung sich der Account befindet (Sim vs. Live). Verwenden Sie <code>demo.tradovateapi.com/v1</code> für Sim und <code>live.tradovateapi.com/v1</code> für Live, für <strong class='text-white'>sowohl</strong> den Auth-Call als auch den Order-Call. Wenn Sie die Umgebung wechseln, authentifizieren Sie sich erneut; übertragen Sie niemals ein Demo-Token auf Live. Denken Sie daran, dass Tokens kurzlebig sind (rund 90 Minuten). Wenn ein zuvor funktionierendes Skript mitten in der Session plötzlich fehlschlägt, erneuern Sie das Token, statt erneut die Berechtigungen zu prüfen." },
+        { title: "isAutomated korrekt übergeben", html: "Geben Sie <code>isAutomated</code> immer im Order-Body an. Setzen Sie es für Bot-/algorithmische Orders auf <code>true</code>, auf <code>false</code> nur für echte, von einem Menschen ausgelöste UI-Aktionen. Wenn Sie JSON senden, lassen Sie es einen Boolean. Wenn Sie form-encodieren, senden Sie den String <code>\"true\"</code>. Senden Sie die Order erneut und prüfen Sie, ob die Antwort eine echte Order-ID enthält, keinen <code>failureText</code>." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting-Tabelle" },
+    {
+      type: "table",
+      headers: ["Fehler", "Bedeutung", "Lösung"],
+      rows: [
+        ["401 Access Denied", "Token ungültig, abgelaufen oder auf dem falschen Host erstellt", "Erneut auf dem passenden Demo-/Live-Host authentifizieren; vor Ablauf der ca. 90 Minuten erneuern"],
+        ["200 + {\"failureText\":\"Access is denied\"}", "Authentifiziert, aber die Order wurde auf Berechtigungsebene abgelehnt", "Die numerische accountId aus /account/list verwenden und Orders auf Full Access setzen"],
+        ["Access is denied trotz erteilter Orders-Berechtigung", "accountId ist die Zahl aus dem Anzeigenamen, nicht die Entity-ID", "Das Feld id aus /account/list auslesen"],
+        ["Funktioniert in Demo, abgelehnt in Live", "Geräte-ID im Live-Modus nicht freigegeben", "Eine stabile deviceId beim Auth-Call senden und das Gerät freigeben"],
+        ["Access is denied bei korrektem Account", "isAutomated fehlt oder hat den falschen Datentyp", "isAutomated angeben; true für Bots; korrekter Typ für JSON vs. form-encoded"],
+        ["Ablehnung bei scheinbar gültigem Symbol", "Abgelaufener, fortlaufender oder fehlerhafter Kontrakt", "Den aktiven Frontmonat-Kontrakt oder dessen Kontrakt-ID verwenden"],
+      ],
+    },
+    { type: "heading", text: "Wo PickMyTrade ansetzt" },
+    { type: "paragraph", html: "Die meisten &ldquo;Access is denied&rdquo;-Tickets entstehen dadurch, dass die Auth- und Order-Logik selbst gebaut wird. PickMyTrade entfernt diese gesamte Fehlerfläche, indem es die Tradovate-Verbindung für Sie vermittelt:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Verwaltete Authentifizierung & Host-Routing</strong>, der richtige Demo-/Live-Host und ein aktuelles, gültiges Token werden automatisch verwaltet, sodass eine abgelaufene Session nie als Berechtigungsfehler erscheint.",
+        "<strong class='text-white'>Account- & Berechtigungsauflösung</strong>, die richtige numerische Account-ID und die Orders-Berechtigung werden aus Ihrem verknüpften Account ermittelt, nicht aus einem Anzeigenamen geraten.",
+        "<strong class='text-white'>Regelkonforme isAutomated-Behandlung</strong>, automatisierte Orders werden jedes Mal korrekt gemäß den Börsenregeln gekennzeichnet, ohne Boolean-vs.-String-Fallstricke.",
+        "<strong class='text-white'>Symbol- & Kontraktvalidierung</strong>, Alerts werden einem gültigen, aktiven Kontrakt zugeordnet, bevor überhaupt eine Order gesendet wird, was die Fehlerklasse &ldquo;Ablehnung wegen ungültigem Symbol&rdquo; eliminiert.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Conecta un bot a la API REST de Tradovate, sale la primera orden en vivo, y llega <code>Access is denied</code>. Se siente como un muro. Sus credenciales funcionaron. La autenticación le entregó un token. Incluso puede ver sus posiciones. Sin embargo, <code>/order/placeOrder</code> rechaza cada ejecución con ese mismo mensaje escueto, a veces como un <code>401</code>, a veces como un HTTP <code>200</code> con <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>. La buena noticia: esto casi nunca es un problema de &ldquo;su clave está rota&rdquo;. Es uno de cuatro errores comunes y fáciles de corregir: el id de cuenta incorrecto, un permiso de Orders demasiado limitado, el host demo/live equivocado, o un flag <code>isAutomated</code> mal gestionado. A continuación encontrará la checklist completa, qué significa realmente el error, cada causa raíz con una solución paso a paso, y cómo PickMyTrade evita por completo esta clase de problema para que sus alertas de TradingView lleguen a Tradovate sin que usted tenga que depurar JSON en la apertura." },
+    {
+      type: "checklist",
+      heading: "Checklist rápida para \"Access is denied\"",
+      items: [
+        "<strong class='text-white'>Id de cuenta incorrecto</strong>, lea el <code>id</code> numérico desde <code>/account/list</code>, nunca el nombre visible (como &ldquo;DEMO1235&rdquo;).",
+        "<strong class='text-white'>Permiso de Orders demasiado bajo</strong>, el permiso <strong class='text-white'>Orders</strong> de la API key debe estar en <strong class='text-white'>Full Access</strong>, no solo lectura.",
+        "<strong class='text-white'>Host incorrecto</strong>, genere el token <em>y</em> envíe la orden en el mismo host: <code>demo.tradovateapi.com</code> para sim, <code>live.tradovateapi.com</code> para live.",
+        "<strong class='text-white'><code>isAutomated</code> incorrecto</strong>, incluya el flag y configúrelo en <code>true</code> para cualquier orden de bot o algorítmica, y preste atención al tipo de dato al usar form-encode.",
+        "<strong class='text-white'>Símbolo obsoleto o incorrecto</strong>, use el contrato del mes frontal activo (o su id de contrato), no un símbolo vencido o continuo.",
+        "<strong class='text-white'>Dispositivo no aprobado en live</strong>, live exige estrictamente un <code>deviceId</code> conocido y estable; demo es más permisivo al respecto.",
+      ],
+    },
+    { type: "heading", text: "Qué significa \"Access is denied\"" },
+    { type: "paragraph", html: "<code>Access is denied</code> es la respuesta genérica de Tradovate que significa &ldquo;esta solicitud no está autorizada para hacer eso&rdquo;. La trampa es que <em>no</em> es un error de autenticación en el sentido habitual, puede tener un access token perfectamente válido y sin expirar y aun así recibirlo. Se produce en el punto donde Tradovate verifica si <em>este token</em> tiene permiso para colocar <em>esta orden</em> en <em>esta cuenta</em>. Cualquier rotura en esa cadena, un id de cuenta que el token no posee, una API key a la que nunca se le otorgaron derechos de colocación de órdenes, o un token generado contra el host demo y luego usado contra live, aparece con las mismas tres palabras." },
+    { type: "paragraph", html: "Aquí importan dos formas de respuesta. Un <code>401 Access Denied</code> puro suele apuntar al token o al host: el token expiró, se solicitó desde la base URL equivocada, o (en live) el dispositivo no está aprobado. Un <code>200 OK</code> cuyo cuerpo dice <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code> significa que la solicitud se <em>autenticó</em> correctamente, pero la orden en sí fue rechazada en la capa de permisos, típicamente por un <code>accountId</code> incorrecto o un permiso de Orders faltante." },
+    { type: "paragraph", html: "Como ambas variantes muestran el mismo mensaje, es fácil perder una hora revisando contraseñas cuando el verdadero fallo está en un solo campo del cuerpo de la solicitud. Revise primero el estado HTTP y luego trabaje las causas siguientes en orden." },
+    { type: "heading", text: "Principales causas de \"Access is denied\" al colocar una orden" },
+    { type: "heading", text: "1. Está enviando el nombre visible en lugar del id de cuenta numérico" },
+    { type: "paragraph", html: "Esta es, con diferencia, la causa más común. Su cuenta <em>muestra</em> un nombre como <code>DEMO1235</code> o <code>TRAD123456</code>, y resulta tentador pasar el número final como <code>accountId</code>. Pero <code>accountId</code> es el <strong class='text-white'>id de entidad</strong> interno de Tradovate, un valor numérico independiente que no tiene relación con los dígitos del nombre visible. Si pasa el incorrecto, el token no &ldquo;posee&rdquo; esa cuenta y la orden se deniega." },
+    { type: "paragraph", html: "La solución es leer ambos identificadores desde <code>/account/list</code>. Cada objeto de cuenta devuelve un <code>id</code> (el id de entidad numérico que va en <code>accountId</code>) y un <code>name</code> (la etiqueta legible que va en <code>accountSpec</code>). En resumen: el id de cuenta no es el número con el que su cuenta resulta estar nombrada. Nunca lo codifique fijo, siempre obténgalo dinámicamente." },
+    { type: "heading", text: "2. El permiso Orders de la API key no está en Full Access" },
+    { type: "paragraph", html: "Tradovate permite delimitar una API key por capacidad. Una key puede leer posiciones, leer información de cuenta y leer la biblioteca de contratos mientras <strong class='text-white'>Orders</strong> sigue configurado por debajo de Full Access, lo cual basta exactamente para autenticarse, listar cuentas y <em>parecer</em> saludable, pero se bloquea en el instante en que intenta colocar una orden. La solución es directa: otorgue a la key <strong class='text-white'>Orders → Full Access</strong> en su configuración de aplicación/API de Tradovate, y luego reemita el token para que el nuevo permiso quede incorporado." },
+    { type: "heading", text: "3. Generó el token en un host y está ordenando en otro" },
+    { type: "paragraph", html: "Tradovate opera dos entornos completamente separados con dos base URLs:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Demo / simulación:</strong> <code>https://demo.tradovateapi.com/v1</code>",
+        "<strong class='text-white'>Live:</strong> <code>https://live.tradovateapi.com/v1</code>",
+      ],
+    },
+    { type: "paragraph", html: "Un token solicitado desde el host demo solo es válido contra el host demo. Si apunta ese token al <code>/order/placeOrder</code> de live (o al revés), obtiene <code>Access is denied</code>. El error clásico es llamar a <code>auth/accessTokenRequest</code> con una base URL malformada o inconsistente, y luego preguntarse por qué falla cada orden posterior. Confirme que su llamada de auth y su llamada de orden usan la misma cadena de host, carácter por carácter, y que el host corresponde a la cuenta con la que realmente pretende operar." },
+    { type: "heading", text: "4. isAutomated falta o tiene el tipo incorrecto" },
+    { type: "paragraph", html: "Si un bot, algoritmo o cualquier proceso impersonal dispara la orden, las reglas de CME exigen <code>isAutomated: true</code>; un humano haciendo clic en un botón de la interfaz es <code>false</code>. Más allá de simplemente <em>incluir</em> el flag, preste atención al tipo de dato. Cuando envía JSON por POST, <code>isAutomated</code> es un booleano (<code>true</code>). Pero si codifica el cuerpo como formulario (<code>data=</code> en lugar de <code>json=</code> en <code>requests</code> de Python), todo se serializa como cadenas, así que debe enviarse como el string <code>\"true\"</code>. Un booleano que cae silenciosamente a <code>False</code>, o un tipo que el servidor no puede parsear, lo devuelve directo a <code>Access is denied</code>." },
+    { type: "heading", text: "5. Formato de símbolo y (en live) un dispositivo no aprobado" },
+    { type: "paragraph", html: "Dos causas menos frecuentes completan la lista. Primero, el formato de símbolo: pasar un contrato vencido o mal formado, un código de expiración antiguo, o un símbolo continuo/de rollover que la API no puede enrutar, puede leerse como una denegación en lugar de un error claro de &ldquo;símbolo inválido&rdquo;. Cambiar al contrato del mes frontal activo (o a su id de contrato) lo resuelve. Segundo, el <strong class='text-white'>id de dispositivo en live</strong>: live exige estrictamente que las órdenes provengan de un <code>deviceId</code> conocido y aprobado, suministrado en <code>auth/accessTokenRequest</code>, mientras que demo en gran medida lo ignora. Si su código coloca órdenes en demo pero es denegado solo en live, esa es la señal." },
+    { type: "heading", text: "Cómo resolver \"Access is denied\": paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Corregir el id de cuenta", html: "Autentíquese y obtenga su access token desde el host correcto. Llame a <code>GET /account/list</code> en ese mismo host. En la respuesta, ubique su objeto de cuenta. Copie el valor de <strong class='text-white'><code>id</code></strong>, ese id de entidad numérico es su <code>accountId</code>. Copie el valor de <strong class='text-white'><code>name</code></strong> (normalmente su nombre de usuario de Tradovate o la etiqueta de la cuenta), eso es su <code>accountSpec</code>. Incluya ambos en el cuerpo de la orden. No reutilice los dígitos del nombre visible." },
+        { title: "Otorgar Orders Full Access y reemitir el token", html: "Abra la configuración de aplicación/API key de Tradovate donde se listan los permisos por capacidad. Configure el permiso <strong class='text-white'>Orders</strong> en <strong class='text-white'>Full Access</strong> (deje los alcances de lectura según sea necesario). Guarde, luego solicite un access token <strong class='text-white'>nuevo</strong>, los cambios de permisos solo aplican a los tokens emitidos después. Verifique con una llamada de lectura como <code>GET /position/list</code> antes de reintentar la orden." },
+        { title: "Hacer coincidir el host demo/live", html: "Determine en qué entorno vive la cuenta (sim o live). Use <code>demo.tradovateapi.com/v1</code> para sim y <code>live.tradovateapi.com/v1</code> para live, para <strong class='text-white'>ambas</strong> la llamada de auth y la llamada de orden. Si cambia de entorno, vuelva a autenticarse; nunca lleve un token demo a live. Recuerde que los tokens son de corta duración (aproximadamente 90 minutos). Si un script que antes funcionaba empieza a fallar a mitad de sesión, renueve el token en lugar de volver a diagnosticar permisos." },
+        { title: "Enviar isAutomated correctamente", html: "Incluya siempre <code>isAutomated</code> en el cuerpo de la orden. Configúrelo en <code>true</code> para órdenes de bot/algorítmicas, y en <code>false</code> solo para acciones genuinas de interfaz activadas por un humano. Si envía JSON, manténgalo como booleano. Si usa form-encode, envíe el string <code>\"true\"</code>. Vuelva a enviar la orden y confirme que la respuesta contiene un id de orden real, no un <code>failureText</code>." },
+      ],
+    },
+    { type: "heading", text: "Tabla de resolución de problemas" },
+    {
+      type: "table",
+      headers: ["Error", "Significado", "Solución"],
+      rows: [
+        ["401 Access Denied", "Token inválido, expirado, o generado en el host equivocado", "Vuelva a autenticarse en el host demo/live correspondiente; renueve antes de la expiración de ~90 minutos"],
+        ["200 + {\"failureText\":\"Access is denied\"}", "Autenticado, pero la orden fue rechazada en la capa de permisos", "Use el accountId numérico de /account/list y otorgue Orders Full Access"],
+        ["Access is denied tras otorgar el permiso Orders", "accountId es el número del nombre visible, no el id de entidad", "Lea el campo id desde /account/list"],
+        ["Funciona en demo, denegado en live", "Id de dispositivo no aprobado en live", "Envíe un deviceId estable en la autenticación y apruebe el dispositivo"],
+        ["Access is denied con una cuenta correcta", "isAutomated falta o tiene el tipo de dato incorrecto", "Incluya isAutomated; true para bots; tipo correcto según JSON o form-encoded"],
+        ["Denegado en un símbolo aparentemente válido", "Contrato vencido, continuo o mal formado", "Use el contrato del mes frontal activo o su id de contrato"],
+      ],
+    },
+    { type: "heading", text: "Dónde encaja PickMyTrade" },
+    { type: "paragraph", html: "La mayoría de los tickets de &ldquo;Access is denied&rdquo; provienen de construir manualmente la lógica de auth y órdenes. PickMyTrade elimina por completo esa superficie de riesgo al intermediar la conexión con Tradovate por usted:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Auth gestionada y enrutamiento de host</strong>, el host demo/live correcto y un token nuevo y vigente se gestionan automáticamente, de modo que una sesión caducada nunca se disfraza de error de permisos.",
+        "<strong class='text-white'>Resolución de cuenta y permisos</strong>, el id de cuenta numérico correcto y el permiso de Orders se resuelven a partir de su cuenta vinculada, no se adivinan a partir de un nombre visible.",
+        "<strong class='text-white'>Manejo conforme de isAutomated</strong>, las órdenes automatizadas se marcan correctamente según las reglas del exchange en todo momento, sin trampas de booleano vs. string.",
+        "<strong class='text-white'>Validación de símbolo y contrato</strong>, las alertas se asignan a un contrato válido y activo antes de que se envíe cualquier orden, eliminando la clase de fallo de &ldquo;denegado por símbolo inválido&rdquo;.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous connectez un bot à l'API REST de Tradovate, le premier ordre en direct part, et la réponse est <code>Access is denied</code>. Cela ressemble à un mur. Vos identifiants ont fonctionné. L'authentification vous a remis un jeton. Vous pouvez même voir vos positions. Pourtant, <code>/order/placeOrder</code> rejette chaque exécution avec ce même message laconique, parfois sous forme de <code>401</code>, parfois sous forme de HTTP <code>200</code> contenant <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>. Bonne nouvelle : ce n'est presque jamais un problème de &laquo; clé cassée &raquo;. C'est l'une de quatre erreurs banales et faciles à corriger : le mauvais id de compte, une permission Orders trop restreinte, le mauvais host demo/live, ou un flag <code>isAutomated</code> mal géré. Vous trouverez ci-dessous la checklist complète, ce que signifie réellement l'erreur, chaque cause racine avec une correction étape par étape, et comment PickMyTrade évite entièrement cette catégorie de problème afin que vos alertes TradingView soient routées vers Tradovate sans que vous ayez à déboguer du JSON à l'ouverture." },
+    {
+      type: "checklist",
+      heading: "Checklist rapide pour \"Access is denied\"",
+      items: [
+        "<strong class='text-white'>Mauvais id de compte</strong>, lisez l'<code>id</code> numérique depuis <code>/account/list</code>, jamais le nom affiché (comme &laquo; DEMO1235 &raquo;).",
+        "<strong class='text-white'>Permission Orders trop faible</strong>, la permission <strong class='text-white'>Orders</strong> de la clé API doit être réglée sur <strong class='text-white'>Full Access</strong>, pas en lecture seule.",
+        "<strong class='text-white'>Host incompatible</strong>, générez le jeton <em>et</em> envoyez l'ordre sur le même host : <code>demo.tradovateapi.com</code> pour le sim, <code>live.tradovateapi.com</code> pour le live.",
+        "<strong class='text-white'><code>isAutomated</code> incorrect</strong>, incluez le flag et réglez-le sur <code>true</code> pour tout ordre de bot ou algorithmique, et surveillez le type de donnée lors d'un form-encode.",
+        "<strong class='text-white'>Symbole obsolète ou incorrect</strong>, utilisez le contrat du mois frontal actif (ou son id de contrat), pas un symbole expiré ou continu.",
+        "<strong class='text-white'>Appareil non approuvé en live</strong>, le live impose strictement un <code>deviceId</code> connu et stable ; le demo est plus permissif à ce sujet.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie \"Access is denied\"" },
+    { type: "paragraph", html: "<code>Access is denied</code> est la réponse générique de Tradovate signifiant &laquo; cette requête n'est pas autorisée à faire cela &raquo;. Le piège, c'est que ce <em>n'est pas</em> une erreur d'authentification au sens habituel : vous pouvez détenir un access token parfaitement valide et non expiré et l'obtenir quand même. Elle se déclenche au moment où Tradovate vérifie si <em>ce jeton</em> est autorisé à passer <em>cet ordre</em> sur <em>ce compte</em>. Toute rupture dans cette chaîne, un id de compte que le jeton ne possède pas, une clé API à qui les droits de passage d'ordre n'ont jamais été accordés, ou un jeton généré sur le host demo puis rejoué sur le live, se traduit par les mêmes trois mots." },
+    { type: "paragraph", html: "Deux formes de réponse comptent ici. Un <code>401 Access Denied</code> brut pointe généralement vers le jeton ou le host : le jeton a expiré, il a été demandé depuis la mauvaise base URL, ou (en live) l'appareil n'est pas approuvé. Un <code>200 OK</code> dont le corps contient <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code> signifie que la requête s'est <em>authentifiée</em> correctement, mais que l'ordre lui-même a été refusé au niveau des permissions, classiquement à cause d'un <code>accountId</code> erroné ou d'une permission Orders manquante." },
+    { type: "paragraph", html: "Comme les deux variantes affichent le même message, il est facile de perdre une heure à revérifier des mots de passe alors que le véritable problème se trouve dans un seul champ du corps de la requête. Vérifiez d'abord le statut HTTP, puis parcourez les causes ci-dessous dans l'ordre." },
+    { type: "heading", text: "Principales causes de \"Access is denied\" lors du passage d'ordre" },
+    { type: "heading", text: "1. Vous envoyez le nom affiché au lieu de l'id de compte numérique" },
+    { type: "paragraph", html: "C'est de loin la cause la plus fréquente. Votre compte <em>affiche</em> un nom comme <code>DEMO1235</code> ou <code>TRAD123456</code>, et il est tentant de transmettre le nombre final comme <code>accountId</code>. Mais <code>accountId</code> est l'<strong class='text-white'>id d'entité</strong> interne de Tradovate, une valeur numérique distincte qui n'a aucun rapport avec les chiffres du nom affiché. Si vous transmettez le mauvais id, le jeton ne &laquo; possède &raquo; pas ce compte, et l'ordre est refusé." },
+    { type: "paragraph", html: "La correction consiste à lire les deux identifiants depuis <code>/account/list</code>. Chaque objet de compte renvoie un <code>id</code> (l'id d'entité numérique à placer dans <code>accountId</code>) et un <code>name</code> (le libellé lisible à placer dans <code>accountSpec</code>). En résumé : l'id de compte n'est pas le nombre dont votre compte porte le nom. Ne le codez jamais en dur, récupérez-le toujours." },
+    { type: "heading", text: "2. La permission Orders de la clé API n'est pas Full Access" },
+    { type: "paragraph", html: "Tradovate permet de restreindre une clé API par capacité. Une clé peut lire les positions, lire les informations de compte et lire la bibliothèque de contrats tout en ayant <strong class='text-white'>Orders</strong> réglé en dessous de Full Access, ce qui suffit exactement à s'authentifier, lister les comptes, et <em>paraître</em> fonctionnelle, mais elle est bloquée dès qu'elle tente de passer un ordre. La correction est directe : accordez à la clé <strong class='text-white'>Orders → Full Access</strong> dans les paramètres d'application/API Tradovate, puis régénérez le jeton pour que la nouvelle permission soit prise en compte." },
+    { type: "heading", text: "3. Vous avez généré le jeton sur un host et passez l'ordre sur un autre" },
+    { type: "paragraph", html: "Tradovate exploite deux environnements entièrement séparés avec deux base URLs :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Demo / simulation :</strong> <code>https://demo.tradovateapi.com/v1</code>",
+        "<strong class='text-white'>Live :</strong> <code>https://live.tradovateapi.com/v1</code>",
+      ],
+    },
+    { type: "paragraph", html: "Un jeton demandé sur le host demo n'est valide que contre le host demo. Pointez ce jeton vers le <code>/order/placeOrder</code> du live (ou l'inverse) et vous obtenez <code>Access is denied</code>. L'erreur classique consiste à appeler <code>auth/accessTokenRequest</code> avec une base URL malformée ou incohérente, puis à se demander pourquoi chaque ordre suivant échoue. Vérifiez que votre appel d'authentification et votre appel d'ordre utilisent la même chaîne de host, caractère pour caractère, et que le host correspond au compte sur lequel vous voulez réellement trader." },
+    { type: "heading", text: "4. isAutomated est manquant ou du mauvais type" },
+    { type: "paragraph", html: "Si un bot, un algorithme ou tout processus impersonnel déclenche l'ordre, les règles du CME exigent <code>isAutomated: true</code> ; un humain cliquant sur un bouton de l'interface donne <code>false</code>. Au-delà du simple fait d'<em>inclure</em> le flag, surveillez le type de donnée. Lorsque vous envoyez du JSON en POST, <code>isAutomated</code> est un booléen (<code>true</code>). Mais si vous encodez le corps en formulaire (<code>data=</code> au lieu de <code>json=</code> dans <code>requests</code> en Python), tout est sérialisé en chaînes, il doit donc être envoyé comme la chaîne <code>\"true\"</code>. Un booléen qui retombe silencieusement à <code>False</code>, ou un type que le serveur ne peut pas analyser, vous ramène directement à <code>Access is denied</code>." },
+    { type: "heading", text: "5. Format du symbole et (en live) un appareil non approuvé" },
+    { type: "paragraph", html: "Deux causes moins fréquentes complètent la liste. Premièrement, le format du symbole : transmettre un contrat expiré ou mal formé, un ancien code d'expiration, ou un symbole continu/de rollover que l'API ne peut pas router, peut se lire comme un refus plutôt que comme une erreur claire de &laquo; symbole invalide &raquo;. Passer au contrat du mois frontal actif (ou à son id de contrat) résout le problème. Deuxièmement, l'<strong class='text-white'>id d'appareil en live</strong> : le live impose strictement que les ordres proviennent d'un <code>deviceId</code> connu et approuvé, fourni lors de <code>auth/accessTokenRequest</code>, alors que le demo l'ignore en grande partie. Si votre code passe des ordres en demo mais est refusé uniquement en live, c'est le signe." },
+    { type: "heading", text: "Comment résoudre \"Access is denied\" : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Corriger l'id de compte", html: "Authentifiez-vous et récupérez votre access token depuis le bon host. Appelez <code>GET /account/list</code> sur ce même host. Dans la réponse, repérez votre objet de compte. Copiez la valeur <strong class='text-white'><code>id</code></strong>, cet id d'entité numérique est votre <code>accountId</code>. Copiez la valeur <strong class='text-white'><code>name</code></strong> (généralement votre nom d'utilisateur Tradovate ou le libellé du compte), c'est votre <code>accountSpec</code>. Placez les deux dans le corps de l'ordre. Ne réutilisez pas les chiffres du nom affiché." },
+        { title: "Accorder Orders Full Access, puis régénérer le jeton", html: "Ouvrez les paramètres d'application/clé API Tradovate où figurent les permissions par capacité. Réglez la permission <strong class='text-white'>Orders</strong> sur <strong class='text-white'>Full Access</strong> (laissez les portées de lecture selon vos besoins). Enregistrez, puis demandez un access token <strong class='text-white'>nouveau</strong>, les changements de permission ne s'appliquent qu'aux jetons émis ensuite. Vérifiez avec un appel de lecture comme <code>GET /position/list</code> avant de réessayer l'ordre." },
+        { title: "Faire correspondre le host demo/live", html: "Déterminez dans quel environnement se trouve le compte (sim ou live). Utilisez <code>demo.tradovateapi.com/v1</code> pour le sim et <code>live.tradovateapi.com/v1</code> pour le live, pour <strong class='text-white'>à la fois</strong> l'appel d'authentification et l'appel d'ordre. Si vous changez d'environnement, ré-authentifiez-vous ; ne transportez jamais un jeton demo vers le live. Rappelez-vous que les jetons ont une durée de vie courte (environ 90 minutes). Si un script qui fonctionnait auparavant commence à échouer en cours de session, renouvelez le jeton plutôt que de rediagnostiquer les permissions." },
+        { title: "Transmettre isAutomated correctement", html: "Incluez toujours <code>isAutomated</code> dans le corps de l'ordre. Réglez-le sur <code>true</code> pour les ordres de bot/algorithmiques, sur <code>false</code> uniquement pour des actions d'interface réellement déclenchées par un humain. Si vous envoyez du JSON, gardez-le en booléen. Si vous encodez en formulaire, envoyez la chaîne <code>\"true\"</code>. Renvoyez l'ordre et vérifiez que la réponse contient un véritable id d'ordre, pas un <code>failureText</code>." },
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Erreur", "Signification", "Correction"],
+      rows: [
+        ["401 Access Denied", "Jeton invalide, expiré, ou généré sur le mauvais host", "Se réauthentifier sur le host demo/live correspondant ; renouveler avant l'expiration d'environ 90 minutes"],
+        ["200 + {\"failureText\":\"Access is denied\"}", "Authentifié, mais l'ordre a été refusé au niveau des permissions", "Utiliser l'accountId numérique depuis /account/list et accorder Orders Full Access"],
+        ["Access is denied après avoir accordé la permission Orders", "accountId est le nombre du nom affiché, pas l'id d'entité", "Lire le champ id depuis /account/list"],
+        ["Fonctionne en demo, refusé en live", "Id d'appareil non approuvé en live", "Envoyer un deviceId stable lors de l'authentification et approuver l'appareil"],
+        ["Access is denied avec un compte correct", "isAutomated manquant ou de type incorrect", "Inclure isAutomated ; true pour les bots ; type correct selon JSON ou form-encoded"],
+        ["Refusé sur un symbole apparemment valide", "Contrat expiré, continu ou mal formé", "Utiliser le contrat du mois frontal actif ou son id de contrat"],
+      ],
+    },
+    { type: "heading", text: "Où PickMyTrade intervient" },
+    { type: "paragraph", html: "La plupart des tickets &laquo; Access is denied &raquo; proviennent d'une plomberie d'authentification et de passage d'ordre développée à la main. PickMyTrade élimine entièrement cette surface de risque en prenant en charge la connexion à Tradovate pour vous :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Authentification gérée et routage du host</strong>, le bon host demo/live et un jeton récent et valide sont gérés automatiquement, de sorte qu'une session expirée ne se fait jamais passer pour une erreur de permission.",
+        "<strong class='text-white'>Résolution du compte et des permissions</strong>, l'id de compte numérique correct et la permission Orders sont résolus à partir de votre compte lié, et non devinés à partir d'un nom affiché.",
+        "<strong class='text-white'>Gestion conforme d'isAutomated</strong>, les ordres automatisés sont correctement marqués selon les règles de la bourse à chaque fois, sans piège booléen/chaîne.",
+        "<strong class='text-white'>Validation du symbole et du contrat</strong>, les alertes sont associées à un contrat valide et actif avant qu'un ordre ne soit jamais envoyé, éliminant la catégorie d'échec &laquo; refusé pour symbole invalide &raquo;.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Collega un bot all'API REST di Tradovate, parte il primo ordine live, e arriva <code>Access is denied</code>. Sembra un muro. Le sue credenziali hanno funzionato. L'autenticazione le ha fornito un token. Può persino vedere le sue posizioni. Eppure <code>/order/placeOrder</code> rifiuta ogni esecuzione con la stessa stringa laconica, a volte come <code>401</code>, a volte come HTTP <code>200</code> con <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code>. La buona notizia: quasi mai si tratta di un problema di &ldquo;chiave non valida&rdquo;. È uno dei quattro errori banali e facilmente risolvibili: l'id account sbagliato, un permesso Orders troppo limitato, l'host demo/live sbagliato, o un flag <code>isAutomated</code> gestito male. Di seguito trova la checklist completa, cosa significa realmente l'errore, ogni causa con una soluzione passo dopo passo, e come PickMyTrade evita del tutto questa categoria di problemi in modo che i suoi alert di TradingView arrivino a Tradovate senza dover eseguire il debug del JSON in apertura." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per \"Access is denied\"",
+      items: [
+        "<strong class='text-white'>Id account sbagliato</strong>, legga l'<code>id</code> numerico da <code>/account/list</code>, mai il nome visualizzato (come &ldquo;DEMO1235&rdquo;).",
+        "<strong class='text-white'>Permesso Orders troppo basso</strong>, il permesso <strong class='text-white'>Orders</strong> della API key deve essere impostato su <strong class='text-white'>Full Access</strong>, non in sola lettura.",
+        "<strong class='text-white'>Host non corrispondente</strong>, generi il token <em>e</em> invii l'ordine sullo stesso host: <code>demo.tradovateapi.com</code> per il sim, <code>live.tradovateapi.com</code> per il live.",
+        "<strong class='text-white'><code>isAutomated</code> errato</strong>, includa il flag e lo imposti su <code>true</code> per qualsiasi ordine di bot o algoritmico, e presti attenzione al tipo di dato quando usa il form-encoding.",
+        "<strong class='text-white'>Simbolo obsoleto o errato</strong>, usi il contratto del mese frontale attivo (o il suo id contratto), non un simbolo scaduto o continuo.",
+        "<strong class='text-white'>Dispositivo non approvato in live</strong>, il live impone rigorosamente un <code>deviceId</code> noto e stabile; il demo è più permissivo.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa \"Access is denied\"" },
+    { type: "paragraph", html: "<code>Access is denied</code> è la risposta generica di Tradovate che significa &ldquo;questa richiesta non è autorizzata a farlo&rdquo;. La trappola è che <em>non</em> è un errore di autenticazione nel senso comune: può avere un access token perfettamente valido e non scaduto e riceverla comunque. Si verifica nel momento in cui Tradovate verifica se <em>questo token</em> è autorizzato a piazzare <em>questo ordine</em> su <em>questo account</em>. Qualsiasi interruzione in quella catena, un id account che il token non possiede, una API key a cui non sono mai stati concessi i diritti di invio ordini, o un token generato sull'host demo e poi riutilizzato sul live, si manifesta con le stesse tre parole." },
+    { type: "paragraph", html: "Qui contano due tipi di risposta. Un <code>401 Access Denied</code> puro punta di solito al token o all'host: il token è scaduto, è stato richiesto dalla base URL sbagliata, oppure (in live) il dispositivo non è approvato. Un <code>200 OK</code> il cui corpo contiene <code>{\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"}</code> significa che la richiesta si è <em>autenticata</em> correttamente, ma l'ordine stesso è stato rifiutato a livello di permessi, tipicamente per un <code>accountId</code> errato o un permesso Orders mancante." },
+    { type: "paragraph", html: "Poiché entrambe le varianti mostrano la stessa stringa, è facile perdere un'ora a ricontrollare le password quando il vero problema è un singolo campo nel corpo della richiesta. Controlli prima lo stato HTTP, poi analizzi le cause seguenti in ordine." },
+    { type: "heading", text: "Principali cause di \"Access is denied\" sull'invio ordine" },
+    { type: "heading", text: "1. Sta inviando il nome visualizzato invece dell'id account numerico" },
+    { type: "paragraph", html: "Questa è di gran lunga la causa più comune. Il suo account <em>mostra</em> un nome come <code>DEMO1235</code> o <code>TRAD123456</code>, ed è tentante passare il numero finale come <code>accountId</code>. Ma <code>accountId</code> è l'<strong class='text-white'>id entità</strong> interno di Tradovate, un valore numerico separato che non ha nulla a che fare con le cifre del nome visualizzato. Se passa quello sbagliato, il token non &ldquo;possiede&rdquo; quell'account, quindi l'ordine viene rifiutato." },
+    { type: "paragraph", html: "La soluzione è leggere entrambi gli identificatori da <code>/account/list</code>. Ogni oggetto account restituisce un <code>id</code> (l'id entità numerico da inserire in <code>accountId</code>) e un <code>name</code> (l'etichetta leggibile da inserire in <code>accountSpec</code>). In breve: l'id account non è il numero da cui il suo account risulta chiamato. Non lo codifichi mai in modo fisso, lo recuperi sempre dinamicamente." },
+    { type: "heading", text: "2. Il permesso Orders della API key non è Full Access" },
+    { type: "paragraph", html: "Tradovate consente di limitare una API key per singola funzionalità. Una key può leggere le posizioni, leggere le informazioni account e leggere la libreria contratti pur avendo <strong class='text-white'>Orders</strong> impostato al di sotto di Full Access, il che basta esattamente per autenticarsi, elencare gli account e <em>sembrare</em> funzionante, ma viene bloccata nell'istante in cui tenta di piazzare un ordine. La soluzione è diretta: conceda alla key <strong class='text-white'>Orders → Full Access</strong> nelle impostazioni applicazione/API di Tradovate, quindi riemetta il token in modo che il nuovo permesso venga applicato." },
+    { type: "heading", text: "3. Ha generato il token su un host e sta inviando l'ordine su un altro" },
+    { type: "paragraph", html: "Tradovate gestisce due ambienti completamente separati con due base URL:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Demo / simulazione:</strong> <code>https://demo.tradovateapi.com/v1</code>",
+        "<strong class='text-white'>Live:</strong> <code>https://live.tradovateapi.com/v1</code>",
+      ],
+    },
+    { type: "paragraph", html: "Un token richiesto dall'host demo è valido solo verso l'host demo. Se punta quel token verso il <code>/order/placeOrder</code> di live (o viceversa) ottiene <code>Access is denied</code>. L'errore classico è chiamare <code>auth/accessTokenRequest</code> con una base URL malformata o non corrispondente, per poi chiedersi perché ogni ordine successivo fallisca. Verifichi che la chiamata di autenticazione e la chiamata di ordine usino la stessa stringa host, carattere per carattere, e che l'host corrisponda all'account con cui intende realmente operare." },
+    { type: "heading", text: "4. isAutomated manca o ha il tipo sbagliato" },
+    { type: "paragraph", html: "Se un bot, un algoritmo o qualsiasi processo impersonale attiva l'ordine, le regole CME richiedono <code>isAutomated: true</code>; un essere umano che clicca su un pulsante dell'interfaccia è <code>false</code>. Oltre al semplice <em>includere</em> il flag, presti attenzione al tipo di dato. Quando invia JSON via POST, <code>isAutomated</code> è un booleano (<code>true</code>). Ma se codifica il corpo come form (<code>data=</code> invece di <code>json=</code> in <code>requests</code> di Python), tutto viene serializzato come stringhe, quindi deve essere inviato come stringa <code>\"true\"</code>. Un booleano che ricade silenziosamente su <code>False</code>, o un tipo che il server non riesce a interpretare, la riporta dritta a <code>Access is denied</code>." },
+    { type: "heading", text: "5. Formato del simbolo e (in live) un dispositivo non approvato" },
+    { type: "paragraph", html: "Due cause meno frequenti completano l'elenco. Primo, il formato del simbolo: passare un contratto scaduto o mal formato, un vecchio codice di scadenza, o un simbolo continuo/di rollover che l'API non riesce a instradare, può leggersi come un rifiuto invece di un chiaro errore di &ldquo;simbolo non valido&rdquo;. Passare al contratto del mese frontale attivo (o al suo id contratto) risolve il problema. Secondo, l'<strong class='text-white'>id dispositivo in live</strong>: il live impone rigorosamente che gli ordini provengano da un <code>deviceId</code> noto e approvato, fornito in <code>auth/accessTokenRequest</code>, mentre il demo lo ignora in gran parte. Se il suo codice piazza ordini in demo ma viene rifiutato solo in live, questo è l'indizio." },
+    { type: "heading", text: "Come risolvere \"Access is denied\": passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Correggere l'id account", html: "Si autentichi e recuperi l'access token dall'host corretto. Chiami <code>GET /account/list</code> sullo stesso host. Nella risposta, individui il suo oggetto account. Copi il valore di <strong class='text-white'><code>id</code></strong>, quell'id entità numerico è il suo <code>accountId</code>. Copi il valore di <strong class='text-white'><code>name</code></strong> (in genere il suo nome utente Tradovate o l'etichetta dell'account), quello è il suo <code>accountSpec</code>. Inserisca entrambi nel corpo dell'ordine. Non riutilizzi le cifre del nome visualizzato." },
+        { title: "Concedere Orders Full Access e riemettere il token", html: "Apra le impostazioni applicazione/API key di Tradovate dove sono elencati i permessi per singola funzionalità. Imposti il permesso <strong class='text-white'>Orders</strong> su <strong class='text-white'>Full Access</strong> (lasci gli scope di lettura secondo necessità). Salvi, quindi richieda un access token <strong class='text-white'>nuovo</strong>, le modifiche ai permessi si applicano solo ai token emessi successivamente. Verifichi con una chiamata di lettura come <code>GET /position/list</code> prima di riprovare l'ordine." },
+        { title: "Far corrispondere l'host demo/live", html: "Determini in quale ambiente si trova l'account (sim o live). Usi <code>demo.tradovateapi.com/v1</code> per il sim e <code>live.tradovateapi.com/v1</code> per il live, sia per la chiamata di autenticazione <strong class='text-white'>che</strong> per quella di ordine. Se cambia ambiente, si riautentichi; non porti mai un token demo sul live. Ricordi che i token hanno una durata breve (circa 90 minuti). Se uno script che prima funzionava inizia a fallire a metà sessione, rinnovi il token invece di ridiagnosticare i permessi." },
+        { title: "Inviare isAutomated correttamente", html: "Includa sempre <code>isAutomated</code> nel corpo dell'ordine. Lo imposti su <code>true</code> per ordini di bot/algoritmici, su <code>false</code> solo per azioni dell'interfaccia genuinamente attivate da un essere umano. Se invia JSON, lo mantenga booleano. Se usa il form-encoding, invii la stringa <code>\"true\"</code>. Rinvii l'ordine e confermi che la risposta contenga un id ordine reale, non un <code>failureText</code>." },
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Errore", "Significato", "Soluzione"],
+      rows: [
+        ["401 Access Denied", "Token non valido, scaduto, o generato sull'host sbagliato", "Riautenticarsi sull'host demo/live corrispondente; rinnovare prima della scadenza di circa 90 minuti"],
+        ["200 + {\"failureText\":\"Access is denied\"}", "Autenticato, ma l'ordine è stato rifiutato a livello di permessi", "Usare l'accountId numerico da /account/list e concedere Orders Full Access"],
+        ["Access is denied dopo aver concesso il permesso Orders", "accountId è il numero del nome visualizzato, non l'id entità", "Leggere il campo id da /account/list"],
+        ["Funziona in demo, rifiutato in live", "Id dispositivo non approvato in live", "Inviare un deviceId stabile in fase di autenticazione e approvare il dispositivo"],
+        ["Access is denied con un account corretto", "isAutomated mancante o con tipo di dato errato", "Includere isAutomated; true per i bot; tipo corretto per JSON o form-encoded"],
+        ["Rifiutato su un simbolo apparentemente valido", "Contratto scaduto, continuo o mal formato", "Usare il contratto del mese frontale attivo o il suo id contratto"],
+      ],
+    },
+    { type: "heading", text: "Dove si inserisce PickMyTrade" },
+    { type: "paragraph", html: "La maggior parte dei ticket &ldquo;Access is denied&rdquo; deriva dalla costruzione manuale della logica di autenticazione e invio ordini. PickMyTrade elimina del tutto questa superficie di rischio intermediando la connessione a Tradovate per lei:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Autenticazione gestita e instradamento host</strong>, l'host demo/live corretto e un token recente e valido vengono gestiti automaticamente, così una sessione scaduta non si presenta mai come un errore di permessi.",
+        "<strong class='text-white'>Risoluzione account e permessi</strong>, l'id account numerico corretto e il permesso Orders vengono determinati dal suo account collegato, non indovinati da un nome visualizzato.",
+        "<strong class='text-white'>Gestione conforme di isAutomated</strong>, gli ordini automatizzati vengono contrassegnati correttamente secondo le regole dell'exchange ogni volta, senza insidie booleano-vs-stringa.",
+        "<strong class='text-white'>Validazione simbolo e contratto</strong>, gli alert vengono mappati su un contratto valido e attivo prima che un ordine venga mai inviato, eliminando la categoria di errore &ldquo;rifiutato per simbolo non valido&rdquo;.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Ablehnungsfrei handeln", es: "Opere sin rechazos", fr: "Tradez sans rejets", it: "Operi senza rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and trade rejection-free.", de: "Starten Sie Ihre kostenlose 5-tägige Testphase, verknüpfen Sie Ihre Alerts noch heute und handeln Sie ohne Ablehnungen.", es: "Inicie su prueba gratuita de 5 días, vincule sus alertas hoy mismo y opere sin rechazos.", fr: "Démarrez votre essai gratuit de 5 jours, connectez vos alertes dès aujourd'hui et tradez sans rejets.", it: "Avvii la sua prova gratuita di 5 giorni, colleghi i suoi alert oggi stesso e operi senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Kostenlose 5-Tage-Testphase starten", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrer votre essai gratuit de 5 jours", it: "Avvii la prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why do I get \"Access is denied\" even though Orders Full Access is enabled?", a: "The permission is only half the check. The most common remaining cause is a wrong accountId, you're sending the display-name number instead of the numeric entity id from /account/list. A host mismatch, like using a demo token against live, produces the same string." },
+    { q: "How do I find my correct Tradovate accountId?", a: "Call GET /account/list on the same host you authenticated against. Use the object's id field (the numeric entity id) for accountId, and its name field for accountSpec. Never derive the id from the account's display name." },
+    { q: "What's the difference between accountSpec and accountId?", a: "accountSpec is the human-readable string name (usually your username or account label). accountId is the numeric internal id. Both are required in the order body and both come from /account/list." },
+    { q: "Does \"Access is denied\" always mean my API key lacks permission?", a: "No. It's a generic denial. Check Orders → Full Access first, but if that's already set, move on to the account id, the host, and the isAutomated type before assuming the key itself is broken." },
+    { q: "Why does it work in demo but fail in live?", a: "Live strictly enforces an approved deviceId and its own host, while demo is lenient. Supply a stable device id at authentication and approve the device to clear it." },
+    { q: "Should isAutomated be true or false?", a: "true for any order placed by a bot, script, or algorithm (an exchange requirement); false only when a human physically triggers it through a UI." },
+    { q: "Can \"Access is denied\" come back as an HTTP 200?", a: "Yes. Tradovate sometimes returns 200 OK with {\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"} in the body. Always inspect the body, not just the status code." },
+    { q: "Does a prop-firm account change any of this?", a: "It can. Some prop firms restrict or forbid direct API automation on evaluation accounts, and data/entitlement state varies by firm and account size, check your firm's current rules before automating." },
+  ], de: [
+    { q: "Warum erhalte ich \"Access is denied\", obwohl Orders Full Access aktiviert ist?", a: "Die Berechtigung ist nur die halbe Prüfung. Die häufigste verbleibende Ursache ist eine falsche accountId, Sie senden die Zahl aus dem Anzeigenamen statt der numerischen Entity-ID aus /account/list. Ein Host-Konflikt, etwa die Verwendung eines Demo-Tokens gegen Live, erzeugt dieselbe Meldung." },
+    { q: "Wie finde ich meine korrekte Tradovate-accountId?", a: "Rufen Sie GET /account/list auf demselben Host auf, gegen den Sie sich authentifiziert haben. Verwenden Sie das id-Feld des Objekts (die numerische Entity-ID) für accountId und das name-Feld für accountSpec. Leiten Sie die ID niemals aus dem Anzeigenamen des Accounts ab." },
+    { q: "Was ist der Unterschied zwischen accountSpec und accountId?", a: "accountSpec ist die lesbare Zeichenkette (in der Regel Ihr Benutzername oder die Account-Bezeichnung). accountId ist die numerische interne ID. Beide sind im Order-Body erforderlich und beide stammen aus /account/list." },
+    { q: "Bedeutet \"Access is denied\" immer, dass meinem API-Key eine Berechtigung fehlt?", a: "Nein. Es ist eine generische Ablehnung. Prüfen Sie zuerst Orders → Full Access, aber wenn das bereits gesetzt ist, gehen Sie weiter zur Account-ID, zum Host und zum isAutomated-Typ, bevor Sie annehmen, dass der Key selbst defekt ist." },
+    { q: "Warum funktioniert es in Demo, schlägt aber in Live fehl?", a: "Live erzwingt strikt eine freigegebene deviceId sowie den eigenen Host, während Demo nachsichtiger ist. Geben Sie bei der Authentifizierung eine stabile Geräte-ID an und geben Sie das Gerät frei, um das Problem zu beheben." },
+    { q: "Sollte isAutomated true oder false sein?", a: "true für jede Order, die von einem Bot, Skript oder Algorithmus platziert wird (eine Börsenanforderung); false nur, wenn ein Mensch sie physisch über eine UI auslöst." },
+    { q: "Kann \"Access is denied\" als HTTP 200 zurückkommen?", a: "Ja. Tradovate gibt manchmal 200 OK mit {\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"} im Body zurück. Prüfen Sie immer den Body, nicht nur den Statuscode." },
+    { q: "Ändert ein Prop-Firm-Account etwas daran?", a: "Das kann sein. Manche Prop-Firmen schränken die direkte API-Automatisierung auf Evaluierungs-Accounts ein oder verbieten sie, und der Daten-/Berechtigungsstatus variiert je nach Firma und Accountgröße, prüfen Sie vor der Automatisierung die aktuellen Regeln Ihrer Firma." },
+  ], es: [
+    { q: "¿Por qué obtengo \"Access is denied\" aunque Orders Full Access esté habilitado?", a: "El permiso es solo la mitad de la verificación. La causa restante más común es un accountId incorrecto, está enviando el número del nombre visible en lugar del id de entidad numérico de /account/list. Un host incorrecto, como usar un token demo contra live, produce el mismo mensaje." },
+    { q: "¿Cómo encuentro mi accountId correcto de Tradovate?", a: "Llame a GET /account/list en el mismo host contra el que se autenticó. Use el campo id del objeto (el id de entidad numérico) para accountId, y su campo name para accountSpec. Nunca derive el id a partir del nombre visible de la cuenta." },
+    { q: "¿Cuál es la diferencia entre accountSpec y accountId?", a: "accountSpec es la cadena de texto legible (normalmente su nombre de usuario o la etiqueta de la cuenta). accountId es el id numérico interno. Ambos son obligatorios en el cuerpo de la orden y ambos provienen de /account/list." },
+    { q: "¿\"Access is denied\" siempre significa que a mi API key le falta un permiso?", a: "No. Es una denegación genérica. Verifique primero Orders → Full Access, pero si ya está configurado, continúe con el id de cuenta, el host y el tipo de isAutomated antes de asumir que la clave en sí está rota." },
+    { q: "¿Por qué funciona en demo pero falla en live?", a: "Live exige estrictamente un deviceId aprobado y su propio host, mientras que demo es más permisivo. Proporcione un id de dispositivo estable durante la autenticación y apruebe el dispositivo para resolverlo." },
+    { q: "¿isAutomated debería ser true o false?", a: "true para cualquier orden colocada por un bot, script o algoritmo (un requisito del exchange); false solo cuando un humano la activa físicamente a través de una interfaz." },
+    { q: "¿\"Access is denied\" puede devolverse como un HTTP 200?", a: "Sí. Tradovate a veces devuelve 200 OK con {\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"} en el cuerpo. Inspeccione siempre el cuerpo, no solo el código de estado." },
+    { q: "¿Una cuenta de prop firm cambia algo de esto?", a: "Puede ser. Algunas prop firms restringen o prohíben la automatización directa mediante API en cuentas de evaluación, y el estado de datos/permisos varía según la firma y el tamaño de la cuenta, verifique las reglas actuales de su firma antes de automatizar." },
+  ], fr: [
+    { q: "Pourquoi est-ce que j'obtiens \"Access is denied\" alors qu'Orders Full Access est activé ?", a: "La permission n'est que la moitié de la vérification. La cause restante la plus fréquente est un accountId incorrect, vous envoyez le nombre du nom affiché au lieu de l'id d'entité numérique provenant de /account/list. Un host incompatible, comme utiliser un jeton demo contre le live, produit le même message." },
+    { q: "Comment trouver mon accountId Tradovate correct ?", a: "Appelez GET /account/list sur le même host que celui utilisé pour l'authentification. Utilisez le champ id de l'objet (l'id d'entité numérique) pour accountId, et son champ name pour accountSpec. Ne déduisez jamais l'id à partir du nom affiché du compte." },
+    { q: "Quelle est la différence entre accountSpec et accountId ?", a: "accountSpec est le nom sous forme de chaîne lisible (généralement votre nom d'utilisateur ou le libellé du compte). accountId est l'id interne numérique. Les deux sont requis dans le corps de l'ordre et proviennent tous deux de /account/list." },
+    { q: "Est-ce que \"Access is denied\" signifie toujours que ma clé API manque de permission ?", a: "Non. C'est un refus générique. Vérifiez d'abord Orders → Full Access, mais si c'est déjà réglé, passez à l'id de compte, au host, puis au type d'isAutomated avant de supposer que la clé elle-même est défectueuse." },
+    { q: "Pourquoi cela fonctionne-t-il en demo mais échoue en live ?", a: "Le live impose strictement un deviceId approuvé et son propre host, tandis que le demo est plus permissif. Fournissez un id d'appareil stable lors de l'authentification et approuvez l'appareil pour résoudre le problème." },
+    { q: "isAutomated doit-il être true ou false ?", a: "true pour tout ordre passé par un bot, un script ou un algorithme (une exigence de la bourse) ; false uniquement lorsqu'un humain le déclenche physiquement via une interface." },
+    { q: "\"Access is denied\" peut-il revenir sous forme de HTTP 200 ?", a: "Oui. Tradovate renvoie parfois un 200 OK avec {\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"} dans le corps. Inspectez toujours le corps, pas seulement le code de statut." },
+    { q: "Un compte prop firm change-t-il quelque chose à tout cela ?", a: "Cela peut être le cas. Certaines prop firms restreignent ou interdisent l'automatisation directe par API sur les comptes d'évaluation, et l'état des données/permissions varie selon la firme et la taille du compte, vérifiez les règles actuelles de votre firme avant d'automatiser." },
+  ], it: [
+    { q: "Perché ricevo \"Access is denied\" anche se Orders Full Access è abilitato?", a: "Il permesso è solo metà del controllo. La causa residua più comune è un accountId errato, sta inviando il numero del nome visualizzato invece dell'id entità numerico da /account/list. Un host non corrispondente, ad esempio l'uso di un token demo contro il live, produce lo stesso messaggio." },
+    { q: "Come trovo il mio accountId Tradovate corretto?", a: "Chiami GET /account/list sullo stesso host su cui si è autenticato. Usi il campo id dell'oggetto (l'id entità numerico) per accountId, e il suo campo name per accountSpec. Non derivi mai l'id dal nome visualizzato dell'account." },
+    { q: "Qual è la differenza tra accountSpec e accountId?", a: "accountSpec è la stringa leggibile (di solito il suo nome utente o l'etichetta dell'account). accountId è l'id numerico interno. Entrambi sono richiesti nel corpo dell'ordine ed entrambi provengono da /account/list." },
+    { q: "\"Access is denied\" significa sempre che alla mia API key manca un permesso?", a: "No. È un rifiuto generico. Controlli prima Orders → Full Access, ma se è già impostato, passi all'id account, all'host e al tipo di isAutomated prima di presumere che la chiave stessa sia difettosa." },
+    { q: "Perché funziona in demo ma fallisce in live?", a: "Il live impone rigorosamente un deviceId approvato e il proprio host, mentre il demo è più permissivo. Fornisca un id dispositivo stabile in fase di autenticazione e approvi il dispositivo per risolvere il problema." },
+    { q: "isAutomated deve essere true o false?", a: "true per qualsiasi ordine piazzato da un bot, script o algoritmo (un requisito dell'exchange); false solo quando è una persona ad attivarlo fisicamente tramite un'interfaccia." },
+    { q: "\"Access is denied\" può tornare come HTTP 200?", a: "Sì. Tradovate a volte restituisce 200 OK con {\"failureReason\":\"UnknownReason\",\"failureText\":\"Access is denied\"} nel corpo. Controlli sempre il corpo, non solo il codice di stato." },
+    { q: "Un account prop firm cambia qualcosa di tutto questo?", a: "Può darsi. Alcune prop firm limitano o vietano l'automazione diretta tramite API sugli account di valutazione, e lo stato di dati/permessi varia in base alla firm e alla dimensione dell'account, verifichi le regole attuali della sua firm prima di automatizzare." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. und wird von diesem weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Abläufe der Plattform ändern sich im Laufe der Zeit, bestätigen Sie den aktuellen Prozess daher stets in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión o de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todo inversor. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la plataforma y documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni sponsorisée par Tradovate, Inc. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; confirmez toujours la procédure actuelle dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a ogni investitore. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura corrente sulla piattaforma e nella documentazione ufficiale di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

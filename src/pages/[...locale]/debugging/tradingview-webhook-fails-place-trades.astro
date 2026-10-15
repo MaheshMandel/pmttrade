@@ -1,0 +1,574 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradingview-webhook-fails-place-trades";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "TradingView Webhook Fails to Place Tradovate Trades";
+const META_DESCRIPTION =
+  "TradingView webhook not placing Tradovate trades? Fix the plan, URL, JSON, symbol and account settings so every alert fires a real order, fast.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "TradingView-Webhook platziert keine Tradovate-Trades", es: "El webhook de TradingView no ejecuta operaciones en Tradovate", fr: "Le webhook TradingView ne passe pas les trades Tradovate", it: "Il webhook TradingView non esegue i trade su Tradovate" },
+  dek: { en: "Your TradingView alert fires on the chart and nothing lands in Tradovate, no fill, no rejection, just silence. Here's every point in the chain that can quietly break it, and how to fix each one.", de: "Ihr TradingView-Alert löst im Chart aus und in Tradovate kommt nichts an, keine Ausführung, keine Ablehnung, nur Stille. Hier ist jeder Punkt in der Kette, der unbemerkt ausfallen kann, und wie Sie ihn beheben.", es: "Su alerta de TradingView se dispara en el gráfico y no llega nada a Tradovate: ni ejecución ni rechazo, solo silencio. Aquí está cada punto de la cadena que puede fallar sin avisar y cómo corregir cada uno.", fr: "Votre alerte TradingView se déclenche sur le graphique et rien n'arrive dans Tradovate : ni exécution, ni rejet, juste le silence. Voici chaque point de la chaîne qui peut échouer sans bruit, et comment corriger chacun.", it: "Il Suo alert TradingView scatta sul grafico e su Tradovate non arriva nulla: nessuna esecuzione, nessun rifiuto, solo silenzio. Ecco ogni punto della catena che può guastarsi senza segnalarlo e come correggere ciascuno." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You wired up a TradingView alert, watched it fire on the chart, and then... nothing. No fill, no working order, not even a rejection, just silence on the Tradovate side. When a TradingView webhook won't place Tradovate trades, the break is almost always sitting in one of a handful of settings between the alert box and your broker: an unsupported plan, a malformed webhook URL, broken JSON, a symbol that doesn't map to a live Tradovate contract, the wrong account, or a strategy alert wired to the wrong trigger." },
+    { type: "paragraph", html: "Here's the detail that trips people up. TradingView only accepts webhook traffic on ports 80 and 443, and it cancels any call its server can't answer within three seconds. So a tiny misconfiguration doesn't throw a loud error, it just fails quietly, and you're left staring at a chart that looks like it did everything right. Below, I'll walk every failure point in the order worth checking, and show you where an automation bridge like PickMyTrade takes the guesswork out so a fired alert always turns into a real order." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for a TradingView Webhook Not Firing Trades",
+      items: [
+        "<strong class='text-white'>Paid TradingView plan</strong>, webhooks need a paid tier (Essential or higher). The free Basic plan can't send webhooks at all, so the alert triggers but no request ever leaves TradingView.",
+        "<strong class='text-white'>Two-factor authentication enabled</strong>, TradingView only allows webhook alerts when 2FA is switched on for your account.",
+        "<strong class='text-white'>Clean webhook URL</strong>, paste the exact bridge URL over HTTPS, with no trailing spaces or line breaks, on port 80 or 443.",
+        "<strong class='text-white'>Valid JSON alert message</strong>, the message body has to be parseable JSON. One missing brace, quote, or comma and the receiving service can't read it.",
+        "<strong class='text-white'>Matching symbol and account</strong>, the TradingView symbol must map to a live, tradable Tradovate contract, and the account selected in your bridge must be the one you actually mean to trade.",
+        "<strong class='text-white'>\"Order fills only\" for strategy alerts</strong>, alerts built from a Pine strategy should trigger on order fills, not on every bar calculation.",
+      ],
+    },
+    { type: "heading", text: "What “Alert Fired, But No Trade Landed in Tradovate” Means" },
+    { type: "paragraph", html: "Tradovate doesn't accept TradingView webhooks directly. The native TradingView-to-Tradovate broker connection lets you place and manage orders by hand from a chart or ladder, but it isn't a webhook endpoint. To turn an alert into an automated order you need a bridge, PickMyTrade, or your own server, that receives the webhook, reads the JSON, and calls the Tradovate API on your behalf." },
+    { type: "paragraph", html: "That means \"the alert fired but no trade appeared\" has two very different failure zones. Either the webhook never reached the bridge (a TradingView-side problem: plan, URL, JSON, or trigger), or the webhook reached the bridge but Tradovate refused the order downstream (a broker-side problem: symbol, account, market data, risk limits, or session). Figure out the right zone first and you save yourself hours." },
+    { type: "paragraph", html: "The good news is you're not flying blind. TradingView gives you a paper trail: every alert has a <strong class='text-white'>Webhook status</strong> column in the alert log, and Tradovate records every attempted order, rejections included, in its Orders and Notifications panels. Read those two logs together and you can pinpoint exactly where the chain broke." },
+    { type: "heading", text: "Top Causes of TradingView Webhook Trade Failures" },
+    { type: "heading", text: "1. Unsupported TradingView plan or 2FA disabled" },
+    { type: "paragraph", html: "Webhooks are a paid feature. On the free Basic plan the webhook URL field simply isn't there, so the alert fires visually but sends nothing. You need at least the Essential tier, and TradingView also blocks webhook alerts unless two-factor authentication is turned on for your account. Plan names and pricing shift over time, so confirm the current tiers on TradingView's pricing page rather than trusting an old screenshot." },
+    { type: "heading", text: "2. A broken or mistyped webhook URL" },
+    { type: "paragraph", html: "The webhook URL has to be the exact endpoint your bridge expects, pasted over HTTPS with no leading or trailing whitespace. TradingView only routes to ports 80 and 443, and it doesn't support IPv6 webhooks. A URL copied with a stray space, a missing path segment, or an http:// prefix will silently fail to deliver, no warning, no order." },
+    { type: "heading", text: "3. An invalid JSON alert message" },
+    { type: "paragraph", html: "Bridge services parse the alert message as JSON. If the payload isn't 100% valid, an unclosed brace, a missing comma, a smart quote pasted in from a document, an unescaped character, the receiver can't read it and drops the order. TradingView only sends the <code>application/json</code> content type when it detects valid JSON; otherwise it falls back to plain text, which many bridges reject outright." },
+    { type: "heading", text: "4. Symbol or account mismatch" },
+    { type: "paragraph", html: "The symbol on your TradingView chart has to resolve to a contract Tradovate can actually trade. Continuous symbols like <code>NQ1!</code> get auto-mapped to a front-month contract on a rollover schedule that can differ from Tradovate's, so an alert may end up pointing at an expired or non-tradable contract. Same story on the account side: if the account selected in your bridge isn't the funded or demo account you meant, or isn't linked and authorized, the order has nowhere valid to land." },
+    { type: "heading", text: "5. The wrong strategy trigger" },
+    { type: "paragraph", html: "When you build an alert from a Pine <strong class='text-white'>strategy</strong> rather than a plain indicator, the alert Condition should be set to the strategy with <strong class='text-white'>\"Order fills only\"</strong> selected. That makes each webhook line up with a real strategy order, an entry or an exit, instead of firing on every bar or never firing at all. Pick the wrong trigger and you get one of two headaches: a flood of duplicate webhooks, or total silence." },
+    { type: "heading", text: "How to Fix TradingView Webhook Trades to Tradovate: Step-by-Step" },
+    { type: "heading", text: "Fixing the plan, 2FA, and webhook URL" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirm your TradingView plan", html: "Confirm your TradingView subscription is a paid tier that includes webhooks (Essential or higher, verify the current tier list on TradingView)." },
+        { title: "Enable two-factor authentication", html: "Open your TradingView account security settings and enable two-factor authentication." },
+        { title: "Paste the exact webhook URL", html: "In your bridge (PickMyTrade or your own server), copy the exact webhook URL. Paste it into TradingView's alert <strong class='text-white'>Webhook URL</strong> field and delete any accidental spaces at the start or end." },
+        { title: "Re-trigger and check delivery", html: "Save the alert and re-trigger it. Then open the alert log and check the <strong class='text-white'>Webhook status</strong> column, a delivered status confirms the request left TradingView." },
+      ],
+    },
+    { type: "heading", text: "Fixing the alert trigger" },
+    {
+      type: "steps",
+      items: [
+        { title: "Select the strategy condition", html: "Create or edit the alert. Under <strong class='text-white'>Condition</strong>, select your strategy (not a bare price condition)." },
+        { title: "Choose Order fills only", html: "Choose the <strong class='text-white'>\"Order fills only\"</strong> trigger option so the webhook fires once per real strategy order." },
+      ],
+    },
+    { type: "heading", text: "Fixing symbol and account mapping" },
+    {
+      type: "steps",
+      items: [
+        { title: "Select the right account", html: "In your bridge, select the specific Tradovate account you want the order to hit and confirm it's linked and authorized." },
+        { title: "Use an explicit front-month contract", html: "Prefer an explicit front-month contract over a continuous symbol, so the order always targets a live, tradable Tradovate contract rather than an expired or delayed one." },
+        { title: "Confirm real-time data", html: "Make sure the account has an active real-time market-data subscription, futures orders can be refused when the account is stuck on delayed data." },
+      ],
+    },
+    { type: "heading", text: "Reading a Tradovate rejection" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the Orders panel", html: "If the alert delivered but no position opened, switch to Tradovate and open the <strong class='text-white'>Orders</strong> (and <strong class='text-white'>Notifications</strong>) panel." },
+        { title: "Reveal the rejection reason", html: "Double-click the failed order to reveal its rejection reason, common ones are a non-tradable symbol, unsigned market-data agreements, risk-parameter limits, an expired contract, or a closed market." },
+        { title: "Fix and re-fire", html: "Fix the specific broker-side cause, then re-fire the alert to confirm the full chain now completes." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom / message", "What it means", "Fix"],
+      rows: [
+        ["Alert fires, webhook status blank, no order", "Free plan or 2FA off, no request sent", "Upgrade to a paid tier and enable 2FA"],
+        ["Webhook status shows a delivery error", "URL is wrong, has spaces, or uses an unsupported port", "Re-paste the exact HTTPS URL (port 80/443), trim whitespace"],
+        ["Bridge receives request but ignores it", "Alert message is not valid JSON", "Rebuild the JSON; check every brace, quote, and comma"],
+        ["\"Non-Tradable Symbol\" in Tradovate", "Symbol doesn't map to a live contract or lacks data", "Use the front-month contract and subscribe to real-time data"],
+        ["\"TradingView has not been entitled to access your account\"", "The TradingView add-on/entitlement is off", "Enable the add-on (or ask your prop firm to enable it)"],
+        ["Order rejected on risk parameters", "Account risk limits or unsigned data agreements", "Sign data agreements and confirm risk settings"],
+        ["Duplicate or missing orders from a strategy", "Wrong alert trigger", "Set Condition to the strategy and choose \"Order fills only\""],
+        ["Wrong account traded", "Bridge pointed at a different account", "Re-select the correct linked Tradovate account"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Guided Alert Builder</strong>, generates the exact JSON payload and webhook URL for your Tradovate account, so a broken message or mistyped URL never leaves TradingView.",
+        "<strong class='text-white'>Symbol & Account Validation</strong>, maps your TradingView symbol to a live Tradovate contract and confirms the target account before an order is sent.",
+        "<strong class='text-white'>Entitlement & Data Checks</strong>, respects prop-firm limits and market-data state, surfacing the real reason an order would be refused.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors a validated order across every linked account so one alert reaches all of them cleanly.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie haben einen TradingView-Alert eingerichtet, ihn im Chart auslösen sehen und dann ... nichts. Keine Ausführung, keine Working-Order, nicht einmal eine Ablehnung, nur Stille auf Tradovate-Seite. Wenn ein TradingView-Webhook keine Tradovate-Trades platziert, liegt der Fehler fast immer in einer von wenigen Einstellungen zwischen Alert-Fenster und Broker: ein nicht unterstützter Tarif, eine fehlerhafte Webhook-URL, kaputtes JSON, ein Symbol, das keinem aktiven Tradovate-Kontrakt zugeordnet ist, das falsche Konto oder ein Strategie-Alert mit dem falschen Auslöser." },
+    { type: "paragraph",html: "Hier das Detail, das viele stolpern lässt. TradingView akzeptiert Webhook-Verkehr nur auf den Ports 80 und 443 und bricht jeden Aufruf ab, den sein Server nicht innerhalb von drei Sekunden beantworten kann. Eine winzige Fehlkonfiguration löst also keinen lauten Fehler aus, sie scheitert einfach leise, und Sie starren auf einen Chart, der alles richtig gemacht zu haben scheint. Unten gehe ich jeden Fehlerpunkt in der sinnvollen Prüfreihenfolge durch und zeige, wo eine Automatisierungs-Bridge wie PickMyTrade das Rätselraten beseitigt, sodass ein ausgelöster Alert immer zu einer echten Order wird." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste, wenn ein TradingView-Webhook keine Trades auslöst",
+      items: [
+        "<strong class='text-white'>Kostenpflichtiger TradingView-Tarif</strong>, Webhooks erfordern einen kostenpflichtigen Tarif (Essential oder höher). Der kostenlose Basic-Tarif kann überhaupt keine Webhooks senden, der Alert löst also aus, aber es verlässt keine Anfrage TradingView.",
+        "<strong class='text-white'>Zwei-Faktor-Authentifizierung aktiviert</strong>, TradingView erlaubt Webhook-Alerts nur, wenn 2FA für Ihr Konto eingeschaltet ist.",
+        "<strong class='text-white'>Saubere Webhook-URL</strong>, fügen Sie die exakte Bridge-URL über HTTPS ein, ohne Leerzeichen oder Zeilenumbrüche am Ende, auf Port 80 oder 443.",
+        "<strong class='text-white'>Gültige JSON-Alert-Nachricht</strong>, der Nachrichtentext muss als JSON parsbar sein. Eine fehlende Klammer, ein fehlendes Anführungszeichen oder Komma, und der empfangende Dienst kann sie nicht lesen.",
+        "<strong class='text-white'>Passendes Symbol und Konto</strong>, das TradingView-Symbol muss einem aktiven, handelbaren Tradovate-Kontrakt zugeordnet sein, und das in Ihrer Bridge gewählte Konto muss das sein, mit dem Sie tatsächlich handeln wollen.",
+        "<strong class='text-white'>\"Order fills only\" für Strategie-Alerts</strong>, aus einer Pine-Strategie erstellte Alerts sollten bei Order-Ausführungen auslösen, nicht bei jeder Balkenberechnung.",
+      ],
+    },
+    { type: "heading",text: "Was “Alert ausgelöst, aber kein Trade in Tradovate angekommen” bedeutet" },
+    { type: "paragraph",html: "Tradovate akzeptiert TradingView-Webhooks nicht direkt. Die native Broker-Verbindung von TradingView zu Tradovate erlaubt es, Orders manuell aus einem Chart oder einer Leiter zu platzieren und zu verwalten, ist aber kein Webhook-Endpunkt. Um einen Alert in eine automatisierte Order zu verwandeln, brauchen Sie eine Bridge, PickMyTrade oder Ihren eigenen Server, die den Webhook empfängt, das JSON liest und in Ihrem Auftrag die Tradovate-API aufruft." },
+    { type: "paragraph",html: "Das heißt, \"der Alert wurde ausgelöst, aber kein Trade erschien\" hat zwei sehr verschiedene Fehlerzonen. Entweder hat der Webhook die Bridge nie erreicht (ein TradingView-seitiges Problem: Tarif, URL, JSON oder Auslöser), oder der Webhook erreichte die Bridge, aber Tradovate lehnte die Order nachgelagert ab (ein brokerseitiges Problem: Symbol, Konto, Marktdaten, Risikolimits oder Sitzung). Wenn Sie die richtige Zone zuerst bestimmen, sparen Sie sich Stunden." },
+    { type: "paragraph",html: "Die gute Nachricht: Sie fliegen nicht blind. TradingView liefert eine Spur: Jeder Alert hat im Alert-Log eine Spalte <strong class='text-white'>Webhook status</strong>, und Tradovate protokolliert jeden Orderversuch, auch Ablehnungen, in seinen Panels Orders und Notifications. Lesen Sie beide Logs zusammen, und Sie erkennen genau, wo die Kette gerissen ist." },
+    { type: "heading",text: "Die häufigsten Ursachen für fehlgeschlagene TradingView-Webhook-Trades" },
+    { type: "heading",text: "1. Nicht unterstützter TradingView-Tarif oder deaktivierte 2FA" },
+    { type: "paragraph",html: "Webhooks sind eine kostenpflichtige Funktion. Im kostenlosen Basic-Tarif fehlt das Webhook-URL-Feld schlicht, sodass der Alert zwar sichtbar auslöst, aber nichts sendet. Sie benötigen mindestens den Essential-Tarif, und TradingView blockiert Webhook-Alerts zudem, solange die Zwei-Faktor-Authentifizierung für Ihr Konto nicht eingeschaltet ist. Tarifnamen und Preise ändern sich im Lauf der Zeit; bestätigen Sie die aktuellen Stufen daher auf der Preisseite von TradingView, statt einem alten Screenshot zu vertrauen." },
+    { type: "heading",text: "2. Eine fehlerhafte oder falsch eingegebene Webhook-URL" },
+    { type: "paragraph",html: "Die Webhook-URL muss exakt der Endpunkt sein, den Ihre Bridge erwartet, über HTTPS und ohne Leerzeichen am Anfang oder Ende eingefügt. TradingView routet nur an die Ports 80 und 443 und unterstützt keine IPv6-Webhooks. Eine URL, die mit einem versehentlichen Leerzeichen, einem fehlenden Pfadsegment oder einem http://-Präfix kopiert wurde, wird stillschweigend nicht zugestellt, ohne Warnung, ohne Order." },
+    { type: "heading",text: "3. Eine ungültige JSON-Alert-Nachricht" },
+    { type: "paragraph",html: "Bridge-Dienste parsen die Alert-Nachricht als JSON. Ist die Nutzlast nicht zu 100 % gültig, etwa durch eine offene Klammer, ein fehlendes Komma, ein aus einem Dokument eingefügtes typografisches Anführungszeichen oder ein nicht maskiertes Zeichen, kann der Empfänger sie nicht lesen und verwirft die Order. TradingView sendet den Content-Type <code>application/json</code> nur, wenn es gültiges JSON erkennt; andernfalls fällt es auf Klartext zurück, den viele Bridges rundweg ablehnen." },
+    { type: "heading",text: "4. Symbol- oder Konto-Abweichung" },
+    { type: "paragraph",html: "Das Symbol in Ihrem TradingView-Chart muss auf einen Kontrakt aufgelöst werden, den Tradovate tatsächlich handeln kann. Fortlaufende Symbole wie <code>NQ1!</code> werden nach einem Rollover-Plan automatisch einem Front-Month-Kontrakt zugeordnet, der von dem bei Tradovate abweichen kann, sodass ein Alert auf einen abgelaufenen oder nicht handelbaren Kontrakt zeigen kann. Auf der Kontoseite gilt dasselbe: Ist das in Ihrer Bridge gewählte Konto nicht das finanzierte oder Demo-Konto, das Sie meinten, oder nicht verknüpft und autorisiert, hat die Order kein gültiges Ziel." },
+    { type: "heading",text: "5. Der falsche Strategie-Auslöser" },
+    { type: "paragraph",html: "Erstellen Sie einen Alert aus einer Pine-<strong class='text-white'>Strategie</strong> statt aus einem einfachen Indikator, sollte die Condition auf die Strategie gesetzt und <strong class='text-white'>\"Order fills only\"</strong> ausgewählt sein. So entspricht jeder Webhook einer echten Strategie-Order, einem Einstieg oder Ausstieg, statt bei jedem Balken oder nie auszulösen. Wählen Sie den falschen Auslöser, erhalten Sie eines von zwei Ärgernissen: eine Flut doppelter Webhooks oder totale Stille." },
+    { type: "heading",text: "So beheben Sie TradingView-Webhook-Trades zu Tradovate: Schritt für Schritt" },
+    { type: "heading",text: "Tarif, 2FA und Webhook-URL beheben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ihren TradingView-Tarif bestätigen", html: "Bestätigen Sie, dass Ihr TradingView-Abonnement ein kostenpflichtiger Tarif mit Webhooks ist (Essential oder höher, prüfen Sie die aktuelle Tarifliste bei TradingView)." },
+        { title: "Zwei-Faktor-Authentifizierung aktivieren", html: "Öffnen Sie die Sicherheitseinstellungen Ihres TradingView-Kontos und aktivieren Sie die Zwei-Faktor-Authentifizierung." },
+        { title: "Die exakte Webhook-URL einfügen", html: "Kopieren Sie in Ihrer Bridge (PickMyTrade oder Ihr eigener Server) die exakte Webhook-URL. Fügen Sie sie in das Feld <strong class='text-white'>Webhook URL</strong> des TradingView-Alerts ein und löschen Sie versehentliche Leerzeichen am Anfang oder Ende." },
+        { title: "Neu auslösen und Zustellung prüfen", html: "Speichern Sie den Alert und lösen Sie ihn erneut aus. Öffnen Sie dann das Alert-Log und prüfen Sie die Spalte <strong class='text-white'>Webhook status</strong>, ein Status \"delivered\" bestätigt, dass die Anfrage TradingView verlassen hat." },
+      ],
+    },
+    { type: "heading",text: "Den Alert-Auslöser beheben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Strategie-Condition auswählen", html: "Erstellen oder bearbeiten Sie den Alert. Wählen Sie unter <strong class='text-white'>Condition</strong> Ihre Strategie (nicht eine bloße Preisbedingung)." },
+        { title: "Order fills only wählen", html: "Wählen Sie die Auslöseroption <strong class='text-white'>\"Order fills only\"</strong>, damit der Webhook einmal pro echter Strategie-Order auslöst." },
+      ],
+    },
+    { type: "heading",text: "Symbol- und Kontozuordnung beheben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Das richtige Konto wählen", html: "Wählen Sie in Ihrer Bridge das konkrete Tradovate-Konto, das die Order treffen soll, und bestätigen Sie, dass es verknüpft und autorisiert ist." },
+        { title: "Einen expliziten Front-Month-Kontrakt verwenden", html: "Bevorzugen Sie einen expliziten Front-Month-Kontrakt statt eines fortlaufenden Symbols, damit die Order immer einen aktiven, handelbaren Tradovate-Kontrakt trifft und nicht einen abgelaufenen oder verzögerten." },
+        { title: "Echtzeitdaten bestätigen", html: "Stellen Sie sicher, dass das Konto ein aktives Echtzeit-Marktdatenabonnement hat, Futures-Orders können abgelehnt werden, wenn das Konto auf verzögerten Daten hängt." },
+      ],
+    },
+    { type: "heading",text: "Eine Tradovate-Ablehnung lesen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Orders-Panel öffnen", html: "Wurde der Alert zugestellt, aber keine Position eröffnet, wechseln Sie zu Tradovate und öffnen das Panel <strong class='text-white'>Orders</strong> (und <strong class='text-white'>Notifications</strong>)." },
+        { title: "Ablehnungsgrund anzeigen", html: "Doppelklicken Sie die fehlgeschlagene Order, um den Ablehnungsgrund anzuzeigen, häufige sind ein nicht handelbares Symbol, nicht unterzeichnete Marktdatenvereinbarungen, Risikoparameter-Limits, ein abgelaufener Kontrakt oder ein geschlossener Markt." },
+        { title: "Beheben und erneut auslösen", html: "Beheben Sie die konkrete brokerseitige Ursache und lösen Sie den Alert dann erneut aus, um zu bestätigen, dass die gesamte Kette nun durchläuft." },
+      ],
+    },
+    { type: "heading",text: "Fehlerbehebungstabelle" },
+    { type: "table", headers: ["Symptom / Meldung","Bedeutung","Lösung"], rows: [
+      ["Alert löst aus, Webhook status leer, keine Order","Kostenloser Tarif oder 2FA aus, keine Anfrage gesendet","Auf kostenpflichtigen Tarif wechseln und 2FA aktivieren"],
+      ["Webhook status zeigt einen Zustellfehler","URL ist falsch, enthält Leerzeichen oder nutzt einen nicht unterstützten Port","Exakte HTTPS-URL (Port 80/443) neu einfügen, Leerzeichen entfernen"],
+      ["Bridge empfängt Anfrage, ignoriert sie aber","Alert-Nachricht ist kein gültiges JSON","JSON neu aufbauen; jede Klammer, jedes Anführungszeichen und jedes Komma prüfen"],
+      ["\"Non-Tradable Symbol\" in Tradovate","Symbol wird keinem aktiven Kontrakt zugeordnet oder es fehlen Daten","Front-Month-Kontrakt verwenden und Echtzeitdaten abonnieren"],
+      ["\"TradingView has not been entitled to access your account\"","Das TradingView-Add-on bzw. die Berechtigung ist aus","Add-on aktivieren (oder Ihre Prop Firm bitten, es zu aktivieren)"],
+      ["Order wegen Risikoparametern abgelehnt","Konto-Risikolimits oder nicht unterzeichnete Datenvereinbarungen","Datenvereinbarungen unterzeichnen und Risikoeinstellungen bestätigen"],
+      ["Doppelte oder fehlende Orders aus einer Strategie","Falscher Alert-Auslöser","Condition auf die Strategie setzen und \"Order fills only\" wählen"],
+      ["Falsches Konto gehandelt","Bridge zeigt auf ein anderes Konto","Das richtige verknüpfte Tradovate-Konto neu auswählen"],
+    ] },
+    { type: "heading",text: "Verhindern Sie das mit PickMyTrade" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Geführter Alert-Builder</strong>, erzeugt die exakte JSON-Nutzlast und Webhook-URL für Ihr Tradovate-Konto, sodass eine kaputte Nachricht oder falsch getippte URL TradingView nie verlässt.",
+        "<strong class='text-white'>Symbol- & Kontovalidierung</strong>, ordnet Ihr TradingView-Symbol einem aktiven Tradovate-Kontrakt zu und bestätigt das Zielkonto, bevor eine Order gesendet wird.",
+        "<strong class='text-white'>Berechtigungs- & Datenprüfungen</strong>, berücksichtigen Prop-Firm-Limits und den Marktdatenstatus und zeigen den tatsächlichen Grund, aus dem eine Order abgelehnt würde.",
+        "<strong class='text-white'>Multi-Account-Sync</strong>, spiegelt eine validierte Order auf alle verknüpften Konten, sodass ein Alert sie alle sauber erreicht.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Configuró una alerta de TradingView, la vio dispararse en el gráfico y entonces... nada. Ninguna ejecución, ninguna orden activa, ni siquiera un rechazo, solo silencio del lado de Tradovate. Cuando un webhook de TradingView no ejecuta operaciones en Tradovate, la avería casi siempre está en uno de unos pocos ajustes entre el cuadro de alerta y su bróker: un plan no compatible, una URL de webhook mal formada, un JSON roto, un símbolo que no corresponde a un contrato activo de Tradovate, la cuenta equivocada o una alerta de estrategia conectada al disparador incorrecto." },
+    { type: "paragraph",html: "Este es el detalle que desconcierta a muchos. TradingView solo acepta tráfico de webhook en los puertos 80 y 443, y cancela cualquier llamada que su servidor no pueda responder en tres segundos. Por eso un pequeño error de configuración no genera un error ruidoso: simplemente falla en silencio y usted se queda mirando un gráfico que parece haberlo hecho todo bien. A continuación repaso cada punto de fallo en el orden que conviene revisar y muestro dónde un bridge de automatización como PickMyTrade elimina las conjeturas para que una alerta disparada siempre se convierta en una orden real." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para un webhook de TradingView que no dispara operaciones",
+      items: [
+        "<strong class='text-white'>Plan de pago de TradingView</strong>, los webhooks necesitan un plan de pago (Essential o superior). El plan gratuito Basic no puede enviar webhooks en absoluto, así que la alerta se dispara pero ninguna solicitud sale de TradingView.",
+        "<strong class='text-white'>Autenticación de dos factores activada</strong>, TradingView solo permite alertas con webhook cuando la 2FA está activada en su cuenta.",
+        "<strong class='text-white'>URL de webhook limpia</strong>, pegue la URL exacta del bridge por HTTPS, sin espacios ni saltos de línea al final, en el puerto 80 o 443.",
+        "<strong class='text-white'>Mensaje de alerta JSON válido</strong>, el cuerpo del mensaje debe poder analizarse como JSON. Una llave, comilla o coma ausente y el servicio receptor no puede leerlo.",
+        "<strong class='text-white'>Símbolo y cuenta coincidentes</strong>, el símbolo de TradingView debe corresponder a un contrato de Tradovate activo y negociable, y la cuenta seleccionada en su bridge debe ser aquella con la que realmente quiere operar.",
+        "<strong class='text-white'>\"Order fills only\" para alertas de estrategia</strong>, las alertas creadas a partir de una estrategia Pine deben dispararse con las ejecuciones de órdenes, no con el cálculo de cada barra.",
+      ],
+    },
+    { type: "heading",text: "Qué significa “La alerta se disparó, pero no llegó ninguna operación a Tradovate”" },
+    { type: "paragraph",html: "Tradovate no acepta webhooks de TradingView directamente. La conexión nativa de bróker de TradingView a Tradovate le permite colocar y gestionar órdenes a mano desde un gráfico o una escalera, pero no es un endpoint de webhook. Para convertir una alerta en una orden automatizada necesita un bridge, PickMyTrade o su propio servidor, que reciba el webhook, lea el JSON y llame a la API de Tradovate en su nombre." },
+    { type: "paragraph",html: "Eso significa que \"la alerta se disparó pero no apareció ninguna operación\" tiene dos zonas de fallo muy distintas. O el webhook nunca llegó al bridge (un problema del lado de TradingView: plan, URL, JSON o disparador), o el webhook llegó al bridge pero Tradovate rechazó la orden posteriormente (un problema del lado del bróker: símbolo, cuenta, datos de mercado, límites de riesgo o sesión). Si identifica primero la zona correcta, se ahorra horas." },
+    { type: "paragraph",html: "La buena noticia es que no vuela a ciegas. TradingView le deja un rastro: cada alerta tiene una columna <strong class='text-white'>Webhook status</strong> en el registro de alertas, y Tradovate registra cada intento de orden, rechazos incluidos, en sus paneles Orders y Notifications. Lea ambos registros juntos y podrá señalar exactamente dónde se rompió la cadena." },
+    { type: "heading",text: "Principales causas de fallos de operaciones por webhook de TradingView" },
+    { type: "heading",text: "1. Plan de TradingView no compatible o 2FA desactivada" },
+    { type: "paragraph",html: "Los webhooks son una función de pago. En el plan gratuito Basic el campo de URL del webhook simplemente no existe, así que la alerta se dispara visualmente pero no envía nada. Necesita al menos el plan Essential, y TradingView además bloquea las alertas con webhook salvo que la autenticación de dos factores esté activada en su cuenta. Los nombres y precios de los planes cambian con el tiempo, así que confirme los niveles actuales en la página de precios de TradingView en lugar de fiarse de una captura antigua." },
+    { type: "heading",text: "2. Una URL de webhook rota o mal escrita" },
+    { type: "paragraph",html: "La URL del webhook debe ser exactamente el endpoint que espera su bridge, pegada por HTTPS sin espacios al principio ni al final. TradingView solo enruta a los puertos 80 y 443 y no admite webhooks IPv6. Una URL copiada con un espacio perdido, un segmento de ruta ausente o un prefijo http:// dejará de entregarse en silencio: sin aviso y sin orden." },
+    { type: "heading",text: "3. Un mensaje de alerta JSON no válido" },
+    { type: "paragraph",html: "Los servicios de bridge analizan el mensaje de la alerta como JSON. Si la carga no es 100 % válida, por una llave sin cerrar, una coma ausente, una comilla tipográfica pegada desde un documento o un carácter sin escapar, el receptor no puede leerla y descarta la orden. TradingView solo envía el tipo de contenido <code>application/json</code> cuando detecta JSON válido; en caso contrario recurre a texto plano, que muchos bridges rechazan sin más." },
+    { type: "heading",text: "4. Discrepancia de símbolo o de cuenta" },
+    { type: "paragraph",html: "El símbolo de su gráfico de TradingView debe resolverse en un contrato que Tradovate pueda realmente operar. Los símbolos continuos como <code>NQ1!</code> se asignan automáticamente a un contrato del mes más cercano según un calendario de vencimientos que puede diferir del de Tradovate, por lo que una alerta puede acabar apuntando a un contrato vencido o no negociable. Lo mismo ocurre con la cuenta: si la cuenta seleccionada en su bridge no es la cuenta fondeada o demo que pretendía, o no está vinculada y autorizada, la orden no tiene un destino válido." },
+    { type: "heading",text: "5. El disparador de estrategia equivocado" },
+    { type: "paragraph",html: "Cuando crea una alerta a partir de una <strong class='text-white'>estrategia</strong> Pine en lugar de un indicador simple, la Condition de la alerta debe ajustarse a la estrategia con <strong class='text-white'>\"Order fills only\"</strong> seleccionado. Así cada webhook coincide con una orden real de la estrategia, una entrada o una salida, en lugar de dispararse en cada barra o no dispararse nunca. Si elige el disparador equivocado, obtendrá uno de dos quebraderos de cabeza: una avalancha de webhooks duplicados o silencio total." },
+    { type: "heading",text: "Cómo solucionar las operaciones por webhook de TradingView a Tradovate: paso a paso" },
+    { type: "heading",text: "Solucionar el plan, la 2FA y la URL del webhook" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirme su plan de TradingView", html: "Confirme que su suscripción de TradingView es un plan de pago que incluye webhooks (Essential o superior; verifique la lista de planes actual en TradingView)." },
+        { title: "Active la autenticación de dos factores", html: "Abra la configuración de seguridad de su cuenta de TradingView y active la autenticación de dos factores." },
+        { title: "Pegue la URL exacta del webhook", html: "En su bridge (PickMyTrade o su propio servidor), copie la URL exacta del webhook. Péguela en el campo <strong class='text-white'>Webhook URL</strong> de la alerta de TradingView y elimine los espacios accidentales al principio o al final." },
+        { title: "Vuelva a disparar y compruebe la entrega", html: "Guarde la alerta y vuelva a dispararla. Luego abra el registro de alertas y revise la columna <strong class='text-white'>Webhook status</strong>; un estado de entregado confirma que la solicitud salió de TradingView." },
+      ],
+    },
+    { type: "heading",text: "Solucionar el disparador de la alerta" },
+    {
+      type: "steps",
+      items: [
+        { title: "Seleccione la condición de estrategia", html: "Cree o edite la alerta. En <strong class='text-white'>Condition</strong>, seleccione su estrategia (no una simple condición de precio)." },
+        { title: "Elija Order fills only", html: "Elija la opción de disparador <strong class='text-white'>\"Order fills only\"</strong> para que el webhook se dispare una vez por cada orden real de la estrategia." },
+      ],
+    },
+    { type: "heading",text: "Solucionar la asignación de símbolo y cuenta" },
+    {
+      type: "steps",
+      items: [
+        { title: "Seleccione la cuenta correcta", html: "En su bridge, seleccione la cuenta concreta de Tradovate a la que quiere que llegue la orden y confirme que está vinculada y autorizada." },
+        { title: "Use un contrato explícito del mes más cercano", html: "Prefiera un contrato explícito del mes más cercano en lugar de un símbolo continuo, para que la orden siempre apunte a un contrato de Tradovate activo y negociable y no a uno vencido o retrasado." },
+        { title: "Confirme los datos en tiempo real", html: "Asegúrese de que la cuenta tiene una suscripción activa de datos de mercado en tiempo real; las órdenes de futuros pueden rechazarse cuando la cuenta se queda en datos retrasados." },
+      ],
+    },
+    { type: "heading",text: "Leer un rechazo de Tradovate" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra el panel Orders", html: "Si la alerta se entregó pero no se abrió ninguna posición, cambie a Tradovate y abra el panel <strong class='text-white'>Orders</strong> (y <strong class='text-white'>Notifications</strong>)." },
+        { title: "Muestre el motivo del rechazo", html: "Haga doble clic en la orden fallida para ver su motivo de rechazo; los más comunes son un símbolo no negociable, acuerdos de datos de mercado sin firmar, límites de parámetros de riesgo, un contrato vencido o un mercado cerrado." },
+        { title: "Corrija y vuelva a disparar", html: "Corrija la causa concreta del lado del bróker y luego vuelva a disparar la alerta para confirmar que toda la cadena se completa ahora." },
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma / mensaje","Qué significa","Solución"], rows: [
+      ["La alerta se dispara, Webhook status en blanco, sin orden","Plan gratuito o 2FA desactivada, no se envió ninguna solicitud","Pase a un plan de pago y active la 2FA"],
+      ["Webhook status muestra un error de entrega","La URL es incorrecta, tiene espacios o usa un puerto no compatible","Vuelva a pegar la URL HTTPS exacta (puerto 80/443) y elimine los espacios"],
+      ["El bridge recibe la solicitud pero la ignora","El mensaje de la alerta no es JSON válido","Reconstruya el JSON; revise cada llave, comilla y coma"],
+      ["\"Non-Tradable Symbol\" en Tradovate","El símbolo no corresponde a un contrato activo o faltan datos","Use el contrato del mes más cercano y suscríbase a datos en tiempo real"],
+      ["\"TradingView has not been entitled to access your account\"","El complemento o la habilitación de TradingView está desactivado","Habilite el complemento (o pida a su prop firm que lo habilite)"],
+      ["Orden rechazada por parámetros de riesgo","Límites de riesgo de la cuenta o acuerdos de datos sin firmar","Firme los acuerdos de datos y confirme la configuración de riesgo"],
+      ["Órdenes duplicadas o ausentes desde una estrategia","Disparador de alerta incorrecto","Ajuste Condition a la estrategia y elija \"Order fills only\""],
+      ["Se operó la cuenta equivocada","El bridge apunta a otra cuenta","Vuelva a seleccionar la cuenta de Tradovate vinculada correcta"],
+    ] },
+    { type: "heading",text: "Evítelo con PickMyTrade" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Constructor de alertas guiado</strong>, genera la carga JSON y la URL de webhook exactas para su cuenta de Tradovate, de modo que un mensaje roto o una URL mal escrita nunca salga de TradingView.",
+        "<strong class='text-white'>Validación de símbolo y cuenta</strong>, asigna su símbolo de TradingView a un contrato activo de Tradovate y confirma la cuenta de destino antes de enviar una orden.",
+        "<strong class='text-white'>Comprobaciones de habilitación y datos</strong>, respetan los límites de la prop firm y el estado de los datos de mercado, mostrando el motivo real por el que se rechazaría una orden.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replica una orden validada en todas las cuentas vinculadas para que una alerta llegue a todas ellas con limpieza.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous avez configuré une alerte TradingView, vous l'avez vue se déclencher sur le graphique, puis... rien. Pas d'exécution, pas d'ordre actif, pas même un rejet, juste le silence côté Tradovate. Lorsqu'un webhook TradingView ne passe pas de trades Tradovate, la panne se trouve presque toujours dans l'un des quelques réglages situés entre la fenêtre d'alerte et votre courtier : une formule non prise en charge, une URL de webhook mal formée, un JSON cassé, un symbole qui ne correspond pas à un contrat Tradovate actif, le mauvais compte ou une alerte de stratégie reliée au mauvais déclencheur." },
+    { type: "paragraph",html: "Voici le détail qui piège beaucoup de monde. TradingView n'accepte le trafic de webhook que sur les ports 80 et 443, et annule tout appel auquel son serveur ne peut pas répondre en trois secondes. Une minuscule erreur de configuration ne produit donc pas d'erreur bruyante : elle échoue silencieusement, et vous vous retrouvez devant un graphique qui semble avoir tout fait correctement. Ci-dessous, je passe en revue chaque point de défaillance dans l'ordre qu'il vaut la peine de vérifier, et je montre où un bridge d'automatisation comme PickMyTrade supprime les approximations pour qu'une alerte déclenchée devienne toujours un ordre réel." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour un webhook TradingView qui ne déclenche pas de trades",
+      items: [
+        "<strong class='text-white'>Formule TradingView payante</strong>, les webhooks nécessitent une formule payante (Essential ou supérieure). La formule gratuite Basic ne peut pas du tout envoyer de webhooks : l'alerte se déclenche, mais aucune requête ne quitte TradingView.",
+        "<strong class='text-white'>Authentification à deux facteurs activée</strong>, TradingView n'autorise les alertes par webhook que si la 2FA est activée sur votre compte.",
+        "<strong class='text-white'>URL de webhook propre</strong>, collez l'URL exacte du bridge en HTTPS, sans espace ni saut de ligne final, sur le port 80 ou 443.",
+        "<strong class='text-white'>Message d'alerte JSON valide</strong>, le corps du message doit pouvoir être analysé comme du JSON. Une accolade, un guillemet ou une virgule manquant, et le service récepteur ne peut pas le lire.",
+        "<strong class='text-white'>Symbole et compte concordants</strong>, le symbole TradingView doit correspondre à un contrat Tradovate actif et négociable, et le compte sélectionné dans votre bridge doit être celui sur lequel vous voulez réellement trader.",
+        "<strong class='text-white'>\"Order fills only\" pour les alertes de stratégie</strong>, les alertes construites à partir d'une stratégie Pine doivent se déclencher sur les exécutions d'ordres, et non à chaque calcul de barre.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie “L'alerte s'est déclenchée, mais aucun trade n'est arrivé dans Tradovate”" },
+    { type: "paragraph",html: "Tradovate n'accepte pas directement les webhooks TradingView. La connexion native de courtier de TradingView à Tradovate vous permet de passer et gérer des ordres à la main depuis un graphique ou une échelle, mais ce n'est pas un point de terminaison webhook. Pour transformer une alerte en ordre automatisé, il vous faut un bridge, PickMyTrade ou votre propre serveur, qui reçoit le webhook, lit le JSON et appelle l'API Tradovate en votre nom." },
+    { type: "paragraph",html: "Cela signifie que \"l'alerte s'est déclenchée mais aucun trade n'est apparu\" comporte deux zones de défaillance très différentes. Soit le webhook n'a jamais atteint le bridge (un problème côté TradingView : formule, URL, JSON ou déclencheur), soit le webhook a atteint le bridge mais Tradovate a refusé l'ordre en aval (un problème côté courtier : symbole, compte, données de marché, limites de risque ou session). Identifiez d'abord la bonne zone et vous économiserez des heures." },
+    { type: "paragraph",html: "La bonne nouvelle est que vous ne volez pas à l'aveugle. TradingView vous laisse une trace : chaque alerte a une colonne <strong class='text-white'>Webhook status</strong> dans le journal des alertes, et Tradovate enregistre chaque tentative d'ordre, rejets compris, dans ses panneaux Orders et Notifications. Lisez ces deux journaux ensemble et vous pourrez localiser exactement où la chaîne s'est rompue." },
+    { type: "heading",text: "Principales causes d'échec des trades par webhook TradingView" },
+    { type: "heading",text: "1. Formule TradingView non prise en charge ou 2FA désactivée" },
+    { type: "paragraph",html: "Les webhooks sont une fonctionnalité payante. Sur la formule gratuite Basic, le champ d'URL de webhook n'existe tout simplement pas : l'alerte se déclenche visuellement mais n'envoie rien. Il vous faut au moins la formule Essential, et TradingView bloque en outre les alertes par webhook tant que l'authentification à deux facteurs n'est pas activée sur votre compte. Les noms et les prix des formules évoluent ; confirmez donc les niveaux actuels sur la page de tarifs de TradingView plutôt que de vous fier à une ancienne capture d'écran." },
+    { type: "heading",text: "2. Une URL de webhook cassée ou mal saisie" },
+    { type: "paragraph",html: "L'URL du webhook doit être exactement le point de terminaison attendu par votre bridge, collée en HTTPS sans espace au début ni à la fin. TradingView n'achemine que vers les ports 80 et 443 et ne prend pas en charge les webhooks IPv6. Une URL copiée avec un espace parasite, un segment de chemin manquant ou un préfixe http:// ne sera pas livrée, silencieusement : sans avertissement, sans ordre." },
+    { type: "heading",text: "3. Un message d'alerte JSON invalide" },
+    { type: "paragraph",html: "Les services de bridge analysent le message d'alerte comme du JSON. Si la charge utile n'est pas valide à 100 %, avec une accolade non fermée, une virgule manquante, un guillemet typographique collé depuis un document ou un caractère non échappé, le récepteur ne peut pas la lire et abandonne l'ordre. TradingView n'envoie le type de contenu <code>application/json</code> que lorsqu'il détecte du JSON valide ; sinon, il se rabat sur du texte brut, que beaucoup de bridges rejettent d'emblée." },
+    { type: "heading",text: "4. Discordance de symbole ou de compte" },
+    { type: "paragraph",html: "Le symbole de votre graphique TradingView doit se résoudre en un contrat que Tradovate peut réellement trader. Les symboles continus comme <code>NQ1!</code> sont automatiquement associés à un contrat du mois le plus proche selon un calendrier de roulement qui peut différer de celui de Tradovate ; une alerte peut donc finir par viser un contrat expiré ou non négociable. Même chose côté compte : si le compte sélectionné dans votre bridge n'est pas le compte approvisionné ou démo visé, ou s'il n'est pas lié et autorisé, l'ordre n'a aucune destination valide." },
+    { type: "heading",text: "5. Le mauvais déclencheur de stratégie" },
+    { type: "paragraph",html: "Lorsque vous construisez une alerte à partir d'une <strong class='text-white'>stratégie</strong> Pine plutôt que d'un simple indicateur, la Condition de l'alerte doit être réglée sur la stratégie avec <strong class='text-white'>\"Order fills only\"</strong> sélectionné. Ainsi, chaque webhook correspond à un véritable ordre de la stratégie, une entrée ou une sortie, au lieu de se déclencher à chaque barre ou jamais. Un mauvais déclencheur produit l'un de deux maux de tête : un déluge de webhooks en double ou un silence total." },
+    { type: "heading",text: "Comment corriger les trades par webhook TradingView vers Tradovate : pas à pas" },
+    { type: "heading",text: "Corriger la formule, la 2FA et l'URL du webhook" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirmez votre formule TradingView", html: "Confirmez que votre abonnement TradingView est une formule payante incluant les webhooks (Essential ou supérieure ; vérifiez la liste actuelle des formules sur TradingView)." },
+        { title: "Activez l'authentification à deux facteurs", html: "Ouvrez les paramètres de sécurité de votre compte TradingView et activez l'authentification à deux facteurs." },
+        { title: "Collez l'URL exacte du webhook", html: "Dans votre bridge (PickMyTrade ou votre propre serveur), copiez l'URL exacte du webhook. Collez-la dans le champ <strong class='text-white'>Webhook URL</strong> de l'alerte TradingView et supprimez les espaces accidentels au début ou à la fin." },
+        { title: "Redéclenchez et vérifiez la livraison", html: "Enregistrez l'alerte et redéclenchez-la. Ouvrez ensuite le journal des alertes et vérifiez la colonne <strong class='text-white'>Webhook status</strong> ; un statut livré confirme que la requête a quitté TradingView." },
+      ],
+    },
+    { type: "heading",text: "Corriger le déclencheur de l'alerte" },
+    {
+      type: "steps",
+      items: [
+        { title: "Sélectionnez la condition de stratégie", html: "Créez ou modifiez l'alerte. Sous <strong class='text-white'>Condition</strong>, sélectionnez votre stratégie (et non une simple condition de prix)." },
+        { title: "Choisissez Order fills only", html: "Choisissez l'option de déclenchement <strong class='text-white'>\"Order fills only\"</strong> pour que le webhook se déclenche une fois par véritable ordre de la stratégie." },
+      ],
+    },
+    { type: "heading",text: "Corriger l'association du symbole et du compte" },
+    {
+      type: "steps",
+      items: [
+        { title: "Sélectionnez le bon compte", html: "Dans votre bridge, sélectionnez le compte Tradovate précis que l'ordre doit atteindre et confirmez qu'il est lié et autorisé." },
+        { title: "Utilisez un contrat explicite du mois le plus proche", html: "Préférez un contrat explicite du mois le plus proche à un symbole continu, afin que l'ordre vise toujours un contrat Tradovate actif et négociable plutôt qu'un contrat expiré ou retardé." },
+        { title: "Confirmez les données en temps réel", html: "Assurez-vous que le compte dispose d'un abonnement actif aux données de marché en temps réel ; les ordres sur contrats à terme peuvent être refusés lorsque le compte reste sur des données retardées." },
+      ],
+    },
+    { type: "heading",text: "Lire un rejet Tradovate" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez le panneau Orders", html: "Si l'alerte a été livrée mais qu'aucune position ne s'est ouverte, passez à Tradovate et ouvrez le panneau <strong class='text-white'>Orders</strong> (et <strong class='text-white'>Notifications</strong>)." },
+        { title: "Affichez la raison du rejet", html: "Double-cliquez sur l'ordre en échec pour révéler sa raison de rejet ; les plus courantes sont un symbole non négociable, des accords de données de marché non signés, des limites de paramètres de risque, un contrat expiré ou un marché fermé." },
+        { title: "Corrigez et redéclenchez", html: "Corrigez la cause précise côté courtier, puis redéclenchez l'alerte pour confirmer que la chaîne complète aboutit désormais." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme / message","Signification","Correctif"], rows: [
+      ["L'alerte se déclenche, Webhook status vide, aucun ordre","Formule gratuite ou 2FA désactivée, aucune requête envoyée","Passez à une formule payante et activez la 2FA"],
+      ["Webhook status affiche une erreur de livraison","L'URL est incorrecte, contient des espaces ou utilise un port non pris en charge","Recollez l'URL HTTPS exacte (port 80/443), supprimez les espaces"],
+      ["Le bridge reçoit la requête mais l'ignore","Le message d'alerte n'est pas du JSON valide","Reconstruisez le JSON ; vérifiez chaque accolade, guillemet et virgule"],
+      ["\"Non-Tradable Symbol\" dans Tradovate","Le symbole ne correspond pas à un contrat actif ou manque de données","Utilisez le contrat du mois le plus proche et abonnez-vous aux données en temps réel"],
+      ["\"TradingView has not been entitled to access your account\"","Le module/l'habilitation TradingView est désactivé","Activez le module (ou demandez à votre prop firm de l'activer)"],
+      ["Ordre rejeté sur les paramètres de risque","Limites de risque du compte ou accords de données non signés","Signez les accords de données et confirmez les paramètres de risque"],
+      ["Ordres en double ou manquants depuis une stratégie","Mauvais déclencheur d'alerte","Réglez Condition sur la stratégie et choisissez \"Order fills only\""],
+      ["Mauvais compte tradé","Le bridge pointe vers un autre compte","Resélectionnez le bon compte Tradovate lié"],
+    ] },
+    { type: "heading",text: "Évitez cela avec PickMyTrade" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Constructeur d'alertes guidé</strong>, génère la charge utile JSON et l'URL de webhook exactes pour votre compte Tradovate, de sorte qu'un message cassé ou une URL mal saisie ne quitte jamais TradingView.",
+        "<strong class='text-white'>Validation du symbole et du compte</strong>, associe votre symbole TradingView à un contrat Tradovate actif et confirme le compte cible avant l'envoi d'un ordre.",
+        "<strong class='text-white'>Contrôles d'habilitation et de données</strong>, respectent les limites de la prop firm et l'état des données de marché, en faisant apparaître la vraie raison pour laquelle un ordre serait refusé.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, réplique un ordre validé sur tous les comptes liés afin qu'une seule alerte les atteigne tous proprement.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Ha configurato un alert TradingView, l'ha visto scattare sul grafico e poi... niente. Nessuna esecuzione, nessun ordine di lavoro, nemmeno un rifiuto, solo silenzio lato Tradovate. Quando un webhook TradingView non esegue i trade su Tradovate, il guasto si trova quasi sempre in una delle poche impostazioni tra la finestra dell'alert e il Suo broker: un piano non supportato, un URL del webhook errato, un JSON rotto, un simbolo che non corrisponde a un contratto Tradovate attivo, il conto sbagliato o un alert di strategia collegato al trigger sbagliato." },
+    { type: "paragraph",html: "Ecco il dettaglio che mette in difficoltà molti. TradingView accetta traffico webhook solo sulle porte 80 e 443 e annulla qualsiasi chiamata a cui il suo server non possa rispondere entro tre secondi. Quindi un piccolo errore di configurazione non genera un errore rumoroso: fallisce in silenzio e Lei resta a fissare un grafico che sembra aver fatto tutto bene. Di seguito esamino ogni punto di guasto nell'ordine in cui conviene controllarlo e mostro dove un bridge di automazione come PickMyTrade elimina le congetture, così che un alert scattato diventi sempre un ordine reale." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per un webhook TradingView che non fa scattare trade",
+      items: [
+        "<strong class='text-white'>Piano TradingView a pagamento</strong>, i webhook richiedono un piano a pagamento (Essential o superiore). Il piano gratuito Basic non può inviare webhook in alcun modo, quindi l'alert scatta ma nessuna richiesta lascia TradingView.",
+        "<strong class='text-white'>Autenticazione a due fattori attiva</strong>, TradingView consente alert con webhook solo se la 2FA è attiva sul Suo account.",
+        "<strong class='text-white'>URL del webhook pulito</strong>, incolli l'URL esatto del bridge via HTTPS, senza spazi finali né interruzioni di riga, sulla porta 80 o 443.",
+        "<strong class='text-white'>Messaggio dell'alert in JSON valido</strong>, il corpo del messaggio deve essere analizzabile come JSON. Una parentesi graffa, una virgoletta o una virgola mancante e il servizio ricevente non può leggerlo.",
+        "<strong class='text-white'>Simbolo e conto coerenti</strong>, il simbolo TradingView deve corrispondere a un contratto Tradovate attivo e negoziabile, e il conto selezionato nel bridge deve essere quello su cui intende davvero operare.",
+        "<strong class='text-white'>\"Order fills only\" per gli alert di strategia</strong>, gli alert creati da una strategia Pine devono scattare sulle esecuzioni degli ordini, non a ogni calcolo di barra.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significa “L'alert è scattato, ma nessun trade è arrivato su Tradovate”" },
+    { type: "paragraph",html: "Tradovate non accetta direttamente i webhook di TradingView. La connessione nativa broker da TradingView a Tradovate permette di inserire e gestire ordini a mano da un grafico o da una ladder, ma non è un endpoint webhook. Per trasformare un alert in un ordine automatizzato serve un bridge, PickMyTrade o il Suo server, che riceva il webhook, legga il JSON e chiami l'API di Tradovate per Suo conto." },
+    { type: "paragraph",html: "Ciò significa che \"l'alert è scattato ma non è apparso alcun trade\" ha due zone di guasto molto diverse. O il webhook non ha mai raggiunto il bridge (un problema lato TradingView: piano, URL, JSON o trigger), oppure il webhook ha raggiunto il bridge ma Tradovate ha rifiutato l'ordine a valle (un problema lato broker: simbolo, conto, dati di mercato, limiti di rischio o sessione). Individui prima la zona giusta e risparmierà ore." },
+    { type: "paragraph",html: "La buona notizia è che non sta volando alla cieca. TradingView Le lascia una traccia: ogni alert ha una colonna <strong class='text-white'>Webhook status</strong> nel registro degli alert, e Tradovate registra ogni tentativo di ordine, rifiuti compresi, nei pannelli Orders e Notifications. Legga insieme i due registri e potrà individuare esattamente dove si è spezzata la catena." },
+    { type: "heading",text: "Cause principali dei trade falliti tramite webhook TradingView" },
+    { type: "heading",text: "1. Piano TradingView non supportato o 2FA disattivata" },
+    { type: "paragraph",html: "I webhook sono una funzione a pagamento. Sul piano gratuito Basic il campo URL del webhook semplicemente non c'è, quindi l'alert scatta visivamente ma non invia nulla. Serve almeno il piano Essential, e TradingView blocca inoltre gli alert con webhook finché l'autenticazione a due fattori non è attiva sul Suo account. Nomi e prezzi dei piani cambiano nel tempo, quindi confermi i livelli attuali sulla pagina dei prezzi di TradingView anziché fidarsi di un vecchio screenshot." },
+    { type: "heading",text: "2. Un URL del webhook errato o digitato male" },
+    { type: "paragraph",html: "L'URL del webhook deve essere esattamente l'endpoint atteso dal Suo bridge, incollato via HTTPS senza spazi all'inizio o alla fine. TradingView instrada solo verso le porte 80 e 443 e non supporta i webhook IPv6. Un URL copiato con uno spazio vagante, un segmento di percorso mancante o un prefisso http:// non verrà consegnato in silenzio: nessun avviso, nessun ordine." },
+    { type: "heading",text: "3. Un messaggio dell'alert in JSON non valido" },
+    { type: "paragraph",html: "I servizi bridge analizzano il messaggio dell'alert come JSON. Se il payload non è valido al 100%, per esempio una parentesi graffa non chiusa, una virgola mancante, una virgoletta tipografica incollata da un documento o un carattere non sottoposto a escape, il ricevente non può leggerlo e scarta l'ordine. TradingView invia il content type <code>application/json</code> solo quando rileva JSON valido; altrimenti ripiega sul testo semplice, che molti bridge rifiutano senza esitazione." },
+    { type: "heading",text: "4. Mancata corrispondenza di simbolo o conto" },
+    { type: "paragraph",html: "Il simbolo sul Suo grafico TradingView deve risolversi in un contratto che Tradovate può effettivamente negoziare. I simboli continui come <code>NQ1!</code> vengono associati automaticamente a un contratto front-month secondo un calendario di rollover che può differire da quello di Tradovate, quindi un alert può finire per puntare a un contratto scaduto o non negoziabile. Stessa cosa sul lato conto: se il conto selezionato nel bridge non è quello finanziato o demo che intendeva, o non è collegato e autorizzato, l'ordine non ha una destinazione valida." },
+    { type: "heading",text: "5. Il trigger di strategia sbagliato" },
+    { type: "paragraph",html: "Quando crea un alert da una <strong class='text-white'>strategia</strong> Pine anziché da un semplice indicatore, la Condition dell'alert dovrebbe essere impostata sulla strategia con <strong class='text-white'>\"Order fills only\"</strong> selezionato. In questo modo ogni webhook corrisponde a un ordine reale della strategia, un ingresso o un'uscita, invece di scattare a ogni barra o mai. Scegliendo il trigger sbagliato si ottiene uno di due grattacapi: una raffica di webhook duplicati o il silenzio totale." },
+    { type: "heading",text: "Come risolvere i trade via webhook da TradingView a Tradovate: passo dopo passo" },
+    { type: "heading",text: "Risolvere piano, 2FA e URL del webhook" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confermi il Suo piano TradingView", html: "Confermi che il Suo abbonamento TradingView sia un piano a pagamento che include i webhook (Essential o superiore; verifichi l'elenco attuale dei piani su TradingView)." },
+        { title: "Attivi l'autenticazione a due fattori", html: "Apra le impostazioni di sicurezza del Suo account TradingView e attivi l'autenticazione a due fattori." },
+        { title: "Incolli l'URL esatto del webhook", html: "Nel Suo bridge (PickMyTrade o il Suo server), copi l'URL esatto del webhook. Lo incolli nel campo <strong class='text-white'>Webhook URL</strong> dell'alert di TradingView ed elimini eventuali spazi accidentali all'inizio o alla fine." },
+        { title: "Faccia scattare di nuovo e controlli la consegna", html: "Salvi l'alert e lo faccia scattare di nuovo. Poi apra il registro degli alert e controlli la colonna <strong class='text-white'>Webhook status</strong>; uno stato di consegna riuscita conferma che la richiesta ha lasciato TradingView." },
+      ],
+    },
+    { type: "heading",text: "Risolvere il trigger dell'alert" },
+    {
+      type: "steps",
+      items: [
+        { title: "Selezioni la condizione di strategia", html: "Crei o modifichi l'alert. In <strong class='text-white'>Condition</strong>, selezioni la Sua strategia (non una semplice condizione di prezzo)." },
+        { title: "Scelga Order fills only", html: "Scelga l'opzione di trigger <strong class='text-white'>\"Order fills only\"</strong> in modo che il webhook scatti una volta per ogni ordine reale della strategia." },
+      ],
+    },
+    { type: "heading",text: "Risolvere la mappatura di simbolo e conto" },
+    {
+      type: "steps",
+      items: [
+        { title: "Selezioni il conto giusto", html: "Nel Suo bridge, selezioni lo specifico conto Tradovate che deve ricevere l'ordine e confermi che sia collegato e autorizzato." },
+        { title: "Usi un contratto front-month esplicito", html: "Preferisca un contratto front-month esplicito a un simbolo continuo, in modo che l'ordine punti sempre a un contratto Tradovate attivo e negoziabile anziché a uno scaduto o ritardato." },
+        { title: "Confermi i dati in tempo reale", html: "Si assicuri che il conto abbia un abbonamento attivo ai dati di mercato in tempo reale; gli ordini sui future possono essere rifiutati quando il conto resta su dati ritardati." },
+      ],
+    },
+    { type: "heading",text: "Leggere un rifiuto di Tradovate" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra il pannello Orders", html: "Se l'alert è stato consegnato ma non si è aperta alcuna posizione, passi a Tradovate e apra il pannello <strong class='text-white'>Orders</strong> (e <strong class='text-white'>Notifications</strong>)." },
+        { title: "Mostri il motivo del rifiuto", html: "Faccia doppio clic sull'ordine fallito per visualizzarne il motivo di rifiuto; i più comuni sono un simbolo non negoziabile, accordi sui dati di mercato non firmati, limiti dei parametri di rischio, un contratto scaduto o un mercato chiuso." },
+        { title: "Corregga e faccia scattare di nuovo", html: "Corregga la specifica causa lato broker, poi faccia scattare di nuovo l'alert per confermare che ora l'intera catena si completa." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo / messaggio","Significato","Soluzione"], rows: [
+      ["L'alert scatta, Webhook status vuoto, nessun ordine","Piano gratuito o 2FA disattivata, nessuna richiesta inviata","Passi a un piano a pagamento e attivi la 2FA"],
+      ["Webhook status mostra un errore di consegna","L'URL è errato, contiene spazi o usa una porta non supportata","Reincolli l'URL HTTPS esatto (porta 80/443), elimini gli spazi"],
+      ["Il bridge riceve la richiesta ma la ignora","Il messaggio dell'alert non è JSON valido","Ricostruisca il JSON; controlli ogni parentesi graffa, virgoletta e virgola"],
+      ["\"Non-Tradable Symbol\" in Tradovate","Il simbolo non corrisponde a un contratto attivo o mancano i dati","Usi il contratto front-month e si abboni ai dati in tempo reale"],
+      ["\"TradingView has not been entitled to access your account\"","L'add-on/abilitazione TradingView è disattivato","Abiliti l'add-on (oppure chieda alla Sua prop firm di abilitarlo)"],
+      ["Ordine rifiutato per parametri di rischio","Limiti di rischio del conto o accordi sui dati non firmati","Firmi gli accordi sui dati e confermi le impostazioni di rischio"],
+      ["Ordini duplicati o mancanti da una strategia","Trigger dell'alert sbagliato","Imposti Condition sulla strategia e scelga \"Order fills only\""],
+      ["Conto sbagliato negoziato","Il bridge punta a un altro conto","Riselezioni il conto Tradovate collegato corretto"],
+    ] },
+    { type: "heading",text: "Lo prevenga con PickMyTrade" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Costruttore di alert guidato</strong>, genera il payload JSON e l'URL del webhook esatti per il Suo conto Tradovate, così un messaggio rotto o un URL digitato male non lascia mai TradingView.",
+        "<strong class='text-white'>Validazione di simbolo e conto</strong>, associa il Suo simbolo TradingView a un contratto Tradovate attivo e conferma il conto di destinazione prima dell'invio di un ordine.",
+        "<strong class='text-white'>Controlli di abilitazione e dati</strong>, rispettano i limiti della prop firm e lo stato dei dati di mercato, mostrando il vero motivo per cui un ordine verrebbe rifiutato.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replica un ordine validato su tutti i conti collegati, così un solo alert li raggiunge tutti in modo pulito.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Losing Alerts to Silent Misconfigurations", de: "Schluss mit Alerts, die an stillen Fehlkonfigurationen scheitern", es: "Deje de perder alertas por configuraciones erróneas silenciosas", fr: "Cessez de perdre des alertes à cause de mauvaises configurations silencieuses", it: "Smetta di perdere alert a causa di configurazioni errate silenziose" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and trade rejection-free.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, verknüpfen Sie Ihre Alerts noch heute und handeln Sie ohne Ablehnungen.", es: "Comience su prueba gratuita de 7 días, vincule sus alertas hoy y opere sin rechazos.", fr: "Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et tradez sans rejet.", it: "Inizi la prova gratuita di 7 giorni, colleghi i Suoi alert oggi stesso e faccia trading senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Can Tradovate receive a TradingView webhook directly?", a: "No. Tradovate has no native webhook endpoint. The built-in TradingView connection is for manual trading; automation requires a bridge that converts the alert into Tradovate API calls." },
+    { q: "Do I need a paid TradingView plan for webhook automation?", a: "Yes. Webhooks require a paid tier (Essential or higher) and two-factor authentication enabled. The free Basic plan cannot send webhooks." },
+    { q: "My alert fired on the chart but nothing happened in Tradovate. Where do I start?", a: "Check the TradingView alert log's Webhook status column first. If it never delivered, the problem is TradingView-side (plan, URL, JSON, trigger). If it delivered, check Tradovate's Orders panel for a rejection." },
+    { q: "Why does my webhook work sometimes but not others?", a: "Intermittent failures usually come from a continuous symbol rolling to a new contract, an expired session token, or the account slipping onto delayed market data. Use explicit front-month contracts and keep data subscriptions active." },
+    { q: "How do I know my JSON alert message is valid?", a: "When the message is valid JSON, TradingView flags it as such and sends an application/json request. If in doubt, paste it into any JSON validator and confirm there are no smart quotes, missing commas, or unclosed braces." },
+    { q: "What does \"Order fills only\" do?", a: "For alerts built from a Pine strategy, it triggers the webhook on actual strategy order fills, entries and exits, rather than on every bar, so each alert maps to one real order." },
+    { q: "Why is my order rejected even though the webhook was delivered?", a: "The webhook reached Tradovate but the order broke a broker-side rule, a non-tradable symbol, unsigned data agreements, risk limits, an expired contract, or a closed market. Double-click the order in Tradovate to read the exact reason." },
+    { q: "Does using a bridge like PickMyTrade change my prop-firm rules?", a: "No. A bridge only routes and validates the order, your prop firm's own limits still apply, and those vary by firm and account size, so check your firm's current rules." },
+  ], de: [
+    { q: "Kann Tradovate einen TradingView-Webhook direkt empfangen?", a: "Nein. Tradovate hat keinen nativen Webhook-Endpunkt. Die integrierte TradingView-Verbindung ist für den manuellen Handel gedacht; Automatisierung erfordert eine Bridge, die den Alert in Tradovate-API-Aufrufe umwandelt." },
+    { q: "Brauche ich einen kostenpflichtigen TradingView-Tarif für die Webhook-Automatisierung?", a: "Ja. Webhooks erfordern einen kostenpflichtigen Tarif (Essential oder höher) und aktivierte Zwei-Faktor-Authentifizierung. Der kostenlose Basic-Tarif kann keine Webhooks senden." },
+    { q: "Mein Alert wurde im Chart ausgelöst, aber in Tradovate passierte nichts. Wo fange ich an?", a: "Prüfen Sie zuerst die Spalte Webhook status im TradingView-Alert-Log. Wurde er nie zugestellt, liegt das Problem auf TradingView-Seite (Tarif, URL, JSON, Auslöser). Wurde er zugestellt, prüfen Sie das Orders-Panel von Tradovate auf eine Ablehnung." },
+    { q: "Warum funktioniert mein Webhook manchmal und manchmal nicht?", a: "Sporadische Ausfälle entstehen meist, weil ein fortlaufendes Symbol auf einen neuen Kontrakt rollt, ein Sitzungstoken abgelaufen ist oder das Konto auf verzögerte Marktdaten gerutscht ist. Verwenden Sie explizite Front-Month-Kontrakte und halten Sie Datenabonnements aktiv." },
+    { q: "Woher weiß ich, dass meine JSON-Alert-Nachricht gültig ist?", a: "Ist die Nachricht gültiges JSON, kennzeichnet TradingView sie als solches und sendet eine application/json-Anfrage. Im Zweifel fügen Sie sie in einen beliebigen JSON-Validator ein und prüfen, dass keine typografischen Anführungszeichen, fehlenden Kommas oder offenen Klammern vorhanden sind." },
+    { q: "Was bewirkt \"Order fills only\"?", a: "Bei Alerts, die aus einer Pine-Strategie erstellt wurden, löst es den Webhook bei tatsächlichen Strategie-Order-Ausführungen aus, bei Einstiegen und Ausstiegen, statt bei jedem Balken, sodass jeder Alert einer echten Order entspricht." },
+    { q: "Warum wird meine Order abgelehnt, obwohl der Webhook zugestellt wurde?", a: "Der Webhook hat Tradovate erreicht, aber die Order verstieß gegen eine brokerseitige Regel: ein nicht handelbares Symbol, nicht unterzeichnete Datenvereinbarungen, Risikolimits, ein abgelaufener Kontrakt oder ein geschlossener Markt. Doppelklicken Sie die Order in Tradovate, um den genauen Grund zu lesen." },
+    { q: "Ändert eine Bridge wie PickMyTrade meine Prop-Firm-Regeln?", a: "Nein. Eine Bridge routet und validiert die Order nur, die eigenen Limits Ihrer Prop Firm gelten weiterhin, und diese variieren je nach Firma und Kontogröße, prüfen Sie daher die aktuellen Regeln Ihrer Firma." },
+  ], es: [
+    { q: "¿Puede Tradovate recibir un webhook de TradingView directamente?", a: "No. Tradovate no tiene un endpoint de webhook nativo. La conexión integrada de TradingView es para operar manualmente; la automatización requiere un bridge que convierta la alerta en llamadas a la API de Tradovate." },
+    { q: "¿Necesito un plan de pago de TradingView para la automatización con webhooks?", a: "Sí. Los webhooks requieren un plan de pago (Essential o superior) y la autenticación de dos factores activada. El plan gratuito Basic no puede enviar webhooks." },
+    { q: "Mi alerta se disparó en el gráfico pero no pasó nada en Tradovate. ¿Por dónde empiezo?", a: "Revise primero la columna Webhook status del registro de alertas de TradingView. Si nunca se entregó, el problema está del lado de TradingView (plan, URL, JSON, disparador). Si se entregó, revise el panel Orders de Tradovate en busca de un rechazo." },
+    { q: "¿Por qué mi webhook funciona a veces y otras no?", a: "Los fallos intermitentes suelen deberse a un símbolo continuo que pasa a un nuevo contrato, a un token de sesión caducado o a que la cuenta ha caído en datos de mercado retrasados. Use contratos explícitos del mes más cercano y mantenga activas las suscripciones de datos." },
+    { q: "¿Cómo sé que el mensaje JSON de mi alerta es válido?", a: "Cuando el mensaje es JSON válido, TradingView lo marca como tal y envía una solicitud application/json. Si tiene dudas, péguelo en cualquier validador de JSON y confirme que no hay comillas tipográficas, comas ausentes ni llaves sin cerrar." },
+    { q: "¿Qué hace \"Order fills only\"?", a: "En las alertas creadas a partir de una estrategia Pine, activa el webhook en las ejecuciones reales de órdenes de la estrategia, entradas y salidas, en lugar de en cada barra, de modo que cada alerta corresponde a una orden real." },
+    { q: "¿Por qué se rechaza mi orden aunque el webhook se entregó?", a: "El webhook llegó a Tradovate pero la orden incumplió una regla del lado del bróker: un símbolo no negociable, acuerdos de datos sin firmar, límites de riesgo, un contrato vencido o un mercado cerrado. Haga doble clic en la orden en Tradovate para leer el motivo exacto." },
+    { q: "¿Cambia un bridge como PickMyTrade las reglas de mi prop firm?", a: "No. Un bridge solo enruta y valida la orden; los límites propios de su prop firm siguen aplicándose, y varían según la firma y el tamaño de la cuenta, así que revise las reglas actuales de su firma." },
+  ], fr: [
+    { q: "Tradovate peut-il recevoir directement un webhook TradingView ?", a: "Non. Tradovate n'a pas de point de terminaison webhook natif. La connexion TradingView intégrée sert au trading manuel ; l'automatisation nécessite un bridge qui convertit l'alerte en appels à l'API Tradovate." },
+    { q: "Ai-je besoin d'une formule TradingView payante pour l'automatisation par webhook ?", a: "Oui. Les webhooks exigent une formule payante (Essential ou supérieure) et l'authentification à deux facteurs activée. La formule gratuite Basic ne peut pas envoyer de webhooks." },
+    { q: "Mon alerte s'est déclenchée sur le graphique mais rien ne s'est passé dans Tradovate. Par où commencer ?", a: "Vérifiez d'abord la colonne Webhook status du journal des alertes TradingView. S'il n'a jamais été livré, le problème est côté TradingView (formule, URL, JSON, déclencheur). S'il a été livré, consultez le panneau Orders de Tradovate pour y chercher un rejet." },
+    { q: "Pourquoi mon webhook fonctionne-t-il parfois et pas d'autres fois ?", a: "Les échecs intermittents viennent généralement d'un symbole continu qui bascule vers un nouveau contrat, d'un jeton de session expiré ou d'un compte retombé sur des données de marché retardées. Utilisez des contrats explicites du mois le plus proche et gardez vos abonnements de données actifs." },
+    { q: "Comment savoir si mon message d'alerte JSON est valide ?", a: "Lorsque le message est du JSON valide, TradingView le signale comme tel et envoie une requête application/json. En cas de doute, collez-le dans n'importe quel validateur JSON et vérifiez l'absence de guillemets typographiques, de virgules manquantes ou d'accolades non fermées." },
+    { q: "Que fait \"Order fills only\" ?", a: "Pour les alertes construites à partir d'une stratégie Pine, il déclenche le webhook sur les exécutions réelles d'ordres de la stratégie, entrées et sorties, plutôt qu'à chaque barre, de sorte que chaque alerte correspond à un véritable ordre." },
+    { q: "Pourquoi mon ordre est-il rejeté alors que le webhook a été livré ?", a: "Le webhook a atteint Tradovate mais l'ordre a enfreint une règle côté courtier : un symbole non négociable, des accords de données non signés, des limites de risque, un contrat expiré ou un marché fermé. Double-cliquez sur l'ordre dans Tradovate pour lire la raison exacte." },
+    { q: "Un bridge comme PickMyTrade change-t-il les règles de ma prop firm ?", a: "Non. Un bridge ne fait qu'acheminer et valider l'ordre ; les limites propres à votre prop firm continuent de s'appliquer, et elles varient selon la société et la taille du compte ; vérifiez donc les règles actuelles de votre société." },
+  ], it: [
+    { q: "Tradovate può ricevere direttamente un webhook di TradingView?", a: "No. Tradovate non ha un endpoint webhook nativo. La connessione TradingView integrata serve per il trading manuale; l'automazione richiede un bridge che converta l'alert in chiamate all'API di Tradovate." },
+    { q: "Ho bisogno di un piano TradingView a pagamento per l'automazione con i webhook?", a: "Sì. I webhook richiedono un piano a pagamento (Essential o superiore) e l'autenticazione a due fattori attiva. Il piano gratuito Basic non può inviare webhook." },
+    { q: "Il mio alert è scattato sul grafico ma su Tradovate non è successo nulla. Da dove comincio?", a: "Controlli prima di tutto la colonna Webhook status nel registro degli alert di TradingView. Se non è mai stato consegnato, il problema è lato TradingView (piano, URL, JSON, trigger). Se è stato consegnato, controlli il pannello Orders di Tradovate per un eventuale rifiuto." },
+    { q: "Perché il mio webhook funziona a volte e altre no?", a: "I guasti intermittenti di solito dipendono da un simbolo continuo che passa a un nuovo contratto, da un token di sessione scaduto o dal conto finito su dati di mercato ritardati. Usi contratti front-month espliciti e mantenga attivi gli abbonamenti ai dati." },
+    { q: "Come faccio a sapere se il messaggio JSON del mio alert è valido?", a: "Quando il messaggio è JSON valido, TradingView lo segnala come tale e invia una richiesta application/json. Nel dubbio, lo incolli in un qualsiasi validatore JSON e verifichi che non ci siano virgolette tipografiche, virgole mancanti o parentesi graffe non chiuse." },
+    { q: "Che cosa fa \"Order fills only\"?", a: "Per gli alert creati da una strategia Pine, fa scattare il webhook sulle esecuzioni effettive degli ordini della strategia, ingressi e uscite, anziché a ogni barra, così ogni alert corrisponde a un ordine reale." },
+    { q: "Perché il mio ordine viene rifiutato anche se il webhook è stato consegnato?", a: "Il webhook ha raggiunto Tradovate ma l'ordine ha violato una regola lato broker: un simbolo non negoziabile, accordi sui dati non firmati, limiti di rischio, un contratto scaduto o un mercato chiuso. Faccia doppio clic sull'ordine in Tradovate per leggere il motivo esatto." },
+    { q: "Un bridge come PickMyTrade cambia le regole della mia prop firm?", a: "No. Un bridge si limita a instradare e validare l'ordine; i limiti propri della Sua prop firm continuano ad applicarsi e variano in base alla società e alla dimensione del conto, quindi verifichi le regole attuali della Sua società." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins strictement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante, non affiliée à Tradovate, Inc. ou Bookmap, ni approuvée ou parrainée par ces derniers. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a ogni investitore. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a, approvata da o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

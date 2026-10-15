@@ -1,0 +1,294 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-api-find-symbol";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Find Contracts & Symbols With the Tradovate API";
+const META_DESCRIPTION =
+  "Tradovate API find symbol: use product/find and contract/find to resolve tickers and contract IDs so every futures order hits the right contract.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Kontrakte & Symbole mit der Tradovate-API finden", es: "Encuentre contratos y símbolos con la API de Tradovate", fr: "Trouver contrats et symboles avec l’API Tradovate", it: "Trovare contratti e simboli con l’API di Tradovate" },
+  dek: { en: "Before your code can pull a quote or fire an order, it has to name the exact contract Tradovate expects. Here's how to resolve symbols and contract IDs with product/find and contract/find, one step at a time.", de: "Bevor Ihr Code ein Quote abrufen oder eine Order auslösen kann, muss er den genauen Kontrakt benennen, den Tradovate erwartet. So lösen Sie Symbole und Kontrakt-IDs mit product/find und contract/find auf, Schritt für Schritt.", es: "Antes de que su código pueda obtener una cotización o lanzar una orden, tiene que nombrar el contrato exacto que Tradovate espera. Así se resuelven símbolos e ID de contrato con product/find y contract/find, paso a paso.", fr: "Avant que votre code puisse récupérer une cotation ou envoyer un ordre, il doit nommer le contrat exact attendu par Tradovate. Voici comment résoudre symboles et identifiants de contrat avec product/find et contract/find, étape par étape.", it: "Prima che il Suo codice possa recuperare una quotazione o inviare un ordine, deve indicare il contratto esatto che Tradovate si aspetta. Ecco come risolvere simboli e ID dei contratti con product/find e contract/find, passo dopo passo." },
+  readTime: { en: "6 min read", de: "6 Min. Lesezeit", es: "Lectura de 6 min", fr: "Lecture : 6 min", it: "Lettura di 6 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Before your code can pull a quote or fire an order, it has to name the exact contract Tradovate expects. If you're building a trading bot, mapping a numeric contract ID back to a readable ticker, or wiring up automation like PickMyTrade, this is where you start. Below, you'll resolve symbols and contract IDs with the <code>product/find</code> and <code>contract/find</code> endpoints, one step at a time." },
+    { type: "heading", text: "What Are Products, Contracts, and Symbols in the Tradovate API?" },
+    { type: "paragraph", html: "Tradovate splits the futures world into a small three-level hierarchy, and once it clicks the rest of the API gets a lot easier." },
+    { type: "paragraph", html: "A <strong class='text-white'>product</strong> is the instrument family, \"ES\" or \"MES\", with no expiration attached. A <strong class='text-white'>contract</strong> is one specific maturity of that product, written as a symbol like <code>MESU5</code>, that's the thing you actually trade. And every contract carries a numeric <strong class='text-white'>contract ID</strong>, which is what the API hands back in positions, orders, and fills. Symbol lookup is just moving between those three: name a product, get its live contracts, and translate an ID back into something a human can read." },
+    { type: "heading", text: "Finding Contracts & Symbols via the Tradovate API: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authenticate and Get an Access Token", html: "Every lookup is an authenticated HTTPS request, so grab a bearer token first. POST your credentials and app details to <code>/auth/accessTokenRequest</code>; the response carries an <code>accessToken</code> that you attach to each later call in an <code>Authorization: Bearer</code> header. Send it to the matching host, <code>demo.tradovateapi.com/v1</code> for the simulation environment, or <code>live.tradovateapi.com/v1</code> when real money is on the line." },
+        { title: "Look Up the Product with product/find", html: "Resolve the instrument family before anything else. Call <code>GET /product/find?name=MES</code> with your token, and Tradovate returns the product object, its numeric <code>id</code>, its <code>name</code>, and the product type. Hold onto that product <code>id</code>, because it's the key you reuse to enumerate every contract under the instrument. There's no public \"list every symbol\" endpoint, so you always start from a root you already know, ES, NQ, CL, and query outward from there." },
+        { title: "Resolve the Active Contract with contract/find or contract/suggest", html: "Now turn that product into something tradable. <code>GET /contract/suggest?t=MES</code> returns matching contracts sorted with the best maturity first, index 0 is usually the front month. <code>GET /contract/find?name=MESU5</code> resolves one exact symbol string to its full contract object, including the numeric contract <code>id</code> you'll pass to order and market-data calls. One gotcha worth burning into memory: continuous chart tickers like <code>@MES</code> are fine for charting, but you can't trade them. You need the dated contract symbol that this step gives you." },
+        { title: "Reverse an ID or Confirm Expiry with contract/item and contractMaturity", html: "Sometimes you're going the other direction, you've got a contract <code>id</code> off a position or an order, and you need the ticker. Call <code>GET /contract/item?id=&lt;id&gt;</code> to get the contract's <code>name</code>, <code>productId</code>, and <code>contractMaturityId</code>. Want to know how close it is to expiring? Pass that <code>contractMaturityId</code> to <code>GET /contractMaturity/item?id=&lt;id&gt;</code> and read the <code>expirationDate</code>. Rolling on days-to-expiration beats trusting a single \"front\" flag near rollover, when that flag can flip out from under you." },
+      ],
+    },
+    { type: "heading", text: "How to Read a Tradovate Futures Symbol" },
+    { type: "paragraph", html: "A dated futures symbol is just three parts jammed together with no spaces: <strong class='text-white'>instrument + month code + last digit of the year</strong>. So <code>MESU5</code> is MES (Micro E-mini S&amp;P 500) + U (September) + 5 (2025). The month codes never change year to year, so it's worth memorizing them once:" },
+    {
+      type: "table",
+      headers: ["Code", "Month", "Code", "Month"],
+      rows: [
+        ["F", "January", "N", "July"],
+        ["G", "February", "Q", "August"],
+        ["H", "March", "U", "September"],
+        ["J", "April", "V", "October"],
+        ["K", "May", "X", "November"],
+        ["M", "June", "Z", "December"],
+      ],
+    },
+    { type: "heading", text: "Why You'd Need This" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Placing orders</strong>, every order needs a valid, non-expired contract symbol or ID, resolved before you send it.",
+        "<strong class='text-white'>Subscribing to market data</strong>, quote and chart subscriptions key off the exact contract.",
+        "<strong class='text-white'>Reading positions and fills</strong>, the API hands you numeric IDs, and you map them back to tickers for logs and dashboards.",
+        "<strong class='text-white'>Automating rollovers</strong>, detect the front month and roll to the next contract as expiry closes in.",
+      ],
+    },
+    { type: "heading", text: "Automate This with PickMyTrade" },
+    { type: "paragraph", html: "Don't feel like juggling <code>product/find</code>, <code>contract/find</code>, contract IDs, and rollover logic yourself? <strong class='text-white'>PickMyTrade links your TradingView alerts straight to your Tradovate account</strong> and resolves the correct live contract for you, so orders fire on the right symbol automatically, without you writing a single line of API code." },
+  ], de: [
+    { type: "paragraph",html: "Bevor Ihr Code ein Quote abrufen oder eine Order auslösen kann, muss er den genauen Kontrakt benennen, den Tradovate erwartet. Wenn Sie einen Trading-Bot bauen, eine numerische Kontrakt-ID wieder einem lesbaren Ticker zuordnen oder Automatisierung wie PickMyTrade einrichten, beginnt hier Ihr Weg. Unten lösen Sie Symbole und Kontrakt-IDs mit den Endpunkten <code>product/find</code> und <code>contract/find</code> auf, Schritt für Schritt." },
+    { type: "heading",text: "Was sind Produkte, Kontrakte und Symbole in der Tradovate-API?" },
+    { type: "paragraph",html: "Tradovate gliedert die Futures-Welt in eine kleine dreistufige Hierarchie, und sobald Sie sie verstanden haben, wird der Rest der API deutlich einfacher." },
+    { type: "paragraph",html: "Ein <strong class='text-white'>Produkt</strong> ist die Instrumentenfamilie, „ES“ oder „MES“, ohne Verfallsdatum. Ein <strong class='text-white'>Kontrakt</strong> ist eine bestimmte Fälligkeit dieses Produkts, geschrieben als Symbol wie <code>MESU5</code>, das ist das, was Sie tatsächlich handeln. Und jeder Kontrakt trägt eine numerische <strong class='text-white'>Kontrakt-ID</strong>, die die API in Positionen, Orders und Fills zurückgibt. Die Symbolsuche bewegt sich lediglich zwischen diesen dreien: ein Produkt benennen, seine aktuellen Kontrakte erhalten und eine ID in etwas übersetzen, das ein Mensch lesen kann." },
+    { type: "heading",text: "Kontrakte & Symbole über die Tradovate-API finden: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authentifizieren und ein Access-Token erhalten", html: "Jede Abfrage ist eine authentifizierte HTTPS-Anfrage, besorgen Sie sich daher zuerst ein Bearer-Token. Senden Sie Ihre Zugangsdaten und App-Details per POST an <code>/auth/accessTokenRequest</code>; die Antwort enthält ein <code>accessToken</code>, das Sie bei jedem weiteren Aufruf in einem <code>Authorization: Bearer</code>-Header mitsenden. Schicken Sie es an den passenden Host, <code>demo.tradovateapi.com/v1</code> für die Simulationsumgebung oder <code>live.tradovateapi.com/v1</code>, wenn echtes Geld im Spiel ist." },
+        { title: "Das Produkt mit product/find nachschlagen", html: "Lösen Sie zuerst die Instrumentenfamilie auf. Rufen Sie <code>GET /product/find?name=MES</code> mit Ihrem Token auf, und Tradovate liefert das Produktobjekt zurück, seine numerische <code>id</code>, seinen <code>name</code> und den Produkttyp. Merken Sie sich die Produkt-<code>id</code>, denn mit ihr zählen Sie alle Kontrakte des Instruments auf. Es gibt keinen öffentlichen Endpunkt „alle Symbole auflisten“, Sie beginnen also immer mit einer Wurzel, die Sie bereits kennen, ES, NQ, CL, und fragen von dort aus nach außen ab." },
+        { title: "Den aktiven Kontrakt mit contract/find oder contract/suggest auflösen", html: "Jetzt machen Sie aus diesem Produkt etwas Handelbares. <code>GET /contract/suggest?t=MES</code> liefert passende Kontrakte, sortiert mit der besten Fälligkeit zuerst, Index 0 ist in der Regel der Frontmonat. <code>GET /contract/find?name=MESU5</code> löst einen exakten Symbol-String zum vollständigen Kontraktobjekt auf, einschließlich der numerischen Kontrakt-<code>id</code>, die Sie an Order- und Marktdaten-Aufrufe übergeben. Ein Stolperstein, den Sie sich einprägen sollten: Fortlaufende Chart-Ticker wie <code>@MES</code> sind für das Charting in Ordnung, aber Sie können sie nicht handeln. Sie brauchen das datierte Kontraktsymbol, das dieser Schritt liefert." },
+        { title: "Eine ID umkehren oder den Verfall mit contract/item und contractMaturity bestätigen", html: "Manchmal gehen Sie in die andere Richtung: Sie haben eine Kontrakt-<code>id</code> aus einer Position oder Order und benötigen den Ticker. Rufen Sie <code>GET /contract/item?id=&lt;id&gt;</code> auf, um <code>name</code>, <code>productId</code> und <code>contractMaturityId</code> des Kontrakts zu erhalten. Möchten Sie wissen, wie nah er am Verfall ist? Übergeben Sie diese <code>contractMaturityId</code> an <code>GET /contractMaturity/item?id=&lt;id&gt;</code> und lesen Sie das <code>expirationDate</code>. Den Roll anhand der Tage bis zum Verfall zu steuern ist besser, als sich nahe dem Roll auf ein einzelnes „Front“-Flag zu verlassen, das unter Ihnen umspringen kann." },
+      ],
+    },
+    { type: "heading",text: "So lesen Sie ein Tradovate-Futures-Symbol" },
+    { type: "paragraph",html: "Ein datiertes Futures-Symbol besteht aus drei Teilen, die ohne Leerzeichen aneinandergehängt sind: <strong class='text-white'>Instrument + Monatscode + letzte Ziffer des Jahres</strong>. <code>MESU5</code> ist also MES (Micro E-mini S&amp;P 500) + U (September) + 5 (2025). Die Monatscodes ändern sich von Jahr zu Jahr nicht, es lohnt sich also, sie einmal auswendig zu lernen:" },
+    { type: "table", headers: ["Code","Monat","Code","Monat"], rows: [
+      ["F","Januar","N","Juli"],
+      ["G","Februar","Q","August"],
+      ["H","März","U","September"],
+      ["J","April","V","Oktober"],
+      ["K","Mai","X","November"],
+      ["M","Juni","Z","Dezember"],
+    ] },
+    { type: "heading",text: "Wofür Sie das brauchen" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Orders platzieren</strong>, jede Order braucht ein gültiges, nicht abgelaufenes Kontraktsymbol oder eine ID, die vor dem Senden aufgelöst wurde.",
+        "<strong class='text-white'>Marktdaten abonnieren</strong>, Quote- und Chart-Abonnements beziehen sich auf den exakten Kontrakt.",
+        "<strong class='text-white'>Positionen und Fills lesen</strong>, die API liefert numerische IDs, die Sie für Logs und Dashboards wieder auf Ticker abbilden.",
+        "<strong class='text-white'>Rollovers automatisieren</strong>, den Frontmonat erkennen und auf den nächsten Kontrakt rollen, wenn der Verfall näher rückt.",
+      ],
+    },
+    { type: "heading",text: "Automatisieren Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Haben Sie keine Lust, <code>product/find</code>, <code>contract/find</code>, Kontrakt-IDs und Rollover-Logik selbst zu jonglieren? <strong class='text-white'>PickMyTrade verknüpft Ihre TradingView-Alerts direkt mit Ihrem Tradovate-Konto</strong> und löst den richtigen aktuellen Kontrakt für Sie auf, sodass Orders automatisch auf dem richtigen Symbol ausgelöst werden, ohne dass Sie eine einzige Zeile API-Code schreiben müssen." },
+  ], es: [
+    { type: "paragraph",html: "Antes de que su código pueda obtener una cotización o lanzar una orden, tiene que nombrar el contrato exacto que Tradovate espera. Si está creando un bot de trading, asociando un ID de contrato numérico con un ticker legible o configurando automatización como PickMyTrade, aquí es donde empieza todo. A continuación resolverá símbolos e ID de contrato con los endpoints <code>product/find</code> y <code>contract/find</code>, paso a paso." },
+    { type: "heading",text: "¿Qué son los productos, contratos y símbolos en la API de Tradovate?" },
+    { type: "paragraph",html: "Tradovate divide el mundo de los futuros en una pequeña jerarquía de tres niveles, y una vez que se entiende, el resto de la API resulta mucho más sencillo." },
+    { type: "paragraph",html: "Un <strong class='text-white'>producto</strong> es la familia del instrumento, «ES» o «MES», sin vencimiento asociado. Un <strong class='text-white'>contrato</strong> es un vencimiento concreto de ese producto, escrito como un símbolo como <code>MESU5</code>, que es lo que realmente se opera. Y cada contrato lleva un <strong class='text-white'>ID de contrato</strong> numérico, que es lo que la API devuelve en posiciones, órdenes y fills. La búsqueda de símbolos consiste simplemente en moverse entre esos tres elementos: nombrar un producto, obtener sus contratos vigentes y traducir un ID a algo que una persona pueda leer." },
+    { type: "heading",text: "Encuentre contratos y símbolos con la API de Tradovate: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Autentíquese y obtenga un token de acceso", html: "Cada consulta es una solicitud HTTPS autenticada, así que obtenga primero un token bearer. Haga POST con sus credenciales y los datos de su aplicación a <code>/auth/accessTokenRequest</code>; la respuesta incluye un <code>accessToken</code> que debe adjuntar a cada llamada posterior en una cabecera <code>Authorization: Bearer</code>. Envíelo al host correspondiente, <code>demo.tradovateapi.com/v1</code> para el entorno de simulación o <code>live.tradovateapi.com/v1</code> cuando hay dinero real en juego." },
+        { title: "Busque el producto con product/find", html: "Resuelva primero la familia del instrumento. Llame a <code>GET /product/find?name=MES</code> con su token y Tradovate devuelve el objeto de producto, su <code>id</code> numérico, su <code>name</code> y el tipo de producto. Conserve el <code>id</code> del producto, porque es la clave que reutilizará para enumerar todos los contratos del instrumento. No existe un endpoint público para «listar todos los símbolos», así que siempre parte de una raíz que ya conoce, ES, NQ, CL, y consulta hacia afuera desde ahí." },
+        { title: "Resuelva el contrato activo con contract/find o contract/suggest", html: "Ahora convierta ese producto en algo operable. <code>GET /contract/suggest?t=MES</code> devuelve los contratos coincidentes ordenados con el mejor vencimiento primero; el índice 0 suele ser el mes frontal. <code>GET /contract/find?name=MESU5</code> resuelve una cadena de símbolo exacta al objeto de contrato completo, incluido el <code>id</code> numérico del contrato que pasará a las llamadas de órdenes y de datos de mercado. Un detalle que conviene grabarse: los tickers continuos de gráfico como <code>@MES</code> sirven para graficar, pero no se pueden operar. Necesita el símbolo del contrato con fecha que le da este paso." },
+        { title: "Invierta un ID o confirme el vencimiento con contract/item y contractMaturity", html: "A veces va en la dirección contraria: tiene un <code>id</code> de contrato de una posición o una orden y necesita el ticker. Llame a <code>GET /contract/item?id=&lt;id&gt;</code> para obtener el <code>name</code>, el <code>productId</code> y el <code>contractMaturityId</code> del contrato. ¿Quiere saber lo cerca que está de vencer? Pase ese <code>contractMaturityId</code> a <code>GET /contractMaturity/item?id=&lt;id&gt;</code> y lea el <code>expirationDate</code>. Hacer el roll según los días hasta el vencimiento es mejor que fiarse de un único indicador «front» cerca del roll, cuando ese indicador puede cambiar de un momento a otro." },
+      ],
+    },
+    { type: "heading",text: "Cómo leer un símbolo de futuros de Tradovate" },
+    { type: "paragraph",html: "Un símbolo de futuros con fecha son tres partes pegadas sin espacios: <strong class='text-white'>instrumento + código de mes + último dígito del año</strong>. Así, <code>MESU5</code> es MES (Micro E-mini S&amp;P 500) + U (septiembre) + 5 (2025). Los códigos de mes no cambian de un año a otro, así que conviene memorizarlos una vez:" },
+    { type: "table", headers: ["Código","Mes","Código","Mes"], rows: [
+      ["F","Enero","N","Julio"],
+      ["G","Febrero","Q","Agosto"],
+      ["H","Marzo","U","Septiembre"],
+      ["J","Abril","V","Octubre"],
+      ["K","Mayo","X","Noviembre"],
+      ["M","Junio","Z","Diciembre"],
+    ] },
+    { type: "heading",text: "Por qué lo necesitaría" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Colocar órdenes</strong>, cada orden necesita un símbolo o ID de contrato válido y no vencido, resuelto antes de enviarla.",
+        "<strong class='text-white'>Suscribirse a datos de mercado</strong>, las suscripciones de cotizaciones y gráficos dependen del contrato exacto.",
+        "<strong class='text-white'>Leer posiciones y fills</strong>, la API le entrega ID numéricos, y usted los asocia de nuevo a tickers para registros y paneles.",
+        "<strong class='text-white'>Automatizar rollovers</strong>, detecte el mes frontal y haga el roll al siguiente contrato a medida que se acerca el vencimiento.",
+      ],
+    },
+    { type: "heading",text: "Automatice esto con PickMyTrade" },
+    { type: "paragraph",html: "¿No quiere malabarear con <code>product/find</code>, <code>contract/find</code>, ID de contrato y lógica de rollover por su cuenta? <strong class='text-white'>PickMyTrade enlaza sus alertas de TradingView directamente con su cuenta de Tradovate</strong> y resuelve por usted el contrato vigente correcto, de modo que las órdenes se ejecutan automáticamente en el símbolo adecuado, sin que escriba una sola línea de código de API." },
+  ], fr: [
+    { type: "paragraph",html: "Avant que votre code puisse récupérer une cotation ou envoyer un ordre, il doit nommer le contrat exact attendu par Tradovate. Si vous construisez un bot de trading, associez un identifiant de contrat numérique à un ticker lisible ou mettez en place une automatisation comme PickMyTrade, c’est ici que tout commence. Ci-dessous, vous allez résoudre symboles et identifiants de contrat avec les endpoints <code>product/find</code> et <code>contract/find</code>, étape par étape." },
+    { type: "heading",text: "Que sont les produits, contrats et symboles dans l’API Tradovate ?" },
+    { type: "paragraph",html: "Tradovate découpe l’univers des contrats à terme en une petite hiérarchie à trois niveaux, et une fois celle-ci comprise, le reste de l’API devient bien plus simple." },
+    { type: "paragraph",html: "Un <strong class='text-white'>produit</strong> est la famille d’instruments, « ES » ou « MES », sans échéance associée. Un <strong class='text-white'>contrat</strong> est une échéance précise de ce produit, écrite sous la forme d’un symbole comme <code>MESU5</code>, c’est ce que vous tradez réellement. Et chaque contrat porte un <strong class='text-white'>identifiant de contrat</strong> numérique, que l’API renvoie dans les positions, ordres et exécutions. La recherche de symboles consiste simplement à passer de l’un à l’autre : nommer un produit, obtenir ses contrats en vigueur et traduire un identifiant en quelque chose que l’on peut lire." },
+    { type: "heading",text: "Trouver contrats et symboles via l’API Tradovate : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authentifiez-vous et obtenez un jeton d’accès", html: "Chaque recherche est une requête HTTPS authentifiée ; procurez-vous donc d’abord un jeton bearer. Envoyez par POST vos identifiants et les détails de votre application à <code>/auth/accessTokenRequest</code> ; la réponse contient un <code>accessToken</code> que vous joignez à chaque appel suivant dans un en-tête <code>Authorization: Bearer</code>. Envoyez-le à l’hôte correspondant, <code>demo.tradovateapi.com/v1</code> pour l’environnement de simulation, ou <code>live.tradovateapi.com/v1</code> lorsque de l’argent réel est en jeu." },
+        { title: "Recherchez le produit avec product/find", html: "Résolvez d’abord la famille d’instruments. Appelez <code>GET /product/find?name=MES</code> avec votre jeton, et Tradovate renvoie l’objet produit, son <code>id</code> numérique, son <code>name</code> et le type de produit. Conservez l’<code>id</code> du produit, car c’est la clé que vous réutiliserez pour énumérer tous les contrats de l’instrument. Il n’existe aucun endpoint public pour « lister tous les symboles » ; vous partez donc toujours d’une racine que vous connaissez déjà, ES, NQ, CL, et interrogez vers l’extérieur à partir de là." },
+        { title: "Résolvez le contrat actif avec contract/find ou contract/suggest", html: "Transformez maintenant ce produit en quelque chose de négociable. <code>GET /contract/suggest?t=MES</code> renvoie les contrats correspondants triés avec la meilleure échéance en premier ; l’index 0 correspond généralement au mois en cours (front month). <code>GET /contract/find?name=MESU5</code> résout une chaîne de symbole exacte en objet contrat complet, y compris l’<code>id</code> numérique du contrat que vous transmettrez aux appels d’ordres et de données de marché. Un piège à graver dans votre mémoire : les tickers continus de graphique comme <code>@MES</code> conviennent pour les graphiques, mais vous ne pouvez pas les trader. Il vous faut le symbole du contrat daté que cette étape fournit." },
+        { title: "Inversez un identifiant ou confirmez l’échéance avec contract/item et contractMaturity", html: "Parfois, vous allez dans l’autre sens : vous avez l’<code>id</code> d’un contrat issu d’une position ou d’un ordre, et il vous faut le ticker. Appelez <code>GET /contract/item?id=&lt;id&gt;</code> pour obtenir le <code>name</code>, le <code>productId</code> et le <code>contractMaturityId</code> du contrat. Vous voulez savoir si l’échéance approche ? Transmettez ce <code>contractMaturityId</code> à <code>GET /contractMaturity/item?id=&lt;id&gt;</code> et lisez l’<code>expirationDate</code>. Effectuer le roll en fonction du nombre de jours avant l’échéance vaut mieux que de se fier à un unique indicateur « front » près du roll, lorsque cet indicateur peut basculer sans prévenir." },
+      ],
+    },
+    { type: "heading",text: "Comment lire un symbole de contrat à terme Tradovate" },
+    { type: "paragraph",html: "Un symbole de contrat à terme daté est constitué de trois parties collées sans espace : <strong class='text-white'>instrument + code du mois + dernier chiffre de l’année</strong>. Ainsi, <code>MESU5</code> correspond à MES (Micro E-mini S&amp;P 500) + U (septembre) + 5 (2025). Les codes de mois ne changent pas d’une année à l’autre ; autant les mémoriser une bonne fois :" },
+    { type: "table", headers: ["Code","Mois","Code","Mois"], rows: [
+      ["F","Janvier","N","Juillet"],
+      ["G","Février","Q","Août"],
+      ["H","Mars","U","Septembre"],
+      ["J","Avril","V","Octobre"],
+      ["K","Mai","X","Novembre"],
+      ["M","Juin","Z","Décembre"],
+    ] },
+    { type: "heading",text: "Pourquoi vous en avez besoin" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Passer des ordres</strong>, chaque ordre exige un symbole ou un identifiant de contrat valide et non expiré, résolu avant l’envoi.",
+        "<strong class='text-white'>S’abonner aux données de marché</strong>, les abonnements aux cotations et aux graphiques reposent sur le contrat exact.",
+        "<strong class='text-white'>Lire positions et exécutions</strong>, l’API vous renvoie des identifiants numériques que vous réassociez aux tickers pour vos journaux et tableaux de bord.",
+        "<strong class='text-white'>Automatiser les rollovers</strong>, détectez le mois en cours et passez au contrat suivant à l’approche de l’échéance.",
+      ],
+    },
+    { type: "heading",text: "Automatisez cela avec PickMyTrade" },
+    { type: "paragraph",html: "Vous n’avez pas envie de jongler vous-même avec <code>product/find</code>, <code>contract/find</code>, les identifiants de contrat et la logique de rollover ? <strong class='text-white'>PickMyTrade relie vos alertes TradingView directement à votre compte Tradovate</strong> et résout pour vous le bon contrat en vigueur, de sorte que les ordres partent automatiquement sur le bon symbole, sans que vous écriviez une seule ligne de code API." },
+  ], it: [
+    { type: "paragraph",html: "Prima che il Suo codice possa recuperare una quotazione o inviare un ordine, deve indicare il contratto esatto che Tradovate si aspetta. Se sta costruendo un bot di trading, riconducendo un ID contratto numerico a un ticker leggibile o configurando un’automazione come PickMyTrade, è da qui che si parte. Di seguito risolverà simboli e ID dei contratti con gli endpoint <code>product/find</code> e <code>contract/find</code>, passo dopo passo." },
+    { type: "heading",text: "Che cosa sono prodotti, contratti e simboli nell’API di Tradovate?" },
+    { type: "paragraph",html: "Tradovate suddivide il mondo dei futures in una piccola gerarchia a tre livelli e, una volta compresa, il resto dell’API diventa molto più semplice." },
+    { type: "paragraph",html: "Un <strong class='text-white'>prodotto</strong> è la famiglia dello strumento, «ES» o «MES», senza scadenza associata. Un <strong class='text-white'>contratto</strong> è una specifica scadenza di quel prodotto, scritta come un simbolo come <code>MESU5</code>, ed è ciò che si negozia davvero. E ogni contratto porta un <strong class='text-white'>ID contratto</strong> numerico, che è ciò che l’API restituisce in posizioni, ordini e fill. La ricerca dei simboli consiste semplicemente nello spostarsi tra questi tre elementi: indicare un prodotto, ottenere i suoi contratti live e tradurre un ID in qualcosa che una persona possa leggere." },
+    { type: "heading",text: "Trovare contratti e simboli tramite l’API di Tradovate: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Si autentichi e ottenga un token di accesso", html: "Ogni ricerca è una richiesta HTTPS autenticata, quindi ottenga prima un token bearer. Invii in POST le Sue credenziali e i dettagli dell’app a <code>/auth/accessTokenRequest</code>; la risposta contiene un <code>accessToken</code> che allega a ogni chiamata successiva in un header <code>Authorization: Bearer</code>. Lo invii all’host corrispondente, <code>demo.tradovateapi.com/v1</code> per l’ambiente di simulazione o <code>live.tradovateapi.com/v1</code> quando è in gioco denaro reale." },
+        { title: "Cerchi il prodotto con product/find", html: "Risolva prima la famiglia dello strumento. Chiami <code>GET /product/find?name=MES</code> con il Suo token e Tradovate restituisce l’oggetto prodotto, il suo <code>id</code> numerico, il suo <code>name</code> e il tipo di prodotto. Conservi l’<code>id</code> del prodotto, perché è la chiave che riutilizzerà per enumerare tutti i contratti dello strumento. Non esiste un endpoint pubblico per «elencare tutti i simboli», quindi parte sempre da una radice che già conosce, ES, NQ, CL, e interroga verso l’esterno da lì." },
+        { title: "Risolva il contratto attivo con contract/find o contract/suggest", html: "Ora trasformi quel prodotto in qualcosa di negoziabile. <code>GET /contract/suggest?t=MES</code> restituisce i contratti corrispondenti ordinati con la scadenza migliore per prima; l’indice 0 è di solito il mese front. <code>GET /contract/find?name=MESU5</code> risolve una stringa di simbolo esatta nell’oggetto contratto completo, incluso l’<code>id</code> numerico del contratto che passerà alle chiamate di ordini e dati di mercato. Un’insidia da imprimersi bene in mente: i ticker continui dei grafici come <code>@MES</code> vanno bene per i grafici, ma non si possono negoziare. Le serve il simbolo del contratto con scadenza che questo passaggio fornisce." },
+        { title: "Inverta un ID o confermi la scadenza con contract/item e contractMaturity", html: "A volte procede nella direzione opposta: ha l’<code>id</code> di un contratto da una posizione o da un ordine e Le serve il ticker. Chiami <code>GET /contract/item?id=&lt;id&gt;</code> per ottenere il <code>name</code>, il <code>productId</code> e il <code>contractMaturityId</code> del contratto. Vuole sapere quanto manca alla scadenza? Passi quel <code>contractMaturityId</code> a <code>GET /contractMaturity/item?id=&lt;id&gt;</code> e legga l’<code>expirationDate</code>. Eseguire il roll in base ai giorni alla scadenza è meglio che fidarsi di un singolo flag «front» in prossimità del roll, quando quel flag può cambiare all’improvviso." },
+      ],
+    },
+    { type: "heading",text: "Come leggere un simbolo di futures Tradovate" },
+    { type: "paragraph",html: "Un simbolo di futures con scadenza è composto da tre parti unite senza spazi: <strong class='text-white'>strumento + codice del mese + ultima cifra dell’anno</strong>. Quindi <code>MESU5</code> è MES (Micro E-mini S&amp;P 500) + U (settembre) + 5 (2025). I codici dei mesi non cambiano da un anno all’altro, quindi vale la pena memorizzarli una volta per tutte:" },
+    { type: "table", headers: ["Codice","Mese","Codice","Mese"], rows: [
+      ["F","Gennaio","N","Luglio"],
+      ["G","Febbraio","Q","Agosto"],
+      ["H","Marzo","U","Settembre"],
+      ["J","Aprile","V","Ottobre"],
+      ["K","Maggio","X","Novembre"],
+      ["M","Giugno","Z","Dicembre"],
+    ] },
+    { type: "heading",text: "Perché Le serve" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Inserire ordini</strong>, ogni ordine richiede un simbolo o un ID di contratto valido e non scaduto, risolto prima dell’invio.",
+        "<strong class='text-white'>Sottoscrivere i dati di mercato</strong>, le sottoscrizioni di quotazioni e grafici si basano sul contratto esatto.",
+        "<strong class='text-white'>Leggere posizioni e fill</strong>, l’API restituisce ID numerici e Lei li riconduce ai ticker per log e dashboard.",
+        "<strong class='text-white'>Automatizzare i rollover</strong>, rilevi il mese front e passi al contratto successivo man mano che la scadenza si avvicina.",
+      ],
+    },
+    { type: "heading",text: "Automatizzi tutto con PickMyTrade" },
+    { type: "paragraph",html: "Non ha voglia di destreggiarsi da solo tra <code>product/find</code>, <code>contract/find</code>, ID dei contratti e logica di rollover? <strong class='text-white'>PickMyTrade collega i Suoi alert di TradingView direttamente al Suo conto Tradovate</strong> e risolve per Lei il contratto live corretto, così gli ordini partono automaticamente sul simbolo giusto, senza che Lei scriva una sola riga di codice API." },
+  ] },
+  ctaHeading: { en: "Skip the Symbol Lookups", de: "Verzichten Sie auf Symbol-Abfragen", es: "Olvídese de las búsquedas de símbolos", fr: "Oubliez les recherches de symboles", it: "Eviti le ricerche dei simboli" },
+  ctaText: { en: "Let PickMyTrade resolve the correct live contract for you, orders fire on the right symbol automatically, no API code required.", de: "Lassen Sie PickMyTrade den richtigen aktuellen Kontrakt für Sie auflösen, Orders werden automatisch auf dem richtigen Symbol ausgelöst, ganz ohne API-Code.", es: "Deje que PickMyTrade resuelva por usted el contrato vigente correcto: las órdenes se ejecutan automáticamente en el símbolo adecuado, sin necesidad de código de API.", fr: "Laissez PickMyTrade résoudre pour vous le bon contrat en vigueur : les ordres partent automatiquement sur le bon symbole, sans aucun code API.", it: "Lasci che PickMyTrade risolva per Lei il contratto live corretto: gli ordini partono automaticamente sul simbolo giusto, senza alcun codice API." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Is there an endpoint that lists every Tradovate symbol at once?", a: "No, there's no supported \"list all symbols\" call. Start from a known product root like ES, MES, NQ, or CL, query product/find and then contract/find or contract/suggest, and cache whatever results your app actually needs." },
+    { q: "How do I turn a numeric contract ID back into a symbol?", a: "Call contract/item?id=<id>. The response includes the contract name (that's your ticker), plus its productId and contractMaturityId for any follow-up lookups." },
+    { q: "Why can't I trade a symbol like @MES or MES1!?", a: "Continuous and index-style tickers are for charting only. To place an order you need the dated contract symbol, for example MESU5, or its contract ID from contract/find." },
+  ], de: [
+    { q: "Gibt es einen Endpunkt, der alle Tradovate-Symbole auf einmal auflistet?", a: "Nein, es gibt keinen unterstützten „Alle Symbole auflisten“-Aufruf. Beginnen Sie mit einer bekannten Produktwurzel wie ES, MES, NQ oder CL, fragen Sie product/find und anschließend contract/find oder contract/suggest ab und cachen Sie die Ergebnisse, die Ihre App tatsächlich braucht." },
+    { q: "Wie wandle ich eine numerische Kontrakt-ID zurück in ein Symbol um?", a: "Rufen Sie contract/item?id=<id> auf. Die Antwort enthält den Kontraktnamen (das ist Ihr Ticker) sowie dessen productId und contractMaturityId für weitere Abfragen." },
+    { q: "Warum kann ich ein Symbol wie @MES oder MES1! nicht handeln?", a: "Fortlaufende und indexartige Ticker sind nur für das Charting gedacht. Um eine Order zu platzieren, benötigen Sie das datierte Kontraktsymbol, zum Beispiel MESU5, oder dessen Kontrakt-ID aus contract/find." },
+  ], es: [
+    { q: "¿Existe un endpoint que liste todos los símbolos de Tradovate a la vez?", a: "No, no hay una llamada compatible de «listar todos los símbolos». Parta de una raíz de producto conocida como ES, MES, NQ o CL, consulte product/find y después contract/find o contract/suggest, y almacene en caché los resultados que su aplicación realmente necesite." },
+    { q: "¿Cómo convierto un ID de contrato numérico de nuevo en un símbolo?", a: "Llame a contract/item?id=<id>. La respuesta incluye el nombre del contrato (que es su ticker), además de su productId y contractMaturityId para consultas posteriores." },
+    { q: "¿Por qué no puedo operar un símbolo como @MES o MES1!?", a: "Los tickers continuos y de tipo índice son solo para gráficos. Para colocar una orden necesita el símbolo del contrato con fecha, por ejemplo MESU5, o su ID de contrato de contract/find." },
+  ], fr: [
+    { q: "Existe-t-il un endpoint qui liste tous les symboles Tradovate d’un coup ?", a: "Non, il n’existe aucun appel pris en charge pour « lister tous les symboles ». Partez d’une racine de produit connue comme ES, MES, NQ ou CL, interrogez product/find puis contract/find ou contract/suggest, et mettez en cache les résultats dont votre application a réellement besoin." },
+    { q: "Comment retransformer un identifiant de contrat numérique en symbole ?", a: "Appelez contract/item?id=<id>. La réponse inclut le nom du contrat (c’est votre ticker), ainsi que son productId et son contractMaturityId pour les recherches suivantes." },
+    { q: "Pourquoi ne puis-je pas trader un symbole comme @MES ou MES1! ?", a: "Les tickers continus et de type indice servent uniquement aux graphiques. Pour passer un ordre, il vous faut le symbole du contrat daté, par exemple MESU5, ou son identifiant de contrat issu de contract/find." },
+  ], it: [
+    { q: "Esiste un endpoint che elenca tutti i simboli di Tradovate in una volta?", a: "No, non esiste una chiamata supportata per «elencare tutti i simboli». Parta da una radice di prodotto nota come ES, MES, NQ o CL, interroghi product/find e poi contract/find o contract/suggest, e memorizzi nella cache i risultati di cui la Sua app ha davvero bisogno." },
+    { q: "Come trasformo un ID contratto numerico di nuovo in un simbolo?", a: "Chiami contract/item?id=<id>. La risposta include il nome del contratto (cioè il Suo ticker), oltre a productId e contractMaturityId per le ricerche successive." },
+    { q: "Perché non posso negoziare un simbolo come @MES o MES1!?", a: "I ticker continui e di tipo indice servono solo per i grafici. Per inserire un ordine Le serve il simbolo del contratto con scadenza, per esempio MESU5, oppure il suo ID contratto da contract/find." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von dieser unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins strictement éducatives et informatives et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. Le trading de contrats à terme et d’autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d’automatisation tierce indépendante et n’est ni affiliée à Tradovate, Inc., ni approuvée, ni parrainée par cette dernière. « Tradovate » et tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d’agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né approvata o sponsorizzata da essa. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

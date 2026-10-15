@@ -1,0 +1,240 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-api-account-data";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Read Positions, Fills & Balance via Tradovate API";
+const META_DESCRIPTION =
+  "Tradovate API account data made simple: read accounts, open positions, fills, and cash balance from REST endpoints with clear step-by-step calls.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Positionen, Fills & Kontostand über die Tradovate-API lesen", es: "Lea posiciones, fills y saldo con la API de Tradovate", fr: "Lire positions, exécutions et solde via l’API Tradovate", it: "Leggere posizioni, fill e saldo tramite l’API di Tradovate" },
+  dek: { en: "Need to pull your Tradovate accounts, open positions, fills, and cash balance straight from the REST endpoints? Here's every read call, one step at a time.", de: "Möchten Sie Ihre Tradovate-Konten, offenen Positionen, Fills und Ihren Kassenbestand direkt über die REST-Endpunkte abrufen? Hier ist jeder Lesezugriff, Schritt für Schritt.", es: "¿Necesita extraer sus cuentas de Tradovate, posiciones abiertas, fills y saldo en efectivo directamente de los endpoints REST? Aquí tiene cada llamada de lectura, paso a paso.", fr: "Vous souhaitez récupérer vos comptes Tradovate, positions ouvertes, exécutions et solde de trésorerie directement depuis les endpoints REST ? Voici chaque appel de lecture, étape par étape.", it: "Ha bisogno di recuperare i Suoi conti Tradovate, le posizioni aperte, i fill e il saldo di cassa direttamente dagli endpoint REST? Ecco ogni chiamata di lettura, passo dopo passo." },
+  readTime: { en: "5 min read", de: "5 Min. Lesezeit", es: "Lectura de 5 min", fr: "Lecture : 5 min", it: "Lettura di 5 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Need to pull Tradovate API account data, your accounts, open positions, fills, and cash balance, straight from the REST endpoints? Whether you're building a dashboard, reconciling fills at tax time, or wiring up automation like PickMyTrade, this guide walks you through each read call, one step at a time." },
+    { type: "heading", text: "What Is the Tradovate Account Data API?" },
+    { type: "paragraph", html: "Tradovate exposes a REST API where every account object, accounts, positions, fills, orders, and balances, has a matching read endpoint. Once you're holding a valid access token, a handful of <code>GET</code> and <code>POST</code> calls hand that data back as JSON. That means you can mirror exactly what you see in the Trader app inside your own tools." },
+    { type: "heading", text: "Read Tradovate API Account Data: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authenticate and Set Your Base URL", html: "Request an access token by POSTing your credentials to <code>auth/accessTokenRequest</code>, then send that token on every call as an <code>Authorization: Bearer &lt;accessToken&gt;</code> header. Use the demo host <code>demo.tradovateapi.com/v1</code> for simulated accounts and <code>live.tradovateapi.com/v1</code> for funded ones. Tokens expire, so renew yours before it lapses, otherwise the next call comes back as a <code>401 Unauthorized</code>." },
+        { title: "List Your Accounts", html: "Call <code>GET account/list</code> to return every account tied to your login. Each item includes the numeric <code>id</code>, <code>name</code>, and <code>userId</code>. Grab that numeric <code>id</code>, most of the calls below key off it, and it's not the same as the account nickname you see in the app." },
+        { title: "Read Your Open Positions", html: "Call <code>GET position/list</code> to return current positions. The fields you care about are <code>netPos</code> (signed net contracts, a negative value means short), <code>contractId</code> (map it to a symbol with <code>contract/item?id=</code>), and <code>netPrice</code>, the average entry price. One gotcha: <code>netPrice</code> isn't always populated on a freshly opened position, so guard for it in code." },
+        { title: "Pull Your Fills and Orders", html: "Call <code>GET fill/list</code> for executions and <code>GET order/list</code> for order records. Both follow the same <code>{entity}/list</code> pattern and return arrays for your user. Keep in mind these list endpoints are built for recent activity, they won't always hand back your full trade history. For a complete historical load, pull from the Reporting API, then subscribe to a WebSocket <code>user/syncrequest</code> for real-time updates going forward." },
+        { title: "Check Cash Balance and Margin", html: "For balance, POST the numeric account <code>id</code> to <code>cashBalance/getCashBalanceSnapshot</code>. It returns the latest cash and margin figures, total cash value, open P&amp;L, and margin used, which is the fastest way to read realized balance without walking the entire cash log. Send <code>{ \"accountId\": &lt;id&gt; }</code> in the request body." },
+      ],
+    },
+    { type: "heading", text: "Why You'd Need This" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Audit and reconciliation</strong>, match fills and P&amp;L against your broker statements.",
+        "<strong class='text-white'>Tax records</strong>, export executions and realized balances for the year.",
+        "<strong class='text-white'>Custom dashboards</strong>, show live positions and balance outside the Trader app.",
+        "<strong class='text-white'>Feeding a strategy</strong>, let a bot read current exposure before it sizes the next order.",
+      ],
+    },
+    { type: "heading", text: "Automate This with PickMyTrade" },
+    { type: "paragraph", html: "If you'd rather not babysit token refresh, rate-limit handling, and endpoint plumbing yourself, <strong class='text-white'>PickMyTrade links your TradingView alerts straight to your Tradovate account</strong>. Orders fire and positions update automatically, no manual API calls." },
+  ], de: [
+    { type: "paragraph",html: "Möchten Sie Tradovate-API-Kontodaten, also Ihre Konten, offenen Positionen, Fills und Ihren Kassenbestand, direkt über die REST-Endpunkte abrufen? Ob Sie ein Dashboard bauen, zur Steuerzeit Fills abgleichen oder Automatisierung wie PickMyTrade einrichten: Dieser Leitfaden führt Sie Schritt für Schritt durch jeden Lesezugriff." },
+    { type: "heading",text: "Was ist die Tradovate-Kontodaten-API?" },
+    { type: "paragraph",html: "Tradovate bietet eine REST-API, bei der jedes Kontoobjekt, also Konten, Positionen, Fills, Orders und Salden, einen passenden Lese-Endpunkt hat. Sobald Sie ein gültiges Access-Token besitzen, liefern einige wenige <code>GET</code>- und <code>POST</code>-Aufrufe diese Daten als JSON zurück. So können Sie genau das, was Sie in der Trader-App sehen, in Ihren eigenen Tools abbilden." },
+    { type: "heading",text: "Tradovate-API-Kontodaten lesen: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authentifizieren und Basis-URL festlegen", html: "Fordern Sie ein Access-Token an, indem Sie Ihre Zugangsdaten per POST an <code>auth/accessTokenRequest</code> senden, und übergeben Sie dieses Token bei jedem Aufruf im Header <code>Authorization: Bearer &lt;accessToken&gt;</code>. Verwenden Sie den Demo-Host <code>demo.tradovateapi.com/v1</code> für simulierte Konten und <code>live.tradovateapi.com/v1</code> für Konten mit Guthaben. Tokens laufen ab; erneuern Sie Ihres daher, bevor es verfällt, sonst antwortet der nächste Aufruf mit <code>401 Unauthorized</code>." },
+        { title: "Ihre Konten auflisten", html: "Rufen Sie <code>GET account/list</code> auf, um alle mit Ihrem Login verknüpften Konten zu erhalten. Jedes Element enthält die numerische <code>id</code>, den <code>name</code> und die <code>userId</code>. Merken Sie sich diese numerische <code>id</code>, die meisten der folgenden Aufrufe beziehen sich darauf, und sie ist nicht dasselbe wie der Konto-Spitzname, den Sie in der App sehen." },
+        { title: "Ihre offenen Positionen lesen", html: "Rufen Sie <code>GET position/list</code> auf, um die aktuellen Positionen zu erhalten. Relevant sind die Felder <code>netPos</code> (vorzeichenbehaftete Netto-Kontrakte, ein negativer Wert bedeutet Short), <code>contractId</code> (ordnen Sie sie mit <code>contract/item?id=</code> einem Symbol zu) und <code>netPrice</code>, der durchschnittliche Einstiegspreis. Eine Falle: <code>netPrice</code> ist bei einer frisch eröffneten Position nicht immer gefüllt, fangen Sie das daher im Code ab." },
+        { title: "Fills und Orders abrufen", html: "Rufen Sie <code>GET fill/list</code> für Ausführungen und <code>GET order/list</code> für Order-Datensätze auf. Beide folgen dem Muster <code>{entity}/list</code> und liefern Arrays für Ihren Benutzer. Beachten Sie, dass diese List-Endpunkte für die jüngste Aktivität gedacht sind und nicht immer Ihre gesamte Handelshistorie zurückgeben. Für ein vollständiges historisches Laden verwenden Sie die Reporting-API und abonnieren anschließend per WebSocket <code>user/syncrequest</code> für Echtzeit-Updates." },
+        { title: "Kassenbestand und Margin prüfen", html: "Für den Kontostand senden Sie die numerische Konto-<code>id</code> per POST an <code>cashBalance/getCashBalanceSnapshot</code>. Der Aufruf liefert die aktuellen Cash- und Margin-Werte, den gesamten Kassenwert, den offenen Gewinn/Verlust (P&amp;L) und die genutzte Margin, und ist der schnellste Weg, den realisierten Saldo zu lesen, ohne das gesamte Cash-Log durchzugehen. Senden Sie <code>{ \"accountId\": &lt;id&gt; }</code> im Request-Body." },
+      ],
+    },
+    { type: "heading",text: "Wofür Sie das brauchen" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Prüfung und Abstimmung</strong>, gleichen Sie Fills und P&amp;L mit Ihren Broker-Abrechnungen ab.",
+        "<strong class='text-white'>Steuerunterlagen</strong>, exportieren Sie Ausführungen und realisierte Salden für das Jahr.",
+        "<strong class='text-white'>Eigene Dashboards</strong>, zeigen Sie Live-Positionen und Kontostand außerhalb der Trader-App an.",
+        "<strong class='text-white'>Eine Strategie speisen</strong>, lassen Sie einen Bot die aktuelle Exposition lesen, bevor er die nächste Order dimensioniert.",
+      ],
+    },
+    { type: "heading",text: "Automatisieren Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Wenn Sie sich nicht selbst um Token-Erneuerung, Ratenbegrenzungen und Endpunkt-Details kümmern möchten, <strong class='text-white'>verknüpft PickMyTrade Ihre TradingView-Alerts direkt mit Ihrem Tradovate-Konto</strong>. Orders werden automatisch ausgelöst und Positionen automatisch aktualisiert, ganz ohne manuelle API-Aufrufe." },
+  ], es: [
+    { type: "paragraph",html: "¿Necesita extraer los datos de cuenta de la API de Tradovate, es decir, sus cuentas, posiciones abiertas, fills y saldo en efectivo, directamente de los endpoints REST? Ya sea que esté creando un panel, conciliando fills en época de impuestos o configurando automatización como PickMyTrade, esta guía le muestra cada llamada de lectura, paso a paso." },
+    { type: "heading",text: "¿Qué es la API de datos de cuenta de Tradovate?" },
+    { type: "paragraph",html: "Tradovate expone una API REST en la que cada objeto de cuenta (cuentas, posiciones, fills, órdenes y saldos) tiene un endpoint de lectura correspondiente. Una vez que dispone de un token de acceso válido, un puñado de llamadas <code>GET</code> y <code>POST</code> devuelven esos datos en JSON. Eso significa que puede reflejar exactamente lo que ve en la aplicación Trader dentro de sus propias herramientas." },
+    { type: "heading",text: "Lea los datos de cuenta de la API de Tradovate: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Autentíquese y establezca su URL base", html: "Solicite un token de acceso enviando sus credenciales mediante POST a <code>auth/accessTokenRequest</code>, y envíe ese token en cada llamada en la cabecera <code>Authorization: Bearer &lt;accessToken&gt;</code>. Use el host demo <code>demo.tradovateapi.com/v1</code> para cuentas simuladas y <code>live.tradovateapi.com/v1</code> para cuentas con fondos. Los tokens caducan, así que renueve el suyo antes de que expire; de lo contrario, la siguiente llamada devolverá un <code>401 Unauthorized</code>." },
+        { title: "Liste sus cuentas", html: "Llame a <code>GET account/list</code> para obtener todas las cuentas asociadas a su inicio de sesión. Cada elemento incluye el <code>id</code> numérico, el <code>name</code> y el <code>userId</code>. Conserve ese <code>id</code> numérico: la mayoría de las llamadas siguientes dependen de él, y no es lo mismo que el alias de cuenta que ve en la aplicación." },
+        { title: "Lea sus posiciones abiertas", html: "Llame a <code>GET position/list</code> para obtener las posiciones actuales. Los campos que le interesan son <code>netPos</code> (contratos netos con signo, un valor negativo indica corto), <code>contractId</code> (asócielo a un símbolo con <code>contract/item?id=</code>) y <code>netPrice</code>, el precio medio de entrada. Una trampa: <code>netPrice</code> no siempre está informado en una posición recién abierta, así que proteja ese caso en el código." },
+        { title: "Obtenga sus fills y órdenes", html: "Llame a <code>GET fill/list</code> para las ejecuciones y a <code>GET order/list</code> para los registros de órdenes. Ambos siguen el patrón <code>{entity}/list</code> y devuelven arreglos para su usuario. Tenga en cuenta que estos endpoints de lista están pensados para la actividad reciente y no siempre devolverán todo su historial de operaciones. Para una carga histórica completa, extraiga los datos de la API de Reporting y después suscríbase por WebSocket a <code>user/syncrequest</code> para recibir actualizaciones en tiempo real." },
+        { title: "Consulte el saldo en efectivo y el margen", html: "Para el saldo, envíe mediante POST el <code>id</code> numérico de la cuenta a <code>cashBalance/getCashBalanceSnapshot</code>. Devuelve las últimas cifras de efectivo y margen, el valor total en efectivo, la P&amp;L abierta y el margen utilizado, que es la forma más rápida de leer el saldo realizado sin recorrer todo el registro de efectivo. Envíe <code>{ \"accountId\": &lt;id&gt; }</code> en el cuerpo de la solicitud." },
+      ],
+    },
+    { type: "heading",text: "Por qué lo necesitaría" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Auditoría y conciliación</strong>, compare fills y P&amp;L con los extractos de su bróker.",
+        "<strong class='text-white'>Registros fiscales</strong>, exporte ejecuciones y saldos realizados del año.",
+        "<strong class='text-white'>Paneles personalizados</strong>, muestre posiciones y saldo en vivo fuera de la aplicación Trader.",
+        "<strong class='text-white'>Alimentar una estrategia</strong>, deje que un bot lea la exposición actual antes de dimensionar la siguiente orden.",
+      ],
+    },
+    { type: "heading",text: "Automatice esto con PickMyTrade" },
+    { type: "paragraph",html: "Si prefiere no ocuparse usted mismo de la renovación de tokens, la gestión de límites de frecuencia y la fontanería de endpoints, <strong class='text-white'>PickMyTrade enlaza sus alertas de TradingView directamente con su cuenta de Tradovate</strong>. Las órdenes se ejecutan y las posiciones se actualizan automáticamente, sin llamadas manuales a la API." },
+  ], fr: [
+    { type: "paragraph",html: "Vous souhaitez récupérer les données de compte de l’API Tradovate, c’est-à-dire vos comptes, positions ouvertes, exécutions et solde de trésorerie, directement depuis les endpoints REST ? Que vous construisiez un tableau de bord, rapprochiez vos exécutions au moment des impôts ou mettiez en place une automatisation comme PickMyTrade, ce guide vous présente chaque appel de lecture, étape par étape." },
+    { type: "heading",text: "Qu’est-ce que l’API de données de compte Tradovate ?" },
+    { type: "paragraph",html: "Tradovate expose une API REST dans laquelle chaque objet de compte (comptes, positions, exécutions, ordres et soldes) dispose d’un endpoint de lecture correspondant. Dès que vous possédez un jeton d’accès valide, une poignée d’appels <code>GET</code> et <code>POST</code> renvoient ces données au format JSON. Vous pouvez ainsi reproduire exactement ce que vous voyez dans l’application Trader au sein de vos propres outils." },
+    { type: "heading",text: "Lire les données de compte de l’API Tradovate : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authentifiez-vous et définissez votre URL de base", html: "Demandez un jeton d’accès en envoyant vos identifiants par POST à <code>auth/accessTokenRequest</code>, puis transmettez ce jeton à chaque appel dans l’en-tête <code>Authorization: Bearer &lt;accessToken&gt;</code>. Utilisez l’hôte de démo <code>demo.tradovateapi.com/v1</code> pour les comptes simulés et <code>live.tradovateapi.com/v1</code> pour les comptes approvisionnés. Les jetons expirent ; renouvelez donc le vôtre avant son expiration, faute de quoi l’appel suivant renverra une erreur <code>401 Unauthorized</code>." },
+        { title: "Listez vos comptes", html: "Appelez <code>GET account/list</code> pour obtenir tous les comptes associés à votre connexion. Chaque élément inclut l’<code>id</code> numérique, le <code>name</code> et le <code>userId</code>. Conservez cet <code>id</code> numérique : la plupart des appels suivants s’appuient dessus, et il ne correspond pas au surnom du compte que vous voyez dans l’application." },
+        { title: "Lisez vos positions ouvertes", html: "Appelez <code>GET position/list</code> pour obtenir les positions actuelles. Les champs qui vous intéressent sont <code>netPos</code> (contrats nets signés, une valeur négative signifie une position vendeuse), <code>contractId</code> (associez-le à un symbole avec <code>contract/item?id=</code>) et <code>netPrice</code>, le prix d’entrée moyen. Un piège : <code>netPrice</code> n’est pas toujours renseigné sur une position fraîchement ouverte ; prévoyez donc ce cas dans votre code." },
+        { title: "Récupérez vos exécutions et ordres", html: "Appelez <code>GET fill/list</code> pour les exécutions et <code>GET order/list</code> pour les enregistrements d’ordres. Tous deux suivent le modèle <code>{entity}/list</code> et renvoient des tableaux pour votre utilisateur. Gardez à l’esprit que ces endpoints de liste sont conçus pour l’activité récente et ne renverront pas toujours l’intégralité de votre historique de trades. Pour un chargement historique complet, utilisez l’API de Reporting, puis abonnez-vous à <code>user/syncrequest</code> via WebSocket pour recevoir les mises à jour en temps réel." },
+        { title: "Vérifiez le solde de trésorerie et la marge", html: "Pour le solde, envoyez par POST l’<code>id</code> numérique du compte à <code>cashBalance/getCashBalanceSnapshot</code>. Cet appel renvoie les dernières valeurs de trésorerie et de marge, la valeur totale de la trésorerie, le P&amp;L ouvert et la marge utilisée, ce qui est le moyen le plus rapide de lire le solde réalisé sans parcourir tout le journal de trésorerie. Envoyez <code>{ \"accountId\": &lt;id&gt; }</code> dans le corps de la requête." },
+      ],
+    },
+    { type: "heading",text: "Pourquoi vous en avez besoin" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Audit et rapprochement</strong>, comparez exécutions et P&amp;L à vos relevés de courtier.",
+        "<strong class='text-white'>Documents fiscaux</strong>, exportez les exécutions et les soldes réalisés de l’année.",
+        "<strong class='text-white'>Tableaux de bord personnalisés</strong>, affichez positions et solde en direct en dehors de l’application Trader.",
+        "<strong class='text-white'>Alimenter une stratégie</strong>, laissez un bot lire l’exposition actuelle avant de dimensionner le prochain ordre.",
+      ],
+    },
+    { type: "heading",text: "Automatisez cela avec PickMyTrade" },
+    { type: "paragraph",html: "Si vous préférez ne pas gérer vous-même le renouvellement des jetons, les limites de débit et la plomberie des endpoints, <strong class='text-white'>PickMyTrade relie vos alertes TradingView directement à votre compte Tradovate</strong>. Les ordres s’exécutent et les positions se mettent à jour automatiquement, sans appels API manuels." },
+  ], it: [
+    { type: "paragraph",html: "Ha bisogno di recuperare i dati del conto dall’API di Tradovate, ovvero i Suoi conti, le posizioni aperte, i fill e il saldo di cassa, direttamente dagli endpoint REST? Che stia costruendo una dashboard, riconciliando i fill al momento delle tasse o configurando un’automazione come PickMyTrade, questa guida La accompagna in ogni chiamata di lettura, passo dopo passo." },
+    { type: "heading",text: "Che cos’è l’API dei dati del conto di Tradovate?" },
+    { type: "paragraph",html: "Tradovate espone un’API REST in cui ogni oggetto del conto (conti, posizioni, fill, ordini e saldi) ha un endpoint di lettura corrispondente. Una volta in possesso di un token di accesso valido, poche chiamate <code>GET</code> e <code>POST</code> restituiscono quei dati in JSON. Questo significa che può riprodurre esattamente ciò che vede nell’app Trader all’interno dei Suoi strumenti." },
+    { type: "heading",text: "Leggere i dati del conto dall’API di Tradovate: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Si autentichi e imposti l’URL di base", html: "Richieda un token di accesso inviando le Sue credenziali in POST a <code>auth/accessTokenRequest</code>, quindi invii quel token a ogni chiamata nell’header <code>Authorization: Bearer &lt;accessToken&gt;</code>. Usi l’host demo <code>demo.tradovateapi.com/v1</code> per i conti simulati e <code>live.tradovateapi.com/v1</code> per quelli finanziati. I token scadono, quindi rinnovi il Suo prima che scada, altrimenti la chiamata successiva restituirà un <code>401 Unauthorized</code>." },
+        { title: "Elenchi i Suoi conti", html: "Chiami <code>GET account/list</code> per ottenere tutti i conti associati al Suo login. Ogni elemento include l’<code>id</code> numerico, il <code>name</code> e lo <code>userId</code>. Conservi quell’<code>id</code> numerico: la maggior parte delle chiamate seguenti dipende da esso, e non coincide con il nome del conto che vede nell’app." },
+        { title: "Legga le Sue posizioni aperte", html: "Chiami <code>GET position/list</code> per ottenere le posizioni correnti. I campi che contano sono <code>netPos</code> (contratti netti con segno, un valore negativo indica una posizione corta), <code>contractId</code> (lo associ a un simbolo con <code>contract/item?id=</code>) e <code>netPrice</code>, il prezzo medio di ingresso. Un’insidia: <code>netPrice</code> non è sempre valorizzato su una posizione appena aperta, quindi lo gestisca nel codice." },
+        { title: "Recuperi fill e ordini", html: "Chiami <code>GET fill/list</code> per le esecuzioni e <code>GET order/list</code> per i record degli ordini. Entrambi seguono lo schema <code>{entity}/list</code> e restituiscono array per il Suo utente. Tenga presente che questi endpoint di elenco sono pensati per l’attività recente e non sempre restituiscono l’intero storico dei trade. Per un caricamento storico completo, attinga all’API di Reporting, poi si iscriva via WebSocket a <code>user/syncrequest</code> per gli aggiornamenti in tempo reale." },
+        { title: "Controlli il saldo di cassa e il margine", html: "Per il saldo, invii in POST l’<code>id</code> numerico del conto a <code>cashBalance/getCashBalanceSnapshot</code>. Restituisce gli ultimi valori di cassa e margine, il valore totale di cassa, il P&amp;L aperto e il margine utilizzato, ed è il modo più rapido per leggere il saldo realizzato senza scorrere l’intero registro di cassa. Invii <code>{ \"accountId\": &lt;id&gt; }</code> nel corpo della richiesta." },
+      ],
+    },
+    { type: "heading",text: "Perché Le serve" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Audit e riconciliazione</strong>, confronti fill e P&amp;L con gli estratti conto del Suo broker.",
+        "<strong class='text-white'>Registri fiscali</strong>, esporti esecuzioni e saldi realizzati dell’anno.",
+        "<strong class='text-white'>Dashboard personalizzate</strong>, mostri posizioni e saldo in tempo reale fuori dall’app Trader.",
+        "<strong class='text-white'>Alimentare una strategia</strong>, lasci che un bot legga l’esposizione corrente prima di dimensionare il prossimo ordine.",
+      ],
+    },
+    { type: "heading",text: "Automatizzi tutto con PickMyTrade" },
+    { type: "paragraph",html: "Se preferisce non occuparsi personalmente di rinnovo dei token, gestione dei limiti di frequenza e manutenzione degli endpoint, <strong class='text-white'>PickMyTrade collega i Suoi alert di TradingView direttamente al Suo conto Tradovate</strong>. Gli ordini partono e le posizioni si aggiornano automaticamente, senza chiamate API manuali." },
+  ] },
+  ctaHeading: { en: "Skip the Endpoint Plumbing", de: "Verzichten Sie auf die Endpunkt-Arbeit", es: "Olvídese de la fontanería de endpoints", fr: "Oubliez la plomberie des endpoints", it: "Eviti la manutenzione degli endpoint" },
+  ctaText: { en: "Let PickMyTrade link your TradingView alerts straight to your Tradovate account, orders fire and positions update automatically.", de: "Lassen Sie PickMyTrade Ihre TradingView-Alerts direkt mit Ihrem Tradovate-Konto verknüpfen, Orders werden automatisch ausgelöst und Positionen automatisch aktualisiert.", es: "Deje que PickMyTrade enlace sus alertas de TradingView directamente con su cuenta de Tradovate: las órdenes se ejecutan y las posiciones se actualizan automáticamente.", fr: "Laissez PickMyTrade relier vos alertes TradingView directement à votre compte Tradovate : les ordres s’exécutent et les positions se mettent à jour automatiquement.", it: "Lasci che PickMyTrade colleghi i Suoi alert di TradingView direttamente al Suo conto Tradovate: gli ordini partono e le posizioni si aggiornano automaticamente." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Do the list endpoints return my entire trade history?", a: "Not reliably. fill/list and order/list are best for recent activity. For a full historical export, use the Reporting API rather than paging the list endpoints." },
+    { q: "Why is my netPrice field missing on a position?", a: "netPrice isn't guaranteed on every position object, especially right after entry. Always null-check it and fall back to your own fill data if you need the average price immediately." },
+    { q: "Which base URL should I use?", a: "Use demo.tradovateapi.com for simulated accounts and live.tradovateapi.com for funded ones. Rate limits apply and vary, so throttle your polling and check Tradovate's current limits." },
+  ], de: [
+    { q: "Liefern die List-Endpunkte meine gesamte Handelshistorie?", a: "Nicht zuverlässig. fill/list und order/list eignen sich am besten für die jüngste Aktivität. Für einen vollständigen historischen Export nutzen Sie die Reporting-API, statt die List-Endpunkte seitenweise abzurufen." },
+    { q: "Warum fehlt das Feld netPrice bei einer Position?", a: "netPrice ist nicht bei jedem Positionsobjekt garantiert, besonders kurz nach dem Einstieg. Prüfen Sie es immer auf null und greifen Sie auf Ihre eigenen Fill-Daten zurück, wenn Sie den Durchschnittspreis sofort benötigen." },
+    { q: "Welche Basis-URL sollte ich verwenden?", a: "Verwenden Sie demo.tradovateapi.com für simulierte Konten und live.tradovateapi.com für Konten mit Guthaben. Es gelten Ratenbegrenzungen, die variieren; drosseln Sie daher Ihr Polling und prüfen Sie die aktuellen Limits von Tradovate." },
+  ], es: [
+    { q: "¿Los endpoints de lista devuelven todo mi historial de operaciones?", a: "No de forma fiable. fill/list y order/list son más adecuados para la actividad reciente. Para una exportación histórica completa, use la API de Reporting en lugar de paginar los endpoints de lista." },
+    { q: "¿Por qué falta el campo netPrice en una posición?", a: "netPrice no está garantizado en todos los objetos de posición, especialmente justo después de la entrada. Compruebe siempre si es null y recurra a sus propios datos de fills si necesita el precio medio de inmediato." },
+    { q: "¿Qué URL base debo usar?", a: "Use demo.tradovateapi.com para cuentas simuladas y live.tradovateapi.com para cuentas con fondos. Se aplican límites de frecuencia que varían, así que limite su sondeo y consulte los límites vigentes de Tradovate." },
+  ], fr: [
+    { q: "Les endpoints de liste renvoient-ils tout mon historique de trades ?", a: "Pas de façon fiable. fill/list et order/list conviennent surtout à l’activité récente. Pour un export historique complet, utilisez l’API de Reporting plutôt que de paginer les endpoints de liste." },
+    { q: "Pourquoi le champ netPrice est-il absent d’une position ?", a: "netPrice n’est pas garanti sur chaque objet de position, surtout juste après l’entrée. Vérifiez-le toujours contre null et rabattez-vous sur vos propres données d’exécution si vous avez besoin du prix moyen immédiatement." },
+    { q: "Quelle URL de base dois-je utiliser ?", a: "Utilisez demo.tradovateapi.com pour les comptes simulés et live.tradovateapi.com pour les comptes approvisionnés. Des limites de débit s’appliquent et varient ; limitez donc la fréquence de vos requêtes et consultez les limites en vigueur chez Tradovate." },
+  ], it: [
+    { q: "Gli endpoint di elenco restituiscono tutto il mio storico di trading?", a: "Non in modo affidabile. fill/list e order/list sono più adatti all’attività recente. Per un’esportazione storica completa, usi l’API di Reporting anziché scorrere a pagine gli endpoint di elenco." },
+    { q: "Perché il campo netPrice manca in una posizione?", a: "netPrice non è garantito su ogni oggetto posizione, soprattutto subito dopo l’ingresso. Lo controlli sempre per null e ripieghi sui Suoi dati di fill se Le serve subito il prezzo medio." },
+    { q: "Quale URL di base devo usare?", a: "Usi demo.tradovateapi.com per i conti simulati e live.tradovateapi.com per quelli finanziati. Si applicano limiti di frequenza che variano, quindi riduca la frequenza del polling e verifichi i limiti attuali di Tradovate." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von dieser unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins strictement éducatives et informatives et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. Le trading de contrats à terme et d’autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d’automatisation tierce indépendante et n’est ni affiliée à Tradovate, Inc., ni approuvée, ni parrainée par cette dernière. « Tradovate » et tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d’agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né approvata o sponsorizzata da essa. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

@@ -1,0 +1,240 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-api-brackets";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Place OCO & OSO Bracket Orders via the API";
+const META_DESCRIPTION =
+  "Tradovate API bracket orders made easy: build OCO and OSO entry, stop, and target legs with placeOSO, placeOCO, and orderStrategy.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "OCO- & OSO-Bracket-Orders über die API platzieren", es: "Coloque órdenes bracket OCO y OSO con la API", fr: "Passer des ordres bracket OCO et OSO via l’API", it: "Inserire ordini bracket OCO e OSO tramite l’API" },
+  dek: { en: "Placing OCO and OSO bracket orders through the Tradovate API isn't complicated once you see how the pieces fit together. Here's the entry, stop, and target legs with placeOSO, placeOCO, and orderStrategy, one step at a time.", de: "Das Platzieren von OCO- und OSO-Bracket-Orders über die Tradovate-API ist nicht kompliziert, sobald Sie sehen, wie die Teile zusammenpassen. Hier sind die Einstiegs-, Stop- und Ziel-Legs mit placeOSO, placeOCO und orderStrategy, Schritt für Schritt.", es: "Colocar órdenes bracket OCO y OSO mediante la API de Tradovate no es complicado cuando se ve cómo encajan las piezas. Aquí están las patas de entrada, stop y objetivo con placeOSO, placeOCO y orderStrategy, paso a paso.", fr: "Passer des ordres bracket OCO et OSO via l’API Tradovate n’a rien de compliqué une fois que vous voyez comment les pièces s’assemblent. Voici les jambes d’entrée, de stop et d’objectif avec placeOSO, placeOCO et orderStrategy, étape par étape.", it: "Inserire ordini bracket OCO e OSO tramite l’API di Tradovate non è complicato una volta capito come si incastrano i pezzi. Ecco le gambe di ingresso, stop e target con placeOSO, placeOCO e orderStrategy, passo dopo passo." },
+  readTime: { en: "6 min read", de: "6 Min. Lesezeit", es: "Lectura de 6 min", fr: "Lecture : 6 min", it: "Lettura di 6 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Placing OCO and OSO bracket orders through the Tradovate API isn't complicated once you see how the pieces fit together. Whether you're wiring up a custom bot, auditing your exits, or building automation like PickMyTrade, this guide walks you through the entry, stop, and target legs with <code>placeOSO</code>, <code>placeOCO</code>, and <code>orderStrategy</code>, one step at a time." },
+    { type: "heading", text: "What Are OCO and OSO Bracket Orders?" },
+    { type: "paragraph", html: "A bracket wraps a trade entry with a protective stop-loss and a take-profit target, so every position is risk-defined from the first tick. <strong class='text-white'>OSO</strong> (order-sends-other) fires the child stop and target only after the parent entry fills. <strong class='text-white'>OCO</strong> (one-cancels-other) links two live orders so that filling one automatically cancels the other. A complete bracket usually leans on both ideas at once." },
+    { type: "heading", text: "Place OCO & OSO Bracket Orders via the API: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authenticate and Grab Your Account IDs", html: "Get an access token, then note two things: your numeric <code>accountId</code> and your username <code>accountSpec</code>. Every bracket call needs both. Set <code>isAutomated: true</code> on bot orders, CME rules require automated orders to carry that flag, and Tradovate will reject them if it's missing." },
+        { title: "Send an OSO Bracket (Entry + Stop + Target)", html: "POST to <code>/order/placeOSO</code>. The top-level object is your entry order, with fields like <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, <code>orderType</code>, and <code>isAutomated</code>; <code>bracket1</code> and <code>bracket2</code> are the contingent exits that activate the instant that entry fills. Use a <code>Limit</code> bracket with a <code>price</code> for the target and a <code>Stop</code> bracket with a <code>stopPrice</code> for the loss, whether they sit in <code>bracket1</code> or <code>bracket2</code> makes no difference. A successful response hands you back <code>orderId</code>, <code>bracket1Id</code>, and <code>bracket2Id</code>. Swap the example prices for your own levels before you fire it." },
+        { title: "Link Two Exits with OCO", html: "Already in a position and just need a stop and target that cancel each other? POST to <code>/order/placeOCO</code>. The main object is one leg, carrying <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, <code>orderType</code>, and <code>stopPrice</code>; the nested <code>other</code> object is the second leg. When either leg fills, Tradovate cancels its sibling. Send the body as real JSON, use <code>json=payload</code>, not <code>data=</code>, or you'll hit an \"Invalid JSON\" error. And make sure the two legs form a valid stop/target pair, otherwise Tradovate returns \"Wrong OCO combination.\"" },
+        { title: "Automate Managed Brackets with orderStrategy", html: "For a fully server-side, ATM-style bracket, Tradovate exposes an order-strategy endpoint (<code>startOrderStrategy</code>). It takes a <code>brackets</code> array of <code>qty</code>, <code>profitTarget</code>, and <code>stopLoss</code> offsets and manages the exits for you once the entry fills. Route this call over a WebSocket for reliability; if it errors out, fall back to the paired <code>placeOSO</code>/<code>placeOCO</code> approach above." },
+        { title: "Confirm the Bracket Legs in Tradovate", html: "Open the Orders panel (and the Positions panel) in the Tradovate web platform and confirm your entry filled and that both the stop and target legs are working. If you close the position by hand, cancel any orphaned leg so it doesn't sit in the book waiting to fill." },
+      ],
+    },
+    { type: "heading", text: "Why You'd Need This" },
+    {
+      type: "list",
+      items: [
+        "Ship risk-defined automation where every entry carries a stop and a target.",
+        "Audit or reconcile API fills against what actually shows in the platform.",
+        "Migrate a TradingView or custom strategy to direct order routing.",
+        "Guarantee an exit is in the book the instant a position opens.",
+      ],
+    },
+    { type: "heading", text: "Automate This with PickMyTrade" },
+    { type: "paragraph", html: "Handling bracket logic through the raw API means access tokens, device IDs, and JSON payloads you have to maintain by hand. <strong class='text-white'>PickMyTrade links your TradingView alerts straight to your Tradovate account</strong> and attaches the stop and target automatically, no code, no manual clicks." },
+  ], de: [
+    { type: "paragraph",html: "Das Platzieren von OCO- und OSO-Bracket-Orders über die Tradovate-API ist nicht kompliziert, sobald Sie sehen, wie die Teile zusammenpassen. Ob Sie einen eigenen Bot aufsetzen, Ihre Exits prüfen oder Automatisierung wie PickMyTrade bauen: Dieser Leitfaden führt Sie Schritt für Schritt durch die Einstiegs-, Stop- und Ziel-Legs mit <code>placeOSO</code>, <code>placeOCO</code> und <code>orderStrategy</code>." },
+    { type: "heading",text: "Was sind OCO- und OSO-Bracket-Orders?" },
+    { type: "paragraph",html: "Ein Bracket umgibt einen Trade-Einstieg mit einem schützenden Stop-Loss und einem Take-Profit-Ziel, sodass jede Position vom ersten Tick an risikodefiniert ist. <strong class='text-white'>OSO</strong> (order-sends-other) löst den untergeordneten Stop und das Ziel erst aus, nachdem die übergeordnete Einstiegsorder ausgeführt wurde. <strong class='text-white'>OCO</strong> (one-cancels-other) verknüpft zwei aktive Orders so, dass die Ausführung der einen die andere automatisch storniert. Ein vollständiges Bracket stützt sich in der Regel auf beide Konzepte zugleich." },
+    { type: "heading",text: "OCO- & OSO-Bracket-Orders über die API platzieren: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authentifizieren und Konto-IDs ermitteln", html: "Holen Sie ein Access-Token und notieren Sie zwei Dinge: Ihre numerische <code>accountId</code> und Ihren Benutzernamen <code>accountSpec</code>. Jeder Bracket-Aufruf benötigt beides. Setzen Sie bei Bot-Orders <code>isAutomated: true</code>, denn die CME-Regeln verlangen, dass automatisierte Orders dieses Flag tragen, und Tradovate lehnt sie ab, wenn es fehlt." },
+        { title: "Einen OSO-Bracket senden (Einstieg + Stop + Ziel)", html: "Senden Sie per POST an <code>/order/placeOSO</code>. Das Objekt der obersten Ebene ist Ihre Einstiegsorder mit Feldern wie <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, <code>orderType</code> und <code>isAutomated</code>; <code>bracket1</code> und <code>bracket2</code> sind die bedingten Exits, die sich im selben Moment aktivieren, in dem dieser Einstieg ausgeführt wird. Verwenden Sie ein <code>Limit</code>-Bracket mit einem <code>price</code> für das Ziel und ein <code>Stop</code>-Bracket mit einem <code>stopPrice</code> für den Verlust; ob sie in <code>bracket1</code> oder <code>bracket2</code> stehen, spielt keine Rolle. Eine erfolgreiche Antwort liefert Ihnen <code>orderId</code>, <code>bracket1Id</code> und <code>bracket2Id</code> zurück. Ersetzen Sie die Beispielpreise durch Ihre eigenen Niveaus, bevor Sie die Order absenden." },
+        { title: "Zwei Exits mit OCO verknüpfen", html: "Sind Sie bereits in einer Position und brauchen nur einen Stop und ein Ziel, die sich gegenseitig stornieren? Senden Sie per POST an <code>/order/placeOCO</code>. Das Hauptobjekt ist ein Leg mit <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, <code>orderType</code> und <code>stopPrice</code>; das verschachtelte Objekt <code>other</code> ist das zweite Leg. Sobald eines der Legs ausgeführt wird, storniert Tradovate das andere. Senden Sie den Body als echtes JSON, verwenden Sie <code>json=payload</code>, nicht <code>data=</code>, sonst erhalten Sie den Fehler „Invalid JSON“. Und stellen Sie sicher, dass die beiden Legs ein gültiges Stop-/Ziel-Paar bilden, andernfalls gibt Tradovate „Wrong OCO combination.“ zurück." },
+        { title: "Verwaltete Brackets mit orderStrategy automatisieren", html: "Für einen vollständig serverseitigen Bracket im ATM-Stil stellt Tradovate einen Order-Strategy-Endpunkt bereit (<code>startOrderStrategy</code>). Er nimmt ein <code>brackets</code>-Array mit <code>qty</code>-, <code>profitTarget</code>- und <code>stopLoss</code>-Offsets entgegen und verwaltet die Exits für Sie, sobald der Einstieg ausgeführt wurde. Leiten Sie diesen Aufruf aus Zuverlässigkeitsgründen über einen WebSocket; schlägt er fehl, weichen Sie auf den oben beschriebenen gepaarten Ansatz mit <code>placeOSO</code>/<code>placeOCO</code> aus." },
+        { title: "Die Bracket-Legs in Tradovate bestätigen", html: "Öffnen Sie das Orders-Panel (und das Positions-Panel) in der Tradovate-Webplattform und bestätigen Sie, dass Ihr Einstieg ausgeführt wurde und sowohl das Stop- als auch das Ziel-Leg aktiv sind. Wenn Sie die Position manuell schließen, stornieren Sie jedes verwaiste Leg, damit es nicht im Orderbuch auf eine Ausführung wartet." },
+      ],
+    },
+    { type: "heading",text: "Wofür Sie das brauchen" },
+    {
+      type: "list",
+      items: [
+        "Risikodefinierte Automatisierung bereitstellen, bei der jeder Einstieg einen Stop und ein Ziel trägt.",
+        "API-Fills mit dem abgleichen oder prüfen, was tatsächlich in der Plattform angezeigt wird.",
+        "Eine TradingView- oder eigene Strategie auf direktes Order-Routing umstellen.",
+        "Sicherstellen, dass im selben Moment, in dem eine Position eröffnet wird, ein Exit im Orderbuch liegt.",
+      ],
+    },
+    { type: "heading",text: "Automatisieren Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Bracket-Logik über die rohe API bedeutet Access-Tokens, Geräte-IDs und JSON-Payloads, die Sie von Hand pflegen müssen. <strong class='text-white'>PickMyTrade verknüpft Ihre TradingView-Alerts direkt mit Ihrem Tradovate-Konto</strong> und hängt Stop und Ziel automatisch an, ohne Code und ohne manuelle Klicks." },
+  ], es: [
+    { type: "paragraph",html: "Colocar órdenes bracket OCO y OSO mediante la API de Tradovate no es complicado cuando se ve cómo encajan las piezas. Ya sea que esté montando un bot personalizado, auditando sus salidas o creando automatización como PickMyTrade, esta guía le lleva paso a paso por las patas de entrada, stop y objetivo con <code>placeOSO</code>, <code>placeOCO</code> y <code>orderStrategy</code>." },
+    { type: "heading",text: "¿Qué son las órdenes bracket OCO y OSO?" },
+    { type: "paragraph",html: "Un bracket envuelve la entrada de una operación con un stop-loss protector y un objetivo de take-profit, de modo que cada posición queda con el riesgo definido desde el primer tick. <strong class='text-white'>OSO</strong> (order-sends-other) lanza el stop y el objetivo hijos solo después de que se ejecuta la entrada principal. <strong class='text-white'>OCO</strong> (one-cancels-other) vincula dos órdenes activas de modo que, al ejecutarse una, la otra se cancela automáticamente. Un bracket completo suele apoyarse en ambas ideas a la vez." },
+    { type: "heading",text: "Coloque órdenes bracket OCO y OSO con la API: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Autentíquese y obtenga los ID de su cuenta", html: "Obtenga un token de acceso y anote dos cosas: su <code>accountId</code> numérico y su nombre de usuario <code>accountSpec</code>. Cada llamada de bracket necesita ambos. Establezca <code>isAutomated: true</code> en las órdenes de bot: las reglas de CME exigen que las órdenes automatizadas lleven ese indicador, y Tradovate las rechazará si falta." },
+        { title: "Envíe un bracket OSO (entrada + stop + objetivo)", html: "Haga POST a <code>/order/placeOSO</code>. El objeto de nivel superior es su orden de entrada, con campos como <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, <code>orderType</code> e <code>isAutomated</code>; <code>bracket1</code> y <code>bracket2</code> son las salidas contingentes que se activan en el instante en que esa entrada se ejecuta. Use un bracket <code>Limit</code> con un <code>price</code> para el objetivo y un bracket <code>Stop</code> con un <code>stopPrice</code> para la pérdida; que estén en <code>bracket1</code> o en <code>bracket2</code> no importa. Una respuesta correcta le devuelve <code>orderId</code>, <code>bracket1Id</code> y <code>bracket2Id</code>. Cambie los precios de ejemplo por sus propios niveles antes de enviarlo." },
+        { title: "Vincule dos salidas con OCO", html: "¿Ya está en una posición y solo necesita un stop y un objetivo que se cancelen entre sí? Haga POST a <code>/order/placeOCO</code>. El objeto principal es una pata, con <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, <code>orderType</code> y <code>stopPrice</code>; el objeto anidado <code>other</code> es la segunda pata. Cuando se ejecuta cualquiera de las patas, Tradovate cancela la otra. Envíe el cuerpo como JSON real, use <code>json=payload</code>, no <code>data=</code>, o recibirá un error «Invalid JSON». Y asegúrese de que las dos patas formen un par válido de stop/objetivo; de lo contrario, Tradovate devuelve «Wrong OCO combination.»" },
+        { title: "Automatice brackets gestionados con orderStrategy", html: "Para un bracket totalmente del lado del servidor, al estilo ATM, Tradovate expone un endpoint de estrategia de órdenes (<code>startOrderStrategy</code>). Recibe un arreglo <code>brackets</code> con desplazamientos <code>qty</code>, <code>profitTarget</code> y <code>stopLoss</code>, y gestiona las salidas por usted una vez que se ejecuta la entrada. Envíe esta llamada por WebSocket para mayor fiabilidad; si falla, recurra al enfoque emparejado <code>placeOSO</code>/<code>placeOCO</code> descrito arriba." },
+        { title: "Confirme las patas del bracket en Tradovate", html: "Abra el panel Orders (y el panel Positions) en la plataforma web de Tradovate y confirme que su entrada se ejecutó y que tanto la pata de stop como la de objetivo están activas. Si cierra la posición manualmente, cancele cualquier pata huérfana para que no quede en el libro esperando ejecutarse." },
+      ],
+    },
+    { type: "heading",text: "Por qué lo necesitaría" },
+    {
+      type: "list",
+      items: [
+        "Lanzar automatización con riesgo definido en la que cada entrada lleva un stop y un objetivo.",
+        "Auditar o conciliar los fills de la API con lo que realmente aparece en la plataforma.",
+        "Migrar una estrategia de TradingView o personalizada al enrutamiento directo de órdenes.",
+        "Garantizar que haya una salida en el libro en el instante en que se abre una posición.",
+      ],
+    },
+    { type: "heading",text: "Automatice esto con PickMyTrade" },
+    { type: "paragraph",html: "Gestionar la lógica de brackets con la API en bruto implica tokens de acceso, ID de dispositivo y payloads JSON que debe mantener a mano. <strong class='text-white'>PickMyTrade enlaza sus alertas de TradingView directamente con su cuenta de Tradovate</strong> y adjunta el stop y el objetivo automáticamente, sin código y sin clics manuales." },
+  ], fr: [
+    { type: "paragraph",html: "Passer des ordres bracket OCO et OSO via l’API Tradovate n’a rien de compliqué une fois que vous voyez comment les pièces s’assemblent. Que vous mettiez en place un bot personnalisé, auditiez vos sorties ou construisiez une automatisation comme PickMyTrade, ce guide vous présente pas à pas les jambes d’entrée, de stop et d’objectif avec <code>placeOSO</code>, <code>placeOCO</code> et <code>orderStrategy</code>." },
+    { type: "heading",text: "Que sont les ordres bracket OCO et OSO ?" },
+    { type: "paragraph",html: "Un bracket encadre l’entrée d’un trade avec un stop-loss de protection et un objectif de take-profit, de sorte que chaque position a un risque défini dès le premier tick. <strong class='text-white'>OSO</strong> (order-sends-other) ne déclenche le stop et l’objectif enfants qu’une fois l’entrée parente exécutée. <strong class='text-white'>OCO</strong> (one-cancels-other) relie deux ordres actifs de sorte que l’exécution de l’un annule automatiquement l’autre. Un bracket complet s’appuie généralement sur ces deux principes à la fois." },
+    { type: "heading",text: "Passer des ordres bracket OCO et OSO via l’API : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authentifiez-vous et récupérez vos identifiants de compte", html: "Obtenez un jeton d’accès, puis notez deux éléments : votre <code>accountId</code> numérique et votre nom d’utilisateur <code>accountSpec</code>. Chaque appel de bracket exige les deux. Définissez <code>isAutomated: true</code> sur les ordres de bot : les règles du CME exigent que les ordres automatisés portent cet indicateur, et Tradovate les rejettera s’il est absent." },
+        { title: "Envoyez un bracket OSO (entrée + stop + objectif)", html: "Faites un POST vers <code>/order/placeOSO</code>. L’objet de premier niveau est votre ordre d’entrée, avec des champs tels que <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, <code>orderType</code> et <code>isAutomated</code> ; <code>bracket1</code> et <code>bracket2</code> sont les sorties conditionnelles qui s’activent à l’instant où cette entrée est exécutée. Utilisez un bracket <code>Limit</code> avec un <code>price</code> pour l’objectif et un bracket <code>Stop</code> avec un <code>stopPrice</code> pour la perte ; qu’ils se trouvent dans <code>bracket1</code> ou <code>bracket2</code> n’a aucune importance. Une réponse réussie vous renvoie <code>orderId</code>, <code>bracket1Id</code> et <code>bracket2Id</code>. Remplacez les prix d’exemple par vos propres niveaux avant de l’envoyer." },
+        { title: "Reliez deux sorties avec OCO", html: "Vous êtes déjà en position et il vous faut seulement un stop et un objectif qui s’annulent mutuellement ? Faites un POST vers <code>/order/placeOCO</code>. L’objet principal est une jambe, avec <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, <code>orderType</code> et <code>stopPrice</code> ; l’objet imbriqué <code>other</code> est la seconde jambe. Lorsque l’une des jambes est exécutée, Tradovate annule l’autre. Envoyez le corps sous forme de véritable JSON, utilisez <code>json=payload</code>, et non <code>data=</code>, sinon vous obtiendrez une erreur « Invalid JSON ». Et assurez-vous que les deux jambes forment une paire stop/objectif valide, faute de quoi Tradovate renvoie « Wrong OCO combination. »" },
+        { title: "Automatisez des brackets gérés avec orderStrategy", html: "Pour un bracket entièrement côté serveur, de type ATM, Tradovate expose un endpoint de stratégie d’ordres (<code>startOrderStrategy</code>). Il prend un tableau <code>brackets</code> de décalages <code>qty</code>, <code>profitTarget</code> et <code>stopLoss</code> et gère les sorties pour vous une fois l’entrée exécutée. Acheminez cet appel via un WebSocket pour plus de fiabilité ; s’il échoue, rabattez-vous sur l’approche appariée <code>placeOSO</code>/<code>placeOCO</code> décrite ci-dessus." },
+        { title: "Vérifiez les jambes du bracket dans Tradovate", html: "Ouvrez le panneau Orders (et le panneau Positions) dans la plateforme web Tradovate et vérifiez que votre entrée a été exécutée et que les jambes de stop et d’objectif sont toutes deux actives. Si vous clôturez la position manuellement, annulez toute jambe orpheline afin qu’elle ne reste pas dans le carnet en attente d’exécution." },
+      ],
+    },
+    { type: "heading",text: "Pourquoi vous en avez besoin" },
+    {
+      type: "list",
+      items: [
+        "Déployer une automatisation à risque défini où chaque entrée porte un stop et un objectif.",
+        "Auditer ou rapprocher les exécutions de l’API avec ce qui s’affiche réellement dans la plateforme.",
+        "Migrer une stratégie TradingView ou personnalisée vers un routage d’ordres direct.",
+        "Garantir qu’une sortie est dans le carnet dès l’instant où une position s’ouvre.",
+      ],
+    },
+    { type: "heading",text: "Automatisez cela avec PickMyTrade" },
+    { type: "paragraph",html: "Gérer la logique de bracket via l’API brute implique des jetons d’accès, des identifiants d’appareil et des payloads JSON que vous devez maintenir à la main. <strong class='text-white'>PickMyTrade relie vos alertes TradingView directement à votre compte Tradovate</strong> et attache automatiquement le stop et l’objectif, sans code et sans clics manuels." },
+  ], it: [
+    { type: "paragraph",html: "Inserire ordini bracket OCO e OSO tramite l’API di Tradovate non è complicato una volta capito come si incastrano i pezzi. Che stia mettendo a punto un bot personalizzato, verificando le Sue uscite o costruendo un’automazione come PickMyTrade, questa guida La accompagna passo dopo passo attraverso le gambe di ingresso, stop e target con <code>placeOSO</code>, <code>placeOCO</code> e <code>orderStrategy</code>." },
+    { type: "heading",text: "Che cosa sono gli ordini bracket OCO e OSO?" },
+    { type: "paragraph",html: "Un bracket racchiude l’ingresso di un trade con uno stop-loss di protezione e un target di take-profit, così ogni posizione ha il rischio definito fin dal primo tick. <strong class='text-white'>OSO</strong> (order-sends-other) attiva lo stop e il target figli solo dopo l’esecuzione dell’ingresso principale. <strong class='text-white'>OCO</strong> (one-cancels-other) collega due ordini attivi in modo che l’esecuzione di uno annulli automaticamente l’altro. Un bracket completo di solito si basa su entrambi i concetti contemporaneamente." },
+    { type: "heading",text: "Inserire ordini bracket OCO e OSO tramite l’API: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Si autentichi e recuperi gli ID del conto", html: "Ottenga un token di accesso, poi annoti due cose: il Suo <code>accountId</code> numerico e il Suo nome utente <code>accountSpec</code>. Ogni chiamata bracket richiede entrambi. Imposti <code>isAutomated: true</code> sugli ordini del bot: le regole del CME richiedono che gli ordini automatizzati portino quel flag e Tradovate li rifiuterà se manca." },
+        { title: "Invii un bracket OSO (ingresso + stop + target)", html: "Faccia una POST su <code>/order/placeOSO</code>. L’oggetto di primo livello è il Suo ordine di ingresso, con campi come <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, <code>orderType</code> e <code>isAutomated</code>; <code>bracket1</code> e <code>bracket2</code> sono le uscite condizionate che si attivano nell’istante in cui quell’ingresso viene eseguito. Usi un bracket <code>Limit</code> con un <code>price</code> per il target e un bracket <code>Stop</code> con uno <code>stopPrice</code> per la perdita; che si trovino in <code>bracket1</code> o in <code>bracket2</code> non fa differenza. Una risposta positiva Le restituisce <code>orderId</code>, <code>bracket1Id</code> e <code>bracket2Id</code>. Sostituisca i prezzi di esempio con i Suoi livelli prima di inviarlo." },
+        { title: "Colleghi due uscite con OCO", html: "È già in posizione e Le servono solo uno stop e un target che si annullino a vicenda? Faccia una POST su <code>/order/placeOCO</code>. L’oggetto principale è una gamba, con <code>accountSpec</code>, <code>accountId</code>, <code>action</code>, <code>symbol</code>, <code>orderQty</code>, <code>orderType</code> e <code>stopPrice</code>; l’oggetto annidato <code>other</code> è la seconda gamba. Quando una delle due gambe viene eseguita, Tradovate annulla l’altra. Invii il body come vero JSON, usi <code>json=payload</code>, non <code>data=</code>, altrimenti otterrà un errore «Invalid JSON». E si assicuri che le due gambe formino una coppia stop/target valida, altrimenti Tradovate restituisce «Wrong OCO combination.»" },
+        { title: "Automatizzi bracket gestiti con orderStrategy", html: "Per un bracket completamente lato server, in stile ATM, Tradovate espone un endpoint di strategia degli ordini (<code>startOrderStrategy</code>). Accetta un array <code>brackets</code> di offset <code>qty</code>, <code>profitTarget</code> e <code>stopLoss</code> e gestisce le uscite per Lei una volta eseguito l’ingresso. Instradi questa chiamata tramite WebSocket per maggiore affidabilità; se restituisce un errore, ripieghi sull’approccio abbinato <code>placeOSO</code>/<code>placeOCO</code> descritto sopra." },
+        { title: "Verifichi le gambe del bracket in Tradovate", html: "Apra il pannello Orders (e il pannello Positions) nella piattaforma web di Tradovate e verifichi che il Suo ingresso sia stato eseguito e che sia la gamba di stop sia quella di target siano attive. Se chiude la posizione manualmente, annulli qualsiasi gamba orfana, in modo che non resti nel book in attesa di esecuzione." },
+      ],
+    },
+    { type: "heading",text: "Perché Le serve" },
+    {
+      type: "list",
+      items: [
+        "Distribuire un’automazione a rischio definito in cui ogni ingresso porta uno stop e un target.",
+        "Verificare o riconciliare i fill dell’API con ciò che compare effettivamente nella piattaforma.",
+        "Migrare una strategia di TradingView o personalizzata verso l’instradamento diretto degli ordini.",
+        "Garantire che un’uscita sia nel book nell’istante in cui si apre una posizione.",
+      ],
+    },
+    { type: "heading",text: "Automatizzi tutto con PickMyTrade" },
+    { type: "paragraph",html: "Gestire la logica dei bracket tramite l’API grezza significa token di accesso, ID dispositivo e payload JSON da mantenere a mano. <strong class='text-white'>PickMyTrade collega i Suoi alert di TradingView direttamente al Suo conto Tradovate</strong> e allega automaticamente stop e target, senza codice e senza clic manuali." },
+  ] },
+  ctaHeading: { en: "Skip the Bracket Payloads", de: "Verzichten Sie auf Bracket-Payloads", es: "Olvídese de los payloads de bracket", fr: "Oubliez les payloads de bracket", it: "Eviti i payload dei bracket" },
+  ctaText: { en: "Let PickMyTrade link your TradingView alerts straight to your Tradovate account and attach the stop and target automatically.", de: "Lassen Sie PickMyTrade Ihre TradingView-Alerts direkt mit Ihrem Tradovate-Konto verknüpfen und Stop und Ziel automatisch anhängen.", es: "Deje que PickMyTrade enlace sus alertas de TradingView directamente con su cuenta de Tradovate y adjunte el stop y el objetivo automáticamente.", fr: "Laissez PickMyTrade relier vos alertes TradingView directement à votre compte Tradovate et attacher automatiquement le stop et l’objectif.", it: "Lasci che PickMyTrade colleghi i Suoi alert di TradingView direttamente al Suo conto Tradovate e alleghi automaticamente stop e target." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What's the difference between OSO and OCO on Tradovate?", a: "OSO sends child orders that activate only after the parent entry fills. OCO links two live orders so that filling one cancels the other. A full bracket often uses both together." },
+    { q: "Which bracket field is the stop and which is the target?", a: "Use orderType: \"Limit\" with a price for the take-profit and orderType: \"Stop\" with a stopPrice for the loss. Whether they sit in bracket1 or bracket2 doesn't change the behavior." },
+    { q: "Why does my placeOCO call return \"Invalid JSON\" or \"Wrong OCO combination\"?", a: "Send the payload as real JSON rather than a form/data string, and make sure the two legs' actions and prices form a valid stop-and-target pair." },
+  ], de: [
+    { q: "Was ist der Unterschied zwischen OSO und OCO bei Tradovate?", a: "OSO sendet Kind-Orders, die erst aktiviert werden, nachdem die übergeordnete Einstiegsorder ausgeführt wurde. OCO verknüpft zwei aktive Orders so, dass die Ausführung der einen die andere storniert. Ein vollständiges Bracket nutzt oft beides zusammen." },
+    { q: "Welches Bracket-Feld ist der Stop und welches das Ziel?", a: "Verwenden Sie orderType: \"Limit\" mit einem price für den Take-Profit und orderType: \"Stop\" mit einem stopPrice für den Verlust. Ob sie in bracket1 oder bracket2 stehen, ändert nichts am Verhalten." },
+    { q: "Warum gibt mein placeOCO-Aufruf „Invalid JSON“ oder „Wrong OCO combination“ zurück?", a: "Senden Sie die Payload als echtes JSON statt als Formular-/Data-String, und stellen Sie sicher, dass Aktionen und Preise der beiden Legs ein gültiges Stop-und-Ziel-Paar bilden." },
+  ], es: [
+    { q: "¿Cuál es la diferencia entre OSO y OCO en Tradovate?", a: "OSO envía órdenes hijas que se activan solo después de que se ejecuta la orden de entrada principal. OCO vincula dos órdenes activas de modo que, al ejecutarse una, se cancela la otra. Un bracket completo suele usar ambas a la vez." },
+    { q: "¿Qué campo del bracket es el stop y cuál es el objetivo?", a: "Use orderType: \"Limit\" con un price para el take-profit y orderType: \"Stop\" con un stopPrice para la pérdida. Que estén en bracket1 o en bracket2 no cambia el comportamiento." },
+    { q: "¿Por qué mi llamada placeOCO devuelve «Invalid JSON» o «Wrong OCO combination»?", a: "Envíe el payload como JSON real en lugar de como cadena de formulario/data, y asegúrese de que las acciones y los precios de las dos patas formen un par válido de stop y objetivo." },
+  ], fr: [
+    { q: "Quelle est la différence entre OSO et OCO sur Tradovate ?", a: "OSO envoie des ordres enfants qui ne s’activent qu’après l’exécution de l’ordre d’entrée parent. OCO relie deux ordres actifs de sorte que l’exécution de l’un annule l’autre. Un bracket complet utilise souvent les deux ensemble." },
+    { q: "Quel champ du bracket est le stop et lequel est l’objectif ?", a: "Utilisez orderType: \"Limit\" avec un price pour le take-profit et orderType: \"Stop\" avec un stopPrice pour la perte. Qu’ils se trouvent dans bracket1 ou bracket2 ne change pas le comportement." },
+    { q: "Pourquoi mon appel placeOCO renvoie-t-il « Invalid JSON » ou « Wrong OCO combination » ?", a: "Envoyez le payload sous forme de véritable JSON plutôt que de chaîne de formulaire/data, et assurez-vous que les actions et les prix des deux jambes forment une paire stop et objectif valide." },
+  ], it: [
+    { q: "Qual è la differenza tra OSO e OCO su Tradovate?", a: "OSO invia ordini figli che si attivano solo dopo l’esecuzione dell’ordine di ingresso principale. OCO collega due ordini attivi in modo che l’esecuzione di uno annulli l’altro. Un bracket completo spesso usa entrambi insieme." },
+    { q: "Quale campo del bracket è lo stop e quale è il target?", a: "Usi orderType: \"Limit\" con un price per il take-profit e orderType: \"Stop\" con uno stopPrice per la perdita. Che si trovino in bracket1 o in bracket2 non cambia il comportamento." },
+    { q: "Perché la mia chiamata placeOCO restituisce «Invalid JSON» o «Wrong OCO combination»?", a: "Invii il payload come vero JSON anziché come stringa di form/data e si assicuri che azioni e prezzi delle due gambe formino una coppia valida di stop e target." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von dieser unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins strictement éducatives et informatives et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. Le trading de contrats à terme et d’autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d’automatisation tierce indépendante et n’est ni affiliée à Tradovate, Inc., ni approuvée, ni parrainée par cette dernière. « Tradovate » et tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d’agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né approvata o sponsorizzata da essa. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

@@ -1,0 +1,518 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-rate-limit-429";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API 429 Too Many Requests Rate Limit";
+const META_DESCRIPTION =
+  "Fix the Tradovate API 429 Too Many Requests error: throttle under the rate caps, honor p-ticket wait times, and request a reset to trade again fast.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate API 429 Too Many Requests: cómo solucionarlo", fr: "API Tradovate : corriger l'erreur 429 Too Many Requests", it: "API Tradovate: risolvere l'errore 429 Too Many Requests" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API 429 Too Many Requests Rate Limit beheben", es: "Cómo solucionar el error 429 Too Many Requests (límite de velocidad) de la API de Tradovate", fr: "Corriger l'erreur 429 Too Many Requests (limite de débit) de l'API Tradovate", it: "Come risolvere l'errore 429 Too Many Requests (limite di frequenza) dell'API Tradovate" },
+  dek: { en: "A wall of 429s stops every new order, modification, and cancellation at once. Here's what triggers Tradovate's rate limit, how to read the p-ticket recovery fields, and how to throttle traffic so it never fires.", de: "Eine Wand aus 429-Fehlern stoppt gleichzeitig jede neue Order, Änderung und Stornierung. Hier erfahren Sie, was Tradovates Rate Limit auslöst, wie Sie die p-ticket-Wiederherstellungsfelder lesen und wie Sie den Traffic drosseln, damit es gar nicht erst so weit kommt.", es: "Un muro de errores 429 detiene al instante cada nueva orden, modificación y cancelación. Esto es lo que activa el límite de velocidad de Tradovate, cómo leer los campos de recuperación p-ticket y cómo limitar el tráfico para que nunca se dispare.", fr: "Un mur d'erreurs 429 bloque instantanément chaque nouvel ordre, modification et annulation. Voici ce qui déclenche la limite de débit de Tradovate, comment lire les champs de récupération p-ticket, et comment limiter le trafic pour qu'elle ne se déclenche jamais.", it: "Un muro di errori 429 blocca all'istante ogni nuovo ordine, modifica e cancellazione. Ecco cosa attiva il limite di frequenza di Tradovate, come leggere i campi di recupero p-ticket e come limitare il traffico affinché non scatti mai." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "When you're automating fast movers like ES or NQ through the Tradovate API, nothing kills a strategy quicker than a wall of <strong class='text-white'>429: Too Many Requests</strong> responses. The moment your bot, copier, or TradingView-to-Tradovate bridge crosses Tradovate's request ceiling, everything stops at once, new orders, modifications, cancellations. Worse, a follow-on <strong class='text-white'>p-ticket</strong> time penalty or a <strong class='text-white'>p-captcha</strong> lockout can keep you sidelined far longer than the trade window you were chasing. It bites hardest on a volatile open, when one alert fans out across several accounts and each leg counts as its own request. Here's what the 429 actually means in 2026, why it fires, and how to throttle, queue, and recover, plus how PickMyTrade paces API traffic so your orders don't bounce in the first place." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for the Tradovate 429 Rate Limit",
+      items: [
+        "<strong class='text-white'>Stop retrying immediately.</strong> Hammering the API during a lockout can extend the block instead of clearing it.",
+        "<strong class='text-white'>Read the <code>p-time</code> value.</strong> It tells you the exact number of seconds to wait before your next call.",
+        "<strong class='text-white'>Resend with the <code>p-ticket</code>.</strong> Include the returned token in your retry body so the request is accepted.",
+        "<strong class='text-white'>Throttle under the caps.</strong> Design against roughly 80 requests per minute and 5,000 per hour on a rolling window, and confirm the current numbers in Tradovate's API docs.",
+        "<strong class='text-white'>Queue order flow server-side.</strong> Space out modifications and multi-account fan-out instead of bursting.",
+        "<strong class='text-white'>Request a manual reset.</strong> If you're locked out, contact Tradovate Support with your username rather than retrying.",
+      ],
+    },
+    { type: "heading", text: "What “429: Too Many Requests” Means" },
+    { type: "paragraph", html: "The HTTP <strong class='text-white'>429 Too Many Requests</strong> status is Tradovate telling you your application has sent more requests than its API will accept inside a given window. Tradovate throttles on a per-second, per-minute, and per-hour basis. The instant any one of those ceilings is reached, the server stops handling new commands and answers with a 429 until the window rolls forward." },
+    { type: "paragraph", html: "There's an important wrinkle here: Tradovate's own developer FAQ states there is <strong class='text-white'>no fixed &ldquo;hard cap.&rdquo;</strong> The thresholds are deliberately variable and can tighten under load or for security reasons. A safe working ceiling to design against is roughly <strong class='text-white'>80 requests per minute and 5,000 requests per hour on a rolling 60-minute window</strong>, but treat that as a moving target, not a promise. Because the exact limits change over time, always confirm against the current Tradovate API documentation." },
+    { type: "paragraph", html: "The key thing to internalize: the limit is about <strong class='text-white'>request volume, not order volume</strong>. Logins, order placement, modifications, cancellations, and position-sync polling all count. Copy one TradingView alert to five accounts and that's five requests, so a strategy that looks modest on paper can burn through the ceiling fast when it's mirrored across accounts or leaning heavily on trailing stops." },
+    { type: "heading", text: "Top Causes of the Tradovate 429 Rate Limit in 2026" },
+    { type: "heading", text: "1. Bursting past the per-minute or hourly ceiling" },
+    { type: "paragraph", html: "Firing a rapid cluster of calls, a batch of entries, targets, and stops back-to-back, is the classic trigger. And because the hourly cap runs on a rolling 60-minute window, one heavy burst can keep you throttled long after the activity itself has stopped." },
+    { type: "heading", text: "2. Fan-out across multiple accounts (copy trading)" },
+    { type: "paragraph", html: "Copy trading multiplies every action. One alert copied to five accounts equals five requests, and a stop-and-target bracket on each account multiplies that again. High account counts are the single most common reason automated traders trip the limit." },
+    { type: "heading", text: "3. Excessive order modifications and trailing stops" },
+    { type: "paragraph", html: "Trailing stops and frequent price tweaks generate a steady stream of modify requests per account. Run several of those in parallel and the per-minute ceiling shows up quickly." },
+    { type: "heading", text: "4. Aggressive reconnection or polling loops" },
+    { type: "paragraph", html: "Bots that reconnect over and over, or poll for fills and positions on a tight timer, quietly eat your quota even when no orders are going out. Reconnecting in a loop after a failure is especially expensive." },
+    { type: "heading", text: "5. Repeated failed logins triggering p-captcha" },
+    { type: "paragraph", html: "Too many failed authentication attempts can return a <strong class='text-white'><code>p-captcha</code></strong> flag, which means a third-party (non-browser) application can't complete the request. In practice that usually means waiting about an hour before trying again." },
+    { type: "heading", text: "How to Fix the Tradovate 429 Rate Limit: Step-by-Step" },
+    { type: "heading", text: "Reading the p-ticket, p-time, and p-captcha response" },
+    { type: "paragraph", html: "When Tradovate throttles you, the response body carries the recovery instructions. Handle it in this order:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Check for p-time", html: "Check for <strong class='text-white'><code>p-time</code></strong>, the time in seconds before you can make a request again. Wait that many seconds; don't retry sooner." },
+        { title: "Resend with p-ticket", html: "Resend the original request with <strong class='text-white'><code>p-ticket</code></strong> added as an extra field in the request body. The ticket is what tells Tradovate this retry is the sanctioned one." },
+        { title: "Stop on p-captcha", html: "If you instead see <strong class='text-white'><code>p-captcha</code></strong>, stop, a headless or third-party app can't solve it. Wait about an hour, then confirm your credentials are correct before authenticating again." },
+      ],
+    },
+    { type: "heading", text: "Throttling and queueing your requests" },
+    { type: "paragraph", html: "The durable fix is to stop bursting and pace the traffic:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cap your outbound rate", html: "Cap your outbound rate below the observed ceiling and add a small delay between calls so a spike never lands them all in the same second." },
+        { title: "Queue and stagger multi-account fan-out", html: "Queue order flow server-side and stagger multi-account fan-out so accounts are served in sequence rather than all at once." },
+        { title: "Cut avoidable calls", html: "Cut avoidable calls: reduce order modifications, trim trailing-stop churn, and consider an execution mode that converts working orders to market orders where it makes sense, fewer modify calls means fewer requests." },
+        { title: "Replace polling with WebSocket updates", html: "Replace tight polling loops with event-driven WebSocket updates so you're not spending quota just to watch for fills." },
+      ],
+    },
+    { type: "heading", text: "Requesting a manual reset from Tradovate" },
+    { type: "paragraph", html: "If the block hangs on or a p-ticket penalty just won't clear, don't keep retrying, that can drag it out. Wait out the cooldown (often up to about 60 minutes for the rolling window to clear), then, if you're still locked out, contact Tradovate Support at <strong class='text-white'>312-283-3100</strong> or <strong class='text-white'>support@tradovate.com</strong> with your username and ask for a manual API-limit reset. Support can lift the penalty when a cooldown alone won't." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / signal", "What it means", "Fix"],
+      rows: [
+        ["429 Too Many Requests", "You exceeded the per-second, per-minute, or hourly request ceiling", "Stop sending, wait for the rolling window, then throttle future traffic"],
+        ["p-ticket in response", "A penalty token you must echo back on retry", "Resend the original request with p-ticket in the body"],
+        ["p-time in response", "Seconds to wait before the next request is allowed", "Sleep for p-time seconds, then retry with the ticket"],
+        ["p-captcha in response", "A third-party app can't complete the request (often after bad logins)", "Wait about an hour, verify credentials, then re-authenticate"],
+        ["Locked out for many minutes", "Repeated violations escalated into an extended penalty", "Wait out the cooldown; if still blocked, ask Tradovate Support for a manual reset"],
+        ["Limit tripped with few orders", "Copy fan-out or modifications multiplied your request count", "Stagger accounts, cut modifications, and queue order flow"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade sits between your TradingView alerts and Tradovate, and it's built to respect the API's limits instead of fighting them:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, spaces out order flow so calls stay under the per-minute and hourly ceilings and never arrive in a single burst.",
+        "<strong class='text-white'>Server-Side Queueing</strong>, batches and staggers multi-account fan-out rather than firing every leg at once.",
+        "<strong class='text-white'>Smart Retry &amp; Backoff</strong>, honors the <code>p-time</code> window and resends with the <code>p-ticket</code> automatically, so a throttle recovers without you touching anything.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors the corrected order across accounts while keeping the total request count inside the limit.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Wenn Sie schnelle Märkte wie ES oder NQ über die Tradovate API automatisieren, killt nichts eine Strategie schneller als eine Wand aus <strong class='text-white'>429: Too Many Requests</strong>-Antworten. Sobald Ihr Bot, Copier oder Ihre TradingView-zu-Tradovate-Bridge Tradovates Anfragen-Obergrenze überschreitet, stoppt alles auf einmal, neue Orders, Änderungen, Stornierungen. Schlimmer noch: Eine nachfolgende <strong class='text-white'>p-ticket</strong>-Zeitstrafe oder eine <strong class='text-white'>p-captcha</strong>-Sperre kann Sie deutlich länger aus dem Markt halten als das Handelsfenster, das Sie eigentlich nutzen wollten. Am härtesten trifft es bei einer volatilen Eröffnung, wenn ein Alert auf mehrere Konten verteilt wird und jedes einzelne Bein als eigene Anfrage zählt. Hier erfahren Sie, was der 429-Fehler 2026 tatsächlich bedeutet, warum er ausgelöst wird und wie Sie drosseln, in eine Warteschlange stellen und sich erholen, plus wie PickMyTrade den API-Traffic so taktet, dass Ihre Orders gar nicht erst abgewiesen werden." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste für das Tradovate 429 Rate Limit",
+      items: [
+        "<strong class='text-white'>Nicht sofort erneut versuchen.</strong> Wiederholtes Bombardieren der API während einer Sperre kann die Blockade verlängern, statt sie aufzuheben.",
+        "<strong class='text-white'>Lesen Sie den Wert <code>p-time</code>.</strong> Er gibt die genaue Anzahl an Sekunden an, die Sie vor Ihrem nächsten Aufruf warten müssen.",
+        "<strong class='text-white'>Erneut senden mit dem <code>p-ticket</code>.</strong> Fügen Sie das zurückgegebene Token in den Body Ihres erneuten Versuchs ein, damit die Anfrage akzeptiert wird.",
+        "<strong class='text-white'>Unter den Obergrenzen drosseln.</strong> Planen Sie mit rund 80 Anfragen pro Minute und 5.000 pro Stunde in einem gleitenden Fenster und bestätigen Sie die aktuellen Werte in Tradovates API-Dokumentation.",
+        "<strong class='text-white'>Order-Flow serverseitig in eine Warteschlange stellen.</strong> Verteilen Sie Änderungen und die Verteilung auf mehrere Konten zeitlich, statt sie gebündelt zu senden.",
+        "<strong class='text-white'>Einen manuellen Reset anfordern.</strong> Wenn Sie ausgesperrt sind, wenden Sie sich mit Ihrem Benutzernamen an den Tradovate-Support, statt es weiter zu versuchen.",
+      ],
+    },
+    { type: "heading", text: "Was „429: Too Many Requests“ bedeutet" },
+    { type: "paragraph", html: "Der HTTP-Status <strong class='text-white'>429 Too Many Requests</strong> teilt Ihnen mit, dass Ihre Anwendung mehr Anfragen gesendet hat, als Tradovates API innerhalb eines bestimmten Zeitfensters akzeptiert. Tradovate drosselt pro Sekunde, pro Minute und pro Stunde. Sobald eine dieser Obergrenzen erreicht ist, verarbeitet der Server keine neuen Befehle mehr und antwortet mit einem 429, bis das Zeitfenster weiterrückt." },
+    { type: "paragraph", html: "Hier gibt es eine wichtige Besonderheit: Tradovates eigenes Entwickler-FAQ besagt, dass es <strong class='text-white'>keine feste &ldquo;harte Obergrenze&rdquo;</strong> gibt. Die Schwellenwerte sind bewusst variabel und können sich unter Last oder aus Sicherheitsgründen verschärfen. Eine sichere Arbeitsobergrenze, an der Sie sich orientieren können, liegt bei etwa <strong class='text-white'>80 Anfragen pro Minute und 5.000 Anfragen pro Stunde in einem gleitenden 60-Minuten-Fenster</strong>, aber betrachten Sie das als bewegliches Ziel, nicht als feste Zusage. Da sich die genauen Grenzwerte im Laufe der Zeit ändern, bestätigen Sie sie immer anhand der aktuellen Tradovate-API-Dokumentation." },
+    { type: "paragraph", html: "Der entscheidende Punkt, den Sie sich merken sollten: Das Limit bezieht sich auf das <strong class='text-white'>Anfragevolumen, nicht auf das Ordervolumen</strong>. Logins, Orderplatzierungen, Änderungen, Stornierungen und Position-Sync-Abfragen zählen alle mit. Kopieren Sie einen TradingView-Alert auf fünf Konten, sind das fünf Anfragen, sodass eine auf dem Papier bescheiden wirkende Strategie das Limit schnell sprengen kann, wenn sie über mehrere Konten gespiegelt wird oder stark auf Trailing-Stops setzt." },
+    { type: "heading", text: "Häufigste Ursachen für das Tradovate 429 Rate Limit im Jahr 2026" },
+    { type: "heading", text: "1. Die Minuten- oder Stundenobergrenze in Bursts überschreiten" },
+    { type: "paragraph", html: "Das Abfeuern eines schnellen Bündels von Aufrufen, eine Reihe von Einstiegen, Zielen und Stopps direkt hintereinander, ist der klassische Auslöser. Und da die Stunden-Obergrenze auf einem gleitenden 60-Minuten-Fenster basiert, kann ein einziger starker Burst Sie lange nach dem eigentlichen Ereignis noch gedrosselt halten." },
+    { type: "heading", text: "2. Verteilung auf mehrere Konten (Copy-Trading)" },
+    { type: "paragraph", html: "Copy-Trading vervielfacht jede Aktion. Ein Alert, der auf fünf Konten kopiert wird, entspricht fünf Anfragen, und ein Stop-und-Target-Bracket auf jedem Konto vervielfacht das noch einmal. Eine hohe Kontoanzahl ist der mit Abstand häufigste Grund, warum automatisierte Trader das Limit auslösen." },
+    { type: "heading", text: "3. Übermäßige Orderänderungen und Trailing-Stops" },
+    { type: "paragraph", html: "Trailing-Stops und häufige Preisanpassungen erzeugen einen stetigen Strom von Änderungsanfragen pro Konto. Lassen Sie mehrere davon parallel laufen, wird die Minutenobergrenze schnell erreicht." },
+    { type: "heading", text: "4. Aggressive Reconnect- oder Polling-Schleifen" },
+    { type: "paragraph", html: "Bots, die sich immer wieder neu verbinden oder in kurzen Zeitabständen nach Fills und Positionen abfragen, verbrauchen still und leise Ihr Kontingent, selbst wenn gar keine Orders rausgehen. Besonders teuer ist ein Reconnect in einer Schleife nach einem Fehler." },
+    { type: "heading", text: "5. Wiederholte fehlgeschlagene Logins lösen p-captcha aus" },
+    { type: "paragraph", html: "Zu viele fehlgeschlagene Authentifizierungsversuche können ein <strong class='text-white'><code>p-captcha</code></strong>-Flag zurückgeben, was bedeutet, dass eine Drittanbieteranwendung (kein Browser) die Anfrage nicht abschließen kann. In der Praxis bedeutet das meist, etwa eine Stunde zu warten, bevor Sie es erneut versuchen." },
+    { type: "heading", text: "So beheben Sie das Tradovate 429 Rate Limit: Schritt für Schritt" },
+    { type: "heading", text: "Die p-ticket-, p-time- und p-captcha-Antwort lesen" },
+    { type: "paragraph", html: "Wenn Tradovate Sie drosselt, enthält der Antwort-Body die Anweisungen zur Wiederherstellung. Gehen Sie in dieser Reihenfolge vor:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Nach p-time suchen", html: "Prüfen Sie auf <strong class='text-white'><code>p-time</code></strong>, die Zeit in Sekunden, bevor Sie erneut eine Anfrage stellen können. Warten Sie diese Anzahl an Sekunden; versuchen Sie es nicht früher erneut." },
+        { title: "Erneut senden mit p-ticket", html: "Senden Sie die ursprüngliche Anfrage erneut, wobei Sie <strong class='text-white'><code>p-ticket</code></strong> als zusätzliches Feld im Anfrage-Body hinzufügen. Das Ticket teilt Tradovate mit, dass dieser Wiederholungsversuch der genehmigte ist." },
+        { title: "Bei p-captcha stoppen", html: "Wenn Sie stattdessen <strong class='text-white'><code>p-captcha</code></strong> sehen, stoppen Sie, eine Headless- oder Drittanbieteranwendung kann es nicht lösen. Warten Sie etwa eine Stunde und bestätigen Sie dann, dass Ihre Zugangsdaten korrekt sind, bevor Sie sich erneut authentifizieren." },
+      ],
+    },
+    { type: "heading", text: "Ihre Anfragen drosseln und in eine Warteschlange stellen" },
+    { type: "paragraph", html: "Die dauerhafte Lösung besteht darin, keine Bursts mehr zu senden und den Traffic zu takten:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ausgehende Rate begrenzen", html: "Begrenzen Sie Ihre ausgehende Rate unter der beobachteten Obergrenze und fügen Sie eine kleine Verzögerung zwischen den Aufrufen ein, damit ein Spike sie nie alle in derselben Sekunde landen lässt." },
+        { title: "Verteilung auf mehrere Konten in eine Warteschlange stellen und staffeln", html: "Stellen Sie den Order-Flow serverseitig in eine Warteschlange und staffeln Sie die Verteilung auf mehrere Konten, sodass Konten nacheinander statt alle gleichzeitig bedient werden." },
+        { title: "Vermeidbare Aufrufe reduzieren", html: "Reduzieren Sie vermeidbare Aufrufe: verringern Sie Orderänderungen, dämmen Sie das Trailing-Stop-Rauschen ein und erwägen Sie einen Ausführungsmodus, der werkende Orders dort, wo es sinnvoll ist, in Market-Orders umwandelt, weniger Änderungsaufrufe bedeuten weniger Anfragen." },
+        { title: "Polling durch WebSocket-Updates ersetzen", html: "Ersetzen Sie enge Polling-Schleifen durch ereignisgesteuerte WebSocket-Updates, damit Sie Ihr Kontingent nicht nur verbrauchen, um auf Fills zu warten." },
+      ],
+    },
+    { type: "heading", text: "Einen manuellen Reset bei Tradovate anfordern" },
+    { type: "paragraph", html: "Wenn die Sperre bestehen bleibt oder eine p-ticket-Strafe einfach nicht verschwinden will, versuchen Sie es nicht immer weiter, das kann sie verlängern. Warten Sie die Abkühlphase ab (oft bis zu etwa 60 Minuten, bis das gleitende Fenster sich löscht), und wenn Sie dann immer noch ausgesperrt sind, wenden Sie sich mit Ihrem Benutzernamen an den Tradovate-Support unter <strong class='text-white'>312-283-3100</strong> oder <strong class='text-white'>support@tradovate.com</strong> und bitten Sie um einen manuellen Reset des API-Limits. Der Support kann die Strafe aufheben, wenn eine Abkühlphase allein nicht ausreicht." },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Fehler / Signal", "Was es bedeutet", "Lösung"],
+      rows: [
+        ["429 Too Many Requests", "Sie haben die Sekunden-, Minuten- oder Stunden-Obergrenze für Anfragen überschritten", "Senden einstellen, das gleitende Fenster abwarten, dann künftigen Traffic drosseln"],
+        ["p-ticket in der Antwort", "Ein Strafe-Token, das Sie beim Wiederholungsversuch zurücksenden müssen", "Ursprüngliche Anfrage mit p-ticket im Body erneut senden"],
+        ["p-time in der Antwort", "Sekunden, die Sie warten müssen, bevor die nächste Anfrage erlaubt ist", "p-time Sekunden warten, dann mit dem Ticket erneut versuchen"],
+        ["p-captcha in der Antwort", "Eine Drittanbieteranwendung kann die Anfrage nicht abschließen (oft nach fehlgeschlagenen Logins)", "Etwa eine Stunde warten, Zugangsdaten prüfen, dann erneut authentifizieren"],
+        ["Für viele Minuten ausgesperrt", "Wiederholte Verstöße haben sich zu einer verlängerten Strafe ausgeweitet", "Abkühlphase abwarten; bei fortbestehender Sperre den Tradovate-Support um einen manuellen Reset bitten"],
+        ["Limit trotz weniger Orders ausgelöst", "Copy-Verteilung oder Änderungen haben Ihre Anfragenanzahl vervielfacht", "Konten staffeln, Änderungen reduzieren und Order-Flow in eine Warteschlange stellen"],
+      ],
+    },
+    { type: "heading", text: "So verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade sitzt zwischen Ihren TradingView-Alerts und Tradovate und ist so gebaut, dass es die Grenzen der API respektiert, statt gegen sie anzukämpfen:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Rate-Limit-sicheres Routing</strong>, verteilt den Order-Flow zeitlich, sodass Aufrufe unter den Minuten- und Stundenobergrenzen bleiben und nie als einzelner Burst ankommen.",
+        "<strong class='text-white'>Serverseitiges Queueing</strong>, bündelt und staffelt die Verteilung auf mehrere Konten, statt jedes Bein gleichzeitig abzufeuern.",
+        "<strong class='text-white'>Smart Retry &amp; Backoff</strong>, respektiert das <code>p-time</code>-Fenster und sendet automatisch mit dem <code>p-ticket</code> erneut, sodass sich eine Drosselung erholt, ohne dass Sie etwas tun müssen.",
+        "<strong class='text-white'>Multi-Account-Sync</strong>, spiegelt die korrigierte Order über Konten hinweg, während die Gesamtanzahl der Anfragen innerhalb des Limits bleibt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Cuando automatiza instrumentos rápidos como ES o NQ a través de la API de Tradovate, nada acaba con una estrategia más rápido que un muro de respuestas <strong class='text-white'>429: Too Many Requests</strong>. En el momento en que su bot, copiador o puente de TradingView a Tradovate supera el límite de solicitudes de Tradovate, todo se detiene a la vez: nuevas órdenes, modificaciones, cancelaciones. Peor aún, una penalización de tiempo <strong class='text-white'>p-ticket</strong> posterior o un bloqueo por <strong class='text-white'>p-captcha</strong> pueden dejarlo fuera de juego mucho más tiempo que la ventana de operación que perseguía. El problema es más grave en una apertura volátil, cuando una alerta se distribuye entre varias cuentas y cada pata cuenta como su propia solicitud. Esto es lo que realmente significa el error 429 en 2026, por qué se dispara y cómo limitar, poner en cola y recuperarse, además de cómo PickMyTrade regula el tráfico de la API para que sus órdenes no reboten desde el principio." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para el límite de velocidad 429 de Tradovate",
+      items: [
+        "<strong class='text-white'>Deje de reintentar de inmediato.</strong> Bombardear la API durante un bloqueo puede prolongarlo en lugar de levantarlo.",
+        "<strong class='text-white'>Lea el valor de <code>p-time</code>.</strong> Indica el número exacto de segundos que debe esperar antes de la siguiente llamada.",
+        "<strong class='text-white'>Reenvíe con el <code>p-ticket</code>.</strong> Incluya el token devuelto en el cuerpo de su reintento para que la solicitud sea aceptada.",
+        "<strong class='text-white'>Limite el tráfico por debajo de los topes.</strong> Diseñe su sistema para unas 80 solicitudes por minuto y 5000 por hora en una ventana móvil, y confirme las cifras actuales en la documentación de la API de Tradovate.",
+        "<strong class='text-white'>Ponga el flujo de órdenes en cola en el servidor.</strong> Espacie las modificaciones y la distribución a varias cuentas en lugar de enviarlas todas a la vez.",
+        "<strong class='text-white'>Solicite un restablecimiento manual.</strong> Si está bloqueado, contacte al soporte de Tradovate con su nombre de usuario en lugar de seguir reintentando.",
+      ],
+    },
+    { type: "heading", text: "Qué significa «429: Too Many Requests»" },
+    { type: "paragraph", html: "El estado HTTP <strong class='text-white'>429 Too Many Requests</strong> es la forma en que Tradovate le indica que su aplicación ha enviado más solicitudes de las que su API acepta dentro de una ventana determinada. Tradovate limita el tráfico por segundo, por minuto y por hora. En el instante en que se alcanza cualquiera de esos topes, el servidor deja de procesar comandos nuevos y responde con un 429 hasta que la ventana avanza." },
+    { type: "paragraph", html: "Aquí hay un matiz importante: las propias preguntas frecuentes para desarrolladores de Tradovate afirman que <strong class='text-white'>no existe un &ldquo;tope fijo&rdquo;</strong>. Los umbrales son deliberadamente variables y pueden endurecerse bajo carga o por motivos de seguridad. Un límite de trabajo seguro para diseñar su sistema es de aproximadamente <strong class='text-white'>80 solicitudes por minuto y 5000 solicitudes por hora en una ventana móvil de 60 minutos</strong>, pero trátelo como un objetivo cambiante, no como una promesa. Como los límites exactos cambian con el tiempo, confirme siempre con la documentación actual de la API de Tradovate." },
+    { type: "paragraph", html: "Lo importante que hay que interiorizar: el límite se basa en el <strong class='text-white'>volumen de solicitudes, no en el volumen de órdenes</strong>. Los inicios de sesión, la colocación de órdenes, las modificaciones, las cancelaciones y el sondeo de sincronización de posiciones cuentan todos. Copiar una alerta de TradingView a cinco cuentas son cinco solicitudes, así que una estrategia que sobre el papel parece modesta puede agotar el tope rápidamente cuando se replica en varias cuentas o depende mucho de los stops dinámicos." },
+    { type: "heading", text: "Principales causas del límite de velocidad 429 de Tradovate en 2026" },
+    { type: "heading", text: "1. Superar el tope por minuto o por hora en ráfagas" },
+    { type: "paragraph", html: "Disparar un grupo rápido de llamadas, un lote de entradas, objetivos y stops uno detrás de otro, es el desencadenante clásico. Y como el tope horario funciona sobre una ventana móvil de 60 minutos, una sola ráfaga intensa puede dejarlo limitado mucho después de que la actividad en sí haya terminado." },
+    { type: "heading", text: "2. Distribución en varias cuentas (copy trading)" },
+    { type: "paragraph", html: "El copy trading multiplica cada acción. Una alerta copiada en cinco cuentas equivale a cinco solicitudes, y un bracket de stop y objetivo en cada cuenta lo multiplica de nuevo. Un número elevado de cuentas es, con diferencia, la razón más común por la que los traders automatizados alcanzan el límite." },
+    { type: "heading", text: "3. Modificaciones de órdenes excesivas y stops dinámicos" },
+    { type: "paragraph", html: "Los stops dinámicos y los ajustes de precio frecuentes generan un flujo constante de solicitudes de modificación por cuenta. Ejecute varias de estas en paralelo y el tope por minuto aparecerá rápidamente." },
+    { type: "heading", text: "4. Bucles agresivos de reconexión o sondeo" },
+    { type: "paragraph", html: "Los bots que se reconectan una y otra vez, o que sondean fills y posiciones con un temporizador ajustado, consumen silenciosamente su cuota incluso cuando no se envía ninguna orden. Reconectarse en bucle tras un fallo es especialmente costoso." },
+    { type: "heading", text: "5. Inicios de sesión fallidos repetidos que activan p-captcha" },
+    { type: "paragraph", html: "Demasiados intentos de autenticación fallidos pueden devolver una marca <strong class='text-white'><code>p-captcha</code></strong>, lo que significa que una aplicación de terceros (que no es un navegador) no puede completar la solicitud. En la práctica, eso suele significar esperar aproximadamente una hora antes de volver a intentarlo." },
+    { type: "heading", text: "Cómo solucionar el límite de velocidad 429 de Tradovate: paso a paso" },
+    { type: "heading", text: "Cómo leer la respuesta p-ticket, p-time y p-captcha" },
+    { type: "paragraph", html: "Cuando Tradovate le limita el tráfico, el cuerpo de la respuesta contiene las instrucciones de recuperación. Gestiónelo en este orden:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Compruebe p-time", html: "Compruebe <strong class='text-white'><code>p-time</code></strong>, el tiempo en segundos antes de poder hacer otra solicitud. Espere esa cantidad de segundos; no reintente antes." },
+        { title: "Reenvíe con p-ticket", html: "Reenvíe la solicitud original añadiendo <strong class='text-white'><code>p-ticket</code></strong> como campo adicional en el cuerpo de la solicitud. El ticket es lo que le indica a Tradovate que este reintento es el autorizado." },
+        { title: "Deténgase ante p-captcha", html: "Si en su lugar ve <strong class='text-white'><code>p-captcha</code></strong>, deténgase, una aplicación headless o de terceros no puede resolverlo. Espere aproximadamente una hora y luego confirme que sus credenciales son correctas antes de volver a autenticarse." },
+      ],
+    },
+    { type: "heading", text: "Limitar y poner en cola sus solicitudes" },
+    { type: "paragraph", html: "La solución duradera es dejar de enviar ráfagas y regular el tráfico:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Limite su tasa de salida", html: "Limite su tasa de salida por debajo del tope observado y añada un pequeño retraso entre llamadas para que un pico nunca las haga aterrizar todas en el mismo segundo." },
+        { title: "Ponga en cola y escalone la distribución a varias cuentas", html: "Ponga el flujo de órdenes en cola en el servidor y escalone la distribución a varias cuentas para que las cuentas se atiendan en secuencia en lugar de todas a la vez." },
+        { title: "Reduzca las llamadas evitables", html: "Reduzca las llamadas evitables: disminuya las modificaciones de órdenes, recorte el ruido de los stops dinámicos y considere un modo de ejecución que convierta las órdenes activas en órdenes de mercado cuando tenga sentido, menos llamadas de modificación significan menos solicitudes." },
+        { title: "Sustituya el sondeo por actualizaciones por WebSocket", html: "Sustituya los bucles de sondeo ajustados por actualizaciones por WebSocket basadas en eventos, para no gastar su cuota solo por vigilar los fills." },
+      ],
+    },
+    { type: "heading", text: "Solicitar un restablecimiento manual a Tradovate" },
+    { type: "paragraph", html: "Si el bloqueo persiste o una penalización p-ticket simplemente no se elimina, no siga reintentando, eso puede prolongarlo. Espere a que pase el periodo de enfriamiento (a menudo hasta unos 60 minutos para que la ventana móvil se despeje) y, si sigue bloqueado, contacte al soporte de Tradovate en <strong class='text-white'>312-283-3100</strong> o <strong class='text-white'>support@tradovate.com</strong> con su nombre de usuario y solicite un restablecimiento manual del límite de la API. El soporte puede levantar la penalización cuando el enfriamiento por sí solo no baste." },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Error / señal", "Qué significa", "Solución"],
+      rows: [
+        ["429 Too Many Requests", "Superó el tope de solicitudes por segundo, por minuto o por hora", "Deje de enviar, espere a la ventana móvil y luego limite el tráfico futuro"],
+        ["p-ticket en la respuesta", "Un token de penalización que debe devolver en el reintento", "Reenvíe la solicitud original con p-ticket en el cuerpo"],
+        ["p-time en la respuesta", "Segundos que hay que esperar antes de que se permita la siguiente solicitud", "Espere p-time segundos y luego reintente con el ticket"],
+        ["p-captcha en la respuesta", "Una aplicación de terceros no puede completar la solicitud (a menudo tras inicios de sesión fallidos)", "Espere aproximadamente una hora, verifique las credenciales y luego vuelva a autenticarse"],
+        ["Bloqueado durante muchos minutos", "Infracciones repetidas escalaron a una penalización prolongada", "Espere a que pase el enfriamiento; si sigue bloqueado, pida al soporte de Tradovate un restablecimiento manual"],
+        ["Límite alcanzado con pocas órdenes", "La distribución de copias o las modificaciones multiplicaron su número de solicitudes", "Escalone las cuentas, reduzca las modificaciones y ponga el flujo de órdenes en cola"],
+      ],
+    },
+    { type: "heading", text: "Cómo evitarlo con PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade se sitúa entre sus alertas de TradingView y Tradovate, y está diseñado para respetar los límites de la API en lugar de luchar contra ellos:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Enrutamiento seguro frente al límite de velocidad</strong>, espacia el flujo de órdenes para que las llamadas se mantengan por debajo de los topes por minuto y por hora y nunca lleguen en una sola ráfaga.",
+        "<strong class='text-white'>Cola en el lado del servidor</strong>, agrupa y escalona la distribución a varias cuentas en lugar de disparar cada pata a la vez.",
+        "<strong class='text-white'>Reintento y retroceso inteligentes</strong>, respeta la ventana de <code>p-time</code> y reenvía automáticamente con el <code>p-ticket</code>, de modo que un bloqueo se recupera sin que usted toque nada.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, refleja la orden corregida en todas las cuentas manteniendo el número total de solicitudes dentro del límite.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Lorsque vous automatisez des instruments rapides comme ES ou NQ via l'API Tradovate, rien ne tue une stratégie plus vite qu'un mur de réponses <strong class='text-white'>429 : Too Many Requests</strong>. Dès que votre bot, votre copieur ou votre pont TradingView-Tradovate dépasse le plafond de requêtes de Tradovate, tout s'arrête d'un coup : nouveaux ordres, modifications, annulations. Pire encore, une pénalité de temps <strong class='text-white'>p-ticket</strong> qui suit, ou un blocage <strong class='text-white'>p-captcha</strong>, peut vous tenir à l'écart bien plus longtemps que la fenêtre de trading que vous visiez. Cela frappe le plus fort lors d'une ouverture volatile, lorsqu'une alerte se propage sur plusieurs comptes et que chaque jambe compte comme sa propre requête. Voici ce que signifie réellement l'erreur 429 en 2026, pourquoi elle se déclenche, et comment limiter, mettre en file d'attente et récupérer, ainsi que la façon dont PickMyTrade cadence le trafic API pour que vos ordres ne soient jamais rejetés dès le départ." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour la limite de débit 429 de Tradovate",
+      items: [
+        "<strong class='text-white'>Arrêtez immédiatement de réessayer.</strong> Marteler l'API pendant un blocage peut prolonger le blocage au lieu de le lever.",
+        "<strong class='text-white'>Lisez la valeur <code>p-time</code>.</strong> Elle indique le nombre exact de secondes à attendre avant votre prochain appel.",
+        "<strong class='text-white'>Renvoyez avec le <code>p-ticket</code>.</strong> Incluez le jeton renvoyé dans le corps de votre nouvelle tentative pour que la requête soit acceptée.",
+        "<strong class='text-white'>Limitez le débit sous les plafonds.</strong> Concevez votre système pour environ 80 requêtes par minute et 5 000 par heure sur une fenêtre glissante, et vérifiez les chiffres actuels dans la documentation de l'API Tradovate.",
+        "<strong class='text-white'>Mettez le flux d'ordres en file d'attente côté serveur.</strong> Espacez les modifications et la diffusion multi-comptes au lieu de les envoyer en rafale.",
+        "<strong class='text-white'>Demandez une réinitialisation manuelle.</strong> Si vous êtes bloqué, contactez le support Tradovate avec votre nom d'utilisateur plutôt que de continuer à réessayer.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie « 429 : Too Many Requests »" },
+    { type: "paragraph", html: "Le statut HTTP <strong class='text-white'>429 Too Many Requests</strong> signifie que Tradovate vous indique que votre application a envoyé plus de requêtes que son API n'en accepte sur une fenêtre donnée. Tradovate limite le débit par seconde, par minute et par heure. Dès que l'un de ces plafonds est atteint, le serveur cesse de traiter les nouvelles commandes et répond par un 429 jusqu'à ce que la fenêtre avance." },
+    { type: "paragraph", html: "Il y a une nuance importante ici : la FAQ développeur de Tradovate elle-même indique qu'il n'existe <strong class='text-white'>aucun &ldquo;plafond fixe&rdquo;</strong>. Les seuils sont délibérément variables et peuvent se resserrer en cas de forte charge ou pour des raisons de sécurité. Un plafond de travail sûr à viser est d'environ <strong class='text-white'>80 requêtes par minute et 5 000 requêtes par heure sur une fenêtre glissante de 60 minutes</strong>, mais considérez cela comme une cible mouvante, pas une promesse. Comme les limites exactes évoluent dans le temps, vérifiez toujours la documentation actuelle de l'API Tradovate." },
+    { type: "paragraph", html: "Le point clé à retenir : la limite porte sur le <strong class='text-white'>volume de requêtes, pas sur le volume d'ordres</strong>. Les connexions, le passage d'ordres, les modifications, les annulations et l'interrogation de synchronisation des positions comptent tous. Copier une alerte TradingView vers cinq comptes représente cinq requêtes, si bien qu'une stratégie qui paraît modeste sur le papier peut vite épuiser le plafond lorsqu'elle est répliquée sur plusieurs comptes ou repose fortement sur des stops suiveurs." },
+    { type: "heading", text: "Principales causes de la limite de débit 429 de Tradovate en 2026" },
+    { type: "heading", text: "1. Dépasser le plafond par minute ou par heure en rafale" },
+    { type: "paragraph", html: "Envoyer une rafale rapide d'appels, un lot d'entrées, d'objectifs et de stops consécutifs, est le déclencheur classique. Et comme le plafond horaire fonctionne sur une fenêtre glissante de 60 minutes, une seule rafale intense peut vous laisser limité bien après la fin de l'activité elle-même." },
+    { type: "heading", text: "2. Diffusion sur plusieurs comptes (copy trading)" },
+    { type: "paragraph", html: "Le copy trading multiplie chaque action. Une alerte copiée sur cinq comptes équivaut à cinq requêtes, et un bracket de stop et d'objectif sur chaque compte multiplie encore ce chiffre. Un nombre élevé de comptes est de loin la raison la plus courante pour laquelle les traders automatisés déclenchent la limite." },
+    { type: "heading", text: "3. Modifications d'ordres excessives et stops suiveurs" },
+    { type: "paragraph", html: "Les stops suiveurs et les ajustements de prix fréquents génèrent un flux constant de requêtes de modification par compte. Exécutez plusieurs de ces opérations en parallèle et le plafond par minute apparaît rapidement." },
+    { type: "heading", text: "4. Boucles agressives de reconnexion ou de sondage" },
+    { type: "paragraph", html: "Les bots qui se reconnectent sans cesse, ou qui interrogent les exécutions et les positions selon une temporisation serrée, consomment discrètement votre quota même lorsqu'aucun ordre ne part. Se reconnecter en boucle après un échec est particulièrement coûteux." },
+    { type: "heading", text: "5. Des échecs de connexion répétés déclenchant p-captcha" },
+    { type: "paragraph", html: "Un trop grand nombre de tentatives d'authentification échouées peut renvoyer un indicateur <strong class='text-white'><code>p-captcha</code></strong>, ce qui signifie qu'une application tierce (non-navigateur) ne peut pas mener la requête à son terme. En pratique, cela signifie généralement attendre environ une heure avant de réessayer." },
+    { type: "heading", text: "Comment corriger la limite de débit 429 de Tradovate : étape par étape" },
+    { type: "heading", text: "Lire la réponse p-ticket, p-time et p-captcha" },
+    { type: "paragraph", html: "Lorsque Tradovate vous limite, le corps de la réponse contient les instructions de récupération. Traitez-le dans cet ordre :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifiez p-time", html: "Vérifiez <strong class='text-white'><code>p-time</code></strong>, le temps en secondes avant de pouvoir refaire une requête. Attendez ce nombre de secondes ; ne réessayez pas avant." },
+        { title: "Renvoyez avec p-ticket", html: "Renvoyez la requête d'origine en ajoutant <strong class='text-white'><code>p-ticket</code></strong> comme champ supplémentaire dans le corps de la requête. Le ticket est ce qui indique à Tradovate que cette nouvelle tentative est la tentative autorisée." },
+        { title: "Arrêtez-vous en cas de p-captcha", html: "Si vous voyez plutôt <strong class='text-white'><code>p-captcha</code></strong>, arrêtez-vous, une application headless ou tierce ne peut pas le résoudre. Attendez environ une heure, puis confirmez que vos identifiants sont corrects avant de vous authentifier à nouveau." },
+      ],
+    },
+    { type: "heading", text: "Limiter et mettre en file d'attente vos requêtes" },
+    { type: "paragraph", html: "La solution durable consiste à arrêter les rafales et à cadencer le trafic :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Plafonnez votre débit sortant", html: "Plafonnez votre débit sortant en dessous du plafond observé et ajoutez un petit délai entre les appels pour qu'un pic ne les fasse jamais atterrir tous à la même seconde." },
+        { title: "Mettez en file d'attente et échelonnez la diffusion multi-comptes", html: "Mettez le flux d'ordres en file d'attente côté serveur et échelonnez la diffusion multi-comptes afin que les comptes soient servis en séquence plutôt que tous en même temps." },
+        { title: "Réduisez les appels évitables", html: "Réduisez les appels évitables : diminuez les modifications d'ordres, réduisez le bruit des stops suiveurs et envisagez un mode d'exécution qui convertit les ordres en cours en ordres au marché lorsque cela a du sens, moins d'appels de modification signifie moins de requêtes." },
+        { title: "Remplacez le sondage par des mises à jour WebSocket", html: "Remplacez les boucles de sondage serrées par des mises à jour WebSocket pilotées par événements, afin de ne pas dépenser votre quota juste pour surveiller les exécutions." },
+      ],
+    },
+    { type: "heading", text: "Demander une réinitialisation manuelle à Tradovate" },
+    { type: "paragraph", html: "Si le blocage persiste ou qu'une pénalité p-ticket refuse tout simplement de se lever, ne continuez pas à réessayer, cela peut l'aggraver. Attendez la fin du délai de récupération (souvent jusqu'à environ 60 minutes pour que la fenêtre glissante se libère), puis, si vous êtes toujours bloqué, contactez le support Tradovate au <strong class='text-white'>312-283-3100</strong> ou à <strong class='text-white'>support@tradovate.com</strong> avec votre nom d'utilisateur et demandez une réinitialisation manuelle de la limite d'API. Le support peut lever la pénalité lorsqu'un simple délai de récupération ne suffit pas." },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Erreur / signal", "Ce que cela signifie", "Solution"],
+      rows: [
+        ["429 Too Many Requests", "Vous avez dépassé le plafond de requêtes par seconde, par minute ou par heure", "Arrêtez d'envoyer, attendez la fenêtre glissante, puis limitez le trafic futur"],
+        ["p-ticket dans la réponse", "Un jeton de pénalité que vous devez renvoyer lors de la nouvelle tentative", "Renvoyez la requête d'origine avec p-ticket dans le corps"],
+        ["p-time dans la réponse", "Secondes à attendre avant que la prochaine requête soit autorisée", "Patientez p-time secondes, puis réessayez avec le ticket"],
+        ["p-captcha dans la réponse", "Une application tierce ne peut pas mener la requête à son terme (souvent après des échecs de connexion)", "Attendez environ une heure, vérifiez les identifiants, puis authentifiez-vous à nouveau"],
+        ["Bloqué pendant de nombreuses minutes", "Des infractions répétées ont dégénéré en une pénalité prolongée", "Attendez la fin du délai de récupération ; si toujours bloqué, demandez au support Tradovate une réinitialisation manuelle"],
+        ["Limite déclenchée avec peu d'ordres", "La diffusion de copies ou les modifications ont multiplié votre nombre de requêtes", "Échelonnez les comptes, réduisez les modifications et mettez le flux d'ordres en file d'attente"],
+      ],
+    },
+    { type: "heading", text: "Comment éviter cela avec PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade se place entre vos alertes TradingView et Tradovate, et il est conçu pour respecter les limites de l'API plutôt que de les combattre :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Routage sûr vis-à-vis de la limite de débit</strong>, espace le flux d'ordres pour que les appels restent sous les plafonds par minute et par heure et n'arrivent jamais en une seule rafale.",
+        "<strong class='text-white'>Mise en file d'attente côté serveur</strong>, regroupe et échelonne la diffusion multi-comptes plutôt que de lancer chaque jambe en même temps.",
+        "<strong class='text-white'>Nouvelle tentative et recul intelligents</strong>, respecte la fenêtre <code>p-time</code> et renvoie automatiquement avec le <code>p-ticket</code>, de sorte qu'une limitation se rétablit sans que vous ayez à intervenir.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, réplique l'ordre corrigé sur tous les comptes tout en maintenant le nombre total de requêtes dans la limite.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Quando automatizzate strumenti veloci come ES o NQ tramite l'API di Tradovate, niente uccide una strategia più in fretta di un muro di risposte <strong class='text-white'>429: Too Many Requests</strong>. Nel momento in cui il vostro bot, copier o ponte TradingView-Tradovate supera il tetto di richieste di Tradovate, tutto si blocca contemporaneamente: nuovi ordini, modifiche, cancellazioni. Peggio ancora, una successiva penalità temporale <strong class='text-white'>p-ticket</strong> o un blocco <strong class='text-white'>p-captcha</strong> possono tenervi fuori gioco molto più a lungo della finestra di trading che stavate inseguendo. Colpisce più duramente in un'apertura volatile, quando un alert si propaga su più conti e ogni gamba conta come una richiesta a sé. Ecco cosa significa davvero l'errore 429 nel 2026, perché si attiva e come limitare, mettere in coda e recuperare, oltre a come PickMyTrade regola il traffico API in modo che i vostri ordini non vengano respinti fin dall'inizio." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per il limite di frequenza 429 di Tradovate",
+      items: [
+        "<strong class='text-white'>Interrompete subito i tentativi.</strong> Bombardare l'API durante un blocco può prolungarlo invece di rimuoverlo.",
+        "<strong class='text-white'>Leggete il valore <code>p-time</code>.</strong> Indica il numero esatto di secondi da attendere prima della chiamata successiva.",
+        "<strong class='text-white'>Rinviate con il <code>p-ticket</code>.</strong> Includete il token restituito nel corpo del nuovo tentativo affinché la richiesta venga accettata.",
+        "<strong class='text-white'>Limitate il traffico sotto i tetti massimi.</strong> Progettate per circa 80 richieste al minuto e 5.000 all'ora su una finestra mobile, e verificate i numeri attuali nella documentazione API di Tradovate.",
+        "<strong class='text-white'>Mettete in coda il flusso di ordini lato server.</strong> Distanziate le modifiche e la diffusione su più conti invece di inviarle tutte insieme.",
+        "<strong class='text-white'>Richiedete un reset manuale.</strong> Se siete bloccati, contattate il supporto Tradovate con il vostro nome utente invece di continuare a riprovare.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa «429: Too Many Requests»" },
+    { type: "paragraph", html: "Lo stato HTTP <strong class='text-white'>429 Too Many Requests</strong> è il modo in cui Tradovate vi comunica che la vostra applicazione ha inviato più richieste di quante la sua API ne accetti in una determinata finestra temporale. Tradovate limita il traffico su base per secondo, per minuto e per ora. Nell'istante in cui uno di questi tetti viene raggiunto, il server smette di gestire nuovi comandi e risponde con un 429 finché la finestra non avanza." },
+    { type: "paragraph", html: "C'è una sfumatura importante da considerare: le FAQ per sviluppatori di Tradovate stesse affermano che <strong class='text-white'>non esiste un &ldquo;tetto fisso&rdquo;</strong>. Le soglie sono volutamente variabili e possono restringersi sotto carico o per motivi di sicurezza. Un tetto di lavoro sicuro su cui progettare è di circa <strong class='text-white'>80 richieste al minuto e 5.000 richieste all'ora su una finestra mobile di 60 minuti</strong>, ma consideratelo un obiettivo mobile, non una promessa. Poiché i limiti esatti cambiano nel tempo, verificate sempre la documentazione API di Tradovate aggiornata." },
+    { type: "paragraph", html: "Il punto chiave da interiorizzare: il limite riguarda il <strong class='text-white'>volume di richieste, non il volume di ordini</strong>. Login, invio di ordini, modifiche, cancellazioni e polling di sincronizzazione delle posizioni contano tutti. Copiare un alert di TradingView su cinque conti significa cinque richieste, quindi una strategia che sulla carta sembra modesta può bruciare rapidamente il tetto quando viene replicata su più conti o fa largo uso di trailing stop." },
+    { type: "heading", text: "Principali cause del limite di frequenza 429 di Tradovate nel 2026" },
+    { type: "heading", text: "1. Superare a raffica il tetto per minuto o per ora" },
+    { type: "paragraph", html: "Sparare un rapido cluster di chiamate, un lotto di entrate, target e stop uno dopo l'altro, è l'innesco classico. E poiché il tetto orario funziona su una finestra mobile di 60 minuti, un unico burst intenso può tenervi limitati ben oltre la fine dell'attività stessa." },
+    { type: "heading", text: "2. Diffusione su più conti (copy trading)" },
+    { type: "paragraph", html: "Il copy trading moltiplica ogni azione. Un alert copiato su cinque conti equivale a cinque richieste, e un bracket di stop e target su ciascun conto lo moltiplica ulteriormente. Un numero elevato di conti è di gran lunga il motivo più comune per cui i trader automatizzati fanno scattare il limite." },
+    { type: "heading", text: "3. Modifiche eccessive agli ordini e trailing stop" },
+    { type: "paragraph", html: "I trailing stop e le frequenti modifiche di prezzo generano un flusso costante di richieste di modifica per conto. Eseguitene diverse in parallelo e il tetto per minuto emerge rapidamente." },
+    { type: "heading", text: "4. Cicli aggressivi di riconnessione o polling" },
+    { type: "paragraph", html: "I bot che si riconnettono continuamente, o che eseguono il polling di fill e posizioni con un timer serrato, consumano silenziosamente la vostra quota anche quando non viene inviato alcun ordine. Riconnettersi in ciclo dopo un errore è particolarmente costoso." },
+    { type: "heading", text: "5. Login falliti ripetuti che attivano p-captcha" },
+    { type: "paragraph", html: "Troppi tentativi di autenticazione falliti possono restituire un flag <strong class='text-white'><code>p-captcha</code></strong>, il che significa che un'applicazione di terze parti (non browser) non può completare la richiesta. In pratica, questo di solito significa attendere circa un'ora prima di riprovare." },
+    { type: "heading", text: "Come risolvere il limite di frequenza 429 di Tradovate: passo dopo passo" },
+    { type: "heading", text: "Leggere la risposta p-ticket, p-time e p-captcha" },
+    { type: "paragraph", html: "Quando Tradovate vi limita, il corpo della risposta contiene le istruzioni di recupero. Gestitelo in quest'ordine:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Controllate p-time", html: "Controllate <strong class='text-white'><code>p-time</code></strong>, il tempo in secondi prima di poter effettuare di nuovo una richiesta. Attendete quel numero di secondi; non riprovate prima." },
+        { title: "Rinviate con p-ticket", html: "Rinviate la richiesta originale aggiungendo <strong class='text-white'><code>p-ticket</code></strong> come campo extra nel corpo della richiesta. Il ticket è ciò che comunica a Tradovate che questo nuovo tentativo è quello autorizzato." },
+        { title: "Fermatevi in caso di p-captcha", html: "Se invece vedete <strong class='text-white'><code>p-captcha</code></strong>, fermatevi: un'app headless o di terze parti non può risolverlo. Attendete circa un'ora, poi verificate che le vostre credenziali siano corrette prima di autenticarvi di nuovo." },
+      ],
+    },
+    { type: "heading", text: "Limitare e mettere in coda le vostre richieste" },
+    { type: "paragraph", html: "La soluzione duratura è smettere di inviare a raffica e regolare il traffico:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Limitate il vostro tasso in uscita", html: "Limitate il vostro tasso in uscita al di sotto del tetto osservato e aggiungete un piccolo ritardo tra le chiamate, così un picco non le farà mai atterrare tutte nello stesso secondo." },
+        { title: "Mettete in coda e scaglionate la diffusione su più conti", html: "Mettete in coda il flusso di ordini lato server e scaglionate la diffusione su più conti in modo che i conti vengano serviti in sequenza anziché tutti insieme." },
+        { title: "Riducete le chiamate evitabili", html: "Riducete le chiamate evitabili: diminuite le modifiche agli ordini, contenete il rumore dei trailing stop e valutate una modalità di esecuzione che converta gli ordini attivi in ordini a mercato dove ha senso, meno chiamate di modifica significano meno richieste." },
+        { title: "Sostituite il polling con aggiornamenti WebSocket", html: "Sostituite i cicli di polling serrati con aggiornamenti WebSocket basati sugli eventi, così da non consumare la quota solo per monitorare i fill." },
+      ],
+    },
+    { type: "heading", text: "Richiedere un reset manuale a Tradovate" },
+    { type: "paragraph", html: "Se il blocco persiste o una penalità p-ticket semplicemente non si risolve, non continuate a riprovare: potrebbe prolungarla. Attendete che il periodo di raffreddamento passi (spesso fino a circa 60 minuti perché la finestra mobile si liberi), quindi, se siete ancora bloccati, contattate il supporto Tradovate al <strong class='text-white'>312-283-3100</strong> o a <strong class='text-white'>support@tradovate.com</strong> con il vostro nome utente e chiedete un reset manuale del limite API. Il supporto può rimuovere la penalità quando il solo raffreddamento non basta." },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Errore / segnale", "Cosa significa", "Soluzione"],
+      rows: [
+        ["429 Too Many Requests", "Avete superato il tetto di richieste per secondo, per minuto o per ora", "Interrompete l'invio, attendete la finestra mobile, poi limitate il traffico futuro"],
+        ["p-ticket nella risposta", "Un token di penalità da restituire nel nuovo tentativo", "Rinviate la richiesta originale con p-ticket nel corpo"],
+        ["p-time nella risposta", "Secondi da attendere prima che la richiesta successiva sia consentita", "Attendete p-time secondi, poi riprovate con il ticket"],
+        ["p-captcha nella risposta", "Un'app di terze parti non riesce a completare la richiesta (spesso dopo login falliti)", "Attendete circa un'ora, verificate le credenziali, poi autenticatevi di nuovo"],
+        ["Bloccati per molti minuti", "Violazioni ripetute sono degenerate in una penalità prolungata", "Attendete il raffreddamento; se siete ancora bloccati, chiedete al supporto Tradovate un reset manuale"],
+        ["Limite scattato con pochi ordini", "La diffusione delle copie o le modifiche hanno moltiplicato il numero di richieste", "Scaglionate i conti, riducete le modifiche e mettete in coda il flusso di ordini"],
+      ],
+    },
+    { type: "heading", text: "Come prevenirlo con PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade si colloca tra i vostri alert di TradingView e Tradovate, ed è costruito per rispettare i limiti dell'API invece di combatterli:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Instradamento sicuro rispetto al rate limit</strong>, distanzia il flusso di ordini in modo che le chiamate restino sotto i tetti per minuto e per ora e non arrivino mai in un unico burst.",
+        "<strong class='text-white'>Accodamento lato server</strong>, raggruppa e scagliona la diffusione su più conti invece di sparare ogni gamba tutta insieme.",
+        "<strong class='text-white'>Retry e backoff intelligenti</strong>, rispetta la finestra <code>p-time</code> e rinvia automaticamente con il <code>p-ticket</code>, così un throttling si risolve senza che dobbiate toccare nulla.",
+        "<strong class='text-white'>Sincronizzazione multi-conto</strong>, replica l'ordine corretto su tutti i conti mantenendo il numero totale di richieste entro il limite.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Ohne Ablehnungen handeln", es: "Opere sin rechazos", fr: "Tradez sans rejets", it: "Fate trading senza rifiuti" },
+  ctaText: { en: "PickMyTrade paces and queues your order flow so it stays under Tradovate's rate limits, and handles the p-ticket retry automatically when a throttle does hit.", de: "PickMyTrade taktet und staffelt Ihren Order-Flow, sodass er unter Tradovates Rate-Limits bleibt, und übernimmt den p-ticket-Wiederholungsversuch automatisch, wenn doch einmal gedrosselt wird.", es: "PickMyTrade regula y pone en cola su flujo de órdenes para que se mantenga por debajo de los límites de velocidad de Tradovate, y gestiona automáticamente el reintento con p-ticket cuando sí se produce un bloqueo.", fr: "PickMyTrade cadence et met en file d'attente votre flux d'ordres afin qu'il reste sous les limites de débit de Tradovate, et gère automatiquement la nouvelle tentative avec p-ticket lorsqu'une limitation survient malgré tout.", it: "PickMyTrade regola e mette in coda il vostro flusso di ordini in modo che resti sotto i rate limit di Tradovate, e gestisce automaticamente il retry con p-ticket quando si verifica comunque un throttling." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testphase", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Iniziate la vostra prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What triggers a Tradovate API 429 Too Many Requests error?", a: "Sending more requests than Tradovate accepts in a given second, minute, or hour. Logins, order placement, modifications, cancellations, and polling all count toward the ceiling." },
+    { q: "What are Tradovate's exact API rate limits?", a: "Tradovate documents its limits as variable with no fixed hard cap. A safe working target is about 80 requests per minute and 5,000 per hour on a rolling 60-minute window. Treat those as design targets and confirm against the current API docs." },
+    { q: "What is a p-ticket and how do I use it?", a: "It is a penalty token returned when you are throttled. Wait the p-time seconds provided, then resend your original request with the p-ticket value added to the request body." },
+    { q: "What does p-captcha mean?", a: "It signals that a third-party (non-browser) application cannot complete the request, often after repeated failed logins. Stop retrying, wait roughly an hour, and re-check your credentials before trying again." },
+    { q: "How long does a 429 lockout last?", a: "A first breach can block new requests for roughly 20 to 30 seconds, while an hourly-limit hit clears only as the rolling 60-minute window advances. Repeated violations can escalate into a longer penalty that needs a manual reset." },
+    { q: "Can PickMyTrade or another third party bypass the rate limit?", a: "No. The limits are enforced by Tradovate and cannot be bypassed by PickMyTrade or any third party. A bridge can only pace and queue requests to stay under them, which is exactly what good routing does." },
+    { q: "Why do I hit the limit with only a few trades?", a: "Copy trading and modifications multiply requests. One alert copied to five accounts is five requests, and each stop or target modification adds more, so a small strategy can exceed the cap when mirrored across accounts." },
+    { q: "How do I get a manual reset if I am locked out?", a: "Wait out the cooldown first. If you are still blocked, contact Tradovate Support at 312-283-3100 or support@tradovate.com with your username and request an API-limit reset, and stop retrying in the meantime, since that can prolong the block." },
+  ], de: [
+    { q: "Was löst einen Tradovate API 429 Too Many Requests Fehler aus?", a: "Das Senden von mehr Anfragen, als Tradovate in einer bestimmten Sekunde, Minute oder Stunde akzeptiert. Logins, Orderplatzierungen, Änderungen, Stornierungen und Polling zählen alle zur Obergrenze." },
+    { q: "Was sind Tradovates genaue API-Rate-Limits?", a: "Tradovate dokumentiert seine Limits als variabel und ohne feste harte Obergrenze. Ein sicheres Arbeitsziel liegt bei etwa 80 Anfragen pro Minute und 5.000 pro Stunde in einem gleitenden 60-Minuten-Fenster. Betrachten Sie das als Planungsziele und bestätigen Sie sie anhand der aktuellen API-Dokumentation." },
+    { q: "Was ist ein p-ticket und wie verwende ich es?", a: "Es ist ein Strafe-Token, das zurückgegeben wird, wenn Sie gedrosselt werden. Warten Sie die angegebenen p-time-Sekunden ab und senden Sie dann Ihre ursprüngliche Anfrage erneut, wobei Sie den p-ticket-Wert dem Anfrage-Body hinzufügen." },
+    { q: "Was bedeutet p-captcha?", a: "Es signalisiert, dass eine Drittanbieteranwendung (kein Browser) die Anfrage nicht abschließen kann, oft nach wiederholt fehlgeschlagenen Logins. Hören Sie auf, es erneut zu versuchen, warten Sie etwa eine Stunde und prüfen Sie Ihre Zugangsdaten erneut, bevor Sie es erneut versuchen." },
+    { q: "Wie lange dauert eine 429-Sperre?", a: "Ein erster Verstoß kann neue Anfragen für etwa 20 bis 30 Sekunden blockieren, während sich ein Treffer der Stundenobergrenze erst löst, wenn das gleitende 60-Minuten-Fenster weiterrückt. Wiederholte Verstöße können sich zu einer längeren Strafe ausweiten, die einen manuellen Reset erfordert." },
+    { q: "Können PickMyTrade oder ein anderer Drittanbieter das Rate Limit umgehen?", a: "Nein. Die Limits werden von Tradovate durchgesetzt und können weder von PickMyTrade noch von einem anderen Drittanbieter umgangen werden. Eine Bridge kann Anfragen nur takten und in eine Warteschlange stellen, um darunter zu bleiben, genau das tut gutes Routing." },
+    { q: "Warum erreiche ich das Limit mit nur wenigen Trades?", a: "Copy-Trading und Änderungen vervielfachen die Anfragen. Ein auf fünf Konten kopierter Alert entspricht fünf Anfragen, und jede Stop- oder Target-Änderung kommt noch hinzu, sodass eine kleine Strategie das Limit überschreiten kann, wenn sie über mehrere Konten gespiegelt wird." },
+    { q: "Wie erhalte ich einen manuellen Reset, wenn ich ausgesperrt bin?", a: "Warten Sie zunächst die Abkühlphase ab. Sind Sie weiterhin gesperrt, wenden Sie sich mit Ihrem Benutzernamen an den Tradovate-Support unter 312-283-3100 oder support@tradovate.com und bitten Sie um einen Reset des API-Limits, und versuchen Sie es in der Zwischenzeit nicht weiter, da dies die Sperre verlängern kann." },
+  ], es: [
+    { q: "¿Qué provoca un error 429 Too Many Requests de la API de Tradovate?", a: "Enviar más solicitudes de las que Tradovate acepta en un segundo, minuto u hora determinados. Los inicios de sesión, la colocación de órdenes, las modificaciones, las cancelaciones y el sondeo cuentan todos para el tope." },
+    { q: "¿Cuáles son los límites de velocidad exactos de la API de Tradovate?", a: "Tradovate documenta sus límites como variables, sin un tope fijo. Un objetivo de trabajo seguro es de unas 80 solicitudes por minuto y 5000 por hora en una ventana móvil de 60 minutos. Trátelos como objetivos de diseño y confírmelos con la documentación actual de la API." },
+    { q: "¿Qué es un p-ticket y cómo lo uso?", a: "Es un token de penalización que se devuelve cuando se le limita el tráfico. Espere los segundos de p-time indicados y luego reenvíe su solicitud original añadiendo el valor de p-ticket al cuerpo de la solicitud." },
+    { q: "¿Qué significa p-captcha?", a: "Indica que una aplicación de terceros (que no es un navegador) no puede completar la solicitud, a menudo tras repetidos inicios de sesión fallidos. Deje de reintentar, espere aproximadamente una hora y vuelva a comprobar sus credenciales antes de volver a intentarlo." },
+    { q: "¿Cuánto dura un bloqueo 429?", a: "Una primera infracción puede bloquear las solicitudes nuevas durante unos 20 a 30 segundos, mientras que un tope horario solo se despeja a medida que avanza la ventana móvil de 60 minutos. Las infracciones repetidas pueden escalar a una penalización más larga que necesita un restablecimiento manual." },
+    { q: "¿Pueden PickMyTrade u otro tercero evitar el límite de velocidad?", a: "No. Los límites los aplica Tradovate y ni PickMyTrade ni ningún tercero pueden eludirlos. Un puente solo puede regular y poner en cola las solicitudes para mantenerse por debajo de ellos, que es exactamente lo que hace un buen enrutamiento." },
+    { q: "¿Por qué alcanzo el límite con solo unas pocas operaciones?", a: "El copy trading y las modificaciones multiplican las solicitudes. Una alerta copiada en cinco cuentas son cinco solicitudes, y cada modificación de stop u objetivo añade más, así que una estrategia pequeña puede superar el tope cuando se replica en varias cuentas." },
+    { q: "¿Cómo obtengo un restablecimiento manual si estoy bloqueado?", a: "Espere primero a que pase el enfriamiento. Si sigue bloqueado, contacte al soporte de Tradovate en 312-283-3100 o support@tradovate.com con su nombre de usuario y solicite un restablecimiento del límite de la API, y deje de reintentar mientras tanto, ya que eso puede prolongar el bloqueo." },
+  ], fr: [
+    { q: "Qu'est-ce qui déclenche une erreur 429 Too Many Requests de l'API Tradovate ?", a: "L'envoi de plus de requêtes que Tradovate n'en accepte en une seconde, une minute ou une heure donnée. Les connexions, le passage d'ordres, les modifications, les annulations et le sondage comptent tous pour le plafond." },
+    { q: "Quelles sont les limites de débit exactes de l'API Tradovate ?", a: "Tradovate documente ses limites comme variables, sans plafond fixe. Un objectif de travail sûr est d'environ 80 requêtes par minute et 5 000 par heure sur une fenêtre glissante de 60 minutes. Considérez-les comme des cibles de conception et vérifiez-les dans la documentation actuelle de l'API." },
+    { q: "Qu'est-ce qu'un p-ticket et comment l'utiliser ?", a: "C'est un jeton de pénalité renvoyé lorsque vous êtes limité. Attendez le nombre de secondes p-time indiqué, puis renvoyez votre requête d'origine en ajoutant la valeur de p-ticket au corps de la requête." },
+    { q: "Que signifie p-captcha ?", a: "Cela indique qu'une application tierce (non-navigateur) ne peut pas mener la requête à son terme, souvent après des échecs de connexion répétés. Arrêtez de réessayer, attendez environ une heure et revérifiez vos identifiants avant de retenter." },
+    { q: "Combien de temps dure un blocage 429 ?", a: "Une première infraction peut bloquer les nouvelles requêtes pendant environ 20 à 30 secondes, tandis qu'un plafond horaire atteint ne se libère qu'à mesure que la fenêtre glissante de 60 minutes avance. Des infractions répétées peuvent dégénérer en une pénalité plus longue nécessitant une réinitialisation manuelle." },
+    { q: "PickMyTrade ou un autre tiers peuvent-ils contourner la limite de débit ?", a: "Non. Les limites sont appliquées par Tradovate et ne peuvent être contournées ni par PickMyTrade ni par aucun tiers. Un pont peut seulement cadencer et mettre en file d'attente les requêtes pour rester en dessous, ce qui est exactement ce que fait un bon routage." },
+    { q: "Pourquoi atteins-je la limite avec seulement quelques trades ?", a: "Le copy trading et les modifications multiplient les requêtes. Une alerte copiée sur cinq comptes représente cinq requêtes, et chaque modification de stop ou d'objectif en ajoute d'autres, si bien qu'une petite stratégie peut dépasser le plafond lorsqu'elle est répliquée sur plusieurs comptes." },
+    { q: "Comment obtenir une réinitialisation manuelle si je suis bloqué ?", a: "Attendez d'abord la fin du délai de récupération. Si vous êtes toujours bloqué, contactez le support Tradovate au 312-283-3100 ou à support@tradovate.com avec votre nom d'utilisateur et demandez une réinitialisation de la limite d'API, et arrêtez de réessayer entre-temps, car cela peut prolonger le blocage." },
+  ], it: [
+    { q: "Cosa scatena un errore 429 Too Many Requests dell'API di Tradovate?", a: "L'invio di più richieste di quante Tradovate ne accetti in un dato secondo, minuto o ora. Login, invio di ordini, modifiche, cancellazioni e polling contano tutti ai fini del tetto." },
+    { q: "Quali sono i limiti di frequenza esatti dell'API di Tradovate?", a: "Tradovate documenta i propri limiti come variabili, senza un tetto fisso. Un obiettivo di lavoro sicuro è di circa 80 richieste al minuto e 5.000 all'ora su una finestra mobile di 60 minuti. Consideratele come cifre di progettazione e verificatele nella documentazione API aggiornata." },
+    { q: "Cos'è un p-ticket e come si usa?", a: "È un token di penalità restituito quando siete sottoposti a throttling. Attendete i secondi di p-time indicati, poi rinviate la richiesta originale aggiungendo il valore di p-ticket al corpo della richiesta." },
+    { q: "Cosa significa p-captcha?", a: "Segnala che un'applicazione di terze parti (non browser) non riesce a completare la richiesta, spesso dopo login falliti ripetuti. Smettete di riprovare, attendete circa un'ora e ricontrollate le vostre credenziali prima di riprovare." },
+    { q: "Quanto dura un blocco 429?", a: "Una prima violazione può bloccare le nuove richieste per circa 20-30 secondi, mentre un tetto orario raggiunto si libera solo man mano che la finestra mobile di 60 minuti avanza. Violazioni ripetute possono degenerare in una penalità più lunga che richiede un reset manuale." },
+    { q: "PickMyTrade o terze parti possono aggirare il rate limit?", a: "No. I limiti sono imposti da Tradovate e non possono essere aggirati né da PickMyTrade né da terze parti. Un ponte può solo regolare e mettere in coda le richieste per restare al di sotto, ed è esattamente ciò che fa un buon instradamento." },
+    { q: "Perché raggiungo il limite con solo poche operazioni?", a: "Il copy trading e le modifiche moltiplicano le richieste. Un alert copiato su cinque conti equivale a cinque richieste, e ogni modifica di stop o target ne aggiunge altre, quindi una piccola strategia può superare il tetto quando viene replicata su più conti." },
+    { q: "Come ottengo un reset manuale se sono bloccato?", a: "Attendete prima che passi il raffreddamento. Se siete ancora bloccati, contattate il supporto Tradovate al 312-283-3100 o a support@tradovate.com con il vostro nome utente e richiedete un reset del limite API, e nel frattempo smettete di riprovare, poiché ciò può prolungare il blocco." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie den aktuellen Ablauf daher immer in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización de terceros independiente y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni parrainée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione di terze parti indipendente e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verificate sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

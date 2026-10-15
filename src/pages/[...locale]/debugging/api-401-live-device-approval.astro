@@ -1,0 +1,604 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-401-live-device-approval";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API 401 Live: Device ID Not Approved";
+const META_DESCRIPTION =
+  "Tradovate API 401 on live but not demo? Send a permanent UUID deviceId and confirm the emailed device-approval link to place live orders.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate API 401 en vivo: ID de dispositivo no aprobado", fr: "API Tradovate en direct : 401, ID d'appareil non approuvé", it: "API Tradovate live: errore 401, ID dispositivo non approvato" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API 401 live: Geräte-ID nicht genehmigt", es: "Error 401 de la API de Tradovate en vivo: ID de dispositivo no aprobado", fr: "Erreur 401 de l'API Tradovate en direct : ID d'appareil non approuvé", it: "Errore 401 dell'API Tradovate live: ID dispositivo non approvato" },
+  dek: { en: "Your bot authenticates fine and trades demo without a hitch, then every live order comes back 401 Access is denied. It's almost never a code bug, it's a missing device handshake that only live enforces.", de: "Ihr Bot authentifiziert sich problemlos und handelt im Demokonto ohne Probleme, doch jede Live-Order kommt mit 401 Access is denied zurück. Das ist fast nie ein Fehler im Code, sondern ein fehlender Geräte-Handshake, den nur der Live-Modus erzwingt.", es: "Su bot se autentica sin problemas y opera en la cuenta demo sin inconvenientes, pero cada orden en vivo regresa con 401 Access is denied. Casi nunca es un error de código, sino un handshake de dispositivo faltante que solo exige el entorno en vivo.", fr: "Votre bot s'authentifie sans problème et trade en démo sans accroc, puis chaque ordre en direct revient avec 401 Access is denied. Ce n'est presque jamais un bug de code, mais un handshake d'appareil manquant que seul le direct impose.", it: "Il Suo bot si autentica senza problemi e fa trading in demo senza intoppi, poi ogni ordine live restituisce 401 Access is denied. Quasi mai si tratta di un bug nel codice: è un handshake del dispositivo mancante che solo il live impone." },
+  readTime: { en: "6 min read", de: "6 Minuten Lesezeit", es: "Lectura de 6 minutos", fr: "Lecture de 6 minutes", it: "Lettura di 6 minuti" },
+  lastUpdated: "2026-07-08",
+  heroImage: { src: `${IMG}/api-401-live-device-approval-1.png`, alt: { en: "Tradovate API 401 response showing failureText Access is denied in live mode", de: "Tradovate-API-401-Antwort mit failureText Access is denied im Live-Modus", es: "Respuesta 401 de la API de Tradovate que muestra failureText Access is denied en modo en vivo", fr: "Réponse 401 de l'API Tradovate affichant failureText Access is denied en mode direct", it: "Risposta 401 dell'API Tradovate che mostra failureText Access is denied in modalità live" } },
+  blocks: { en: [
+    { type: "paragraph", html: "You wire up a Tradovate bot, watch it fire flawlessly against demo for days, then point it at your funded live account, and every order slams back a <strong class='text-white'>401 with <code>Access is denied</code></strong>. It's one of the most common walls API traders hit, and it's almost never a bug in your code. Live Tradovate enforces a rule that demo quietly ignores: every authentication request has to carry a permanent, verified <code>deviceId</code>, and that device has to be <strong class='text-white'>approved through an emailed link</strong> before it can route real orders. The error shows up in a couple of shapes, a flat <code>401 Access is denied</code>, or a <code>200</code> response whose payload reads <code>failureReason: UnknownReason, failureText: Access is denied</code>, but the root cause is the same missing device handshake. Here's the full diagnosis and fix, plus how a bridge like PickMyTrade skips the device-approval dance entirely." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for a Live-Only 401",
+      items: [
+        "<strong class='text-white'>Point every call at the live host</strong>, use <code>https://live.tradovateapi.com/v1</code>, never <code>demo.tradovateapi.com</code>, once you go live.",
+        "<strong class='text-white'>Send a permanent <code>deviceId</code></strong>, a stable UUID-style string you reuse on every login from that machine, not a fresh random value each time.",
+        "<strong class='text-white'>Approve the device</strong>, open the Tradovate device-approval email and confirm the link before you expect live orders to route.",
+        "<strong class='text-white'>Re-pull your live <code>accountId</code></strong>, live and demo accounts carry different <code>accountId</code> values; fetch the live one from <code>/account/list</code>.",
+        "<strong class='text-white'>Use the correct <code>accountSpec</code></strong>, the live form (e.g. <code>Vxxxxx</code>) differs from the demo form (<code>DEMOxxxxx</code>).",
+        "<strong class='text-white'>Confirm order-write entitlement</strong>, the API key needs full order access, not read-only market data.",
+      ],
+    },
+    { type: "heading", text: "What “Access Is Denied” Means" },
+    { type: "paragraph", html: "The <code>Access is denied</code> response is Tradovate telling you that the <em>session or device</em> making the request hasn't been authorized to act on a <strong class='text-white'>live</strong> account, even though your username, password, and API secret are all correct. That's why it's so confusing: the same credentials that authenticate cleanly and place orders in demo suddenly fail the second you switch to the live host." },
+    { type: "paragraph", html: "You might see it as a clean HTTP <code>401</code>, or, more misleadingly, as an HTTP <code>200</code> whose JSON body carries a failure payload like <code>[{'s': 200, 'i': 3, 'd': {'failureReason': 'UnknownReason', 'failureText': 'Access is denied'}}]</code>. Only live enforces verified device IDs. It's one of the very few differences between sim and live, and it's the primary reason 401s appear on live but never on sim. In other words, this is a two-factor / device-trust gate, not a broken order body." },
+    { type: "heading", text: "Top Causes of a Live 401" },
+    { type: "heading", text: "1. You're still hitting the demo host" },
+    { type: "paragraph", html: "The most trivial cause: the base URL never got switched. Demo tokens and demo account IDs are worthless against the live endpoint, and vice versa. If you didn't change from <code>demo.tradovateapi.com</code> to <code>live.tradovateapi.com</code>, requests will fail for live accounts, plain and simple." },
+    { type: "heading", text: "2. You're not sending a permanent deviceId" },
+    { type: "paragraph", html: "The <code>deviceId</code> is a string of up to 64 characters that's meant to <strong class='text-white'>uniquely and permanently identify the physical device</strong> making the request. Demo never checks it, so plenty of integrations omit it or spin up a throwaway value each run. Live rejects that. Regenerating a new <code>deviceId</code> on every login also looks like a brand-new, unapproved device every single time, so the 401 never clears." },
+    { type: "heading", text: "3. The device was never approved via the email link" },
+    { type: "paragraph", html: "This is the cause most people miss. Because Tradovate treats the <code>deviceId</code> as part of its two-factor authentication, a <em>new</em> device has to be confirmed out-of-band. You'll get an email to approve the device ID, and until you approve it on live, it keeps denying access. No approval click, no live access, period." },
+    { type: "heading", text: "4. You carried demo's accountId or accountSpec into live" },
+    { type: "paragraph", html: "Your live and demo accounts don't share the same numeric <code>accountId</code>, and the <code>accountSpec</code> string differs too (a live spec versus a <code>DEMO</code>-prefixed one). Reuse the demo values against the live host and you'll get the same <code>Access is denied</code>, even after the device is trusted." },
+    { type: "heading", text: "5. The API key lacks order-write access" },
+    { type: "paragraph", html: "If the key or app was provisioned for read-only or market-data scope, live order placement gets denied. The key needs full order (write) entitlement, which comes through Tradovate's API Access add-on and app configuration." },
+    { type: "heading", text: "How to Fix the Live 401: Step-by-Step" },
+    { type: "heading", text: "Fixing a missing or non-permanent deviceId" },
+    {
+      type: "steps",
+      items: [
+        { title: "Generate one stable, UUID-style deviceId", html: "Create one stable, UUID-style string for the machine that runs your bot, for example <code>71986488-882c-43db-c345-92a0a2ed9329</code>. Strict UUID formatting matters less than the value being <strong class='text-white'>unique and unchanging</strong>; up to 64 characters is allowed." },
+        { title: "Store it, don't regenerate it", html: "Store it as a constant, a config file, an environment variable, or a secrets store. Never randomize it per run." },
+        { title: "Send it on every login", html: "Include it in the access-token request body alongside your other credential fields, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code>, and <code>deviceId</code>, and reuse the exact same string on every subsequent login from that device." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-2.png`, alt: "Tradovate API access-token request body showing the permanent deviceId field" },
+    { type: "heading", text: "Approving the device via the emailed link" },
+    {
+      type: "steps",
+      items: [
+        { title: "Watch your inbox after the first live attempt", html: "After your first live authentication attempt with a new <code>deviceId</code>, watch the inbox tied to your Tradovate account for a device-approval message." },
+        { title: "Check spam, junk, and promotions", html: "Check spam, junk, and promotions folders, the approval email gets filtered constantly." },
+        { title: "Confirm the approval link", html: "Open the email and confirm the approval link. That's what flips the device from “unknown” to “trusted” on the live environment." },
+        { title: "Re-run live authentication", html: "Re-run your live authentication. Orders that were returning <code>Access is denied</code> should now route." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-3.png`, alt: "Tradovate device-approval email with the confirm-device link highlighted" },
+    { type: "heading", text: "Switching the host and re-pulling live account values" },
+    {
+      type: "steps",
+      items: [
+        { title: "Point the base URL at live", html: "Change your base URL to <code>https://live.tradovateapi.com/v1</code> for every request once you're live." },
+        { title: "Request a fresh live access token", html: "Request a fresh live access token from the live host." },
+        { title: "Re-pull the live accountId", html: "Call <code>/account/list</code> with that <strong class='text-white'>live</strong> token and read the real numeric <code>accountId</code> back from the response." },
+        { title: "Set the live accountSpec", html: "Set <code>accountSpec</code> to the value shown for the live account (the live-format spec, not the <code>DEMO</code>-prefixed one) and use the matching <code>accountId</code> in your order body." },
+      ],
+    },
+    { type: "heading", text: "Confirming API Access entitlement" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open API Access settings", html: "Log in to the Tradovate web platform and open the settings area that governs API Access / connected applications." },
+        { title: "Verify full order permissions", html: "Verify the API Access add-on is enabled and that your app has full order permissions, not read-only." },
+        { title: "Think twice before disabling 2FA", html: "If you disabled two-factor authentication as a shortcut, know the trade-off: turning 2FA off avoids the per-device email step, but it weakens account security and isn't worth it on a funded live account. Approving the device once is the safer path." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-4.png`, alt: "Tradovate web platform API Access settings showing the add-on enabled with full order permissions" },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / symptom", "Meaning", "Fix"],
+      rows: [
+        ["401 Access is denied on live only", "Device not verified/approved on live", "Send a permanent deviceId and confirm the emailed device-approval link"],
+        ["200 with failureReason: UnknownReason, failureText: Access is denied", "Auth succeeded but the device/session isn't trusted for live orders", "Approve the device via email; reuse the same deviceId every login"],
+        ["Works in demo, fails in live with identical code", "Only the host/URL differs", "Switch base URL to https://live.tradovateapi.com/v1"],
+        ["Access is denied after device is approved", "Demo accountId/accountSpec reused on live", "Re-pull live accountId from /account/list; set the live accountSpec"],
+        ["Every login prompts a new approval email", "deviceId is being regenerated each run", "Persist one stable deviceId string and reuse it"],
+        ["Read requests work, order placement denied", "API key lacks order-write scope", "Enable the API Access add-on and grant full order permissions"],
+      ],
+    },
+    { type: "heading", text: "Where PickMyTrade Fits" },
+    { type: "paragraph", html: "If you'd rather trade your TradingView signals live without hand-rolling device IDs, approval emails, and endpoint swaps, PickMyTrade handles the broker handshake for you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Managed live connection</strong> the device-trust and endpoint handling that trips up raw API integrations happens behind the scenes, so live orders route the first time.",
+        "<strong class='text-white'>Entitlement & risk filters</strong> respects your account's data-agreement state and prop-firm limits before an order is ever sent.",
+        "<strong class='text-white'>Rate-limit-safe routing</strong> spaces out order flow so authentication and order calls don't bounce.",
+        "<strong class='text-white'>Multi-account sync</strong> mirrors the same signal across multiple Tradovate accounts without maintaining a separate device handshake per bot.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie richten einen Tradovate-Bot ein, sehen ihn tagelang tadellos gegen die Demo feuern, richten ihn dann auf Ihr live finanziertes Konto, und jede Order kommt mit einem <strong class='text-white'>401 mit <code>Access is denied</code></strong> zurück. Das ist eine der häufigsten Hürden, an denen API-Trader scheitern, und fast nie ein Fehler in Ihrem Code. Live-Tradovate erzwingt eine Regel, die die Demo stillschweigend ignoriert: Jede Authentifizierungsanfrage muss eine permanente, verifizierte <code>deviceId</code> mitführen, und dieses Gerät muss <strong class='text-white'>über einen per E-Mail zugesandten Link genehmigt werden</strong>, bevor es echte Orders routen kann. Der Fehler tritt in zwei Formen auf: ein einfaches <code>401 Access is denied</code>, oder eine <code>200</code>-Antwort, deren Payload <code>failureReason: UnknownReason, failureText: Access is denied</code> lautet, aber die Ursache ist derselbe fehlende Geräte-Handshake. Hier ist die vollständige Diagnose und Lösung, sowie wie eine Bridge wie PickMyTrade den Geräte-Genehmigungstanz komplett überspringt." },
+    {
+      type: "checklist",
+      heading: "Schnelle Checkliste für einen reinen Live-401",
+      items: [
+        "<strong class='text-white'>Richten Sie jeden Aufruf auf den Live-Host</strong>, verwenden Sie <code>https://live.tradovateapi.com/v1</code>, niemals <code>demo.tradovateapi.com</code>, sobald Sie live gehen.",
+        "<strong class='text-white'>Senden Sie eine permanente <code>deviceId</code></strong>, eine stabile UUID-artige Zeichenfolge, die Sie bei jedem Login von diesem Rechner wiederverwenden, nicht jedes Mal einen neuen Zufallswert.",
+        "<strong class='text-white'>Genehmigen Sie das Gerät</strong>, öffnen Sie die Tradovate-Geräte-Genehmigungs-E-Mail und bestätigen Sie den Link, bevor Sie erwarten, dass Live-Orders geroutet werden.",
+        "<strong class='text-white'>Rufen Sie Ihre Live-<code>accountId</code> erneut ab</strong>, Live- und Demokonten tragen unterschiedliche <code>accountId</code>-Werte; holen Sie die Live-ID von <code>/account/list</code>.",
+        "<strong class='text-white'>Verwenden Sie die korrekte <code>accountSpec</code></strong>, das Live-Format (z. B. <code>Vxxxxx</code>) unterscheidet sich vom Demo-Format (<code>DEMOxxxxx</code>).",
+        "<strong class='text-white'>Bestätigen Sie die Order-Schreibberechtigung</strong>, der API-Schlüssel benötigt vollen Order-Zugriff, nicht nur schreibgeschützte Marktdaten.",
+      ],
+    },
+    { type: "heading", text: "Was „Access Is Denied“ bedeutet" },
+    { type: "paragraph", html: "Die Antwort <code>Access is denied</code> bedeutet, dass Tradovate Ihnen mitteilt, dass die <em>Sitzung oder das Gerät</em>, das die Anfrage stellt, nicht autorisiert wurde, auf einem <strong class='text-white'>Live</strong>-Konto zu agieren, obwohl Ihr Benutzername, Passwort und API-Secret alle korrekt sind. Deshalb ist es so verwirrend: Dieselben Anmeldedaten, die in der Demo problemlos authentifizieren und Orders platzieren, schlagen plötzlich fehl, sobald Sie zum Live-Host wechseln." },
+    { type: "paragraph", html: "Sie sehen es vielleicht als sauberen HTTP-<code>401</code>, oder, irreführender, als HTTP-<code>200</code>, dessen JSON-Body eine Fehler-Payload wie <code>[{'s': 200, 'i': 3, 'd': {'failureReason': 'UnknownReason', 'failureText': 'Access is denied'}}]</code> trägt. Nur Live erzwingt verifizierte Geräte-IDs. Das ist einer der ganz wenigen Unterschiede zwischen Sim und Live, und der Hauptgrund, warum 401er bei Live auftauchen, aber nie bei Sim. Mit anderen Worten: Das ist ein Zwei-Faktor-/Geräte-Vertrauens-Gate, kein defekter Order-Body." },
+    { type: "heading", text: "Häufigste Ursachen für einen Live-401" },
+    { type: "heading", text: "1. Sie greifen noch auf den Demo-Host zu" },
+    { type: "paragraph", html: "Die trivialste Ursache: Die Basis-URL wurde nie umgestellt. Demo-Token und Demo-Konto-IDs sind gegen den Live-Endpunkt wertlos, und umgekehrt. Wenn Sie nicht von <code>demo.tradovateapi.com</code> zu <code>live.tradovateapi.com</code> gewechselt haben, schlagen Anfragen für Live-Konten schlicht fehl." },
+    { type: "heading", text: "2. Sie senden keine permanente deviceId" },
+    { type: "paragraph", html: "Die <code>deviceId</code> ist eine Zeichenfolge von bis zu 64 Zeichen, die dazu dient, das <strong class='text-white'>physische Gerät, das die Anfrage stellt, eindeutig und dauerhaft zu identifizieren</strong>. Die Demo prüft sie nie, deshalb lassen viele Integrationen sie weg oder erzeugen bei jedem Lauf einen Wegwerfwert. Live lehnt das ab. Bei jedem Login eine neue <code>deviceId</code> zu erzeugen, sieht außerdem jedes Mal wie ein brandneues, nicht genehmigtes Gerät aus, sodass der 401 nie verschwindet." },
+    { type: "heading", text: "3. Das Gerät wurde nie über den E-Mail-Link genehmigt" },
+    { type: "paragraph", html: "Das ist die Ursache, die die meisten übersehen. Da Tradovate die <code>deviceId</code> als Teil seiner Zwei-Faktor-Authentifizierung behandelt, muss ein <em>neues</em> Gerät außerhalb des eigentlichen Kanals bestätigt werden. Sie erhalten eine E-Mail, um die Geräte-ID zu genehmigen, und solange Sie sie auf Live nicht genehmigen, verweigert es weiterhin den Zugriff. Kein Genehmigungsklick, kein Live-Zugriff, Punkt." },
+    { type: "heading", text: "4. Sie haben die accountId oder accountSpec aus der Demo mit in Live übernommen" },
+    { type: "paragraph", html: "Ihre Live- und Demokonten teilen sich nicht dieselbe numerische <code>accountId</code>, und auch die Zeichenfolge <code>accountSpec</code> unterscheidet sich (eine Live-Spec gegenüber einer mit <code>DEMO</code>-Präfix). Verwenden Sie die Demo-Werte gegen den Live-Host wieder, erhalten Sie denselben <code>Access is denied</code>, selbst wenn das Gerät bereits vertrauenswürdig ist." },
+    { type: "heading", text: "5. Dem API-Schlüssel fehlt der Order-Schreibzugriff" },
+    { type: "paragraph", html: "Wenn der Schlüssel oder die App nur für schreibgeschützten Zugriff oder Marktdaten bereitgestellt wurde, wird die Live-Order-Platzierung verweigert. Der Schlüssel benötigt vollständige Order-(Schreib-)Berechtigung, die über das API-Access-Add-on von Tradovate und die App-Konfiguration bereitgestellt wird." },
+    { type: "heading", text: "So beheben Sie den Live-401: Schritt für Schritt" },
+    { type: "heading", text: "Eine fehlende oder nicht permanente deviceId beheben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Erzeugen Sie eine stabile deviceId im UUID-Stil", html: "Erstellen Sie eine stabile, UUID-artige Zeichenfolge für die Maschine, auf der Ihr Bot läuft, zum Beispiel <code>71986488-882c-43db-c345-92a0a2ed9329</code>. Ein strenges UUID-Format ist weniger wichtig, als dass der Wert <strong class='text-white'>eindeutig und unveränderlich</strong> ist; bis zu 64 Zeichen sind erlaubt." },
+        { title: "Speichern Sie sie, erzeugen Sie sie nicht neu", html: "Speichern Sie sie als Konstante, in einer Konfigurationsdatei, als Umgebungsvariable oder in einem Secrets-Store. Randomisieren Sie sie niemals pro Lauf." },
+        { title: "Senden Sie sie bei jedem Login", html: "Fügen Sie sie im Access-Token-Request-Body zusammen mit Ihren anderen Anmeldefeldern hinzu, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> und <code>deviceId</code>, und verwenden Sie exakt dieselbe Zeichenfolge bei jedem weiteren Login von diesem Gerät wieder." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-2.png`, alt: "Tradovate-API-Access-Token-Request-Body mit dem permanenten deviceId-Feld" },
+    { type: "heading", text: "Das Gerät über den per E-Mail zugesandten Link genehmigen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Beobachten Sie Ihren Posteingang nach dem ersten Live-Versuch", html: "Beobachten Sie nach Ihrem ersten Live-Authentifizierungsversuch mit einer neuen <code>deviceId</code> den Posteingang, der mit Ihrem Tradovate-Konto verknüpft ist, auf eine Geräte-Genehmigungsnachricht." },
+        { title: "Prüfen Sie Spam, Junk und Werbung", html: "Prüfen Sie die Ordner für Spam, Junk und Werbung, die Genehmigungs-E-Mail wird ständig herausgefiltert." },
+        { title: "Bestätigen Sie den Genehmigungslink", html: "Öffnen Sie die E-Mail und bestätigen Sie den Genehmigungslink. Das ist es, was das Gerät in der Live-Umgebung von „unbekannt“ auf „vertrauenswürdig“ umschaltet." },
+        { title: "Führen Sie die Live-Authentifizierung erneut aus", html: "Führen Sie Ihre Live-Authentifizierung erneut aus. Orders, die zuvor <code>Access is denied</code> zurückgegeben haben, sollten jetzt geroutet werden." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-3.png`, alt: "Tradovate-Geräte-Genehmigungs-E-Mail mit hervorgehobenem Geräte-Bestätigungslink" },
+    { type: "heading", text: "Den Host wechseln und Live-Kontowerte erneut abrufen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Richten Sie die Basis-URL auf Live", html: "Ändern Sie Ihre Basis-URL für jede Anfrage in <code>https://live.tradovateapi.com/v1</code>, sobald Sie live sind." },
+        { title: "Fordern Sie ein neues Live-Access-Token an", html: "Fordern Sie ein neues Live-Access-Token vom Live-Host an." },
+        { title: "Rufen Sie die Live-accountId erneut ab", html: "Rufen Sie <code>/account/list</code> mit diesem <strong class='text-white'>Live</strong>-Token auf und lesen Sie die tatsächliche numerische <code>accountId</code> aus der Antwort." },
+        { title: "Setzen Sie die Live-accountSpec", html: "Setzen Sie <code>accountSpec</code> auf den für das Live-Konto angezeigten Wert (die Live-Format-Spec, nicht die mit <code>DEMO</code>-Präfix) und verwenden Sie die passende <code>accountId</code> in Ihrem Order-Body." },
+      ],
+    },
+    { type: "heading", text: "API-Access-Berechtigung bestätigen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Öffnen Sie die API-Access-Einstellungen", html: "Melden Sie sich bei der Tradovate-Webplattform an und öffnen Sie den Einstellungsbereich, der API Access / verbundene Anwendungen regelt." },
+        { title: "Überprüfen Sie die vollständigen Order-Berechtigungen", html: "Überprüfen Sie, ob das API-Access-Add-on aktiviert ist und Ihre App über vollständige Order-Berechtigungen verfügt, nicht nur schreibgeschützt." },
+        { title: "Überlegen Sie es sich zweimal, bevor Sie 2FA deaktivieren", html: "Wenn Sie die Zwei-Faktor-Authentifizierung als Abkürzung deaktiviert haben, sollten Sie den Kompromiss kennen: Das Ausschalten von 2FA vermeidet den E-Mail-Schritt pro Gerät, schwächt aber die Kontosicherheit und lohnt sich bei einem finanzierten Live-Konto nicht. Das einmalige Genehmigen des Geräts ist der sicherere Weg." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-4.png`, alt: "Tradovate-Webplattform-API-Access-Einstellungen mit aktiviertem Add-on und vollständigen Order-Berechtigungen" },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Fehler / Symptom", "Bedeutung", "Lösung"],
+      rows: [
+        ["401 Access is denied nur bei Live", "Gerät auf Live nicht verifiziert/genehmigt", "Senden Sie eine permanente deviceId und bestätigen Sie den per E-Mail zugesandten Geräte-Genehmigungslink"],
+        ["200 mit failureReason: UnknownReason, failureText: Access is denied", "Authentifizierung erfolgreich, aber Gerät/Sitzung ist für Live-Orders nicht vertrauenswürdig", "Genehmigen Sie das Gerät per E-Mail; verwenden Sie bei jedem Login dieselbe deviceId wieder"],
+        ["Funktioniert in Demo, schlägt bei Live mit identischem Code fehl", "Nur der Host/die URL unterscheidet sich", "Wechseln Sie die Basis-URL zu https://live.tradovateapi.com/v1"],
+        ["Access is denied, nachdem das Gerät genehmigt wurde", "Demo-accountId/-accountSpec bei Live wiederverwendet", "Rufen Sie die Live-accountId erneut von /account/list ab; setzen Sie die Live-accountSpec"],
+        ["Jeder Login löst eine neue Genehmigungs-E-Mail aus", "deviceId wird bei jedem Lauf neu erzeugt", "Speichern Sie eine stabile deviceId-Zeichenfolge dauerhaft und verwenden Sie sie wieder"],
+        ["Lese-Anfragen funktionieren, Order-Platzierung wird verweigert", "API-Schlüssel fehlt der Order-Schreibumfang", "Aktivieren Sie das API-Access-Add-on und gewähren Sie vollständige Order-Berechtigungen"],
+      ],
+    },
+    { type: "heading", text: "Wo PickMyTrade ins Spiel kommt" },
+    { type: "paragraph", html: "Wenn Sie Ihre TradingView-Signale lieber live handeln möchten, ohne Geräte-IDs, Genehmigungs-E-Mails und Endpunkt-Wechsel selbst zu verwalten, übernimmt PickMyTrade den Broker-Handshake für Sie:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Verwaltete Live-Verbindung</strong> die Geräte-Vertrauens- und Endpunkt-Verwaltung, die rohe API-Integrationen zu Fall bringt, läuft im Hintergrund ab, sodass Live-Orders beim ersten Mal geroutet werden.",
+        "<strong class='text-white'>Berechtigungs- und Risikofilter</strong> berücksichtigt den Datenvereinbarungsstatus Ihres Kontos und Prop-Firm-Limits, bevor überhaupt eine Order gesendet wird.",
+        "<strong class='text-white'>Rate-Limit-sicheres Routing</strong> staffelt den Order-Flow, sodass Authentifizierungs- und Order-Aufrufe nicht abgewiesen werden.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong> spiegelt dasselbe Signal über mehrere Tradovate-Konten hinweg, ohne dass Sie einen separaten Geräte-Handshake pro Bot pflegen müssen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Configura un bot de Tradovate, lo ve operar sin fallos en la cuenta demo durante días, luego lo apunta a su cuenta en vivo financiada, y cada orden regresa con un <strong class='text-white'>401 con <code>Access is denied</code></strong>. Es uno de los obstáculos más comunes con los que se topan los traders de API, y casi nunca es un error en su código. Tradovate en vivo aplica una regla que la demo ignora silenciosamente: cada solicitud de autenticación debe llevar un <code>deviceId</code> permanente y verificado, y ese dispositivo debe <strong class='text-white'>aprobarse mediante un enlace enviado por correo electrónico</strong> antes de poder enrutar órdenes reales. El error aparece de un par de formas, un <code>401 Access is denied</code> simple, o una respuesta <code>200</code> cuyo payload dice <code>failureReason: UnknownReason, failureText: Access is denied</code>, pero la causa raíz es el mismo handshake de dispositivo faltante. Aquí está el diagnóstico completo y la solución, además de cómo un puente como PickMyTrade evita por completo el trámite de aprobación de dispositivo." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para un 401 exclusivo de en vivo",
+      items: [
+        "<strong class='text-white'>Dirija cada llamada al host en vivo</strong>, use <code>https://live.tradovateapi.com/v1</code>, nunca <code>demo.tradovateapi.com</code>, una vez que pase a producción.",
+        "<strong class='text-white'>Envíe un <code>deviceId</code> permanente</strong>, una cadena estable con formato UUID que reutiliza en cada inicio de sesión desde esa máquina, no un valor aleatorio nuevo cada vez.",
+        "<strong class='text-white'>Apruebe el dispositivo</strong>, abra el correo de aprobación de dispositivo de Tradovate y confirme el enlace antes de esperar que las órdenes en vivo se enruten.",
+        "<strong class='text-white'>Vuelva a obtener su <code>accountId</code> en vivo</strong>, las cuentas en vivo y demo tienen valores de <code>accountId</code> distintos; obtenga el de en vivo desde <code>/account/list</code>.",
+        "<strong class='text-white'>Use el <code>accountSpec</code> correcto</strong>, el formato en vivo (p. ej. <code>Vxxxxx</code>) difiere del formato demo (<code>DEMOxxxxx</code>).",
+        "<strong class='text-white'>Confirme el derecho de escritura de órdenes</strong>, la clave de API necesita acceso completo a órdenes, no solo datos de mercado de solo lectura.",
+      ],
+    },
+    { type: "heading", text: "Qué significa “Access Is Denied”" },
+    { type: "paragraph", html: "La respuesta <code>Access is denied</code> es la forma en que Tradovate le indica que la <em>sesión o el dispositivo</em> que realiza la solicitud no ha sido autorizado para operar en una cuenta <strong class='text-white'>en vivo</strong>, aunque su nombre de usuario, contraseña y secreto de API sean correctos. Por eso resulta tan confuso: las mismas credenciales que se autentican sin problemas y colocan órdenes en demo fallan de repente en cuanto cambia al host en vivo." },
+    { type: "paragraph", html: "Puede verlo como un <code>401</code> HTTP limpio, o, de forma más engañosa, como un <code>200</code> HTTP cuyo cuerpo JSON lleva un payload de fallo como <code>[{'s': 200, 'i': 3, 'd': {'failureReason': 'UnknownReason', 'failureText': 'Access is denied'}}]</code>. Solo el entorno en vivo exige IDs de dispositivo verificados. Es una de las pocas diferencias entre simulación y en vivo, y la razón principal por la que los 401 aparecen en vivo pero nunca en simulación. En otras palabras, se trata de una puerta de confianza de dos factores / dispositivo, no de un cuerpo de orden roto." },
+    { type: "heading", text: "Principales causas de un 401 en vivo" },
+    { type: "heading", text: "1. Sigue apuntando al host demo" },
+    { type: "paragraph", html: "La causa más trivial: la URL base nunca se cambió. Los tokens y los ID de cuenta demo no sirven contra el endpoint en vivo, y viceversa. Si no cambió de <code>demo.tradovateapi.com</code> a <code>live.tradovateapi.com</code>, las solicitudes fallarán para las cuentas en vivo, así de simple." },
+    { type: "heading", text: "2. No está enviando un deviceId permanente" },
+    { type: "paragraph", html: "El <code>deviceId</code> es una cadena de hasta 64 caracteres pensada para <strong class='text-white'>identificar de forma única y permanente el dispositivo físico</strong> que realiza la solicitud. La demo nunca lo verifica, por lo que muchas integraciones lo omiten o generan un valor desechable en cada ejecución. En vivo eso se rechaza. Regenerar un nuevo <code>deviceId</code> en cada inicio de sesión también parece un dispositivo completamente nuevo y no aprobado cada vez, así que el 401 nunca desaparece." },
+    { type: "heading", text: "3. El dispositivo nunca se aprobó a través del enlace del correo" },
+    { type: "paragraph", html: "Esta es la causa que más gente pasa por alto. Como Tradovate trata el <code>deviceId</code> como parte de su autenticación de dos factores, un dispositivo <em>nuevo</em> debe confirmarse fuera de banda. Recibirá un correo para aprobar el ID de dispositivo, y hasta que lo apruebe en vivo, seguirá denegando el acceso. Sin hacer clic en la aprobación, no hay acceso en vivo, punto." },
+    { type: "heading", text: "4. Trasladó el accountId o accountSpec de la demo a producción" },
+    { type: "paragraph", html: "Sus cuentas en vivo y demo no comparten el mismo <code>accountId</code> numérico, y la cadena <code>accountSpec</code> también difiere (una especificación en vivo frente a una con prefijo <code>DEMO</code>). Reutilice los valores demo contra el host en vivo y obtendrá el mismo <code>Access is denied</code>, incluso después de que el dispositivo sea confiable." },
+    { type: "heading", text: "5. La clave de API carece de acceso de escritura de órdenes" },
+    { type: "paragraph", html: "Si la clave o la app se aprovisionó con alcance de solo lectura o solo datos de mercado, la colocación de órdenes en vivo será denegada. La clave necesita el derecho completo de órdenes (escritura), que se obtiene mediante el complemento API Access de Tradovate y la configuración de la app." },
+    { type: "heading", text: "Cómo solucionar el 401 en vivo: paso a paso" },
+    { type: "heading", text: "Cómo solucionar un deviceId faltante o no permanente" },
+    {
+      type: "steps",
+      items: [
+        { title: "Genere un deviceId estable con formato UUID", html: "Cree una cadena estable con formato UUID para la máquina que ejecuta su bot, por ejemplo <code>71986488-882c-43db-c345-92a0a2ed9329</code>. El formato UUID estricto importa menos que el hecho de que el valor sea <strong class='text-white'>único e inmutable</strong>; se permiten hasta 64 caracteres." },
+        { title: "Guárdelo, no lo regenere", html: "Guárdelo como una constante, en un archivo de configuración, una variable de entorno o un almacén de secretos. Nunca lo aleatorice en cada ejecución." },
+        { title: "Envíelo en cada inicio de sesión", html: "Inclúyalo en el cuerpo de la solicitud de token de acceso junto con sus otros campos de credenciales, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> y <code>deviceId</code>, y reutilice exactamente la misma cadena en cada inicio de sesión posterior desde ese dispositivo." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-2.png`, alt: "Cuerpo de la solicitud de token de acceso de la API de Tradovate que muestra el campo deviceId permanente" },
+    { type: "heading", text: "Cómo aprobar el dispositivo mediante el enlace enviado por correo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Vigile su bandeja de entrada tras el primer intento en vivo", html: "Después de su primer intento de autenticación en vivo con un nuevo <code>deviceId</code>, vigile la bandeja de entrada vinculada a su cuenta de Tradovate en busca de un mensaje de aprobación de dispositivo." },
+        { title: "Revise spam, correo no deseado y promociones", html: "Revise las carpetas de spam, correo no deseado y promociones; el correo de aprobación se filtra constantemente." },
+        { title: "Confirme el enlace de aprobación", html: "Abra el correo y confirme el enlace de aprobación. Eso es lo que hace que el dispositivo pase de “desconocido” a “de confianza” en el entorno en vivo." },
+        { title: "Vuelva a ejecutar la autenticación en vivo", html: "Vuelva a ejecutar su autenticación en vivo. Las órdenes que devolvían <code>Access is denied</code> ahora deberían enrutarse." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-3.png`, alt: "Correo de aprobación de dispositivo de Tradovate con el enlace de confirmación de dispositivo resaltado" },
+    { type: "heading", text: "Cómo cambiar el host y volver a obtener los valores de la cuenta en vivo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apunte la URL base a producción", html: "Cambie su URL base a <code>https://live.tradovateapi.com/v1</code> para cada solicitud una vez que esté en producción." },
+        { title: "Solicite un nuevo token de acceso en vivo", html: "Solicite un nuevo token de acceso en vivo desde el host en vivo." },
+        { title: "Vuelva a obtener el accountId en vivo", html: "Llame a <code>/account/list</code> con ese token <strong class='text-white'>en vivo</strong> y lea el <code>accountId</code> numérico real desde la respuesta." },
+        { title: "Configure el accountSpec en vivo", html: "Configure <code>accountSpec</code> con el valor mostrado para la cuenta en vivo (la especificación en formato en vivo, no la que tiene el prefijo <code>DEMO</code>) y use el <code>accountId</code> correspondiente en el cuerpo de su orden." },
+      ],
+    },
+    { type: "heading", text: "Cómo confirmar el derecho de API Access" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra la configuración de API Access", html: "Inicie sesión en la plataforma web de Tradovate y abra el área de configuración que rige API Access / aplicaciones conectadas." },
+        { title: "Verifique los permisos completos de órdenes", html: "Verifique que el complemento API Access esté habilitado y que su app tenga permisos completos de órdenes, no solo de lectura." },
+        { title: "Piénselo dos veces antes de desactivar la 2FA", html: "Si desactivó la autenticación de dos factores como atajo, tenga en cuenta la contrapartida: desactivar la 2FA evita el paso de correo por dispositivo, pero debilita la seguridad de la cuenta y no vale la pena en una cuenta en vivo financiada. Aprobar el dispositivo una vez es el camino más seguro." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-4.png`, alt: "Configuración de API Access de la plataforma web de Tradovate que muestra el complemento habilitado con permisos completos de órdenes" },
+    { type: "heading", text: "Tabla de resolución de problemas" },
+    {
+      type: "table",
+      headers: ["Error / síntoma", "Significado", "Solución"],
+      rows: [
+        ["401 Access is denied solo en vivo", "Dispositivo no verificado/aprobado en vivo", "Envíe un deviceId permanente y confirme el enlace de aprobación de dispositivo enviado por correo"],
+        ["200 con failureReason: UnknownReason, failureText: Access is denied", "La autenticación fue exitosa, pero el dispositivo/sesión no es de confianza para órdenes en vivo", "Apruebe el dispositivo por correo; reutilice el mismo deviceId en cada inicio de sesión"],
+        ["Funciona en demo, falla en vivo con código idéntico", "Solo difiere el host/URL", "Cambie la URL base a https://live.tradovateapi.com/v1"],
+        ["Access is denied después de aprobar el dispositivo", "accountId/accountSpec de demo reutilizados en vivo", "Vuelva a obtener el accountId en vivo desde /account/list; configure el accountSpec en vivo"],
+        ["Cada inicio de sesión provoca un nuevo correo de aprobación", "El deviceId se regenera en cada ejecución", "Persista una cadena deviceId estable y reutilícela"],
+        ["Las solicitudes de lectura funcionan, la colocación de órdenes es denegada", "A la clave de API le falta el alcance de escritura de órdenes", "Habilite el complemento API Access y conceda permisos completos de órdenes"],
+      ],
+    },
+    { type: "heading", text: "Dónde encaja PickMyTrade" },
+    { type: "paragraph", html: "Si prefiere operar sus señales de TradingView en vivo sin gestionar manualmente IDs de dispositivo, correos de aprobación y cambios de endpoint, PickMyTrade se encarga del handshake con el bróker por usted:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Conexión en vivo gestionada</strong> la gestión de confianza de dispositivo y endpoints que hace tropezar a las integraciones de API sin procesar ocurre entre bastidores, de modo que las órdenes en vivo se enrutan a la primera.",
+        "<strong class='text-white'>Filtros de derechos y riesgo</strong> respeta el estado del acuerdo de datos de su cuenta y los límites de la prop firm antes de enviar cualquier orden.",
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de tasa</strong> espacia el flujo de órdenes para que las llamadas de autenticación y de órdenes no reboten.",
+        "<strong class='text-white'>Sincronización multicuenta</strong> refleja la misma señal en varias cuentas de Tradovate sin necesidad de mantener un handshake de dispositivo independiente por bot.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous configurez un bot Tradovate, le regardez fonctionner sans accroc sur le compte démo pendant des jours, puis le pointez vers votre compte en direct financé, et chaque ordre revient avec un <strong class='text-white'>401 avec <code>Access is denied</code></strong>. C'est l'un des obstacles les plus courants rencontrés par les traders API, et ce n'est presque jamais un bug dans votre code. Tradovate en direct applique une règle que la démo ignore silencieusement : chaque requête d'authentification doit porter un <code>deviceId</code> permanent et vérifié, et cet appareil doit être <strong class='text-white'>approuvé via un lien envoyé par e-mail</strong> avant de pouvoir router de vrais ordres. L'erreur se présente sous deux formes, un simple <code>401 Access is denied</code>, ou une réponse <code>200</code> dont le payload indique <code>failureReason: UnknownReason, failureText: Access is denied</code>, mais la cause profonde est la même : un handshake d'appareil manquant. Voici le diagnostic complet et la solution, ainsi que la façon dont un pont comme PickMyTrade évite entièrement cette procédure d'approbation d'appareil." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour un 401 exclusif au direct",
+      items: [
+        "<strong class='text-white'>Dirigez chaque appel vers l'hôte en direct</strong>, utilisez <code>https://live.tradovateapi.com/v1</code>, jamais <code>demo.tradovateapi.com</code>, une fois en direct.",
+        "<strong class='text-white'>Envoyez un <code>deviceId</code> permanent</strong>, une chaîne stable de type UUID que vous réutilisez à chaque connexion depuis cette machine, et non une nouvelle valeur aléatoire à chaque fois.",
+        "<strong class='text-white'>Approuvez l'appareil</strong>, ouvrez l'e-mail d'approbation d'appareil Tradovate et confirmez le lien avant de vous attendre à ce que les ordres en direct soient routés.",
+        "<strong class='text-white'>Récupérez à nouveau votre <code>accountId</code> en direct</strong>, les comptes en direct et démo portent des valeurs d'<code>accountId</code> différentes ; récupérez celle du compte en direct depuis <code>/account/list</code>.",
+        "<strong class='text-white'>Utilisez le bon <code>accountSpec</code></strong>, le format en direct (par ex. <code>Vxxxxx</code>) diffère du format démo (<code>DEMOxxxxx</code>).",
+        "<strong class='text-white'>Confirmez le droit d'écriture des ordres</strong>, la clé API a besoin d'un accès complet aux ordres, pas seulement des données de marché en lecture seule.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie « Access Is Denied »" },
+    { type: "paragraph", html: "La réponse <code>Access is denied</code> signifie que Tradovate vous indique que la <em>session ou l'appareil</em> à l'origine de la requête n'a pas été autorisé à agir sur un compte <strong class='text-white'>en direct</strong>, même si votre nom d'utilisateur, votre mot de passe et votre secret API sont corrects. C'est ce qui rend la situation si déroutante : les mêmes identifiants qui s'authentifient sans problème et placent des ordres en démo échouent soudainement dès que vous passez à l'hôte en direct." },
+    { type: "paragraph", html: "Vous pouvez le voir comme un <code>401</code> HTTP net, ou, de façon plus trompeuse, comme un <code>200</code> HTTP dont le corps JSON porte un payload d'échec du type <code>[{'s': 200, 'i': 3, 'd': {'failureReason': 'UnknownReason', 'failureText': 'Access is denied'}}]</code>. Seul le direct impose des ID d'appareil vérifiés. C'est l'une des très rares différences entre la simulation et le direct, et la raison principale pour laquelle les 401 apparaissent en direct mais jamais en simulation. Autrement dit, il s'agit d'une barrière de confiance à deux facteurs / appareil, pas d'un corps d'ordre défectueux." },
+    { type: "heading", text: "Principales causes d'un 401 en direct" },
+    { type: "heading", text: "1. Vous ciblez encore l'hôte démo" },
+    { type: "paragraph", html: "La cause la plus triviale : l'URL de base n'a jamais été changée. Les tokens démo et les ID de compte démo ne valent rien face au point de terminaison en direct, et inversement. Si vous n'êtes pas passé de <code>demo.tradovateapi.com</code> à <code>live.tradovateapi.com</code>, les requêtes échoueront pour les comptes en direct, tout simplement." },
+    { type: "heading", text: "2. Vous n'envoyez pas de deviceId permanent" },
+    { type: "paragraph", html: "Le <code>deviceId</code> est une chaîne pouvant compter jusqu'à 64 caractères, destinée à <strong class='text-white'>identifier de manière unique et permanente l'appareil physique</strong> à l'origine de la requête. La démo ne le vérifie jamais, donc de nombreuses intégrations l'omettent ou génèrent une valeur jetable à chaque exécution. Le direct rejette cela. Régénérer un nouveau <code>deviceId</code> à chaque connexion donne aussi l'impression, à chaque fois, d'un tout nouvel appareil non approuvé, si bien que le 401 ne disparaît jamais." },
+    { type: "heading", text: "3. L'appareil n'a jamais été approuvé via le lien envoyé par e-mail" },
+    { type: "paragraph", html: "C'est la cause que la plupart des gens ratent. Comme Tradovate traite le <code>deviceId</code> comme faisant partie de son authentification à deux facteurs, un <em>nouvel</em> appareil doit être confirmé hors bande. Vous recevrez un e-mail pour approuver l'ID d'appareil, et tant que vous ne l'approuvez pas en direct, l'accès continue d'être refusé. Pas de clic d'approbation, pas d'accès en direct, un point c'est tout." },
+    { type: "heading", text: "4. Vous avez conservé l'accountId ou l'accountSpec de la démo en direct" },
+    { type: "paragraph", html: "Vos comptes en direct et démo ne partagent pas le même <code>accountId</code> numérique, et la chaîne <code>accountSpec</code> diffère également (une spec en direct par rapport à une préfixée <code>DEMO</code>). Réutilisez les valeurs démo contre l'hôte en direct et vous obtiendrez le même <code>Access is denied</code>, même une fois l'appareil approuvé." },
+    { type: "heading", text: "5. La clé API n'a pas d'accès en écriture aux ordres" },
+    { type: "paragraph", html: "Si la clé ou l'application a été provisionnée avec une portée en lecture seule ou données de marché uniquement, le placement d'ordres en direct sera refusé. La clé a besoin du droit complet sur les ordres (écriture), obtenu via le module complémentaire API Access de Tradovate et la configuration de l'application." },
+    { type: "heading", text: "Comment corriger le 401 en direct : étape par étape" },
+    { type: "heading", text: "Corriger un deviceId manquant ou non permanent" },
+    {
+      type: "steps",
+      items: [
+        { title: "Générez un deviceId stable de type UUID", html: "Créez une chaîne stable de type UUID pour la machine qui exécute votre bot, par exemple <code>71986488-882c-43db-c345-92a0a2ed9329</code>. Le format UUID strict compte moins que le fait que la valeur soit <strong class='text-white'>unique et invariable</strong> ; jusqu'à 64 caractères sont autorisés." },
+        { title: "Stockez-le, ne le régénérez pas", html: "Stockez-le comme une constante, dans un fichier de configuration, une variable d'environnement ou un coffre-fort de secrets. Ne le randomisez jamais à chaque exécution." },
+        { title: "Envoyez-le à chaque connexion", html: "Incluez-le dans le corps de la requête de jeton d'accès aux côtés de vos autres champs d'identifiants, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> et <code>deviceId</code>, et réutilisez exactement la même chaîne à chaque connexion suivante depuis cet appareil." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-2.png`, alt: "Corps de la requête de jeton d'accès de l'API Tradovate montrant le champ deviceId permanent" },
+    { type: "heading", text: "Approuver l'appareil via le lien envoyé par e-mail" },
+    {
+      type: "steps",
+      items: [
+        { title: "Surveillez votre boîte de réception après la première tentative en direct", html: "Après votre première tentative d'authentification en direct avec un nouveau <code>deviceId</code>, surveillez la boîte de réception associée à votre compte Tradovate pour un message d'approbation d'appareil." },
+        { title: "Vérifiez les indésirables, spams et promotions", html: "Vérifiez les dossiers indésirables, spam et promotions, l'e-mail d'approbation est constamment filtré." },
+        { title: "Confirmez le lien d'approbation", html: "Ouvrez l'e-mail et confirmez le lien d'approbation. C'est ce qui fait passer l'appareil de « inconnu » à « approuvé » dans l'environnement en direct." },
+        { title: "Relancez l'authentification en direct", html: "Relancez votre authentification en direct. Les ordres qui renvoyaient <code>Access is denied</code> devraient maintenant être routés." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-3.png`, alt: "E-mail d'approbation d'appareil Tradovate avec le lien de confirmation d'appareil mis en évidence" },
+    { type: "heading", text: "Changer d'hôte et récupérer à nouveau les valeurs du compte en direct" },
+    {
+      type: "steps",
+      items: [
+        { title: "Dirigez l'URL de base vers le direct", html: "Changez votre URL de base pour <code>https://live.tradovateapi.com/v1</code> pour chaque requête une fois en direct." },
+        { title: "Demandez un nouveau jeton d'accès en direct", html: "Demandez un nouveau jeton d'accès en direct auprès de l'hôte en direct." },
+        { title: "Récupérez à nouveau l'accountId en direct", html: "Appelez <code>/account/list</code> avec ce token <strong class='text-white'>en direct</strong> et lisez l'<code>accountId</code> numérique réel dans la réponse." },
+        { title: "Définissez l'accountSpec en direct", html: "Définissez <code>accountSpec</code> avec la valeur affichée pour le compte en direct (la spec au format direct, pas celle préfixée <code>DEMO</code>) et utilisez l'<code>accountId</code> correspondant dans le corps de votre ordre." },
+      ],
+    },
+    { type: "heading", text: "Confirmer le droit API Access" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez les paramètres API Access", html: "Connectez-vous à la plateforme web Tradovate et ouvrez la section des paramètres qui régit API Access / les applications connectées." },
+        { title: "Vérifiez les autorisations complètes sur les ordres", html: "Vérifiez que le module complémentaire API Access est activé et que votre application dispose des autorisations complètes sur les ordres, pas seulement en lecture seule." },
+        { title: "Réfléchissez à deux fois avant de désactiver la 2FA", html: "Si vous avez désactivé l'authentification à deux facteurs par facilité, sachez ce que cela implique : désactiver la 2FA évite l'étape d'e-mail par appareil, mais affaiblit la sécurité du compte et n'en vaut pas la peine sur un compte en direct financé. Approuver l'appareil une seule fois est la voie la plus sûre." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-4.png`, alt: "Paramètres API Access de la plateforme web Tradovate montrant le module complémentaire activé avec des autorisations complètes sur les ordres" },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Erreur / symptôme", "Signification", "Solution"],
+      rows: [
+        ["401 Access is denied uniquement en direct", "Appareil non vérifié/approuvé en direct", "Envoyez un deviceId permanent et confirmez le lien d'approbation d'appareil envoyé par e-mail"],
+        ["200 avec failureReason: UnknownReason, failureText: Access is denied", "L'authentification a réussi mais l'appareil/la session n'est pas approuvé pour les ordres en direct", "Approuvez l'appareil par e-mail ; réutilisez le même deviceId à chaque connexion"],
+        ["Fonctionne en démo, échoue en direct avec un code identique", "Seul l'hôte/l'URL diffère", "Changez l'URL de base pour https://live.tradovateapi.com/v1"],
+        ["Access is denied après approbation de l'appareil", "accountId/accountSpec démo réutilisés en direct", "Récupérez à nouveau l'accountId en direct depuis /account/list ; définissez l'accountSpec en direct"],
+        ["Chaque connexion déclenche un nouvel e-mail d'approbation", "Le deviceId est régénéré à chaque exécution", "Conservez une chaîne deviceId stable et réutilisez-la"],
+        ["Les requêtes de lecture fonctionnent, le placement d'ordres est refusé", "La clé API n'a pas la portée d'écriture des ordres", "Activez le module complémentaire API Access et accordez les autorisations complètes sur les ordres"],
+      ],
+    },
+    { type: "heading", text: "Où PickMyTrade s'intègre" },
+    { type: "paragraph", html: "Si vous préférez trader vos signaux TradingView en direct sans gérer manuellement les ID d'appareil, les e-mails d'approbation et les changements de point de terminaison, PickMyTrade s'occupe du handshake avec le courtier pour vous :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connexion en direct gérée</strong> la gestion de la confiance des appareils et des points de terminaison qui fait trébucher les intégrations API brutes se fait en coulisses, de sorte que les ordres en direct sont routés dès la première fois.",
+        "<strong class='text-white'>Filtres de droits et de risque</strong> respecte l'état de l'accord de données de votre compte et les limites de la prop firm avant même l'envoi d'un ordre.",
+        "<strong class='text-white'>Routage sécurisé contre les limites de débit</strong> espace le flux d'ordres pour que les appels d'authentification et d'ordres ne soient pas rejetés.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong> reproduit le même signal sur plusieurs comptes Tradovate sans avoir à maintenir un handshake d'appareil distinct par bot.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Configura un bot Tradovate, lo osserva funzionare senza intoppi in demo per giorni, poi lo punta sul suo conto live finanziato, e ogni ordine torna con un <strong class='text-white'>401 con <code>Access is denied</code></strong>. È uno degli ostacoli più comuni in cui si imbattono i trader che usano l'API, e quasi mai è un bug nel suo codice. Tradovate live applica una regola che la demo ignora silenziosamente: ogni richiesta di autenticazione deve trasportare un <code>deviceId</code> permanente e verificato, e quel dispositivo deve essere <strong class='text-white'>approvato tramite un link inviato via email</strong> prima di poter instradare ordini reali. L'errore si presenta in un paio di forme, un semplice <code>401 Access is denied</code>, oppure una risposta <code>200</code> il cui payload riporta <code>failureReason: UnknownReason, failureText: Access is denied</code>, ma la causa di fondo è lo stesso handshake del dispositivo mancante. Ecco la diagnosi completa e la soluzione, oltre a come un bridge come PickMyTrade evita del tutto questa trafila di approvazione del dispositivo." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per un 401 esclusivo del live",
+      items: [
+        "<strong class='text-white'>Indirizzi ogni chiamata all'host live</strong>, usi <code>https://live.tradovateapi.com/v1</code>, mai <code>demo.tradovateapi.com</code>, una volta passato al live.",
+        "<strong class='text-white'>Invii un <code>deviceId</code> permanente</strong>, una stringa stabile in formato UUID da riutilizzare a ogni login da quella macchina, non un nuovo valore casuale ogni volta.",
+        "<strong class='text-white'>Approvi il dispositivo</strong>, apra l'email di approvazione dispositivo di Tradovate e confermi il link prima di aspettarsi che gli ordini live vengano instradati.",
+        "<strong class='text-white'>Recuperi di nuovo il suo <code>accountId</code> live</strong>, i conti live e demo hanno valori di <code>accountId</code> diversi; recuperi quello live da <code>/account/list</code>.",
+        "<strong class='text-white'>Usi l'<code>accountSpec</code> corretto</strong>, il formato live (ad es. <code>Vxxxxx</code>) differisce dal formato demo (<code>DEMOxxxxx</code>).",
+        "<strong class='text-white'>Confermi il diritto di scrittura degli ordini</strong>, la chiave API necessita di accesso completo agli ordini, non solo di dati di mercato in sola lettura.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa “Access Is Denied”" },
+    { type: "paragraph", html: "La risposta <code>Access is denied</code> è il modo in cui Tradovate le comunica che la <em>sessione o il dispositivo</em> che effettua la richiesta non è stato autorizzato ad agire su un conto <strong class='text-white'>live</strong>, anche se nome utente, password e API secret sono tutti corretti. Per questo è così confuso: le stesse credenziali che si autenticano senza problemi e piazzano ordini in demo falliscono improvvisamente non appena passa all'host live." },
+    { type: "paragraph", html: "Potrebbe vederlo come un <code>401</code> HTTP pulito, oppure, in modo più fuorviante, come un <code>200</code> HTTP il cui corpo JSON contiene un payload di errore come <code>[{'s': 200, 'i': 3, 'd': {'failureReason': 'UnknownReason', 'failureText': 'Access is denied'}}]</code>. Solo il live impone ID dispositivo verificati. È una delle pochissime differenze tra sim e live, ed è il motivo principale per cui i 401 compaiono in live ma mai in sim. In altre parole, si tratta di un gate di fiducia a due fattori / dispositivo, non di un corpo dell'ordine difettoso." },
+    { type: "heading", text: "Cause principali di un 401 live" },
+    { type: "heading", text: "1. Sta ancora colpendo l'host demo" },
+    { type: "paragraph", html: "La causa più banale: l'URL di base non è mai stato cambiato. I token demo e gli ID conto demo non hanno alcun valore contro l'endpoint live, e viceversa. Se non è passato da <code>demo.tradovateapi.com</code> a <code>live.tradovateapi.com</code>, le richieste falliranno per i conti live, semplicemente." },
+    { type: "heading", text: "2. Non sta inviando un deviceId permanente" },
+    { type: "paragraph", html: "Il <code>deviceId</code> è una stringa fino a 64 caratteri pensata per <strong class='text-white'>identificare in modo univoco e permanente il dispositivo fisico</strong> che effettua la richiesta. La demo non lo verifica mai, quindi molte integrazioni lo omettono o generano un valore usa e getta a ogni esecuzione. Il live lo rifiuta. Rigenerare un nuovo <code>deviceId</code> a ogni login fa anche sembrare, ogni volta, un dispositivo del tutto nuovo e non approvato, così il 401 non si risolve mai." },
+    { type: "heading", text: "3. Il dispositivo non è mai stato approvato tramite il link via email" },
+    { type: "paragraph", html: "Questa è la causa che sfugge alla maggior parte delle persone. Poiché Tradovate tratta il <code>deviceId</code> come parte della propria autenticazione a due fattori, un dispositivo <em>nuovo</em> deve essere confermato fuori banda. Riceverà un'email per approvare l'ID dispositivo, e finché non lo approva in live, l'accesso continuerà a essere negato. Senza clic di approvazione, niente accesso live, punto." },
+    { type: "heading", text: "4. Ha portato l'accountId o l'accountSpec della demo nel live" },
+    { type: "paragraph", html: "I suoi conti live e demo non condividono lo stesso <code>accountId</code> numerico, e anche la stringa <code>accountSpec</code> è diversa (una spec live rispetto a una con prefisso <code>DEMO</code>). Riutilizzi i valori demo contro l'host live e otterrà lo stesso <code>Access is denied</code>, anche dopo che il dispositivo è considerato attendibile." },
+    { type: "heading", text: "5. Alla chiave API manca l'accesso in scrittura agli ordini" },
+    { type: "paragraph", html: "Se la chiave o l'app sono state configurate con ambito di sola lettura o solo dati di mercato, il piazzamento di ordini live viene negato. La chiave necessita del diritto completo sugli ordini (scrittura), ottenibile tramite il componente aggiuntivo API Access di Tradovate e la configurazione dell'app." },
+    { type: "heading", text: "Come risolvere il 401 live: passo dopo passo" },
+    { type: "heading", text: "Risolvere un deviceId mancante o non permanente" },
+    {
+      type: "steps",
+      items: [
+        { title: "Generi un deviceId stabile in formato UUID", html: "Crei una stringa stabile in formato UUID per la macchina che esegue il suo bot, ad esempio <code>71986488-882c-43db-c345-92a0a2ed9329</code>. Il formato UUID rigoroso conta meno rispetto al fatto che il valore sia <strong class='text-white'>univoco e immutabile</strong>; sono ammessi fino a 64 caratteri." },
+        { title: "Lo memorizzi, non lo rigeneri", html: "Lo memorizzi come costante, in un file di configurazione, in una variabile d'ambiente o in un secrets store. Non lo randomizzi mai a ogni esecuzione." },
+        { title: "Lo invii a ogni login", html: "Lo includa nel corpo della richiesta del token di accesso insieme agli altri campi delle credenziali, <code>name</code>, <code>password</code>, <code>appId</code>, <code>appVersion</code>, <code>cid</code>, <code>sec</code> e <code>deviceId</code>, e riutilizzi esattamente la stessa stringa a ogni login successivo da quel dispositivo." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-2.png`, alt: "Corpo della richiesta del token di accesso dell'API Tradovate che mostra il campo deviceId permanente" },
+    { type: "heading", text: "Approvare il dispositivo tramite il link inviato via email" },
+    {
+      type: "steps",
+      items: [
+        { title: "Controlli la sua casella di posta dopo il primo tentativo live", html: "Dopo il primo tentativo di autenticazione live con un nuovo <code>deviceId</code>, controlli la casella di posta collegata al suo account Tradovate per un messaggio di approvazione dispositivo." },
+        { title: "Controlli spam, posta indesiderata e promozioni", html: "Controlli le cartelle spam, posta indesiderata e promozioni: l'email di approvazione viene filtrata di continuo." },
+        { title: "Confermi il link di approvazione", html: "Apra l'email e confermi il link di approvazione. È questo che fa passare il dispositivo da “sconosciuto” a “attendibile” nell'ambiente live." },
+        { title: "Riesegua l'autenticazione live", html: "Riesegua la sua autenticazione live. Gli ordini che restituivano <code>Access is denied</code> ora dovrebbero essere instradati." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-3.png`, alt: "Email di approvazione dispositivo di Tradovate con il link di conferma dispositivo evidenziato" },
+    { type: "heading", text: "Cambiare host e recuperare di nuovo i valori del conto live" },
+    {
+      type: "steps",
+      items: [
+        { title: "Indirizzi l'URL di base al live", html: "Cambi l'URL di base in <code>https://live.tradovateapi.com/v1</code> per ogni richiesta una volta passato al live." },
+        { title: "Richieda un nuovo token di accesso live", html: "Richieda un nuovo token di accesso live dall'host live." },
+        { title: "Recuperi di nuovo l'accountId live", html: "Chiami <code>/account/list</code> con quel token <strong class='text-white'>live</strong> e legga l'<code>accountId</code> numerico reale dalla risposta." },
+        { title: "Imposti l'accountSpec live", html: "Imposti <code>accountSpec</code> sul valore mostrato per il conto live (la spec in formato live, non quella con prefisso <code>DEMO</code>) e usi l'<code>accountId</code> corrispondente nel corpo del suo ordine." },
+      ],
+    },
+    { type: "heading", text: "Confermare il diritto API Access" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra le impostazioni API Access", html: "Effettui l'accesso alla piattaforma web di Tradovate e apra l'area delle impostazioni che governa API Access / applicazioni connesse." },
+        { title: "Verifichi i permessi completi sugli ordini", html: "Verifichi che il componente aggiuntivo API Access sia abilitato e che la sua app abbia permessi completi sugli ordini, non solo in sola lettura." },
+        { title: "Ci pensi due volte prima di disabilitare la 2FA", html: "Se ha disabilitato l'autenticazione a due fattori come scorciatoia, tenga presente il compromesso: disattivare la 2FA evita il passaggio email per dispositivo, ma indebolisce la sicurezza dell'account e non ne vale la pena su un conto live finanziato. Approvare il dispositivo una volta è la strada più sicura." },
+      ],
+    },
+    { type: "image", src: `${IMG}/api-401-live-device-approval-4.png`, alt: "Impostazioni API Access della piattaforma web Tradovate che mostrano il componente aggiuntivo abilitato con permessi completi sugli ordini" },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Errore / sintomo", "Significato", "Soluzione"],
+      rows: [
+        ["401 Access is denied solo in live", "Dispositivo non verificato/approvato in live", "Invii un deviceId permanente e confermi il link di approvazione dispositivo inviato via email"],
+        ["200 con failureReason: UnknownReason, failureText: Access is denied", "L'autenticazione è riuscita ma il dispositivo/sessione non è attendibile per gli ordini live", "Approvi il dispositivo via email; riutilizzi lo stesso deviceId a ogni login"],
+        ["Funziona in demo, fallisce in live con codice identico", "Cambia solo l'host/URL", "Cambi l'URL di base in https://live.tradovateapi.com/v1"],
+        ["Access is denied dopo l'approvazione del dispositivo", "accountId/accountSpec demo riutilizzati in live", "Recuperi di nuovo l'accountId live da /account/list; imposti l'accountSpec live"],
+        ["Ogni login genera una nuova email di approvazione", "Il deviceId viene rigenerato a ogni esecuzione", "Persista una stringa deviceId stabile e la riutilizzi"],
+        ["Le richieste di lettura funzionano, il piazzamento ordini è negato", "Alla chiave API manca l'ambito di scrittura ordini", "Abiliti il componente aggiuntivo API Access e conceda i permessi completi sugli ordini"],
+      ],
+    },
+    { type: "heading", text: "Dove si inserisce PickMyTrade" },
+    { type: "paragraph", html: "Se preferisce fare trading dal vivo con i suoi segnali TradingView senza gestire manualmente ID dispositivo, email di approvazione e cambi di endpoint, PickMyTrade si occupa dell'handshake con il broker al suo posto:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connessione live gestita</strong> la gestione della fiducia del dispositivo e degli endpoint che fa inciampare le integrazioni API grezze avviene dietro le quinte, così gli ordini live vengono instradati al primo tentativo.",
+        "<strong class='text-white'>Filtri di diritti e rischio</strong> rispetta lo stato dell'accordo sui dati del suo account e i limiti della prop firm prima ancora che un ordine venga inviato.",
+        "<strong class='text-white'>Instradamento sicuro rispetto ai rate limit</strong> distanzia il flusso degli ordini in modo che le chiamate di autenticazione e ordine non vengano respinte.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong> replica lo stesso segnale su più account Tradovate senza dover mantenere un handshake del dispositivo separato per ogni bot.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Skip the Device-Approval Dance", de: "Überspringen Sie den Geräte-Genehmigungstanz", es: "Sáltese el trámite de aprobación de dispositivo", fr: "Évitez la procédure d'approbation d'appareil", it: "Salti la trafila di approvazione del dispositivo" },
+  ctaText: { en: "PickMyTrade manages the live Tradovate handshake for you, so your TradingView signals route the first time, no deviceId or approval emails required.", de: "PickMyTrade übernimmt den Live-Tradovate-Handshake für Sie, sodass Ihre TradingView-Signale beim ersten Mal geroutet werden, ohne deviceId oder Genehmigungs-E-Mails.", es: "PickMyTrade gestiona el handshake en vivo con Tradovate por usted, de modo que sus señales de TradingView se enrutan a la primera, sin necesidad de deviceId ni correos de aprobación.", fr: "PickMyTrade gère le handshake en direct avec Tradovate pour vous, afin que vos signaux TradingView soient routés dès la première fois, sans deviceId ni e-mails d'approbation requis.", it: "PickMyTrade gestisce l'handshake live con Tradovate al suo posto, così i suoi segnali TradingView vengono instradati al primo tentativo, senza bisogno di deviceId o email di approvazione." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Inizi la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does my Tradovate bot work in demo but throw a 401 on live?", a: "Demo doesn't enforce device verification; live does. Live needs a permanent, approved deviceId plus the correct live host, accountId, and accountSpec. Code that fails only on live is the classic signature of a device-approval gap." },
+    { q: "What exactly is a deviceId and what should it look like?", a: "It's a string of up to 64 characters that permanently identifies the machine sending requests. A UUID-style value such as 71986488-882c-43db-c345-92a0a2ed9329 works well. What matters most is that it's unique to the device and reused unchanged on every login." },
+    { q: "I never got the device-approval email. What now?", a: "Check spam, junk, and promotions folders first, since the approval message is often filtered. Confirm the email address on your Tradovate account is correct, retry the live authentication to trigger a fresh email, and click the approval link when it arrives." },
+    { q: "Can I just disable two-factor authentication to make the 401 go away?", a: "Some traders do, because it removes the per-device email step, but it materially weakens the security of a funded live account. Approving the device once is safer and only has to be done per new machine." },
+    { q: "Is this the same as the 401 “expired token” error?", a: "No. A token-expiry 401 shows up after roughly 90 minutes when your access token lapses, and you fix it by renewing the token. The device-approval 401 hits on your very first live request and is fixed by trusting the device." },
+    { q: "Do I need a separate deviceId for each bot or account?", a: "You can reuse one deviceId per physical device across accounts, but every distinct device you authenticate from has to be approved on live. Running many bots from many machines means approving each machine once." },
+    { q: "My device is approved but I still get Access is denied. Why?", a: "The most common remaining cause is stale demo values: reusing the demo accountId or accountSpec against the live host. Re-pull the live accountId from /account/list and set the correct live accountSpec." },
+    { q: "Where do I find or set the deviceId in the Tradovate platform?", a: "You supply the deviceId in your authentication request. The Tradovate web app also exposes device and API details in its API and connection settings, so you can review approved devices there." },
+  ], de: [
+    { q: "Warum funktioniert mein Tradovate-Bot in der Demo, wirft aber bei Live einen 401 aus?", a: "Die Demo erzwingt keine Geräteverifizierung, Live hingegen schon. Live benötigt eine permanente, genehmigte deviceId sowie den korrekten Live-Host, die accountId und die accountSpec. Code, der nur bei Live fehlschlägt, ist das klassische Anzeichen einer fehlenden Geräte-Genehmigung." },
+    { q: "Was genau ist eine deviceId und wie sollte sie aussehen?", a: "Es handelt sich um eine Zeichenfolge von bis zu 64 Zeichen, die die anfragende Maschine dauerhaft identifiziert. Ein UUID-artiger Wert wie 71986488-882c-43db-c345-92a0a2ed9329 funktioniert gut. Am wichtigsten ist, dass sie eindeutig für das Gerät ist und bei jedem Login unverändert wiederverwendet wird." },
+    { q: "Ich habe die Geräte-Genehmigungs-E-Mail nie erhalten. Was jetzt?", a: "Prüfen Sie zunächst die Ordner für Spam, Junk und Werbung, da die Genehmigungsnachricht oft herausgefiltert wird. Bestätigen Sie, dass die E-Mail-Adresse in Ihrem Tradovate-Konto korrekt ist, versuchen Sie die Live-Authentifizierung erneut, um eine neue E-Mail auszulösen, und klicken Sie auf den Genehmigungslink, sobald er eintrifft." },
+    { q: "Kann ich die Zwei-Faktor-Authentifizierung einfach deaktivieren, damit der 401 verschwindet?", a: "Manche Trader tun das, weil es den E-Mail-Schritt pro Gerät entfernt, aber es schwächt die Sicherheit eines finanzierten Live-Kontos erheblich. Das einmalige Genehmigen des Geräts ist sicherer und muss nur pro neuer Maschine erfolgen." },
+    { q: "Ist das dasselbe wie der 401-Fehler „abgelaufenes Token“?", a: "Nein. Ein 401 wegen Token-Ablauf tritt nach etwa 90 Minuten auf, wenn Ihr Access-Token abläuft, und Sie beheben ihn, indem Sie das Token erneuern. Der Geräte-Genehmigungs-401 tritt bei Ihrer allerersten Live-Anfrage auf und wird behoben, indem Sie das Gerät als vertrauenswürdig einstufen." },
+    { q: "Brauche ich eine separate deviceId für jeden Bot oder jedes Konto?", a: "Sie können eine deviceId pro physischem Gerät über mehrere Konten hinweg wiederverwenden, aber jedes eindeutige Gerät, von dem aus Sie sich authentifizieren, muss bei Live genehmigt werden. Wenn Sie viele Bots von vielen Maschinen aus betreiben, bedeutet das, jede Maschine einmal zu genehmigen." },
+    { q: "Mein Gerät ist genehmigt, aber ich erhalte immer noch Access is denied. Warum?", a: "Die häufigste verbleibende Ursache sind veraltete Demo-Werte: die Wiederverwendung der Demo-accountId oder -accountSpec gegen den Live-Host. Rufen Sie die Live-accountId erneut von /account/list ab und setzen Sie die korrekte Live-accountSpec." },
+    { q: "Wo finde oder setze ich die deviceId in der Tradovate-Plattform?", a: "Sie übergeben die deviceId in Ihrer Authentifizierungsanfrage. Die Tradovate-Web-App zeigt Geräte- und API-Details außerdem in ihren API- und Verbindungseinstellungen an, sodass Sie genehmigte Geräte dort überprüfen können." },
+  ], es: [
+    { q: "¿Por qué mi bot de Tradovate funciona en demo pero arroja un 401 en vivo?", a: "La demo no exige verificación de dispositivo; en vivo sí. El entorno en vivo necesita un deviceId permanente y aprobado, además del host, el accountId y el accountSpec correctos. Un código que falla solo en vivo es la señal clásica de una brecha de aprobación de dispositivo." },
+    { q: "¿Qué es exactamente un deviceId y cómo debería verse?", a: "Es una cadena de hasta 64 caracteres que identifica de forma permanente la máquina que envía las solicitudes. Un valor con formato UUID como 71986488-882c-43db-c345-92a0a2ed9329 funciona bien. Lo más importante es que sea único para el dispositivo y se reutilice sin cambios en cada inicio de sesión." },
+    { q: "Nunca recibí el correo de aprobación de dispositivo. ¿Qué hago ahora?", a: "Primero revise las carpetas de spam, correo no deseado y promociones, ya que el mensaje de aprobación suele filtrarse. Confirme que la dirección de correo de su cuenta de Tradovate sea correcta, vuelva a intentar la autenticación en vivo para desencadenar un nuevo correo, y haga clic en el enlace de aprobación cuando llegue." },
+    { q: "¿Puedo simplemente desactivar la autenticación de dos factores para que el 401 desaparezca?", a: "Algunos traders lo hacen, porque elimina el paso de correo por dispositivo, pero debilita considerablemente la seguridad de una cuenta en vivo financiada. Aprobar el dispositivo una vez es más seguro y solo hay que hacerlo por cada máquina nueva." },
+    { q: "¿Es esto lo mismo que el error 401 de “token expirado”?", a: "No. Un 401 por expiración de token aparece después de aproximadamente 90 minutos, cuando su token de acceso caduca, y se soluciona renovando el token. El 401 de aprobación de dispositivo ocurre en su primerísima solicitud en vivo y se soluciona confiando en el dispositivo." },
+    { q: "¿Necesito un deviceId independiente para cada bot o cuenta?", a: "Puede reutilizar un deviceId por dispositivo físico en varias cuentas, pero cada dispositivo distinto desde el que se autentique debe aprobarse en vivo. Ejecutar muchos bots desde muchas máquinas implica aprobar cada máquina una vez." },
+    { q: "Mi dispositivo está aprobado pero sigo recibiendo Access is denied. ¿Por qué?", a: "La causa restante más común son los valores demo obsoletos: reutilizar el accountId o accountSpec de demo contra el host en vivo. Vuelva a obtener el accountId en vivo desde /account/list y configure el accountSpec en vivo correcto." },
+    { q: "¿Dónde encuentro o configuro el deviceId en la plataforma Tradovate?", a: "Usted proporciona el deviceId en su solicitud de autenticación. La aplicación web de Tradovate también muestra detalles de dispositivos y de la API en su configuración de API y conexión, por lo que puede revisar allí los dispositivos aprobados." },
+  ], fr: [
+    { q: "Pourquoi mon bot Tradovate fonctionne-t-il en démo mais renvoie-t-il un 401 en direct ?", a: "La démo n'impose pas de vérification d'appareil ; le direct oui. Le direct nécessite un deviceId permanent et approuvé, ainsi que l'hôte, l'accountId et l'accountSpec en direct corrects. Un code qui échoue uniquement en direct est le signe classique d'une lacune d'approbation d'appareil." },
+    { q: "Qu'est-ce qu'un deviceId exactement et à quoi devrait-il ressembler ?", a: "C'est une chaîne pouvant compter jusqu'à 64 caractères qui identifie de façon permanente la machine à l'origine des requêtes. Une valeur de type UUID telle que 71986488-882c-43db-c345-92a0a2ed9329 fonctionne bien. Ce qui compte le plus, c'est qu'elle soit unique à l'appareil et réutilisée sans changement à chaque connexion." },
+    { q: "Je n'ai jamais reçu l'e-mail d'approbation d'appareil. Que faire maintenant ?", a: "Vérifiez d'abord les dossiers indésirables, spam et promotions, car le message d'approbation est souvent filtré. Confirmez que l'adresse e-mail de votre compte Tradovate est correcte, relancez l'authentification en direct pour déclencher un nouvel e-mail, et cliquez sur le lien d'approbation dès son arrivée." },
+    { q: "Puis-je simplement désactiver l'authentification à deux facteurs pour faire disparaître le 401 ?", a: "Certains traders le font, car cela supprime l'étape d'e-mail par appareil, mais cela affaiblit considérablement la sécurité d'un compte en direct financé. Approuver l'appareil une seule fois est plus sûr et ne doit être fait que pour chaque nouvelle machine." },
+    { q: "Est-ce la même chose que l'erreur 401 « jeton expiré » ?", a: "Non. Un 401 dû à l'expiration du jeton apparaît environ 90 minutes après que votre jeton d'accès a expiré, et se corrige en renouvelant le jeton. Le 401 d'approbation d'appareil survient dès votre toute première requête en direct et se corrige en approuvant l'appareil." },
+    { q: "Ai-je besoin d'un deviceId distinct pour chaque bot ou compte ?", a: "Vous pouvez réutiliser un deviceId par appareil physique sur plusieurs comptes, mais chaque appareil distinct depuis lequel vous vous authentifiez doit être approuvé en direct. Exécuter de nombreux bots depuis de nombreuses machines signifie approuver chaque machine une fois." },
+    { q: "Mon appareil est approuvé mais j'obtiens toujours Access is denied. Pourquoi ?", a: "La cause restante la plus courante est l'utilisation de valeurs démo obsolètes : réutiliser l'accountId ou l'accountSpec de démo contre l'hôte en direct. Récupérez à nouveau l'accountId en direct depuis /account/list et définissez l'accountSpec en direct correct." },
+    { q: "Où puis-je trouver ou définir le deviceId dans la plateforme Tradovate ?", a: "Vous fournissez le deviceId dans votre requête d'authentification. L'application web Tradovate expose également les détails des appareils et de l'API dans ses paramètres API et de connexion, où vous pouvez consulter les appareils approuvés." },
+  ], it: [
+    { q: "Perché il mio bot Tradovate funziona in demo ma restituisce un 401 in live?", a: "La demo non impone la verifica del dispositivo; il live sì. Il live richiede un deviceId permanente e approvato, oltre all'host, all'accountId e all'accountSpec live corretti. Un codice che fallisce solo in live è il segnale classico di una lacuna nell'approvazione del dispositivo." },
+    { q: "Cos'è esattamente un deviceId e che aspetto dovrebbe avere?", a: "È una stringa fino a 64 caratteri che identifica in modo permanente la macchina che invia le richieste. Un valore in formato UUID come 71986488-882c-43db-c345-92a0a2ed9329 funziona bene. Ciò che conta di più è che sia univoco per il dispositivo e riutilizzato invariato a ogni login." },
+    { q: "Non ho mai ricevuto l'email di approvazione dispositivo. Cosa faccio ora?", a: "Controlli prima le cartelle spam, posta indesiderata e promozioni, poiché il messaggio di approvazione viene spesso filtrato. Confermi che l'indirizzo email del suo account Tradovate sia corretto, riprovi l'autenticazione live per generare una nuova email, e clicchi sul link di approvazione non appena arriva." },
+    { q: "Posso semplicemente disabilitare l'autenticazione a due fattori per far sparire il 401?", a: "Alcuni trader lo fanno, perché elimina il passaggio email per dispositivo, ma indebolisce sensibilmente la sicurezza di un conto live finanziato. Approvare il dispositivo una volta è più sicuro e va fatto solo per ogni nuova macchina." },
+    { q: "È lo stesso errore del 401 “token scaduto”?", a: "No. Un 401 da scadenza del token compare dopo circa 90 minuti, quando il suo token di accesso scade, e si risolve rinnovando il token. Il 401 di approvazione dispositivo si verifica alla primissima richiesta live e si risolve rendendo attendibile il dispositivo." },
+    { q: "Ho bisogno di un deviceId separato per ogni bot o account?", a: "Può riutilizzare un deviceId per dispositivo fisico su più account, ma ogni dispositivo distinto da cui si autentica deve essere approvato in live. Eseguire molti bot da molte macchine significa approvare ciascuna macchina una volta." },
+    { q: "Il mio dispositivo è approvato ma continuo a ricevere Access is denied. Perché?", a: "La causa residua più comune sono i valori demo obsoleti: riutilizzare l'accountId o l'accountSpec demo contro l'host live. Recuperi di nuovo l'accountId live da /account/list e imposti l'accountSpec live corretto." },
+    { q: "Dove trovo o imposto il deviceId nella piattaforma Tradovate?", a: "Fornisce il deviceId nella sua richiesta di autenticazione. L'app web di Tradovate mostra anche i dettagli di dispositivo e API nelle sue impostazioni API e di connessione, dove può rivedere i dispositivi approvati." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und weder mit Tradovate, Inc. verbunden noch von diesem unterstützt oder gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie daher stets den aktuellen Prozess in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todo inversor. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni sponsorisée par Tradovate, Inc. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a ogni investitore. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre il processo attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}${IMG}/api-401-live-device-approval-1.png`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage={`${IMG}/api-401-live-device-approval-1.png`}
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

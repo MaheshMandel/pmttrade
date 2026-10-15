@@ -1,0 +1,561 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "bracket-order-fills-only-one-contract";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Bracket Order Only Fills 1 Contract";
+const META_DESCRIPTION =
+  "Tradovate bracket order only filling 1 contract? Match the order quantity to your total bracket size so every leg fills, and clear orphaned exits fast.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Bracket-Order füllt nur 1 Kontrakt", es: "La orden bracket de Tradovate solo llena 1 contrato", fr: "L'ordre bracket Tradovate ne remplit qu'un seul contrat", it: "L'ordine bracket di Tradovate riempie solo 1 contratto" },
+  dek: { en: "You built a multi-contract bracket, the entry hit, and only one contract showed up. Here's why Tradovate does that, and the exact fix for each cause.", de: "Sie haben eine Mehrkontrakt-Bracket-Order angelegt, der Einstieg wurde ausgeführt, und nur ein Kontrakt ist erschienen. Hier erfahren Sie, warum Tradovate das tut, und die genaue Lösung für jede Ursache.", es: "Configuró un bracket de varios contratos, la entrada se ejecutó y solo apareció un contrato. Le explicamos por qué Tradovate hace esto, y la solución exacta para cada causa.", fr: "Vous avez construit un bracket multi-contrats, l'entrée s'est déclenchée, et un seul contrat est apparu. Voici pourquoi Tradovate fait cela, et la solution exacte pour chaque cause.", it: "Avete costruito un bracket multi-contratto, l'ingresso è scattato, ed è apparso un solo contratto. Ecco perché Tradovate lo fa, e la soluzione esatta per ogni causa." },
+  readTime: { en: "6 min read", de: "6 Minuten Lesezeit", es: "Lectura de 6 minutos", fr: "Lecture de 6 minutes", it: "Lettura di 6 minuti" },
+  lastUpdated: "2026-07-10",
+  heroImage: { src: `${IMG}/bracket-order-fills-only-one-contract-1.png`, alt: { en: "Tradovate order entry quantity field next to buy and sell buttons not matching bracket total", de: "Tradovate-Order-Mengenfeld neben den Kauf- und Verkaufsschaltflächen, das nicht mit der Bracket-Gesamtsumme übereinstimmt", es: "Campo de cantidad de entrada de orden de Tradovate junto a los botones de compra y venta que no coincide con el total del bracket", fr: "Champ de quantité de saisie d'ordre Tradovate à côté des boutons d'achat et de vente, ne correspondant pas au total du bracket", it: "Campo quantità di inserimento ordine di Tradovate accanto ai pulsanti di acquisto e vendita che non corrisponde al totale del bracket" } },
+  blocks: { en: [
+    { type: "paragraph", html: "You line up a clean multi-contract trade on ES or NQ, drop a bracket with a stop and a target, watch the entry hit, and only <strong class='text-white'>one contract</strong> fills. The rest of your size never enters. Or worse: your stop covers one lot while a second contract sits naked in the market. In fast futures, a Tradovate bracket that only fills 1 contract is one of the most expensive &ldquo;small&rdquo; bugs there is. You either miss the profit you planned for, or you carry an unhedged position you thought was protected." },
+    { type: "paragraph", html: "Here's the reassuring part: in the overwhelming majority of cases this isn't a broker fault. It's a quantity mismatch between your order-entry size and the total contracts defined in your bracket. Two other variants, a thin-liquidity partial fill on a limit exit, and an orphaned target or stop left working after a stop-out, round out the picture. This guide walks through every cause, the exact fix for each, and how automation like PickMyTrade prevents the mismatch before the order ever leaves your hands." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist",
+      items: [
+        "<strong class='text-white'>Order quantity must equal the total bracket size.</strong> If your bracket has legs totaling 3 contracts, the buy/sell quantity has to be 3, not 1.",
+        "<strong class='text-white'>Sum every ATM target leg.</strong> A 2+1 two-target strategy needs an entry quantity of 3, not the largest single leg.",
+        "<strong class='text-white'>Use market or stop-market exits for guaranteed size.</strong> Limit targets can partially fill when liquidity at your price is thin.",
+        "<strong class='text-white'>Check the Filled Orders tab.</strong> Tradovate breaks partial fills into multiple rows, so you can confirm whether 1 of 2 actually filled.",
+        "<strong class='text-white'>Hunt for orphaned legs after a stop-out.</strong> If OCO didn't cancel the opposite order, a stray target can fill later and open a new position.",
+        "<strong class='text-white'>Flatten and re-check the Orders panel</strong> if anything looks inconsistent before you add more size.",
+      ],
+    },
+    { type: "heading", text: "What &ldquo;Only 1 Contract Filled&rdquo; Actually Means" },
+    { type: "paragraph", html: "When a bracket behaves this way, one of two very different things has happened. Either <strong class='text-white'>not all of your contracts entered</strong>, an entry-quantity problem, or <strong class='text-white'>all contracts entered but only part of an exit filled</strong>, a partial-fill or OCO problem. On the surface they look the same: you end up holding, or exiting, fewer contracts than you intended. But the fix is opposite in each case." },
+    { type: "paragraph", html: "The common one, by a wide margin, is the first. The number in your order-entry quantity field didn't match the total number of contracts spread across your bracket's legs. Tradovate submits exactly the quantity you tell it to. If your ATM strategy or manual bracket describes three contracts' worth of exits but you send an entry for one, only one contract enters, and only the bracket leg covering that single contract goes live. Everything you saw drawn on the chart beforehand was a <em>preview</em> of the full strategy, not a promise that one contract of entry size would trigger all of it." },
+    { type: "paragraph", html: "The second scenario is a genuine market event. Your full size entered, but a <strong class='text-white'>limit</strong> exit only matched against the size available at your exact price. The remainder stays working, or price runs away and one contract is left exposed." },
+    { type: "heading", text: "Top Causes of a Bracket Filling Only 1 Contract" },
+    { type: "heading", text: "1. The Order-Entry Quantity Is Smaller Than the Total Bracket" },
+    { type: "paragraph", html: "This is the root cause you'll hit most often. You build a bracket or ATM strategy with multiple target legs, say Target 1 for two contracts and Target 2 for one contract, three contracts in total, but leave the buy/sell quantity set to 1. Only one contract enters, and only the first bracket leg attaches to it. The rule to burn into memory: the quantity number at the top, next to the buy and sell buttons, has to equal the total number of contracts in your bracket order." },
+    { type: "heading", text: "2. ATM Strategy Target Legs Don't Sum to Your Intended Size" },
+    { type: "paragraph", html: "An ATM strategy in Tradovate lets each Stop Loss / Profit Target pair carry its own quantity, so you can scale out, for example two contracts at the first target and two at a further target, sharing one stop. That flexibility is exactly where the miscount creeps in. The strategy's <strong class='text-white'>total</strong> quantity is the sum of every leg, and your entry quantity has to equal that sum for all legs to arm. If the legs add up to four but you send two, half your plan simply doesn't exist." },
+    { type: "image", src: `${IMG}/bracket-order-fills-only-one-contract-2.png`, alt: "Tradovate ATM strategy configuration showing multiple target legs each with its own quantity summing to the total" },
+    { type: "heading", text: "3. A Limit Exit Partially Filled From Thin Liquidity" },
+    { type: "paragraph", html: "If your full position entered but a <strong class='text-white'>limit</strong> target only filled one of several contracts, the market, not the platform, is usually to blame. A limit order fills only against the size resting at your exact price. When there aren't enough contracts available there before price moves away, you get a partial fill: one lot done, the rest still working. Tradovate records each partial as its own row in the Filled Orders tab, which is the fastest way to confirm this is what happened." },
+    { type: "heading", text: "4. An Orphaned Target or Stop Was Left Working After a Stop-Out" },
+    { type: "paragraph", html: "Bracket exits are linked as OCO, One Cancels the Other. When the stop fills, the target should cancel automatically, and vice versa. During a data hiccup, an outage, or a heavily modified bracket, that cancellation can fail and leave a lone working order behind. If a leftover target later fills, it opens a <em>new</em> one-contract position you never intended, which reads exactly like a &ldquo;bracket only filled one contract&rdquo; event on your P&amp;L." },
+    { type: "heading", text: "5. Interface or Connectivity Glitches on a Single Leg" },
+    { type: "paragraph", html: "Less common, but real: a leg can get dropped or modified by a UI or connection glitch, especially when you edit brackets rapidly mid-trade. If your quantities are provably correct and liquidity was deep, capture the Orders and Filled Orders tabs and report it to Tradovate support, but rule out causes 1 through 4 first, because they explain the vast majority of these." },
+    { type: "heading", text: "How to Fix a Bracket That Only Fills 1 Contract, Step by Step" },
+    { type: "heading", text: "Fixing the Quantity Mismatch (Causes 1 and 2)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Add up every leg's quantity", html: "Open your bracket or ATM strategy and add up the quantity on every leg, every target and its paired stop." },
+        { title: "Set the entry quantity to that total", html: "Set the order-entry quantity (next to the buy/sell buttons) to that total before you submit." },
+        { title: "Confirm your saved ATM strategy's legs", html: "If you use a saved ATM strategy, confirm the strategy's leg quantities are what you expect, then match the entry quantity to their sum." },
+        { title: "Check the Orders panel", html: "Submit and immediately check the Orders panel. You should see one working order per leg, with quantities that add back up to your entry size." },
+      ],
+    },
+    { type: "image", src: `${IMG}/bracket-order-fills-only-one-contract-4.png`, alt: "Tradovate Orders panel showing each bracket leg working with quantities that sum to the entry size" },
+    { type: "heading", text: "Fixing Partial Fills on Limit Exits (Cause 3)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Switch to a stop-market or market exit", html: "If guaranteed exit size matters more than price, use a stop-market or market exit rather than a resting limit, market orders fill your full size at the best available price." },
+        { title: "Or accept the remainder on a limit target", html: "If you keep a limit target, accept that thin books can leave a remainder, and be ready to manage the unfilled contract manually." },
+        { title: "Review the Filled Orders tab", html: "Review the Filled Orders tab to see exactly how many contracts filled, and at what prices, before adding more size." },
+      ],
+    },
+    { type: "heading", text: "Clearing an Orphaned Leg After a Stop-Out (Cause 4)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Check the Orders panel after every stop-out", html: "After any stop-out or manual exit, glance at the Orders panel for a still-working target or stop that should have cancelled." },
+        { title: "Cancel the orphaned leg by hand", html: "Cancel any orphaned leg by hand so it can't fill later and open an unwanted position." },
+        { title: "Use Flatten when in doubt", html: "When in doubt, use Flatten to close positions and cancel all working orders for that contract at once, then rebuild the trade cleanly." },
+      ],
+    },
+    { type: "paragraph", html: "Keep in mind that specific position and order-quantity <strong class='text-white'>caps</strong> vary by firm and account size. Evaluation and funded prop accounts often enforce a maximum contract limit that can also block or truncate size. Check your firm's current rules if your bracket size is being capped rather than mismatched." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Meaning", "Fix"],
+      rows: [
+        ["Only 1 contract enters on a multi-leg bracket", "Order-entry quantity is less than the bracket total", "Set buy/sell quantity = sum of all bracket legs"],
+        ["ATM strategy fills fewer contracts than planned", "Target legs sum higher than the entry quantity", "Match entry quantity to the sum of every ATM leg"],
+        ["Limit target fills 1 of several, rest stays working", "Partial fill, not enough liquidity at your price", "Use stop-market/market exit, or manage the remainder"],
+        ["Extra contract appears after a stop-out", "Orphaned OCO leg didn't auto-cancel and filled later", "Cancel stray working orders; use Flatten to reset"],
+        ["One leg vanishes after rapid bracket edits", "Possible UI/connection glitch on a single leg", "Verify quantities, capture screenshots, contact support"],
+        ["Max contract limit truncates your size", "Risk/position cap (varies by firm and account size)", "Reduce size or request a limit change from your firm"],
+      ],
+    },
+    { type: "heading", text: "Where PickMyTrade Fits" },
+    { type: "paragraph", html: "Most one-contract bracket failures trace back to a quantity that was wrong before the order left your hands. PickMyTrade links your TradingView alerts straight to Tradovate and enforces the sizing for you, so the entry and its bracket always agree:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Qty / Symbol Validation</strong> the alert defines the size once, so the entry and every bracket leg carry matching quantities instead of a hand-typed number that's easy to under-set.",
+        "<strong class='text-white'>Entitlement &amp; Risk Filters</strong> respects prop-firm position caps and data-agreement state, so oversized brackets are caught before they're rejected or truncated.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong> spaces out order flow so bracket legs aren't dropped by rapid-fire modifications during volatile bars.",
+        "<strong class='text-white'>Multi-Account Sync</strong> mirrors the corrected, full-size bracket across every connected account so no account is left holding a lone contract.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie stellen einen sauberen Mehrkontrakt-Trade auf ES oder NQ zusammen, setzen eine Bracket-Order mit Stop und Ziel, sehen den Einstieg auslösen, und es füllt nur <strong class='text-white'>ein Kontrakt</strong>. Der Rest Ihrer Größe wird nie eröffnet. Oder schlimmer: Ihr Stop deckt einen Lot ab, während ein zweiter Kontrakt ungeschützt im Markt liegt. Bei schnellen Futures ist eine Tradovate-Bracket-Order, die nur 1 Kontrakt füllt, einer der teuersten &ldquo;kleinen&rdquo; Bugs überhaupt. Entweder verpassen Sie den geplanten Gewinn, oder Sie tragen eine ungesicherte Position, die Sie für geschützt hielten." },
+    { type: "paragraph", html: "Das Beruhigende daran: In der überwiegenden Mehrheit der Fälle liegt es nicht an einem Fehler des Brokers. Es handelt sich um eine Mengenabweichung zwischen Ihrer Ordereingabegröße und den in Ihrer Bracket-Order definierten Gesamtkontrakten. Zwei weitere Varianten, eine Teilausführung bei dünner Liquidität an einem Limit-Exit und ein verwaistes Ziel oder Stop, das nach einem Stop-Out weiterläuft, runden das Bild ab. Dieser Leitfaden geht jede Ursache durch, zeigt die genaue Lösung für jede und erklärt, wie Automatisierung wie PickMyTrade die Abweichung verhindert, bevor die Order Ihre Hände überhaupt verlässt." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste",
+      items: [
+        "<strong class='text-white'>Die Orderquantität muss der gesamten Bracket-Größe entsprechen.</strong> Wenn Ihre Bracket-Order Legs mit insgesamt 3 Kontrakten hat, muss die Kauf-/Verkaufsmenge 3 sein, nicht 1.",
+        "<strong class='text-white'>Summieren Sie jedes ATM-Ziel-Leg.</strong> Eine 2+1-Zwei-Ziel-Strategie benötigt eine Eintrittsmenge von 3, nicht das größte einzelne Leg.",
+        "<strong class='text-white'>Verwenden Sie Market- oder Stop-Market-Exits für garantierte Größe.</strong> Limit-Ziele können bei dünner Liquidität an Ihrem Preis teilweise ausgeführt werden.",
+        "<strong class='text-white'>Prüfen Sie den Reiter Filled Orders.</strong> Tradovate teilt Teilausführungen in mehrere Zeilen auf, sodass Sie prüfen können, ob 1 von 2 tatsächlich ausgeführt wurde.",
+        "<strong class='text-white'>Suchen Sie nach verwaisten Legs nach einem Stop-Out.</strong> Wenn OCO die Gegenorder nicht storniert hat, kann ein verirrtes Ziel später ausgeführt werden und eine neue Position eröffnen.",
+        "<strong class='text-white'>Flatten Sie und prüfen Sie das Orders-Panel erneut</strong>, wenn vor dem Hinzufügen von mehr Größe etwas inkonsistent wirkt.",
+      ],
+    },
+    { type: "heading", text: "Was &ldquo;Nur 1 Kontrakt ausgeführt&rdquo; wirklich bedeutet" },
+    { type: "paragraph", html: "Wenn sich eine Bracket-Order so verhält, ist eines von zwei sehr unterschiedlichen Dingen passiert. Entweder <strong class='text-white'>sind nicht alle Ihre Kontrakte eingestiegen</strong>, ein Problem der Eintrittsmenge, oder <strong class='text-white'>alle Kontrakte sind eingestiegen, aber nur ein Teil eines Exits wurde ausgeführt</strong>, ein Teilausführungs- oder OCO-Problem. Auf den ersten Blick sehen sie gleich aus: Sie halten oder verlassen am Ende weniger Kontrakte, als Sie beabsichtigt haben. Aber die Lösung ist in jedem Fall entgegengesetzt." },
+    { type: "paragraph", html: "Der häufigere Fall, mit großem Abstand, ist der erste. Die Zahl in Ihrem Ordereingabe-Mengenfeld stimmte nicht mit der Gesamtzahl der über die Legs Ihrer Bracket-Order verteilten Kontrakte überein. Tradovate übermittelt genau die Menge, die Sie angeben. Wenn Ihre ATM-Strategie oder manuelle Bracket-Order Exits im Wert von drei Kontrakten beschreibt, Sie aber einen Einstieg für einen senden, steigt nur ein Kontrakt ein, und nur das Bracket-Leg, das diesen einzelnen Kontrakt abdeckt, wird aktiv. Alles, was Sie zuvor auf dem Chart eingezeichnet sahen, war eine <em>Vorschau</em> der vollständigen Strategie, kein Versprechen, dass ein Kontrakt Eintrittsgröße alles davon auslösen würde." },
+    { type: "paragraph", html: "Das zweite Szenario ist ein echtes Marktereignis. Ihre volle Größe ist eingestiegen, aber ein <strong class='text-white'>Limit</strong>-Exit wurde nur gegen die an Ihrem exakten Preis verfügbare Größe ausgeführt. Der Rest bleibt aktiv, oder der Preis läuft davon und ein Kontrakt bleibt ungeschützt." },
+    { type: "heading", text: "Häufigste Ursachen dafür, dass eine Bracket-Order nur 1 Kontrakt füllt" },
+    { type: "heading", text: "1. Die Ordereingabemenge ist kleiner als die Gesamt-Bracket-Order" },
+    { type: "paragraph", html: "Das ist die Grundursache, die Sie am häufigsten antreffen werden. Sie bauen eine Bracket-Order oder ATM-Strategie mit mehreren Ziel-Legs, sagen wir Ziel 1 für zwei Kontrakte und Ziel 2 für einen Kontrakt, insgesamt drei Kontrakte, lassen aber die Kauf-/Verkaufsmenge auf 1 stehen. Nur ein Kontrakt steigt ein, und nur das erste Bracket-Leg wird ihm zugeordnet. Die Regel, die Sie sich einprägen sollten: Die Mengenzahl oben, neben den Kauf- und Verkaufsschaltflächen, muss der Gesamtzahl der Kontrakte in Ihrer Bracket-Order entsprechen." },
+    { type: "heading", text: "2. Die ATM-Strategie-Ziel-Legs summieren sich nicht auf Ihre beabsichtigte Größe" },
+    { type: "paragraph", html: "Eine ATM-Strategie in Tradovate erlaubt es, dass jedes Stop-Loss-/Profit-Target-Paar seine eigene Menge trägt, sodass Sie skaliert aussteigen können, zum Beispiel zwei Kontrakte am ersten Ziel und zwei an einem weiteren Ziel, mit einem gemeinsamen Stop. Genau dort schleicht sich der Zählfehler ein. Die <strong class='text-white'>Gesamt</strong>menge der Strategie ist die Summe jedes Legs, und Ihre Eintrittsmenge muss dieser Summe entsprechen, damit alle Legs scharf geschaltet werden. Wenn sich die Legs auf vier summieren, Sie aber zwei senden, existiert die Hälfte Ihres Plans einfach nicht." },
+    { type: "image", src: `${IMG}/bracket-order-fills-only-one-contract-2.png`, alt: "Tradovate ATM-Strategie-Konfiguration mit mehreren Ziel-Legs, die jeweils eine eigene Menge haben und sich zur Gesamtmenge summieren" },
+    { type: "heading", text: "3. Ein Limit-Exit wurde bei dünner Liquidität teilweise ausgeführt" },
+    { type: "paragraph", html: "Wenn Ihre volle Position eingestiegen ist, aber ein <strong class='text-white'>Limit</strong>-Ziel nur einen von mehreren Kontrakten ausgeführt hat, ist meist der Markt, nicht die Plattform, verantwortlich. Eine Limit-Order wird nur gegen die an Ihrem exakten Preis verfügbare Größe ausgeführt. Wenn dort nicht genug Kontrakte verfügbar sind, bevor sich der Preis wegbewegt, erhalten Sie eine Teilausführung: ein Lot erledigt, der Rest noch aktiv. Tradovate erfasst jede Teilausführung als eigene Zeile im Reiter Filled Orders, was der schnellste Weg ist, dies zu bestätigen." },
+    { type: "heading", text: "4. Ein verwaistes Ziel oder Stop blieb nach einem Stop-Out aktiv" },
+    { type: "paragraph", html: "Bracket-Exits sind als OCO verknüpft, One Cancels the Other. Wenn der Stop ausgeführt wird, sollte das Ziel automatisch storniert werden, und umgekehrt. Bei einer Datenstörung, einem Ausfall oder einer stark modifizierten Bracket-Order kann diese Stornierung fehlschlagen und eine einzelne aktive Order zurücklassen. Wenn ein verbliebenes Ziel später ausgeführt wird, eröffnet es eine <em>neue</em> Ein-Kontrakt-Position, die Sie nie beabsichtigt haben, was sich in Ihrer P&amp;L genau wie ein Ereignis &ldquo;Bracket-Order füllte nur einen Kontrakt&rdquo; liest." },
+    { type: "heading", text: "5. Schnittstellen- oder Verbindungsstörungen bei einem einzelnen Leg" },
+    { type: "paragraph", html: "Weniger häufig, aber real: Ein Leg kann durch eine UI- oder Verbindungsstörung fallengelassen oder verändert werden, besonders wenn Sie Bracket-Orders mitten im Trade schnell bearbeiten. Wenn Ihre Mengen nachweislich korrekt und die Liquidität tief war, erfassen Sie die Reiter Orders und Filled Orders und melden Sie es dem Tradovate-Support, aber schließen Sie zuerst die Ursachen 1 bis 4 aus, da diese die überwiegende Mehrheit dieser Fälle erklären." },
+    { type: "heading", text: "So beheben Sie eine Bracket-Order, die nur 1 Kontrakt füllt, Schritt für Schritt" },
+    { type: "heading", text: "Die Mengenabweichung beheben (Ursachen 1 und 2)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Addieren Sie die Menge jedes Legs", html: "Öffnen Sie Ihre Bracket-Order oder ATM-Strategie und addieren Sie die Menge jedes Legs, jedes Ziels und seines gepaarten Stops." },
+        { title: "Setzen Sie die Eintrittsmenge auf diese Summe", html: "Setzen Sie die Ordereingabemenge (neben den Kauf-/Verkaufsschaltflächen) vor dem Absenden auf diese Summe." },
+        { title: "Bestätigen Sie die Legs Ihrer gespeicherten ATM-Strategie", html: "Wenn Sie eine gespeicherte ATM-Strategie verwenden, bestätigen Sie, dass die Leg-Mengen der Strategie Ihren Erwartungen entsprechen, und passen Sie dann die Eintrittsmenge an deren Summe an." },
+        { title: "Prüfen Sie das Orders-Panel", html: "Senden Sie ab und prüfen Sie sofort das Orders-Panel. Sie sollten eine aktive Order pro Leg sehen, deren Mengen sich wieder zu Ihrer Eintrittsgröße summieren." },
+      ],
+    },
+    { type: "image", src: `${IMG}/bracket-order-fills-only-one-contract-4.png`, alt: "Tradovate-Orders-Panel, das jedes Bracket-Leg aktiv zeigt, mit Mengen, die sich zur Eintrittsmenge summieren" },
+    { type: "heading", text: "Teilausführungen bei Limit-Exits beheben (Ursache 3)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Zu einem Stop-Market- oder Market-Exit wechseln", html: "Wenn garantierte Exit-Größe wichtiger ist als der Preis, verwenden Sie einen Stop-Market- oder Market-Exit statt eines ruhenden Limits, Market-Orders füllen Ihre volle Größe zum bestverfügbaren Preis." },
+        { title: "Oder den Rest bei einem Limit-Ziel akzeptieren", html: "Wenn Sie ein Limit-Ziel beibehalten, akzeptieren Sie, dass dünne Orderbücher einen Rest hinterlassen können, und seien Sie bereit, den nicht ausgeführten Kontrakt manuell zu verwalten." },
+        { title: "Den Reiter Filled Orders überprüfen", html: "Überprüfen Sie den Reiter Filled Orders, um genau zu sehen, wie viele Kontrakte zu welchen Preisen ausgeführt wurden, bevor Sie mehr Größe hinzufügen." },
+      ],
+    },
+    { type: "heading", text: "Ein verwaistes Leg nach einem Stop-Out bereinigen (Ursache 4)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Prüfen Sie das Orders-Panel nach jedem Stop-Out", html: "Werfen Sie nach jedem Stop-Out oder manuellen Exit einen Blick auf das Orders-Panel, um ein noch aktives Ziel oder einen Stop zu finden, der hätte storniert werden sollen." },
+        { title: "Stornieren Sie das verwaiste Leg von Hand", html: "Stornieren Sie jedes verwaiste Leg von Hand, damit es nicht später ausgeführt werden und eine unerwünschte Position eröffnen kann." },
+        { title: "Verwenden Sie im Zweifel Flatten", html: "Verwenden Sie im Zweifel Flatten, um Positionen zu schließen und alle aktiven Orders für diesen Kontrakt auf einmal zu stornieren, und bauen Sie den Trade dann sauber neu auf." },
+      ],
+    },
+    { type: "paragraph", html: "Denken Sie daran, dass bestimmte Positions- und Ordermengen-<strong class='text-white'>Obergrenzen</strong> je nach Firma und Kontogröße variieren. Evaluierungs- und finanzierte Prop-Konten setzen oft ein maximales Kontraktlimit durch, das die Größe ebenfalls blockieren oder kürzen kann. Prüfen Sie die aktuellen Regeln Ihrer Firma, wenn Ihre Bracket-Größe eher gedeckelt als falsch abgestimmt ist." },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Bedeutung", "Lösung"],
+      rows: [
+        ["Nur 1 Kontrakt steigt bei einer Mehr-Leg-Bracket-Order ein", "Ordereingabemenge ist kleiner als die Bracket-Gesamtmenge", "Kauf-/Verkaufsmenge = Summe aller Bracket-Legs setzen"],
+        ["ATM-Strategie füllt weniger Kontrakte als geplant", "Ziel-Legs summieren sich höher als die Eintrittsmenge", "Eintrittsmenge an die Summe jedes ATM-Legs anpassen"],
+        ["Limit-Ziel füllt 1 von mehreren, Rest bleibt aktiv", "Teilausführung, nicht genug Liquidität an Ihrem Preis", "Stop-Market-/Market-Exit verwenden oder den Rest verwalten"],
+        ["Zusätzlicher Kontrakt erscheint nach einem Stop-Out", "Verwaistes OCO-Leg hat nicht automatisch storniert und wurde später ausgeführt", "Verirrte aktive Orders stornieren; mit Flatten zurücksetzen"],
+        ["Ein Leg verschwindet nach schnellen Bracket-Bearbeitungen", "Mögliche UI-/Verbindungsstörung bei einem einzelnen Leg", "Mengen prüfen, Screenshots erfassen, Support kontaktieren"],
+        ["Maximales Kontraktlimit kürzt Ihre Größe", "Risiko-/Positionsobergrenze (variiert je nach Firma und Kontogröße)", "Größe reduzieren oder eine Limitänderung bei Ihrer Firma beantragen"],
+      ],
+    },
+    { type: "heading", text: "Wo PickMyTrade ansetzt" },
+    { type: "paragraph", html: "Die meisten Ein-Kontrakt-Bracket-Fehler gehen auf eine Menge zurück, die schon falsch war, bevor die Order Ihre Hände verließ. PickMyTrade verbindet Ihre TradingView-Alerts direkt mit Tradovate und setzt die Größenangabe für Sie durch, sodass der Einstieg und seine Bracket-Order immer übereinstimmen:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Qty-/Symbol-Validierung</strong> der Alert definiert die Größe einmal, sodass der Einstieg und jedes Bracket-Leg übereinstimmende Mengen tragen statt einer handgetippten Zahl, die leicht zu niedrig eingestellt wird.",
+        "<strong class='text-white'>Entitlement- &amp; Risikofilter</strong> respektiert Prop-Firm-Positionsobergrenzen und den Datenvertragsstatus, sodass übergroße Bracket-Orders erkannt werden, bevor sie abgelehnt oder gekürzt werden.",
+        "<strong class='text-white'>Ratenlimit-sicheres Routing</strong> staffelt den Orderfluss, damit Bracket-Legs bei schnell aufeinanderfolgenden Änderungen während volatiler Kerzen nicht verloren gehen.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong> spiegelt die korrigierte Bracket-Order in voller Größe auf jedem verbundenen Konto, sodass kein Konto mit einem einzelnen Kontrakt zurückbleibt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Prepara una operación limpia de varios contratos en ES o NQ, coloca un bracket con un stop y un objetivo, ve que la entrada se ejecuta, y solo se llena <strong class='text-white'>un contrato</strong>. El resto de su tamaño nunca entra. O peor: su stop cubre un lote mientras un segundo contrato queda desprotegido en el mercado. En futuros rápidos, un bracket de Tradovate que solo llena 1 contrato es uno de los errores &ldquo;pequeños&rdquo; más costosos que existen. O bien pierde la ganancia que planeó, o carga con una posición sin cobertura que creía protegida." },
+    { type: "paragraph", html: "Esta es la parte tranquilizadora: en la gran mayoría de los casos no es un fallo del broker. Es un desajuste de cantidad entre el tamaño de entrada de su orden y el total de contratos definido en su bracket. Otras dos variantes, una ejecución parcial por liquidez escasa en una salida limit, y un objetivo o stop huérfano que sigue activo tras un stop-out, completan el panorama. Esta guía repasa cada causa, la solución exacta para cada una y cómo la automatización como PickMyTrade evita el desajuste antes de que la orden salga de sus manos." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida",
+      items: [
+        "<strong class='text-white'>La cantidad de la orden debe ser igual al tamaño total del bracket.</strong> Si su bracket tiene piernas que suman 3 contratos, la cantidad de compra/venta debe ser 3, no 1.",
+        "<strong class='text-white'>Sume cada pierna de objetivo ATM.</strong> Una estrategia de dos objetivos 2+1 necesita una cantidad de entrada de 3, no la pierna individual más grande.",
+        "<strong class='text-white'>Use salidas de mercado o stop-market para un tamaño garantizado.</strong> Los objetivos limit pueden llenarse parcialmente cuando la liquidez en su precio es escasa.",
+        "<strong class='text-white'>Revise la pestaña Filled Orders.</strong> Tradovate divide las ejecuciones parciales en varias filas, por lo que puede confirmar si 1 de 2 realmente se llenó.",
+        "<strong class='text-white'>Busque piernas huérfanas después de un stop-out.</strong> Si la OCO no canceló la orden opuesta, un objetivo perdido puede llenarse más tarde y abrir una nueva posición.",
+        "<strong class='text-white'>Aplique Flatten y vuelva a revisar el panel Orders</strong> si algo parece inconsistente antes de añadir más tamaño.",
+      ],
+    },
+    { type: "heading", text: "Qué significa realmente &ldquo;Solo se llenó 1 contrato&rdquo;" },
+    { type: "paragraph", html: "Cuando un bracket se comporta así, ha ocurrido una de dos cosas muy distintas. O bien <strong class='text-white'>no entraron todos sus contratos</strong>, un problema de cantidad de entrada, o <strong class='text-white'>entraron todos los contratos pero solo se llenó parte de una salida</strong>, un problema de ejecución parcial u OCO. En la superficie parecen iguales: termina manteniendo, o saliendo, con menos contratos de los que pretendía. Pero la solución es opuesta en cada caso." },
+    { type: "paragraph", html: "El más común, por un margen amplio, es el primero. El número en su campo de cantidad de entrada de orden no coincidía con el número total de contratos repartidos entre las piernas de su bracket. Tradovate envía exactamente la cantidad que usted indica. Si su estrategia ATM o bracket manual describe salidas por valor de tres contratos pero usted envía una entrada de uno, solo entra un contrato, y solo la pierna del bracket que cubre ese único contrato se activa. Todo lo que vio dibujado antes en el gráfico era una <em>vista previa</em> de la estrategia completa, no una promesa de que un contrato de tamaño de entrada activaría todo." },
+    { type: "paragraph", html: "El segundo escenario es un evento de mercado genuino. Su tamaño completo entró, pero una salida <strong class='text-white'>limit</strong> solo coincidió con el tamaño disponible en su precio exacto. El resto sigue activo, o el precio se aleja y un contrato queda expuesto." },
+    { type: "heading", text: "Principales causas de que un bracket llene solo 1 contrato" },
+    { type: "heading", text: "1. La cantidad de entrada de la orden es menor que el bracket total" },
+    { type: "paragraph", html: "Esta es la causa raíz que encontrará con más frecuencia. Construye un bracket o estrategia ATM con varias piernas de objetivo, digamos Objetivo 1 para dos contratos y Objetivo 2 para uno, tres contratos en total, pero deja la cantidad de compra/venta en 1. Solo entra un contrato, y solo la primera pierna del bracket se le adjunta. La regla que debe grabarse en la memoria: el número de cantidad en la parte superior, junto a los botones de compra y venta, debe ser igual al número total de contratos en su bracket." },
+    { type: "heading", text: "2. Las piernas de objetivo de la estrategia ATM no suman su tamaño previsto" },
+    { type: "paragraph", html: "Una estrategia ATM en Tradovate permite que cada par Stop Loss / Profit Target tenga su propia cantidad, para que pueda salir de forma escalonada, por ejemplo dos contratos en el primer objetivo y dos en un objetivo posterior, compartiendo un stop. Ahí es exactamente donde se cuela el error de conteo. La cantidad <strong class='text-white'>total</strong> de la estrategia es la suma de cada pierna, y su cantidad de entrada debe ser igual a esa suma para que todas las piernas se armen. Si las piernas suman cuatro pero usted envía dos, la mitad de su plan simplemente no existe." },
+    { type: "image", src: `${IMG}/bracket-order-fills-only-one-contract-2.png`, alt: "Configuración de estrategia ATM de Tradovate mostrando varias piernas de objetivo, cada una con su propia cantidad que suma el total" },
+    { type: "heading", text: "3. Una salida limit se llenó parcialmente por liquidez escasa" },
+    { type: "paragraph", html: "Si su posición completa entró pero un objetivo <strong class='text-white'>limit</strong> solo llenó uno de varios contratos, normalmente el culpable es el mercado, no la plataforma. Una orden limit solo se llena contra el tamaño disponible en su precio exacto. Cuando no hay suficientes contratos disponibles ahí antes de que el precio se aleje, obtiene una ejecución parcial: un lote hecho, el resto sigue activo. Tradovate registra cada ejecución parcial como su propia fila en la pestaña Filled Orders, la forma más rápida de confirmar que esto es lo que ocurrió." },
+    { type: "heading", text: "4. Un objetivo o stop huérfano quedó activo tras un stop-out" },
+    { type: "paragraph", html: "Las salidas del bracket están vinculadas como OCO, One Cancels the Other. Cuando el stop se llena, el objetivo debería cancelarse automáticamente, y viceversa. Durante un fallo de datos, una interrupción o un bracket muy modificado, esa cancelación puede fallar y dejar una orden solitaria activa. Si un objetivo restante se llena más tarde, abre una <em>nueva</em> posición de un contrato que usted nunca pretendió, lo cual se ve exactamente como un evento &ldquo;el bracket solo llenó un contrato&rdquo; en su P&amp;L." },
+    { type: "heading", text: "5. Fallos de interfaz o conectividad en una sola pierna" },
+    { type: "paragraph", html: "Menos común, pero real: una pierna puede perderse o modificarse por un fallo de interfaz o conexión, especialmente cuando edita brackets rápidamente en medio de una operación. Si sus cantidades son comprobablemente correctas y la liquidez era profunda, capture las pestañas Orders y Filled Orders e informe al soporte de Tradovate, pero descarte primero las causas 1 a 4, ya que explican la gran mayoría de estos casos." },
+    { type: "heading", text: "Cómo solucionar un bracket que solo llena 1 contrato, paso a paso" },
+    { type: "heading", text: "Corregir el desajuste de cantidad (causas 1 y 2)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Sume la cantidad de cada pierna", html: "Abra su bracket o estrategia ATM y sume la cantidad de cada pierna, cada objetivo y su stop emparejado." },
+        { title: "Configure la cantidad de entrada con ese total", html: "Configure la cantidad de entrada de la orden (junto a los botones de compra/venta) con ese total antes de enviarla." },
+        { title: "Confirme las piernas de su estrategia ATM guardada", html: "Si usa una estrategia ATM guardada, confirme que las cantidades de las piernas de la estrategia son las que espera, y luego iguale la cantidad de entrada a su suma." },
+        { title: "Revise el panel Orders", html: "Envíe y revise inmediatamente el panel Orders. Debería ver una orden activa por pierna, con cantidades que vuelvan a sumar su tamaño de entrada." },
+      ],
+    },
+    { type: "image", src: `${IMG}/bracket-order-fills-only-one-contract-4.png`, alt: "Panel Orders de Tradovate mostrando cada pierna del bracket activa con cantidades que suman el tamaño de entrada" },
+    { type: "heading", text: "Corregir ejecuciones parciales en salidas limit (causa 3)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cambie a una salida stop-market o market", html: "Si el tamaño garantizado de salida importa más que el precio, use una salida stop-market o market en lugar de un limit en espera, las órdenes de mercado llenan todo su tamaño al mejor precio disponible." },
+        { title: "O acepte el remanente en un objetivo limit", html: "Si mantiene un objetivo limit, acepte que los libros escasos pueden dejar un remanente, y esté listo para gestionar el contrato no llenado manualmente." },
+        { title: "Revise la pestaña Filled Orders", html: "Revise la pestaña Filled Orders para ver exactamente cuántos contratos se llenaron, y a qué precios, antes de añadir más tamaño." },
+      ],
+    },
+    { type: "heading", text: "Eliminar una pierna huérfana tras un stop-out (causa 4)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Revise el panel Orders después de cada stop-out", html: "Después de cualquier stop-out o salida manual, eche un vistazo al panel Orders en busca de un objetivo o stop aún activo que debería haberse cancelado." },
+        { title: "Cancele la pierna huérfana manualmente", html: "Cancele manualmente cualquier pierna huérfana para que no pueda llenarse más tarde y abrir una posición no deseada." },
+        { title: "Use Flatten ante la duda", html: "Ante la duda, use Flatten para cerrar posiciones y cancelar todas las órdenes activas de ese contrato a la vez, y luego reconstruya la operación desde cero." },
+      ],
+    },
+    { type: "paragraph", html: "Tenga en cuenta que los <strong class='text-white'>límites</strong> específicos de posición y cantidad de orden varían según la firma y el tamaño de la cuenta. Las cuentas de evaluación y fondeadas suelen imponer un límite máximo de contratos que también puede bloquear o recortar el tamaño. Revise las reglas actuales de su firma si el tamaño de su bracket está siendo limitado en lugar de mal ajustado." },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Significado", "Solución"],
+      rows: [
+        ["Solo entra 1 contrato en un bracket de varias piernas", "La cantidad de entrada de la orden es menor que el total del bracket", "Configure la cantidad de compra/venta = suma de todas las piernas del bracket"],
+        ["La estrategia ATM llena menos contratos de los planeados", "Las piernas de objetivo suman más que la cantidad de entrada", "Iguale la cantidad de entrada a la suma de cada pierna ATM"],
+        ["El objetivo limit llena 1 de varios, el resto sigue activo", "Ejecución parcial, no hay suficiente liquidez en su precio", "Use una salida stop-market/market, o gestione el remanente"],
+        ["Aparece un contrato adicional tras un stop-out", "Una pierna OCO huérfana no se autocanceló y se llenó después", "Cancele las órdenes activas sueltas; use Flatten para reiniciar"],
+        ["Una pierna desaparece tras ediciones rápidas del bracket", "Posible fallo de interfaz/conexión en una sola pierna", "Verifique cantidades, capture capturas de pantalla, contacte a soporte"],
+        ["El límite máximo de contratos recorta su tamaño", "Límite de riesgo/posición (varía según firma y tamaño de cuenta)", "Reduzca el tamaño o solicite un cambio de límite a su firma"],
+      ],
+    },
+    { type: "heading", text: "Dónde encaja PickMyTrade" },
+    { type: "paragraph", html: "La mayoría de los fallos de bracket de un solo contrato se remontan a una cantidad que ya estaba mal antes de que la orden saliera de sus manos. PickMyTrade conecta sus alertas de TradingView directamente con Tradovate y aplica el tamaño por usted, para que la entrada y su bracket siempre coincidan:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validación de cantidad/símbolo</strong> la alerta define el tamaño una vez, de modo que la entrada y cada pierna del bracket llevan cantidades coincidentes en lugar de un número escrito a mano fácil de subestimar.",
+        "<strong class='text-white'>Filtros de derecho de uso y riesgo</strong> respeta los límites de posición de la firma prop y el estado del acuerdo de datos, de modo que los brackets sobredimensionados se detectan antes de ser rechazados o recortados.",
+        "<strong class='text-white'>Enrutamiento seguro ante límites de tasa</strong> espacia el flujo de órdenes para que las piernas del bracket no se pierdan por modificaciones rápidas durante velas volátiles.",
+        "<strong class='text-white'>Sincronización multicuenta</strong> refleja el bracket corregido de tamaño completo en cada cuenta conectada, de modo que ninguna cuenta se quede con un solo contrato.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous préparez un trade multi-contrats propre sur ES ou NQ, placez un bracket avec un stop et un objectif, regardez l'entrée se déclencher, et seul <strong class='text-white'>un contrat</strong> se remplit. Le reste de votre taille n'entre jamais. Ou pire : votre stop couvre un lot pendant qu'un second contrat reste à nu sur le marché. Dans les futures rapides, un bracket Tradovate qui ne remplit qu'un seul contrat est l'un des bugs &ldquo;mineurs&rdquo; les plus coûteux qui soient. Vous ratez le profit prévu, ou vous portez une position non couverte que vous pensiez protégée." },
+    { type: "paragraph", html: "Voici la partie rassurante : dans l'immense majorité des cas, ce n'est pas la faute du broker. Il s'agit d'un décalage de quantité entre la taille de saisie de votre ordre et le nombre total de contrats défini dans votre bracket. Deux autres variantes, une exécution partielle due à une liquidité faible sur une sortie limit, et un objectif ou un stop orphelin resté actif après un stop-out, complètent le tableau. Ce guide passe en revue chaque cause, la solution exacte pour chacune, et comment une automatisation comme PickMyTrade évite le décalage avant même que l'ordre ne quitte vos mains." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide",
+      items: [
+        "<strong class='text-white'>La quantité de l'ordre doit être égale à la taille totale du bracket.</strong> Si votre bracket a des jambes totalisant 3 contrats, la quantité d'achat/vente doit être 3, pas 1.",
+        "<strong class='text-white'>Additionnez chaque jambe d'objectif ATM.</strong> Une stratégie à deux objectifs 2+1 nécessite une quantité d'entrée de 3, pas la plus grande jambe individuelle.",
+        "<strong class='text-white'>Utilisez des sorties market ou stop-market pour une taille garantie.</strong> Les objectifs limit peuvent se remplir partiellement quand la liquidité à votre prix est faible.",
+        "<strong class='text-white'>Vérifiez l'onglet Filled Orders.</strong> Tradovate décompose les exécutions partielles en plusieurs lignes, ce qui permet de confirmer si 1 sur 2 s'est réellement rempli.",
+        "<strong class='text-white'>Recherchez les jambes orphelines après un stop-out.</strong> Si l'OCO n'a pas annulé l'ordre opposé, un objectif égaré peut se remplir plus tard et ouvrir une nouvelle position.",
+        "<strong class='text-white'>Utilisez Flatten et revérifiez le panneau Orders</strong> si quelque chose semble incohérent avant d'ajouter davantage de taille.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie réellement &ldquo;Un seul contrat rempli&rdquo;" },
+    { type: "paragraph", html: "Quand un bracket se comporte ainsi, l'une de deux choses très différentes s'est produite. Soit <strong class='text-white'>tous vos contrats ne sont pas entrés</strong>, un problème de quantité d'entrée, soit <strong class='text-white'>tous les contrats sont entrés mais seule une partie d'une sortie s'est remplie</strong>, un problème d'exécution partielle ou d'OCO. En apparence, cela se ressemble : vous vous retrouvez à détenir, ou à sortir, moins de contrats que prévu. Mais la solution est opposée dans chaque cas." },
+    { type: "paragraph", html: "Le cas le plus fréquent, de loin, est le premier. Le nombre dans votre champ de quantité de saisie d'ordre ne correspondait pas au nombre total de contrats répartis entre les jambes de votre bracket. Tradovate soumet exactement la quantité que vous indiquez. Si votre stratégie ATM ou votre bracket manuel décrit des sorties pour trois contrats mais que vous envoyez une entrée pour un, un seul contrat entre, et seule la jambe du bracket couvrant ce contrat unique s'active. Tout ce que vous avez vu tracé sur le graphique au préalable n'était qu'un <em>aperçu</em> de la stratégie complète, pas une promesse qu'un contrat de taille d'entrée déclencherait tout." },
+    { type: "paragraph", html: "Le second scénario est un véritable événement de marché. Votre taille complète est entrée, mais une sortie <strong class='text-white'>limit</strong> ne s'est appariée qu'à la taille disponible à votre prix exact. Le reste demeure actif, ou le prix s'éloigne et un contrat reste exposé." },
+    { type: "heading", text: "Principales causes d'un bracket qui ne remplit qu'un seul contrat" },
+    { type: "heading", text: "1. La quantité de saisie de l'ordre est inférieure au total du bracket" },
+    { type: "paragraph", html: "C'est la cause première que vous rencontrerez le plus souvent. Vous construisez un bracket ou une stratégie ATM avec plusieurs jambes d'objectif, disons l'Objectif 1 pour deux contrats et l'Objectif 2 pour un contrat, trois contrats au total, mais vous laissez la quantité d'achat/vente à 1. Un seul contrat entre, et seule la première jambe du bracket s'y rattache. La règle à graver dans votre mémoire : le nombre de quantité en haut, à côté des boutons d'achat et de vente, doit être égal au nombre total de contrats de votre bracket." },
+    { type: "heading", text: "2. Les jambes d'objectif de la stratégie ATM ne totalisent pas la taille prévue" },
+    { type: "paragraph", html: "Une stratégie ATM dans Tradovate permet à chaque paire Stop Loss / Profit Target de porter sa propre quantité, afin de sortir par paliers, par exemple deux contrats au premier objectif et deux à un objectif plus lointain, en partageant un seul stop. C'est exactement là que se glisse l'erreur de comptage. La quantité <strong class='text-white'>totale</strong> de la stratégie est la somme de chaque jambe, et votre quantité d'entrée doit être égale à cette somme pour que toutes les jambes s'arment. Si les jambes totalisent quatre mais que vous en envoyez deux, la moitié de votre plan n'existe tout simplement pas." },
+    { type: "image", src: `${IMG}/bracket-order-fills-only-one-contract-2.png`, alt: "Configuration de stratégie ATM Tradovate montrant plusieurs jambes d'objectif, chacune avec sa propre quantité totalisant l'ensemble" },
+    { type: "heading", text: "3. Une sortie limit s'est partiellement remplie faute de liquidité" },
+    { type: "paragraph", html: "Si votre position complète est entrée mais qu'un objectif <strong class='text-white'>limit</strong> n'a rempli qu'un seul contrat sur plusieurs, c'est généralement le marché, et non la plateforme, qui est en cause. Un ordre limit ne se remplit que contre la taille présente à votre prix exact. Quand il n'y a pas assez de contrats disponibles avant que le prix ne s'éloigne, vous obtenez une exécution partielle : un lot exécuté, le reste toujours actif. Tradovate enregistre chaque exécution partielle comme une ligne distincte dans l'onglet Filled Orders, le moyen le plus rapide de le confirmer." },
+    { type: "heading", text: "4. Un objectif ou un stop orphelin est resté actif après un stop-out" },
+    { type: "paragraph", html: "Les sorties du bracket sont liées en OCO, One Cancels the Other. Quand le stop se remplit, l'objectif devrait s'annuler automatiquement, et vice versa. Lors d'un incident de données, d'une interruption ou d'un bracket fortement modifié, cette annulation peut échouer et laisser un ordre isolé actif. Si un objectif restant se remplit plus tard, il ouvre une <em>nouvelle</em> position d'un contrat que vous n'aviez jamais voulue, ce qui se lit exactement comme un événement &ldquo;le bracket n'a rempli qu'un seul contrat&rdquo; sur votre P&amp;L." },
+    { type: "heading", text: "5. Anomalies d'interface ou de connectivité sur une seule jambe" },
+    { type: "paragraph", html: "Moins fréquent, mais bien réel : une jambe peut être perdue ou modifiée par un bug d'interface ou de connexion, surtout lorsque vous modifiez rapidement des brackets en cours de trade. Si vos quantités sont manifestement correctes et que la liquidité était profonde, capturez les onglets Orders et Filled Orders et signalez-le au support Tradovate, mais écartez d'abord les causes 1 à 4, car elles expliquent l'immense majorité de ces cas." },
+    { type: "heading", text: "Comment corriger un bracket qui ne remplit qu'un seul contrat, étape par étape" },
+    { type: "heading", text: "Corriger le décalage de quantité (causes 1 et 2)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Additionnez la quantité de chaque jambe", html: "Ouvrez votre bracket ou votre stratégie ATM et additionnez la quantité de chaque jambe, chaque objectif et son stop apparié." },
+        { title: "Réglez la quantité d'entrée sur ce total", html: "Réglez la quantité de saisie d'ordre (à côté des boutons d'achat/vente) sur ce total avant de le soumettre." },
+        { title: "Confirmez les jambes de votre stratégie ATM enregistrée", html: "Si vous utilisez une stratégie ATM enregistrée, confirmez que les quantités de ses jambes correspondent à vos attentes, puis alignez la quantité d'entrée sur leur somme." },
+        { title: "Vérifiez le panneau Orders", html: "Soumettez et vérifiez immédiatement le panneau Orders. Vous devriez voir un ordre actif par jambe, avec des quantités qui, additionnées, redonnent votre taille d'entrée." },
+      ],
+    },
+    { type: "image", src: `${IMG}/bracket-order-fills-only-one-contract-4.png`, alt: "Panneau Orders Tradovate montrant chaque jambe du bracket active, avec des quantités qui totalisent la taille d'entrée" },
+    { type: "heading", text: "Corriger les exécutions partielles sur les sorties limit (cause 3)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Passez à une sortie stop-market ou market", html: "Si une taille de sortie garantie compte plus que le prix, utilisez une sortie stop-market ou market plutôt qu'un limit en attente, les ordres market remplissent toute votre taille au meilleur prix disponible." },
+        { title: "Ou acceptez le reliquat sur un objectif limit", html: "Si vous conservez un objectif limit, acceptez qu'un carnet peu profond puisse laisser un reliquat, et soyez prêt à gérer manuellement le contrat non rempli." },
+        { title: "Consultez l'onglet Filled Orders", html: "Consultez l'onglet Filled Orders pour voir exactement combien de contrats se sont remplis, et à quels prix, avant d'ajouter davantage de taille." },
+      ],
+    },
+    { type: "heading", text: "Éliminer une jambe orpheline après un stop-out (cause 4)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifiez le panneau Orders après chaque stop-out", html: "Après tout stop-out ou sortie manuelle, jetez un œil au panneau Orders à la recherche d'un objectif ou d'un stop encore actif qui aurait dû être annulé." },
+        { title: "Annulez la jambe orpheline manuellement", html: "Annulez manuellement toute jambe orpheline afin qu'elle ne puisse pas se remplir plus tard et ouvrir une position indésirable." },
+        { title: "Utilisez Flatten en cas de doute", html: "En cas de doute, utilisez Flatten pour clôturer les positions et annuler tous les ordres actifs de ce contrat en une seule fois, puis reconstruisez le trade proprement." },
+      ],
+    },
+    { type: "paragraph", html: "Gardez à l'esprit que les <strong class='text-white'>plafonds</strong> spécifiques de position et de quantité d'ordre varient selon la firme et la taille du compte. Les comptes d'évaluation et financés imposent souvent une limite maximale de contrats qui peut aussi bloquer ou tronquer la taille. Vérifiez les règles actuelles de votre firme si la taille de votre bracket est plafonnée plutôt que mal ajustée." },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Signification", "Solution"],
+      rows: [
+        ["Un seul contrat entre sur un bracket multi-jambes", "La quantité de saisie d'ordre est inférieure au total du bracket", "Réglez la quantité d'achat/vente = somme de toutes les jambes du bracket"],
+        ["La stratégie ATM remplit moins de contrats que prévu", "Les jambes d'objectif totalisent plus que la quantité d'entrée", "Alignez la quantité d'entrée sur la somme de chaque jambe ATM"],
+        ["L'objectif limit remplit 1 sur plusieurs, le reste reste actif", "Exécution partielle, liquidité insuffisante à votre prix", "Utilisez une sortie stop-market/market, ou gérez le reliquat"],
+        ["Un contrat supplémentaire apparaît après un stop-out", "Une jambe OCO orpheline ne s'est pas auto-annulée et s'est remplie plus tard", "Annulez les ordres actifs égarés ; utilisez Flatten pour repartir à zéro"],
+        ["Une jambe disparaît après des modifications rapides du bracket", "Anomalie possible d'interface/connexion sur une seule jambe", "Vérifiez les quantités, capturez des captures d'écran, contactez le support"],
+        ["La limite maximale de contrats tronque votre taille", "Plafond de risque/position (varie selon la firme et la taille du compte)", "Réduisez la taille ou demandez à votre firme une modification de la limite"],
+      ],
+    },
+    { type: "heading", text: "Où PickMyTrade s'intègre" },
+    { type: "paragraph", html: "La plupart des échecs de bracket à un seul contrat remontent à une quantité déjà erronée avant que l'ordre ne quitte vos mains. PickMyTrade relie vos alertes TradingView directement à Tradovate et applique le dimensionnement à votre place, de sorte que l'entrée et son bracket concordent toujours :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validation Qté/Symbole</strong> l'alerte définit la taille une seule fois, de sorte que l'entrée et chaque jambe du bracket portent des quantités concordantes plutôt qu'un nombre saisi à la main, facile à sous-évaluer.",
+        "<strong class='text-white'>Filtres de droits &amp; de risque</strong> respecte les plafonds de position des prop firms et l'état de l'accord de données, de sorte que les brackets surdimensionnés sont détectés avant d'être rejetés ou tronqués.",
+        "<strong class='text-white'>Routage sûr face aux limites de débit</strong> espace le flux d'ordres pour que les jambes du bracket ne soient pas perdues lors de modifications rapides pendant des bougies volatiles.",
+        "<strong class='text-white'>Synchronisation multi-compte</strong> reflète le bracket corrigé en taille complète sur chaque compte connecté, de sorte qu'aucun compte ne se retrouve avec un seul contrat.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Prepara un'operazione pulita multi-contratto su ES o NQ, imposta un bracket con uno stop e un obiettivo, vede l'entrata scattare, e si riempie solo <strong class='text-white'>un contratto</strong>. Il resto della sua size non entra mai. O peggio: il suo stop copre un lotto mentre un secondo contratto resta scoperto sul mercato. Nei futures veloci, un bracket Tradovate che riempie solo 1 contratto è uno dei bug &ldquo;piccoli&rdquo; più costosi che esistano. O perde il profitto pianificato, o si ritrova con una posizione non coperta che credeva protetta." },
+    { type: "paragraph", html: "Ecco la parte rassicurante: nella stragrande maggioranza dei casi non è colpa del broker. È un disallineamento di quantità tra la size di inserimento del suo ordine e il totale dei contratti definito nel suo bracket. Altre due varianti, un'esecuzione parziale dovuta a liquidità scarsa su un'uscita limit, e un obiettivo o stop orfano rimasto attivo dopo uno stop-out, completano il quadro. Questa guida esamina ogni causa, la soluzione esatta per ciascuna, e come un'automazione come PickMyTrade previene il disallineamento prima ancora che l'ordine lasci le sue mani." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida",
+      items: [
+        "<strong class='text-white'>La quantità dell'ordine deve essere uguale alla size totale del bracket.</strong> Se il suo bracket ha gambe che totalizzano 3 contratti, la quantità di acquisto/vendita deve essere 3, non 1.",
+        "<strong class='text-white'>Sommi ogni gamba di obiettivo ATM.</strong> Una strategia a due obiettivi 2+1 richiede una quantità di entrata di 3, non la gamba singola più grande.",
+        "<strong class='text-white'>Usi uscite market o stop-market per una size garantita.</strong> Gli obiettivi limit possono riempirsi parzialmente quando la liquidità al suo prezzo è scarsa.",
+        "<strong class='text-white'>Controlli la scheda Filled Orders.</strong> Tradovate suddivide le esecuzioni parziali in più righe, così può confermare se 1 su 2 si è effettivamente riempito.",
+        "<strong class='text-white'>Cerchi gambe orfane dopo uno stop-out.</strong> Se l'OCO non ha annullato l'ordine opposto, un obiettivo residuo può riempirsi più tardi e aprire una nuova posizione.",
+        "<strong class='text-white'>Usi Flatten e ricontrolli il pannello Orders</strong> se qualcosa sembra incoerente prima di aggiungere altra size.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa davvero &ldquo;Riempito solo 1 contratto&rdquo;" },
+    { type: "paragraph", html: "Quando un bracket si comporta così, è successa una di due cose molto diverse. O <strong class='text-white'>non sono entrati tutti i suoi contratti</strong>, un problema di quantità di entrata, oppure <strong class='text-white'>tutti i contratti sono entrati ma solo una parte di un'uscita si è riempita</strong>, un problema di esecuzione parziale o OCO. In apparenza sembrano uguali: finisce per detenere, o uscire con, meno contratti di quanto previsto. Ma la soluzione è opposta in ciascun caso." },
+    { type: "paragraph", html: "Il caso più comune, di gran lunga, è il primo. Il numero nel campo della quantità di inserimento ordine non corrispondeva al numero totale di contratti distribuiti tra le gambe del suo bracket. Tradovate invia esattamente la quantità che indica. Se la sua strategia ATM o il bracket manuale descrive uscite per un valore di tre contratti ma invia un'entrata per uno, entra solo un contratto, e si attiva solo la gamba del bracket che copre quel singolo contratto. Tutto ciò che aveva visto disegnato in precedenza sul grafico era un'<em>anteprima</em> della strategia completa, non una promessa che un contratto di size di entrata avrebbe attivato tutto." },
+    { type: "paragraph", html: "Il secondo scenario è un evento di mercato genuino. La sua size completa è entrata, ma un'uscita <strong class='text-white'>limit</strong> si è abbinata solo alla size disponibile al suo prezzo esatto. Il resto rimane attivo, oppure il prezzo si allontana e un contratto resta esposto." },
+    { type: "heading", text: "Le principali cause di un bracket che riempie solo 1 contratto" },
+    { type: "heading", text: "1. La quantità di inserimento ordine è inferiore al bracket totale" },
+    { type: "paragraph", html: "Questa è la causa principale che incontrerà più spesso. Costruisce un bracket o una strategia ATM con più gambe di obiettivo, diciamo Obiettivo 1 per due contratti e Obiettivo 2 per un contratto, tre contratti in totale, ma lascia la quantità di acquisto/vendita impostata su 1. Entra solo un contratto, e solo la prima gamba del bracket vi si collega. La regola da imprimersi nella memoria: il numero della quantità in alto, accanto ai pulsanti di acquisto e vendita, deve essere uguale al numero totale di contratti nel suo bracket." },
+    { type: "heading", text: "2. Le gambe di obiettivo della strategia ATM non sommano alla size prevista" },
+    { type: "paragraph", html: "Una strategia ATM in Tradovate consente a ogni coppia Stop Loss / Profit Target di avere una propria quantità, così può uscire in modo scalare, ad esempio due contratti al primo obiettivo e due a un obiettivo più lontano, condividendo uno stop. È esattamente lì che si insinua l'errore di conteggio. La quantità <strong class='text-white'>totale</strong> della strategia è la somma di ogni gamba, e la sua quantità di entrata deve essere uguale a quella somma perché tutte le gambe si armino. Se le gambe sommano a quattro ma ne invia due, metà del suo piano semplicemente non esiste." },
+    { type: "image", src: `${IMG}/bracket-order-fills-only-one-contract-2.png`, alt: "Configurazione della strategia ATM di Tradovate che mostra più gambe di obiettivo, ciascuna con una propria quantità che somma il totale" },
+    { type: "heading", text: "3. Un'uscita limit si è riempita parzialmente per liquidità scarsa" },
+    { type: "paragraph", html: "Se la sua posizione completa è entrata ma un obiettivo <strong class='text-white'>limit</strong> ha riempito solo uno tra più contratti, di solito è il mercato, non la piattaforma, a essere responsabile. Un ordine limit si riempie solo contro la size presente al suo prezzo esatto. Quando lì non ci sono abbastanza contratti disponibili prima che il prezzo si allontani, ottiene un'esecuzione parziale: un lotto eseguito, il resto ancora attivo. Tradovate registra ogni esecuzione parziale come una riga a sé nella scheda Filled Orders, il modo più rapido per confermarlo." },
+    { type: "heading", text: "4. Un obiettivo o stop orfano è rimasto attivo dopo uno stop-out" },
+    { type: "paragraph", html: "Le uscite del bracket sono collegate come OCO, One Cancels the Other. Quando lo stop si riempie, l'obiettivo dovrebbe annullarsi automaticamente, e viceversa. Durante un problema di dati, un'interruzione o un bracket pesantemente modificato, questa cancellazione può fallire e lasciare un ordine solitario attivo. Se un obiettivo residuo si riempie più tardi, apre una <em>nuova</em> posizione da un contratto che non aveva mai voluto, il che appare esattamente come un evento &ldquo;il bracket ha riempito solo un contratto&rdquo; sul suo P&amp;L." },
+    { type: "heading", text: "5. Anomalie di interfaccia o connettività su una singola gamba" },
+    { type: "paragraph", html: "Meno comune, ma reale: una gamba può essere persa o modificata da un problema di interfaccia o connessione, specialmente quando modifica i bracket rapidamente a metà operazione. Se le sue quantità sono dimostrabilmente corrette e la liquidità era profonda, catturi le schede Orders e Filled Orders e lo segnali al supporto Tradovate, ma prima escluda le cause da 1 a 4, poiché spiegano la stragrande maggioranza di questi casi." },
+    { type: "heading", text: "Come risolvere un bracket che riempie solo 1 contratto, passo dopo passo" },
+    { type: "heading", text: "Correggere il disallineamento di quantità (cause 1 e 2)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Sommi la quantità di ogni gamba", html: "Apra il suo bracket o la strategia ATM e sommi la quantità di ogni gamba, ogni obiettivo e il suo stop abbinato." },
+        { title: "Imposti la quantità di entrata su quel totale", html: "Imposti la quantità di inserimento ordine (accanto ai pulsanti di acquisto/vendita) su quel totale prima di inviarlo." },
+        { title: "Confermi le gambe della sua strategia ATM salvata", html: "Se usa una strategia ATM salvata, confermi che le quantità delle gambe della strategia siano quelle attese, quindi allinei la quantità di entrata alla loro somma." },
+        { title: "Controlli il pannello Orders", html: "Invii e controlli subito il pannello Orders. Dovrebbe vedere un ordine attivo per gamba, con quantità che, sommate, tornano alla sua size di entrata." },
+      ],
+    },
+    { type: "image", src: `${IMG}/bracket-order-fills-only-one-contract-4.png`, alt: "Pannello Orders di Tradovate che mostra ogni gamba del bracket attiva con quantità che sommano la size di entrata" },
+    { type: "heading", text: "Correggere le esecuzioni parziali sulle uscite limit (causa 3)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Passi a un'uscita stop-market o market", html: "Se una size di uscita garantita conta più del prezzo, usi un'uscita stop-market o market invece di un limit in attesa, gli ordini market riempiono l'intera size al miglior prezzo disponibile." },
+        { title: "Oppure accetti il residuo su un obiettivo limit", html: "Se mantiene un obiettivo limit, accetti che un book sottile possa lasciare un residuo, e sia pronto a gestire manualmente il contratto non riempito." },
+        { title: "Riveda la scheda Filled Orders", html: "Riveda la scheda Filled Orders per vedere esattamente quanti contratti si sono riempiti, e a quali prezzi, prima di aggiungere altra size." },
+      ],
+    },
+    { type: "heading", text: "Eliminare una gamba orfana dopo uno stop-out (causa 4)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Controlli il pannello Orders dopo ogni stop-out", html: "Dopo ogni stop-out o uscita manuale, dia un'occhiata al pannello Orders per un obiettivo o stop ancora attivo che avrebbe dovuto annullarsi." },
+        { title: "Annulli la gamba orfana manualmente", html: "Annulli manualmente ogni gamba orfana in modo che non possa riempirsi più tardi e aprire una posizione indesiderata." },
+        { title: "Usi Flatten in caso di dubbio", html: "In caso di dubbio, usi Flatten per chiudere le posizioni e annullare tutti gli ordini attivi per quel contratto in una volta, quindi ricostruisca l'operazione in modo pulito." },
+      ],
+    },
+    { type: "paragraph", html: "Tenga presente che i <strong class='text-white'>limiti</strong> specifici di posizione e quantità d'ordine variano in base alla società e alla dimensione dell'account. Gli account di valutazione e finanziati spesso impongono un limite massimo di contratti che può anche bloccare o troncare la size. Verifichi le regole attuali della sua società se la size del suo bracket viene limitata anziché disallineata." },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Significato", "Soluzione"],
+      rows: [
+        ["Entra solo 1 contratto su un bracket multi-gamba", "La quantità di inserimento ordine è inferiore al totale del bracket", "Imposti la quantità di acquisto/vendita = somma di tutte le gambe del bracket"],
+        ["La strategia ATM riempie meno contratti del previsto", "Le gambe di obiettivo sommano più della quantità di entrata", "Allinei la quantità di entrata alla somma di ogni gamba ATM"],
+        ["L'obiettivo limit riempie 1 su più, il resto resta attivo", "Esecuzione parziale, liquidità insufficiente al suo prezzo", "Usi un'uscita stop-market/market, oppure gestisca il residuo"],
+        ["Appare un contratto extra dopo uno stop-out", "Una gamba OCO orfana non si è auto-annullata e si è riempita più tardi", "Annulli gli ordini attivi residui; usi Flatten per ripristinare"],
+        ["Una gamba scompare dopo modifiche rapide al bracket", "Possibile anomalia di interfaccia/connessione su una singola gamba", "Verifichi le quantità, catturi screenshot, contatti il supporto"],
+        ["Il limite massimo di contratti tronca la sua size", "Limite di rischio/posizione (varia in base a società e dimensione dell'account)", "Riduca la size o richieda alla sua società una modifica del limite"],
+      ],
+    },
+    { type: "heading", text: "Dove si inserisce PickMyTrade" },
+    { type: "paragraph", html: "La maggior parte dei fallimenti di bracket a un solo contratto risale a una quantità già sbagliata prima che l'ordine lasciasse le sue mani. PickMyTrade collega i suoi alert di TradingView direttamente a Tradovate e applica il dimensionamento per lei, così l'entrata e il suo bracket concordano sempre:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validazione Qty/Simbolo</strong> l'alert definisce la size una sola volta, così l'entrata e ogni gamba del bracket portano quantità corrispondenti invece di un numero digitato a mano facile da sottostimare.",
+        "<strong class='text-white'>Filtri di entitlement e rischio</strong> rispetta i limiti di posizione della prop firm e lo stato dell'accordo sui dati, così i bracket sovradimensionati vengono individuati prima di essere rifiutati o troncati.",
+        "<strong class='text-white'>Instradamento sicuro rispetto ai rate limit</strong> distanzia il flusso di ordini in modo che le gambe del bracket non vengano perse per modifiche rapide durante candele volatili.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong> replica il bracket corretto a size piena su ogni account collegato, così nessun account resta con un solo contratto.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Sizing Brackets by Hand", de: "Hören Sie auf, Bracket-Orders von Hand zu dimensionieren", es: "Deje de dimensionar brackets a mano", fr: "Arrêtez de dimensionner vos brackets à la main", it: "Smetta di dimensionare i bracket a mano" },
+  ctaText: { en: "PickMyTrade lets your TradingView alert define the size once, so the entry and every bracket leg always match. Start your free 7-day trial and trade rejection-free.", de: "PickMyTrade lässt Ihren TradingView-Alert die Größe einmal definieren, sodass der Einstieg und jedes Bracket-Leg immer übereinstimmen. Starten Sie Ihre kostenlose 5-Tage-Testversion und handeln Sie ohne Ablehnungen.", es: "PickMyTrade permite que su alerta de TradingView defina el tamaño una sola vez, para que la entrada y cada pierna del bracket siempre coincidan. Inicie su prueba gratuita de 5 días y opere sin rechazos.", fr: "PickMyTrade permet à votre alerte TradingView de définir la taille une seule fois, de sorte que l'entrée et chaque jambe du bracket concordent toujours. Démarrez votre essai gratuit de 5 jours et tradez sans rejets.", it: "PickMyTrade permette al suo alert di TradingView di definire la size una sola volta, così l'entrata e ogni gamba del bracket corrispondono sempre. Inizi la sua prova gratuita di 5 giorni e faccia trading senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Inizi la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why did my Tradovate bracket order only fill 1 contract?", a: "Almost always because the order-entry quantity was smaller than the total contracts described by your bracket. Tradovate sends exactly the quantity you enter, so if the field says 1 but your legs total 3, only one contract enters." },
+    { q: "Does the quantity next to the buy/sell buttons matter if my ATM strategy already sets sizes?", a: "Yes. The ATM strategy defines how contracts are split across targets, but the entry quantity you submit must equal the sum of those legs. If it's lower, only part of the strategy arms." },
+    { q: "My full position entered but only one contract exited, is that the same bug?", a: "No. That's usually a partial fill: a limit exit matched only the size available at your exact price. Check the Filled Orders tab and you'll see the fill split into separate rows." },
+    { q: "How do I guarantee my whole position exits at once?", a: "Use a stop-market or market exit instead of a resting limit. Market orders fill your entire size at the best available price, at the cost of not controlling the exact fill price." },
+    { q: "A contract opened by itself after my stop hit. Why?", a: "An orphaned bracket leg likely failed to cancel under OCO and filled later. After any stop-out, check the Orders panel and cancel any target or stop still working." },
+    { q: "Is this a Tradovate platform bug or my mistake?", a: "The large majority of cases are a quantity mismatch or a normal partial fill, both of which come down to configuration or market conditions rather than a defect. Genuine glitches happen but are rarer, so rule out the common causes first." },
+    { q: "Do prop-firm accounts change any of this?", a: "They can. Evaluation and funded accounts enforce maximum position sizes that vary by firm and account size, which may cap or truncate your bracket. Check your firm's current rules if the size limit, not a mismatch, is the problem." },
+    { q: "How do I avoid this when automating from TradingView?", a: "Let the alert define the size once and route it through a bridge so the entry and all bracket legs always share the same quantity, removing the manual-typing step where the mismatch usually starts." },
+  ], de: [
+    { q: "Warum füllte meine Tradovate-Bracket-Order nur 1 Kontrakt?", a: "Fast immer, weil die Ordereingabemenge kleiner war als die von Ihrer Bracket-Order beschriebenen Gesamtkontrakte. Tradovate sendet genau die Menge, die Sie eingeben, wenn also im Feld 1 steht, Ihre Legs sich aber auf 3 summieren, steigt nur ein Kontrakt ein." },
+    { q: "Spielt die Menge neben den Kauf-/Verkaufsschaltflächen eine Rolle, wenn meine ATM-Strategie die Größen bereits festlegt?", a: "Ja. Die ATM-Strategie legt fest, wie Kontrakte auf Ziele aufgeteilt werden, aber die von Ihnen gesendete Eintrittsmenge muss der Summe dieser Legs entsprechen. Wenn sie niedriger ist, wird nur ein Teil der Strategie scharf geschaltet." },
+    { q: "Meine volle Position ist eingestiegen, aber nur ein Kontrakt ist ausgestiegen, ist das derselbe Fehler?", a: "Nein. Das ist normalerweise eine Teilausführung: Ein Limit-Exit wurde nur gegen die an Ihrem exakten Preis verfügbare Größe ausgeführt. Prüfen Sie den Reiter Filled Orders, und Sie werden sehen, dass die Ausführung in separate Zeilen aufgeteilt ist." },
+    { q: "Wie stelle ich sicher, dass meine gesamte Position auf einmal aussteigt?", a: "Verwenden Sie einen Stop-Market- oder Market-Exit anstelle eines ruhenden Limits. Market-Orders füllen Ihre gesamte Größe zum bestverfügbaren Preis, auf Kosten der Kontrolle über den exakten Ausführungspreis." },
+    { q: "Nach meinem Stop-Hit hat sich von selbst ein Kontrakt geöffnet. Warum?", a: "Ein verwaistes Bracket-Leg konnte wahrscheinlich unter OCO nicht storniert werden und wurde später ausgeführt. Prüfen Sie nach jedem Stop-Out das Orders-Panel und stornieren Sie jedes Ziel oder jeden Stop, der noch aktiv ist." },
+    { q: "Ist das ein Tradovate-Plattformfehler oder mein eigener Fehler?", a: "Die überwiegende Mehrheit der Fälle ist eine Mengenabweichung oder eine normale Teilausführung, beides läuft auf Konfiguration oder Marktbedingungen hinaus, nicht auf einen Defekt. Echte Störungen kommen vor, sind aber seltener, schließen Sie also zuerst die häufigen Ursachen aus." },
+    { q: "Ändern Prop-Firm-Konten etwas daran?", a: "Sie können. Evaluierungs- und finanzierte Konten setzen maximale Positionsgrößen durch, die je nach Firma und Kontogröße variieren, was Ihre Bracket-Order deckeln oder kürzen kann. Prüfen Sie die aktuellen Regeln Ihrer Firma, wenn das Größenlimit, nicht eine Abweichung, das Problem ist." },
+    { q: "Wie vermeide ich das bei der Automatisierung von TradingView aus?", a: "Lassen Sie den Alert die Größe einmal definieren und leiten Sie ihn über eine Bridge, sodass der Einstieg und alle Bracket-Legs immer dieselbe Menge teilen, wodurch der manuelle Eingabeschritt entfällt, an dem die Abweichung normalerweise beginnt." },
+  ], es: [
+    { q: "¿Por qué mi orden bracket de Tradovate solo llenó 1 contrato?", a: "Casi siempre porque la cantidad de entrada de la orden era menor que el total de contratos descrito por su bracket. Tradovate envía exactamente la cantidad que ingresa, así que si el campo dice 1 pero sus piernas suman 3, solo entra un contrato." },
+    { q: "¿Importa la cantidad junto a los botones de compra/venta si mi estrategia ATM ya establece los tamaños?", a: "Sí. La estrategia ATM define cómo se dividen los contratos entre objetivos, pero la cantidad de entrada que envía debe ser igual a la suma de esas piernas. Si es menor, solo se arma parte de la estrategia." },
+    { q: "Mi posición completa entró pero solo salió un contrato, ¿es el mismo error?", a: "No. Eso normalmente es una ejecución parcial: una salida limit solo coincidió con el tamaño disponible en su precio exacto. Revise la pestaña Filled Orders y verá la ejecución dividida en filas separadas." },
+    { q: "¿Cómo garantizo que toda mi posición salga a la vez?", a: "Use una salida stop-market o market en lugar de un limit en espera. Las órdenes de mercado llenan todo su tamaño al mejor precio disponible, a costa de no controlar el precio exacto de ejecución." },
+    { q: "Se abrió un contrato por sí solo después de que mi stop se activara. ¿Por qué?", a: "Es probable que una pierna huérfana del bracket no se cancelara bajo OCO y se llenara después. Tras cualquier stop-out, revise el panel Orders y cancele cualquier objetivo o stop que siga activo." },
+    { q: "¿Es esto un error de la plataforma Tradovate o mi propio error?", a: "La gran mayoría de los casos son un desajuste de cantidad o una ejecución parcial normal, ambos derivados de la configuración o las condiciones del mercado en lugar de un defecto. Los fallos genuinos ocurren pero son más raros, así que descarte primero las causas comunes." },
+    { q: "¿Las cuentas prop cambian algo de esto?", a: "Pueden hacerlo. Las cuentas de evaluación y fondeadas imponen tamaños máximos de posición que varían según la firma y el tamaño de la cuenta, lo que puede limitar o recortar su bracket. Revise las reglas actuales de su firma si el límite de tamaño, y no un desajuste, es el problema." },
+    { q: "¿Cómo evito esto al automatizar desde TradingView?", a: "Deje que la alerta defina el tamaño una sola vez y enrútela a través de un puente para que la entrada y todas las piernas del bracket compartan siempre la misma cantidad, eliminando el paso manual de escritura donde suele comenzar el desajuste." },
+  ], fr: [
+    { q: "Pourquoi mon ordre bracket Tradovate n'a-t-il rempli qu'un seul contrat ?", a: "Presque toujours parce que la quantité de saisie d'ordre était inférieure au total de contrats décrit par votre bracket. Tradovate soumet exactement la quantité que vous saisissez, donc si le champ indique 1 mais que vos jambes totalisent 3, un seul contrat entre." },
+    { q: "La quantité à côté des boutons d'achat/vente compte-t-elle si ma stratégie ATM définit déjà les tailles ?", a: "Oui. La stratégie ATM définit comment les contrats sont répartis entre les objectifs, mais la quantité d'entrée que vous soumettez doit être égale à la somme de ces jambes. Si elle est inférieure, seule une partie de la stratégie s'arme." },
+    { q: "Ma position complète est entrée mais un seul contrat est sorti, est-ce le même bug ?", a: "Non. C'est généralement une exécution partielle : une sortie limit ne s'est appariée qu'à la taille disponible à votre prix exact. Consultez l'onglet Filled Orders et vous verrez l'exécution répartie en lignes distinctes." },
+    { q: "Comment garantir que toute ma position sorte d'un coup ?", a: "Utilisez une sortie stop-market ou market plutôt qu'un limit en attente. Les ordres market remplissent toute votre taille au meilleur prix disponible, au prix d'une perte de contrôle sur le prix d'exécution exact." },
+    { q: "Un contrat s'est ouvert tout seul après mon stop. Pourquoi ?", a: "Une jambe de bracket orpheline n'a probablement pas réussi à s'annuler sous OCO et s'est remplie plus tard. Après tout stop-out, vérifiez le panneau Orders et annulez tout objectif ou stop encore actif." },
+    { q: "S'agit-il d'un bug de la plateforme Tradovate ou d'une erreur de ma part ?", a: "La grande majorité des cas relève d'un décalage de quantité ou d'une exécution partielle normale, deux situations qui tiennent à la configuration ou aux conditions de marché plutôt qu'à un défaut. De véritables anomalies existent mais sont plus rares, écartez donc d'abord les causes courantes." },
+    { q: "Les comptes prop firm changent-ils quelque chose à cela ?", a: "Ils le peuvent. Les comptes d'évaluation et financés imposent des tailles de position maximales qui varient selon la firme et la taille du compte, ce qui peut plafonner ou tronquer votre bracket. Vérifiez les règles actuelles de votre firme si la limite de taille, et non un décalage, est le problème." },
+    { q: "Comment éviter cela lors de l'automatisation depuis TradingView ?", a: "Laissez l'alerte définir la taille une seule fois et acheminez-la via un pont afin que l'entrée et toutes les jambes du bracket partagent toujours la même quantité, éliminant l'étape de saisie manuelle où le décalage commence généralement." },
+  ], it: [
+    { q: "Perché il mio ordine bracket Tradovate ha riempito solo 1 contratto?", a: "Quasi sempre perché la quantità di inserimento ordine era inferiore al totale di contratti descritto dal suo bracket. Tradovate invia esattamente la quantità inserita, quindi se il campo dice 1 ma le sue gambe sommano a 3, entra solo un contratto." },
+    { q: "La quantità accanto ai pulsanti di acquisto/vendita conta se la mia strategia ATM imposta già le size?", a: "Sì. La strategia ATM definisce come i contratti vengono suddivisi tra gli obiettivi, ma la quantità di entrata che invia deve essere uguale alla somma di quelle gambe. Se è inferiore, si arma solo parte della strategia." },
+    { q: "La mia posizione completa è entrata ma è uscito solo un contratto, è lo stesso bug?", a: "No. Di solito si tratta di un'esecuzione parziale: un'uscita limit si è abbinata solo alla size disponibile al suo prezzo esatto. Controlli la scheda Filled Orders e vedrà l'esecuzione divisa in righe separate." },
+    { q: "Come posso garantire che l'intera posizione esca in una sola volta?", a: "Usi un'uscita stop-market o market invece di un limit in attesa. Gli ordini market riempiono l'intera size al miglior prezzo disponibile, a costo di non controllare il prezzo esatto di esecuzione." },
+    { q: "Un contratto si è aperto da solo dopo che il mio stop è scattato. Perché?", a: "È probabile che una gamba orfana del bracket non si sia annullata sotto OCO e si sia riempita più tardi. Dopo ogni stop-out, controlli il pannello Orders e annulli qualsiasi obiettivo o stop ancora attivo." },
+    { q: "È un bug della piattaforma Tradovate o un mio errore?", a: "La grande maggioranza dei casi è un disallineamento di quantità o un'esecuzione parziale normale, entrambi riconducibili alla configurazione o alle condizioni di mercato piuttosto che a un difetto. Anomalie genuine accadono ma sono più rare, quindi escluda prima le cause comuni." },
+    { q: "Gli account prop firm cambiano qualcosa in tutto questo?", a: "Possono farlo. Gli account di valutazione e finanziati impongono size massime di posizione che variano in base a società e dimensione dell'account, il che può limitare o troncare il suo bracket. Verifichi le regole attuali della sua società se il limite di size, e non un disallineamento, è il problema." },
+    { q: "Come posso evitarlo quando automatizzo da TradingView?", a: "Lasci che l'alert definisca la size una sola volta e la instradi attraverso un bridge in modo che l'entrata e tutte le gambe del bracket condividano sempre la stessa quantità, eliminando il passaggio di digitazione manuale in cui di solito inizia il disallineamento." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. und wird von diesem Unternehmen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -abläufe ändern sich im Laufe der Zeit, bestätigen Sie den aktuellen Prozess daher immer in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión o de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de futures et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée, ni approuvée, ni sponsorisée par Tradovate, Inc. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre il processo attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}${IMG}/bracket-order-fills-only-one-contract-1.png`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-10",
+  dateModified: "2026-07-10",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage={`${IMG}/bracket-order-fills-only-one-contract-1.png`}
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

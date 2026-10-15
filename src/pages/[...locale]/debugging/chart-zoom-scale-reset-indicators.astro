@@ -1,0 +1,599 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "chart-zoom-scale-reset-indicators";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Chart Rescale & EMA/VWAP Jump on Switch";
+const META_DESCRIPTION =
+  "Tradovate charts rescaling and EMA/VWAP jumping when you switch tabs? Raise Minimum Bars to Load so enough history preloads and indicators stay put.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { de: "Tradovate: Chart-Reset und EMA/VWAP-Sprung beim Tabwechsel", es: "Tradovate: reescalado del gráfico y salto de EMA/VWAP", fr: "Tradovate : rééchelonnement du graphique, saut EMA/VWAP", it: "Tradovate: riscalatura del grafico e salto di EMA/VWAP" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Chart-Neuskalierung & EMA/VWAP-Sprung beim Tabwechsel", es: "Reescalado del gráfico de Tradovate y salto de EMA/VWAP al cambiar de pestaña", fr: "Redimensionnement du graphique Tradovate et saut de l'EMA/VWAP au changement d'onglet", it: "Riscalatura del grafico Tradovate e salto di EMA/VWAP al cambio scheda" },
+  dek: { en: "You flip to another chart tab for two seconds, flip back, and the zoom has reset and your EMA or VWAP has drifted off your key level. Here's the one setting behind both problems.", de: "Sie wechseln für zwei Sekunden zu einem anderen Chart-Tab, wechseln zurück, und der Zoom wurde zurückgesetzt und Ihr EMA oder VWAP ist von Ihrem wichtigen Level abgedriftet. Hier ist die eine Einstellung, die hinter beiden Problemen steckt.", es: "Cambia a otra pestaña del gráfico durante dos segundos, vuelve atrás, y el zoom se ha restablecido y su EMA o VWAP se ha desviado de su nivel clave. Esta es la única configuración detrás de ambos problemas.", fr: "Vous basculez vers un autre onglet de graphique pendant deux secondes, vous revenez, et le zoom s'est réinitialisé et votre EMA ou VWAP s'est écarté de votre niveau clé. Voici le seul réglage à l'origine de ces deux problèmes.", it: "Passi a un'altra scheda del grafico per due secondi, torni indietro, e lo zoom si è azzerato e la tua EMA o il VWAP si sono spostati dal tuo livello chiave. Ecco l'unica impostazione dietro entrambi i problemi." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  heroImage: { src: `${IMG}/chart-zoom-scale-reset-indicators-1.png`, alt: { en: "Tradovate chart settings showing the Minimum Number of Bars to Load field set to a low default", de: "Tradovate-Charteinstellungen mit dem Feld Minimum Number of Bars to Load, das auf einen niedrigen Standardwert eingestellt ist", es: "Configuración del gráfico de Tradovate que muestra el campo Minimum Number of Bars to Load ajustado a un valor predeterminado bajo", fr: "Paramètres du graphique Tradovate montrant le champ Minimum Number of Bars to Load réglé sur une valeur par défaut basse", it: "Impostazioni del grafico Tradovate che mostrano il campo Minimum Number of Bars to Load impostato su un valore predefinito basso" } },
+  blocks: { en: [
+    { type: "paragraph", html: "You've got a clean setup lined up on ES, you flip to another chart tab for two seconds, you flip back, and now the chart has rescaled to a different zoom, your 50 EMA is sitting in a new spot, and VWAP has drifted off your key level. On fast futures like ES or NQ, that half-second of &ldquo;wait, where did my level go?&rdquo; is enough to blow a scalp entry. It's one of the more maddening Tradovate charting quirks, and it usually shows up in two flavors: the chart zoom or scale resets when you switch tabs or timeframes, and indicators like EMA and VWAP jump or recalculate when you scroll back to load older bars. Both trace back to the same root cause, the chart isn't preloading enough history, and both are fixable in the chart settings without ever contacting support." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Chart Rescale & Indicator Jump",
+      items: [
+        "<strong class='text-white'>Raise &ldquo;Minimum Number of Bars to Load&rdquo;</strong>, set it high enough to fully cover the longest lookback of every indicator on the chart. A 200-period EMA needs at least 200 bars, plus a healthy buffer.",
+        "<strong class='text-white'>Save a base chart template</strong>, build one template with your preferred bar count and apply it before adding indicators, so every new tab opens with enough history.",
+        "<strong class='text-white'>Confirm the value actually stuck</strong>, reopen the chart settings and verify the number saved. New tabs love to revert to the low default.",
+        "<strong class='text-white'>Check your Autofit / Continuously Autofit setting</strong>, this controls whether the chart re-scales after scrolling or switching, and it's the lever for the &ldquo;zoom keeps resetting&rdquo; half of the problem.",
+        "<strong class='text-white'>Rule out delayed or gapped data</strong>, if bars themselves are missing, indicators jump for a different reason. Reload history first.",
+        "<strong class='text-white'>Re-add indicators after the history loads</strong>, not before, so they warm up on the full bar set.",
+      ],
+    },
+    { type: "heading", text: "What “Chart Rescale & Indicator Jump on Switch” Actually Means" },
+    { type: "paragraph", html: "There's no pop-up error string here, the symptom is the bug. Two distinct behaviors get lumped under the same umbrella." },
+    { type: "paragraph", html: "The first is rescaling. You switch to another tab, another timeframe, or another symbol, then come back, and the chart has snapped to a different vertical scale or zoom level instead of holding the view you left. Your drawn levels are still there, but the price axis has re-fit itself, so everything looks shifted." },
+    { type: "paragraph", html: "The second is indicator jump. Moving averages, a 50 EMA is the classic example, and VWAP recalculate and visibly shift position when you scroll left to load older bars. Here's why: these indicators are only as accurate as the number of bars available when they calculate. If the chart loaded only a shallow slice of history, a 50-period EMA computed on too few bars is simply wrong, and the moment more bars stream in, it recomputes and slides to its correct value. That looks like a jump. VWAP behaves the same way because it anchors to the session's cumulative data." },
+    { type: "paragraph", html: "In Tradovate, both behaviors come down to one under-the-radar setting: Minimum Number of Bars to Load. Each new chart tab opens with a low default, around 100 bars, which is nowhere near enough to warm up a longer-period indicator, so the indicator recalculates the instant you scroll for more history." },
+    { type: "heading", text: "Top Causes of Chart Rescale & Indicator Jump" },
+    { type: "heading", text: "1. Minimum Bars to Load is set too low" },
+    { type: "paragraph", html: "This is the headline cause. Every new chart tab starts with Tradovate's default Minimum Number of Bars to Load, a low value around 100. If that number is smaller than an indicator's lookback period, the indicator can't calculate correctly until you manually scroll back and pull in more bars, and that's the moment it jumps to its real value." },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-1.png`, alt: "Tradovate chart settings showing the Minimum Number of Bars to Load field set to a low default" },
+    { type: "heading", text: "2. Indicators warming up on too little history" },
+    { type: "paragraph", html: "A moving average, EMA, or VWAP needs a full window of bars behind it to be accurate. On a fresh tab with only ~100 bars, a 200-period EMA literally can't be computed for most of the visible range, so Tradovate draws an approximation and then corrects it, the jump, the instant scrolling exposes older bars." },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-2.png`, alt: "Tradovate chart showing a 50 EMA and VWAP shifting position after older bars load" },
+    { type: "heading", text: "3. Settings not persisting across new tabs" },
+    { type: "paragraph", html: "Even after you raise the bar count on one chart, opening a new chart tab can revert to the default. Tradovate applies per-tab defaults unless you bake your preferences into a saved template, so the fix &ldquo;doesn't stick&rdquo; and the jumping comes right back on the next window you open." },
+    { type: "heading", text: "4. Autofit re-scaling the view on switch" },
+    { type: "paragraph", html: "Tradovate's chart Autofit re-fits the price scale to whatever bars are on screen. When it's set to continuously autofit, flipping tabs or timeframes triggers a re-fit, which reads as the zoom or scale &ldquo;resetting&rdquo; every time you come back to the chart." },
+    { type: "heading", text: "5. Delayed or gapped market data" },
+    { type: "paragraph", html: "A separate but easily confused cause: if the data feed is delayed or bars loaded with gaps, indicators recalculate when the missing bars finally arrive. If raising the bar count doesn't help, treat it as a data-loading problem rather than an indicator-warmup one." },
+    { type: "heading", text: "How to Fix Chart Rescale & Indicator Jump: Step-by-Step" },
+    { type: "heading", text: "Fixing Cause 1 & 2: Raise the Minimum Number of Bars to Load" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the chart's settings", html: "Use the gear/settings or three-dot menu on the chart toolbar to reach the chart editor." },
+        { title: "Find the field", html: "Find the Minimum Number of Bars to Load field. Some menus label it simply &ldquo;Minimum Bars to Load.&rdquo;" },
+        { title: "Increase it with a buffer", html: "Increase it to comfortably exceed the longest lookback among your indicators. If you run a 200-period EMA, don't set 200, set well above it so the indicator has a buffer before the visible range starts." },
+        { title: "Use the headroom", html: "Tradovate allows this value up to 9999, so you've got plenty of headroom for long-period studies." },
+        { title: "Apply, save, and confirm", html: "Apply and save, then scroll back and confirm the EMA and VWAP no longer shift when older bars load." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-3.png`, alt: "Tradovate chart editor with Minimum Number of Bars to Load raised to a higher value" },
+    { type: "heading", text: "Fixing Cause 3: Make it stick with a base chart template" },
+    { type: "paragraph", html: "Because new tabs revert to the default, the durable fix is a template." },
+    {
+      type: "steps",
+      items: [
+        { title: "Set the bar count first", html: "On a chart, set your Minimum Number of Bars to Load to your preferred high value first, before adding any indicators." },
+        { title: "Save the template", html: "Open the chart menu and choose Templates &rarr; Save Template." },
+        { title: "Name it to sort first", html: "Give it a name that sorts to the top of your list, a base template named so it appears first, so it's easy to grab for every new chart." },
+        { title: "Apply before adding indicators", html: "For each new chart tab, apply this base template before adding your indicators. That guarantees the indicators warm up on the full bar count from the start, so they never jump." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-4.png`, alt: "Tradovate chart menu showing the Templates Save Template option" },
+    { type: "heading", text: "Fixing Cause 4: Tame Autofit so the view stops resetting" },
+    { type: "paragraph", html: "The zoom/scale reset is a separate lever from bar count. In the chart's advanced settings, Tradovate exposes autofit behavior, typically an On option, where all chart contents (bars and indicators) autofit after scrolling or zooming, versus a Bars Only option, plus a Continuously Autofit toggle." },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Advanced Settings", html: "Open the chart's Advanced Settings." },
+        { title: "Adjust Autofit", html: "Adjust the Autofit behavior, switch away from continuously autofitting everything if you want the chart to hold your manual scale when you return to the tab." },
+        { title: "Test and report if needed", html: "Test by switching tabs and coming back. If the view still re-fits on tab switch even after you've raised the bar count and adjusted autofit, it's worth reporting to Tradovate support with your layout details." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-5.png`, alt: "Tradovate chart advanced settings showing Autofit On versus Bars Only options" },
+    { type: "heading", text: "Fixing Cause 5: Reload gapped or delayed data" },
+    { type: "paragraph", html: "If bars are missing rather than merely un-loaded, scroll through the chart history or restart the app to force a full reload, and confirm you're on a live (not delayed) data feed. Once the bar set is complete, indicators stop recalculating." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Meaning", "Fix"],
+      rows: [
+        ["EMA/VWAP jumps when you scroll back", "Indicator recalculated once older bars loaded", "Raise Minimum Number of Bars to Load above the indicator's lookback"],
+        ["Jump returns on every new chart tab", "New tabs reverted to the low default bar count", "Save a base template and apply it before adding indicators"],
+        ["Chart zoom/scale resets on tab switch", "Autofit re-fits the price scale on return", "Change the Autofit / Continuously Autofit setting in Advanced Settings"],
+        ["Long-period study still can't warm up", "Bar count still below the study's window", "Increase toward the 9999 maximum for a full buffer"],
+        ["Indicators shift with visible gaps in bars", "Delayed or gapped data, not indicator warmup", "Reload history / restart, confirm a live data feed"],
+        ["Setting won't save", "Change applied to one tab only", "Bake the value into a saved chart template"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "Chart rescaling and jumping indicators are annoying when you're clicking manually, but they get expensive when your entries depend on a chart you're eyeballing at the moment of execution. If your edge is an indicator cross or a VWAP reclaim, PickMyTrade pulls the flaky chart-render step out of the execution loop entirely:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signal-Driven Entries</strong>, orders fire from your TradingView alert logic, not from whatever the Tradovate chart happens to be showing after a rescale, so a jumped indicator never triggers a mis-timed click.",
+        "<strong class='text-white'>Consistent Indicator Context</strong>, your strategy's EMA/VWAP calculation lives in TradingView with your full history, keeping the signal stable no matter how Tradovate re-renders the view.",
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, blocks malformed or wrong-contract orders before they're sent.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors the same validated order across every connected account at once, so you're not re-clicking on chart after chart.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie haben ein sauberes Setup auf ES aufgebaut, wechseln für zwei Sekunden zu einem anderen Chart-Tab, wechseln zurück, und jetzt hat sich der Chart auf einen anderen Zoom neu skaliert, Ihr 50er-EMA sitzt an einer neuen Stelle, und der VWAP ist von Ihrem wichtigen Level abgedriftet. Bei schnellen Futures wie ES oder NQ reicht diese halbe Sekunde &ldquo;Moment, wo ist mein Level hin?&rdquo;, um einen Scalp-Einstieg zu ruinieren. Es ist eine der ärgerlichsten Charting-Eigenheiten von Tradovate und tritt meist in zwei Varianten auf: Der Chart-Zoom oder die Skalierung setzt sich zurück, wenn Sie Tabs oder Zeitrahmen wechseln, und Indikatoren wie EMA und VWAP springen oder werden neu berechnet, wenn Sie zurückscrollen, um ältere Bars zu laden. Beide gehen auf dieselbe Grundursache zurück: Der Chart lädt nicht genug Historie vor, und beide lassen sich in den Charteinstellungen beheben, ohne jemals den Support zu kontaktieren." },
+    {
+      type: "checklist",
+      heading: "Schnell-Checkliste für Chart-Neuskalierung & Indikator-Sprung",
+      items: [
+        "<strong class='text-white'>&ldquo;Minimum Number of Bars to Load&rdquo; erhöhen</strong>, stellen Sie den Wert hoch genug ein, um den längsten Lookback aller Indikatoren im Chart vollständig abzudecken. Ein 200-Perioden-EMA benötigt mindestens 200 Bars, plus einen ausreichenden Puffer.",
+        "<strong class='text-white'>Ein Basis-Chart-Template speichern</strong>, erstellen Sie ein Template mit Ihrer bevorzugten Bar-Anzahl und wenden Sie es an, bevor Sie Indikatoren hinzufügen, damit jeder neue Tab mit genug Historie startet.",
+        "<strong class='text-white'>Prüfen, ob der Wert wirklich gespeichert wurde</strong>, öffnen Sie die Charteinstellungen erneut und prüfen Sie, ob die Zahl gespeichert ist. Neue Tabs fallen gerne auf den niedrigen Standard zurück.",
+        "<strong class='text-white'>Ihre Autofit / Continuously Autofit-Einstellung prüfen</strong>, diese steuert, ob sich der Chart nach dem Scrollen oder Wechseln neu skaliert, und ist der Hebel für die Hälfte des Problems, bei der &ldquo;der Zoom sich ständig zurücksetzt&rdquo;.",
+        "<strong class='text-white'>Verzögerte oder lückenhafte Daten ausschließen</strong>, fehlen tatsächlich Bars, springen Indikatoren aus einem anderen Grund. Laden Sie die Historie zuerst neu.",
+        "<strong class='text-white'>Indikatoren erst nach dem Laden der Historie neu hinzufügen</strong>, nicht vorher, damit sie sich am vollständigen Bar-Bestand einlaufen.",
+      ],
+    },
+    { type: "heading", text: "Was „Chart-Neuskalierung & Indikator-Sprung beim Wechseln“ wirklich bedeutet" },
+    { type: "paragraph", html: "Hier gibt es keine Pop-up-Fehlermeldung, das Symptom ist der Fehler. Zwei verschiedene Verhaltensweisen werden unter demselben Begriff zusammengefasst." },
+    { type: "paragraph", html: "Das erste ist die Neuskalierung. Sie wechseln zu einem anderen Tab, einem anderen Zeitrahmen oder einem anderen Symbol, kommen dann zurück, und der Chart ist auf eine andere vertikale Skala oder Zoomstufe gesprungen, statt die Ansicht zu behalten, die Sie verlassen haben. Ihre eingezeichneten Level sind noch da, aber die Preisachse hat sich neu angepasst, sodass alles verschoben aussieht." },
+    { type: "paragraph", html: "Das zweite ist der Indikator-Sprung. Gleitende Durchschnitte, ein 50er-EMA ist das klassische Beispiel, und der VWAP werden neu berechnet und verschieben sichtbar ihre Position, wenn Sie nach links scrollen, um ältere Bars zu laden. Der Grund: Diese Indikatoren sind nur so genau wie die Anzahl der Bars, die bei der Berechnung verfügbar sind. Wenn der Chart nur einen dünnen Ausschnitt der Historie geladen hat, ist ein 50-Perioden-EMA, der auf zu wenigen Bars berechnet wurde, schlicht falsch, und sobald mehr Bars nachgeladen werden, wird er neu berechnet und rutscht auf seinen korrekten Wert. Das sieht aus wie ein Sprung. Der VWAP verhält sich genauso, da er sich an den kumulativen Daten der Session orientiert." },
+    { type: "paragraph", html: "Bei Tradovate lassen sich beide Verhaltensweisen auf eine unauffällige Einstellung zurückführen: Minimum Number of Bars to Load. Jeder neue Chart-Tab startet mit einem niedrigen Standardwert von rund 100 Bars, was bei weitem nicht ausreicht, um einen längerfristigen Indikator einzulaufen, sodass der Indikator in dem Moment neu berechnet wird, in dem Sie nach mehr Historie scrollen." },
+    { type: "heading", text: "Hauptursachen für Chart-Neuskalierung & Indikator-Sprung" },
+    { type: "heading", text: "1. Minimum Bars to Load ist zu niedrig eingestellt" },
+    { type: "paragraph", html: "Dies ist die Hauptursache. Jeder neue Chart-Tab startet mit Tradovates Standardwert für Minimum Number of Bars to Load, einem niedrigen Wert um 100. Ist diese Zahl kleiner als der Lookback-Zeitraum eines Indikators, kann der Indikator erst korrekt berechnet werden, wenn Sie manuell zurückscrollen und mehr Bars laden, und genau dann springt er auf seinen tatsächlichen Wert." },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-1.png`, alt: "Tradovate-Charteinstellungen mit dem Feld Minimum Number of Bars to Load, das auf einen niedrigen Standardwert eingestellt ist" },
+    { type: "heading", text: "2. Indikatoren laufen mit zu wenig Historie ein" },
+    { type: "paragraph", html: "Ein gleitender Durchschnitt, EMA oder VWAP benötigt ein vollständiges Fenster an Bars dahinter, um genau zu sein. Bei einem frischen Tab mit nur ~100 Bars kann ein 200-Perioden-EMA für den größten Teil des sichtbaren Bereichs schlicht nicht berechnet werden, sodass Tradovate eine Annäherung zeichnet und diese dann korrigiert, der Sprung, in dem Moment, in dem beim Scrollen ältere Bars sichtbar werden." },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-2.png`, alt: "Tradovate-Chart, bei dem ein 50er-EMA und der VWAP nach dem Laden älterer Bars ihre Position verschieben" },
+    { type: "heading", text: "3. Einstellungen bleiben bei neuen Tabs nicht erhalten" },
+    { type: "paragraph", html: "Selbst nachdem Sie die Bar-Anzahl an einem Chart erhöht haben, kann ein neu geöffneter Chart-Tab auf den Standardwert zurückfallen. Tradovate wendet pro Tab Standardwerte an, sofern Sie Ihre Einstellungen nicht in einem gespeicherten Template festhalten, sodass die Korrektur &ldquo;nicht hält&rdquo; und der Sprung im nächsten geöffneten Fenster sofort wieder auftritt." },
+    { type: "heading", text: "4. Autofit skaliert die Ansicht beim Wechseln neu" },
+    { type: "paragraph", html: "Tradovates Chart-Autofit passt die Preisskala an die jeweils auf dem Bildschirm sichtbaren Bars an. Ist die kontinuierliche Autofit-Funktion aktiviert, löst ein Tab- oder Zeitrahmenwechsel eine Neuanpassung aus, die sich anfühlt, als würde sich der Zoom oder die Skala jedes Mal &ldquo;zurücksetzen&rdquo;, wenn Sie zum Chart zurückkehren." },
+    { type: "heading", text: "5. Verzögerte oder lückenhafte Marktdaten" },
+    { type: "paragraph", html: "Eine separate, aber leicht zu verwechselnde Ursache: Ist der Datenfeed verzögert oder wurden Bars mit Lücken geladen, werden Indikatoren neu berechnet, sobald die fehlenden Bars schließlich eintreffen. Hilft eine höhere Bar-Anzahl nicht weiter, behandeln Sie es als ein Problem beim Laden der Daten und nicht als ein Einlauf-Problem des Indikators." },
+    { type: "heading", text: "So beheben Sie Chart-Neuskalierung & Indikator-Sprung: Schritt für Schritt" },
+    { type: "heading", text: "Ursache 1 & 2 beheben: Minimum Number of Bars to Load erhöhen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Öffnen Sie die Charteinstellungen", html: "Nutzen Sie das Zahnrad-/Einstellungssymbol oder das Drei-Punkte-Menü in der Chart-Toolbar, um zum Chart-Editor zu gelangen." },
+        { title: "Finden Sie das Feld", html: "Suchen Sie das Feld Minimum Number of Bars to Load. Manche Menüs beschriften es schlicht als &ldquo;Minimum Bars to Load.&rdquo;" },
+        { title: "Erhöhen Sie den Wert mit Puffer", html: "Erhöhen Sie ihn so, dass er den längsten Lookback all Ihrer Indikatoren deutlich übersteigt. Falls Sie einen 200-Perioden-EMA nutzen, setzen Sie nicht 200, sondern deutlich mehr, damit der Indikator einen Puffer vor dem sichtbaren Bereich hat." },
+        { title: "Nutzen Sie den Spielraum", html: "Tradovate erlaubt für diesen Wert bis zu 9999, sodass Sie reichlich Spielraum für langfristige Studien haben." },
+        { title: "Übernehmen, speichern und prüfen", html: "Übernehmen und speichern Sie, scrollen Sie dann zurück und prüfen Sie, dass sich EMA und VWAP beim Laden älterer Bars nicht mehr verschieben." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-3.png`, alt: "Tradovate-Chart-Editor mit auf einen höheren Wert angehobenem Minimum Number of Bars to Load" },
+    { type: "heading", text: "Ursache 3 beheben: Mit einem Basis-Chart-Template dauerhaft lösen" },
+    { type: "paragraph", html: "Da neue Tabs auf den Standardwert zurückfallen, ist ein Template die dauerhafte Lösung." },
+    {
+      type: "steps",
+      items: [
+        { title: "Legen Sie zuerst die Bar-Anzahl fest", html: "Stellen Sie an einem Chart zuerst Ihren bevorzugten hohen Wert für Minimum Number of Bars to Load ein, bevor Sie Indikatoren hinzufügen." },
+        { title: "Speichern Sie das Template", html: "Öffnen Sie das Chart-Menü und wählen Sie Templates &rarr; Save Template." },
+        { title: "Benennen Sie es so, dass es zuerst einsortiert wird", html: "Geben Sie ihm einen Namen, der ganz oben in Ihrer Liste einsortiert wird, ein Basis-Template, das so benannt ist, dass es zuerst erscheint, damit es sich für jeden neuen Chart leicht auswählen lässt." },
+        { title: "Vor dem Hinzufügen von Indikatoren anwenden", html: "Wenden Sie dieses Basis-Template bei jedem neuen Chart-Tab an, bevor Sie Ihre Indikatoren hinzufügen. Das stellt sicher, dass die Indikatoren von Anfang an mit der vollen Bar-Anzahl einlaufen und nie springen." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-4.png`, alt: "Tradovate-Chart-Menü mit der Option Templates Save Template" },
+    { type: "heading", text: "Ursache 4 beheben: Autofit zähmen, damit sich die Ansicht nicht mehr zurücksetzt" },
+    { type: "paragraph", html: "Das Zurücksetzen von Zoom/Skala ist ein eigener Hebel, unabhängig von der Bar-Anzahl. In den erweiterten Charteinstellungen bietet Tradovate ein Autofit-Verhalten an, typischerweise eine On-Option, bei der sich der gesamte Chartinhalt (Bars und Indikatoren) nach dem Scrollen oder Zoomen neu anpasst, gegenüber einer Bars-Only-Option, plus einem Continuously-Autofit-Schalter." },
+    {
+      type: "steps",
+      items: [
+        { title: "Öffnen Sie die erweiterten Einstellungen", html: "Öffnen Sie die Advanced Settings des Charts." },
+        { title: "Passen Sie Autofit an", html: "Passen Sie das Autofit-Verhalten an, deaktivieren Sie die kontinuierliche Anpassung aller Elemente, wenn der Chart Ihre manuelle Skalierung beibehalten soll, sobald Sie zum Tab zurückkehren." },
+        { title: "Testen und bei Bedarf melden", html: "Testen Sie es, indem Sie Tabs wechseln und zurückkehren. Passt sich die Ansicht beim Tab-Wechsel immer noch neu an, obwohl Sie die Bar-Anzahl erhöht und Autofit angepasst haben, lohnt es sich, dies mit Ihren Layout-Details beim Tradovate-Support zu melden." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-5.png`, alt: "Erweiterte Tradovate-Charteinstellungen mit den Optionen Autofit On und Bars Only" },
+    { type: "heading", text: "Ursache 5 beheben: Lückenhafte oder verzögerte Daten neu laden" },
+    { type: "paragraph", html: "Fehlen Bars tatsächlich, statt nur nicht geladen zu sein, scrollen Sie durch die Chart-Historie oder starten Sie die App neu, um ein vollständiges Neuladen zu erzwingen, und stellen Sie sicher, dass Sie einen Live- (nicht verzögerten) Datenfeed verwenden. Sobald der Bar-Bestand vollständig ist, hören Indikatoren auf, neu zu berechnen." },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Bedeutung", "Lösung"],
+      rows: [
+        ["EMA/VWAP springt beim Zurückscrollen", "Indikator wurde nach dem Laden älterer Bars neu berechnet", "Minimum Number of Bars to Load über den Lookback des Indikators hinaus erhöhen"],
+        ["Sprung tritt bei jedem neuen Chart-Tab wieder auf", "Neue Tabs sind auf den niedrigen Standardwert zurückgefallen", "Ein Basis-Template speichern und vor dem Hinzufügen von Indikatoren anwenden"],
+        ["Chart-Zoom/-Skala setzt sich beim Tab-Wechsel zurück", "Autofit passt die Preisskala bei der Rückkehr neu an", "Die Autofit- / Continuously-Autofit-Einstellung in den Advanced Settings ändern"],
+        ["Langfristige Studie läuft immer noch nicht ein", "Bar-Anzahl liegt weiterhin unter dem Fenster der Studie", "In Richtung des Maximums von 9999 erhöhen für einen vollen Puffer"],
+        ["Indikatoren verschieben sich bei sichtbaren Lücken in den Bars", "Verzögerte oder lückenhafte Daten, kein Indikator-Einlaufproblem", "Historie neu laden / neu starten, einen Live-Datenfeed bestätigen"],
+        ["Einstellung wird nicht gespeichert", "Änderung wurde nur auf einen Tab angewendet", "Den Wert in einem gespeicherten Chart-Template festhalten"],
+      ],
+    },
+    { type: "heading", text: "Dem mit PickMyTrade vorbeugen" },
+    { type: "paragraph", html: "Chart-Neuskalierungen und springende Indikatoren sind ärgerlich, wenn Sie manuell klicken, aber sie werden teuer, wenn Ihre Einstiege von einem Chart abhängen, den Sie im Moment der Ausführung mit dem Auge prüfen. Wenn Ihr Edge ein Indikator-Crossover oder ein VWAP-Reclaim ist, entfernt PickMyTrade den anfälligen Chart-Render-Schritt vollständig aus der Ausführungskette:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signalgesteuerte Einstiege</strong>, Orders werden aus der Alert-Logik Ihres TradingView-Setups ausgelöst, nicht danach, was der Tradovate-Chart nach einer Neuskalierung gerade anzeigt, sodass ein gesprungener Indikator nie einen fehlerhaft getimten Klick auslöst.",
+        "<strong class='text-white'>Konsistenter Indikator-Kontext</strong>, die EMA-/VWAP-Berechnung Ihrer Strategie läuft in TradingView mit Ihrer vollständigen Historie und hält das Signal stabil, unabhängig davon, wie Tradovate die Ansicht neu rendert.",
+        "<strong class='text-white'>Mengen-/Symbolprüfung</strong>, blockiert fehlerhafte oder falsch zugeordnete Orders, bevor sie gesendet werden.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong>, spiegelt dieselbe validierte Order gleichzeitig über jedes verbundene Konto, sodass Sie nicht Chart für Chart erneut klicken müssen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Tiene un setup limpio preparado en ES, cambia a otra pestaña del gráfico durante dos segundos, vuelve atrás, y ahora el gráfico se ha reescalado a un zoom diferente, su EMA de 50 se encuentra en una posición nueva y el VWAP se ha desviado de su nivel clave. En futuros rápidos como ES o NQ, ese medio segundo de &ldquo;espera, ¿dónde se fue mi nivel?&rdquo; basta para arruinar una entrada de scalping. Es una de las peculiaridades más exasperantes de los gráficos de Tradovate, y suele presentarse de dos formas: el zoom o la escala del gráfico se restablecen al cambiar de pestaña o de marco temporal, y los indicadores como EMA y VWAP saltan o se recalculan al desplazarse hacia atrás para cargar barras más antiguas. Ambos se deben a la misma causa raíz: el gráfico no precarga suficiente historial, y ambos se pueden solucionar en la configuración del gráfico sin necesidad de contactar con soporte." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para el reescalado del gráfico y el salto de indicadores",
+      items: [
+        "<strong class='text-white'>Aumente &ldquo;Minimum Number of Bars to Load&rdquo;</strong>, configúrelo lo bastante alto como para cubrir por completo el lookback más largo de cada indicador del gráfico. Una EMA de 200 periodos necesita al menos 200 barras, más un margen razonable.",
+        "<strong class='text-white'>Guarde una plantilla base del gráfico</strong>, cree una plantilla con su número de barras preferido y aplíquela antes de añadir indicadores, para que cada pestaña nueva se abra con suficiente historial.",
+        "<strong class='text-white'>Confirme que el valor realmente se guardó</strong>, vuelva a abrir la configuración del gráfico y verifique que el número se guardó. Las pestañas nuevas suelen volver al valor predeterminado bajo.",
+        "<strong class='text-white'>Revise su configuración de Autofit / Continuously Autofit</strong>, esta controla si el gráfico se reescala tras desplazarse o cambiar de pestaña, y es la palanca de la mitad del problema en la que &ldquo;el zoom se sigue restableciendo&rdquo;.",
+        "<strong class='text-white'>Descarte datos retrasados o con huecos</strong>, si faltan barras, los indicadores saltan por otro motivo. Recargue primero el historial.",
+        "<strong class='text-white'>Vuelva a añadir los indicadores después de cargar el historial</strong>, no antes, para que se calienten con el conjunto completo de barras.",
+      ],
+    },
+    { type: "heading", text: "Qué significa realmente el “reescalado del gráfico y el salto de indicadores al cambiar”" },
+    { type: "paragraph", html: "Aquí no hay ningún mensaje de error emergente, el síntoma es el problema. Dos comportamientos distintos se agrupan bajo el mismo término." },
+    { type: "paragraph", html: "El primero es el reescalado. Cambia a otra pestaña, a otro marco temporal o a otro símbolo, y al volver, el gráfico ha saltado a una escala vertical o nivel de zoom diferente en lugar de mantener la vista que dejó. Sus niveles dibujados siguen ahí, pero el eje de precios se ha reajustado, así que todo parece haberse desplazado." },
+    { type: "paragraph", html: "El segundo es el salto de indicadores. Las medias móviles, la EMA de 50 es el ejemplo clásico, y el VWAP se recalculan y cambian visiblemente de posición cuando se desplaza hacia la izquierda para cargar barras más antiguas. Esta es la razón: estos indicadores son solo tan precisos como la cantidad de barras disponibles en el momento del cálculo. Si el gráfico solo cargó una porción reducida de historial, una EMA de 50 periodos calculada con muy pocas barras simplemente es incorrecta, y en cuanto llegan más barras, se recalcula y se desplaza a su valor correcto. Eso parece un salto. El VWAP se comporta igual porque se ancla a los datos acumulados de la sesión." },
+    { type: "paragraph", html: "En Tradovate, ambos comportamientos se reducen a una configuración poco visible: Minimum Number of Bars to Load. Cada pestaña de gráfico nueva se abre con un valor predeterminado bajo, alrededor de 100 barras, que no es ni de lejos suficiente para calentar un indicador de periodo más largo, por lo que el indicador se recalcula en el instante en que se desplaza para obtener más historial." },
+    { type: "heading", text: "Principales causas del reescalado del gráfico y el salto de indicadores" },
+    { type: "heading", text: "1. Minimum Bars to Load está configurado demasiado bajo" },
+    { type: "paragraph", html: "Esta es la causa principal. Cada pestaña de gráfico nueva comienza con el valor predeterminado de Tradovate para Minimum Number of Bars to Load, un valor bajo cercano a 100. Si ese número es menor que el periodo de lookback de un indicador, este no puede calcularse correctamente hasta que se desplaza manualmente hacia atrás y se cargan más barras, y es en ese momento cuando salta a su valor real." },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-1.png`, alt: "Configuración del gráfico de Tradovate que muestra el campo Minimum Number of Bars to Load ajustado a un valor predeterminado bajo" },
+    { type: "heading", text: "2. Los indicadores se calientan con muy poco historial" },
+    { type: "paragraph", html: "Una media móvil, EMA o VWAP necesita una ventana completa de barras detrás para ser precisa. En una pestaña recién abierta con solo ~100 barras, una EMA de 200 periodos literalmente no puede calcularse para la mayor parte del rango visible, por lo que Tradovate dibuja una aproximación y luego la corrige, el salto, en el instante en que el desplazamiento revela barras más antiguas." },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-2.png`, alt: "Gráfico de Tradovate que muestra una EMA de 50 y el VWAP cambiando de posición tras cargar barras más antiguas" },
+    { type: "heading", text: "3. La configuración no persiste entre pestañas nuevas" },
+    { type: "paragraph", html: "Incluso después de aumentar el número de barras en un gráfico, al abrir una pestaña de gráfico nueva puede volver al valor predeterminado. Tradovate aplica valores predeterminados por pestaña a menos que integre sus preferencias en una plantilla guardada, por lo que la corrección &ldquo;no se mantiene&rdquo; y el salto vuelve a aparecer de inmediato en la siguiente ventana que abre." },
+    { type: "heading", text: "4. Autofit reescala la vista al cambiar" },
+    { type: "paragraph", html: "El Autofit del gráfico de Tradovate reajusta la escala de precios a las barras que aparecen en pantalla. Cuando está configurado en modo continuo, cambiar de pestaña o de marco temporal desencadena un reajuste, que se percibe como que el zoom o la escala &ldquo;se restablecen&rdquo; cada vez que vuelve al gráfico." },
+    { type: "heading", text: "5. Datos de mercado retrasados o con huecos" },
+    { type: "paragraph", html: "Una causa distinta pero fácil de confundir: si el feed de datos está retrasado o las barras se cargaron con huecos, los indicadores se recalculan cuando finalmente llegan las barras faltantes. Si aumentar el número de barras no ayuda, trátelo como un problema de carga de datos y no como un problema de calentamiento del indicador." },
+    { type: "heading", text: "Cómo solucionar el reescalado del gráfico y el salto de indicadores: paso a paso" },
+    { type: "heading", text: "Solución de las causas 1 y 2: aumentar Minimum Number of Bars to Load" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra la configuración del gráfico", html: "Use el menú de engranaje/configuración o el menú de tres puntos en la barra de herramientas del gráfico para acceder al editor del gráfico." },
+        { title: "Encuentre el campo", html: "Busque el campo Minimum Number of Bars to Load. Algunos menús lo etiquetan simplemente como &ldquo;Minimum Bars to Load.&rdquo;" },
+        { title: "Auméntelo con margen", html: "Auméntelo lo suficiente para superar cómodamente el lookback más largo entre sus indicadores. Si usa una EMA de 200 periodos, no configure 200, configure bastante más para que el indicador tenga margen antes de que empiece el rango visible." },
+        { title: "Aproveche el margen disponible", html: "Tradovate permite este valor hasta 9999, así que tiene amplio margen para estudios de periodo largo." },
+        { title: "Aplique, guarde y confirme", html: "Aplique y guarde, luego desplácese hacia atrás y confirme que la EMA y el VWAP ya no se desplazan al cargar barras más antiguas." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-3.png`, alt: "Editor de gráficos de Tradovate con Minimum Number of Bars to Load aumentado a un valor más alto" },
+    { type: "heading", text: "Solución de la causa 3: fijarlo con una plantilla base del gráfico" },
+    { type: "paragraph", html: "Como las pestañas nuevas vuelven al valor predeterminado, la solución duradera es una plantilla." },
+    {
+      type: "steps",
+      items: [
+        { title: "Configure primero el número de barras", html: "En un gráfico, configure primero su valor preferido de Minimum Number of Bars to Load, antes de añadir cualquier indicador." },
+        { title: "Guarde la plantilla", html: "Abra el menú del gráfico y elija Templates &rarr; Save Template." },
+        { title: "Póngale un nombre que se ordene primero", html: "Asígnele un nombre que se ordene al principio de su lista, una plantilla base nombrada de modo que aparezca primero, para que sea fácil de seleccionar en cada gráfico nuevo." },
+        { title: "Aplíquela antes de añadir indicadores", html: "En cada pestaña de gráfico nueva, aplique esta plantilla base antes de añadir sus indicadores. Eso garantiza que los indicadores se calienten con el número completo de barras desde el inicio, para que nunca salten." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-4.png`, alt: "Menú del gráfico de Tradovate que muestra la opción Templates Save Template" },
+    { type: "heading", text: "Solución de la causa 4: controlar Autofit para que la vista deje de restablecerse" },
+    { type: "paragraph", html: "El restablecimiento de zoom/escala es una palanca independiente del número de barras. En la configuración avanzada del gráfico, Tradovate expone el comportamiento de autofit, normalmente una opción On, en la que todo el contenido del gráfico (barras e indicadores) se reajusta tras desplazarse o hacer zoom, frente a una opción Bars Only, además de un interruptor Continuously Autofit." },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra la configuración avanzada", html: "Abra las Advanced Settings del gráfico." },
+        { title: "Ajuste Autofit", html: "Ajuste el comportamiento de Autofit, desactive el reajuste continuo de todo si quiere que el gráfico mantenga su escala manual al volver a la pestaña." },
+        { title: "Pruebe y, si hace falta, informe", html: "Pruebe cambiando de pestaña y volviendo. Si la vista se sigue reajustando al cambiar de pestaña incluso después de aumentar el número de barras y ajustar autofit, vale la pena reportarlo al soporte de Tradovate con los detalles de su diseño." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-5.png`, alt: "Configuración avanzada del gráfico de Tradovate mostrando las opciones Autofit On y Bars Only" },
+    { type: "heading", text: "Solución de la causa 5: recargar datos con huecos o retrasados" },
+    { type: "paragraph", html: "Si faltan barras en lugar de simplemente no haberse cargado, desplácese por el historial del gráfico o reinicie la aplicación para forzar una recarga completa, y confirme que está usando un feed de datos en vivo (no retrasado). Una vez que el conjunto de barras esté completo, los indicadores dejan de recalcularse." },
+    { type: "heading", text: "Tabla de resolución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Significado", "Solución"],
+      rows: [
+        ["La EMA/VWAP salta al desplazarse hacia atrás", "El indicador se recalculó al cargar barras más antiguas", "Aumente Minimum Number of Bars to Load por encima del lookback del indicador"],
+        ["El salto vuelve a aparecer en cada pestaña de gráfico nueva", "Las pestañas nuevas volvieron al número de barras predeterminado bajo", "Guarde una plantilla base y aplíquela antes de añadir indicadores"],
+        ["El zoom/escala del gráfico se restablece al cambiar de pestaña", "Autofit reajusta la escala de precios al volver", "Cambie la configuración de Autofit / Continuously Autofit en Advanced Settings"],
+        ["Un estudio de periodo largo aún no se calienta", "El número de barras sigue por debajo de la ventana del estudio", "Auméntelo hacia el máximo de 9999 para un margen completo"],
+        ["Los indicadores se desplazan con huecos visibles en las barras", "Datos retrasados o con huecos, no un problema de calentamiento del indicador", "Recargue el historial / reinicie, confirme un feed de datos en vivo"],
+        ["La configuración no se guarda", "El cambio se aplicó solo a una pestaña", "Integre el valor en una plantilla de gráfico guardada"],
+      ],
+    },
+    { type: "heading", text: "Prevenga esto con PickMyTrade" },
+    { type: "paragraph", html: "El reescalado del gráfico y los indicadores que saltan son molestos cuando hace clic manualmente, pero se vuelven costosos cuando sus entradas dependen de un gráfico que está observando en el momento de la ejecución. Si su ventaja es un cruce de indicadores o una recuperación del VWAP, PickMyTrade elimina por completo el paso propenso a fallos del renderizado del gráfico del ciclo de ejecución:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Entradas guiadas por señales</strong>, las órdenes se disparan desde la lógica de alertas de su TradingView, no desde lo que el gráfico de Tradovate esté mostrando tras un reescalado, así que un indicador que salta nunca provoca un clic mal sincronizado.",
+        "<strong class='text-white'>Contexto de indicadores consistente</strong>, el cálculo de EMA/VWAP de su estrategia vive en TradingView con su historial completo, manteniendo la señal estable sin importar cómo Tradovate vuelva a renderizar la vista.",
+        "<strong class='text-white'>Validación de cantidad/símbolo</strong>, bloquea órdenes mal formadas o con el contrato equivocado antes de enviarlas.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, refleja la misma orden validada en cada cuenta conectada a la vez, para que no tenga que volver a hacer clic gráfico tras gráfico.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous avez un setup impeccable en place sur ES, vous basculez vers un autre onglet de graphique pendant deux secondes, vous revenez, et voilà que le graphique s'est redimensionné sur un zoom différent, votre EMA 50 se trouve à un nouvel endroit, et le VWAP s'est écarté de votre niveau clé. Sur des futures rapides comme ES ou NQ, cette demi-seconde de &ldquo;attends, où est passé mon niveau ?&rdquo; suffit à ruiner une entrée en scalping. C'est l'une des particularités les plus exaspérantes du graphique Tradovate, et elle se présente généralement sous deux formes : le zoom ou l'échelle du graphique se réinitialise lorsque vous changez d'onglet ou d'unité de temps, et des indicateurs comme l'EMA et le VWAP sautent ou se recalculent lorsque vous faites défiler en arrière pour charger des bougies plus anciennes. Les deux ont la même cause profonde : le graphique ne précharge pas assez d'historique, et les deux se corrigent dans les paramètres du graphique sans jamais avoir à contacter le support." },
+    {
+      type: "checklist",
+      heading: "Check-list rapide pour le redimensionnement du graphique et le saut des indicateurs",
+      items: [
+        "<strong class='text-white'>Augmentez &ldquo;Minimum Number of Bars to Load&rdquo;</strong>, réglez-le suffisamment haut pour couvrir entièrement le lookback le plus long de chaque indicateur du graphique. Une EMA à 200 périodes nécessite au moins 200 bougies, plus une marge confortable.",
+        "<strong class='text-white'>Enregistrez un modèle de graphique de base</strong>, créez un modèle avec le nombre de bougies souhaité et appliquez-le avant d'ajouter des indicateurs, afin que chaque nouvel onglet s'ouvre avec suffisamment d'historique.",
+        "<strong class='text-white'>Vérifiez que la valeur a bien été enregistrée</strong>, rouvrez les paramètres du graphique et vérifiez que le nombre a été sauvegardé. Les nouveaux onglets adorent revenir à la valeur par défaut basse.",
+        "<strong class='text-white'>Vérifiez votre paramètre Autofit / Continuously Autofit</strong>, celui-ci détermine si le graphique se redimensionne après un défilement ou un changement d'onglet, et c'est le levier de la moitié du problème où &ldquo;le zoom se réinitialise sans cesse&rdquo;.",
+        "<strong class='text-white'>Écartez les données retardées ou avec des trous</strong>, si des bougies manquent réellement, les indicateurs sautent pour une autre raison. Rechargez d'abord l'historique.",
+        "<strong class='text-white'>Rajoutez les indicateurs une fois l'historique chargé</strong>, pas avant, afin qu'ils s'initialisent sur l'ensemble complet de bougies.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie vraiment le « redimensionnement du graphique et le saut des indicateurs au changement »" },
+    { type: "paragraph", html: "Il n'y a ici aucun message d'erreur en pop-up, le symptôme est le bug lui-même. Deux comportements distincts sont regroupés sous le même terme." },
+    { type: "paragraph", html: "Le premier est le redimensionnement. Vous passez à un autre onglet, une autre unité de temps ou un autre symbole, puis vous revenez, et le graphique s'est calé sur une échelle verticale ou un niveau de zoom différent au lieu de conserver la vue que vous aviez laissée. Vos niveaux tracés sont toujours là, mais l'axe des prix s'est réajusté, donc tout semble décalé." },
+    { type: "paragraph", html: "Le second est le saut des indicateurs. Les moyennes mobiles, l'EMA 50 en est l'exemple classique, et le VWAP se recalculent et changent visiblement de position lorsque vous faites défiler vers la gauche pour charger des bougies plus anciennes. Voici pourquoi : ces indicateurs ne sont fiables qu'à la hauteur du nombre de bougies disponibles au moment du calcul. Si le graphique n'a chargé qu'une fine tranche d'historique, une EMA à 50 périodes calculée sur trop peu de bougies est tout simplement fausse, et dès que davantage de bougies arrivent, elle se recalcule et glisse vers sa valeur correcte. Cela ressemble à un saut. Le VWAP se comporte de la même façon car il s'ancre aux données cumulées de la session." },
+    { type: "paragraph", html: "Chez Tradovate, ces deux comportements se résument à un seul paramètre discret : Minimum Number of Bars to Load. Chaque nouvel onglet de graphique s'ouvre avec une valeur par défaut basse, environ 100 bougies, ce qui est très loin de suffire pour initialiser un indicateur à période plus longue, si bien que l'indicateur se recalcule dès que vous faites défiler pour obtenir plus d'historique." },
+    { type: "heading", text: "Principales causes du redimensionnement du graphique et du saut des indicateurs" },
+    { type: "heading", text: "1. Minimum Bars to Load est réglé trop bas" },
+    { type: "paragraph", html: "C'est la cause principale. Chaque nouvel onglet de graphique démarre avec la valeur par défaut de Tradovate pour Minimum Number of Bars to Load, une valeur basse d'environ 100. Si ce nombre est inférieur à la période de lookback d'un indicateur, celui-ci ne peut pas se calculer correctement tant que vous ne faites pas défiler manuellement en arrière pour charger plus de bougies, et c'est à ce moment-là qu'il saute vers sa vraie valeur." },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-1.png`, alt: "Paramètres du graphique Tradovate montrant le champ Minimum Number of Bars to Load réglé sur une valeur par défaut basse" },
+    { type: "heading", text: "2. Les indicateurs s'initialisent sur trop peu d'historique" },
+    { type: "paragraph", html: "Une moyenne mobile, une EMA ou un VWAP a besoin d'une fenêtre complète de bougies derrière lui pour être précis. Sur un onglet fraîchement ouvert avec seulement ~100 bougies, une EMA à 200 périodes ne peut littéralement pas être calculée pour la majeure partie de la plage visible, si bien que Tradovate dessine une approximation puis la corrige, le saut, dès que le défilement révèle des bougies plus anciennes." },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-2.png`, alt: "Graphique Tradovate montrant une EMA 50 et le VWAP changeant de position après le chargement de bougies plus anciennes" },
+    { type: "heading", text: "3. Les paramètres ne persistent pas sur les nouveaux onglets" },
+    { type: "paragraph", html: "Même après avoir augmenté le nombre de bougies sur un graphique, l'ouverture d'un nouvel onglet de graphique peut revenir à la valeur par défaut. Tradovate applique des valeurs par défaut par onglet, sauf si vous intégrez vos préférences dans un modèle enregistré, si bien que la correction &ldquo;ne tient pas&rdquo; et que le saut revient immédiatement dans la prochaine fenêtre que vous ouvrez." },
+    { type: "heading", text: "4. Autofit redimensionne la vue au changement" },
+    { type: "paragraph", html: "L'Autofit du graphique de Tradovate réajuste l'échelle des prix en fonction des bougies affichées à l'écran. Lorsqu'il est réglé sur un ajustement continu, changer d'onglet ou d'unité de temps déclenche un réajustement, qui se traduit par un zoom ou une échelle qui &ldquo;se réinitialise&rdquo; à chaque fois que vous revenez sur le graphique." },
+    { type: "heading", text: "5. Données de marché retardées ou avec des trous" },
+    { type: "paragraph", html: "Une cause distincte mais facile à confondre : si le flux de données est retardé ou si des bougies ont été chargées avec des trous, les indicateurs se recalculent lorsque les bougies manquantes finissent par arriver. Si l'augmentation du nombre de bougies ne résout rien, traitez cela comme un problème de chargement de données plutôt qu'un problème d'initialisation d'indicateur." },
+    { type: "heading", text: "Comment corriger le redimensionnement du graphique et le saut des indicateurs : étape par étape" },
+    { type: "heading", text: "Corriger les causes 1 et 2 : augmenter Minimum Number of Bars to Load" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez les paramètres du graphique", html: "Utilisez l'icône d'engrenage/paramètres ou le menu à trois points de la barre d'outils du graphique pour accéder à l'éditeur du graphique." },
+        { title: "Trouvez le champ", html: "Trouvez le champ Minimum Number of Bars to Load. Certains menus l'appellent simplement &ldquo;Minimum Bars to Load.&rdquo;" },
+        { title: "Augmentez-le avec une marge", html: "Augmentez-le de façon à dépasser confortablement le lookback le plus long parmi vos indicateurs. Si vous utilisez une EMA à 200 périodes, ne réglez pas 200, réglez bien au-dessus pour que l'indicateur dispose d'une marge avant le début de la plage visible." },
+        { title: "Profitez de la marge disponible", html: "Tradovate autorise cette valeur jusqu'à 9999, vous disposez donc d'une large marge pour les études à longue période." },
+        { title: "Appliquez, enregistrez et vérifiez", html: "Appliquez et enregistrez, puis faites défiler en arrière et vérifiez que l'EMA et le VWAP ne se déplacent plus lors du chargement de bougies plus anciennes." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-3.png`, alt: "Éditeur de graphique Tradovate avec Minimum Number of Bars to Load augmenté à une valeur plus élevée" },
+    { type: "heading", text: "Corriger la cause 3 : la fixer avec un modèle de graphique de base" },
+    { type: "paragraph", html: "Puisque les nouveaux onglets reviennent à la valeur par défaut, la solution durable est un modèle." },
+    {
+      type: "steps",
+      items: [
+        { title: "Réglez d'abord le nombre de bougies", html: "Sur un graphique, réglez d'abord votre valeur préférée pour Minimum Number of Bars to Load, avant d'ajouter le moindre indicateur." },
+        { title: "Enregistrez le modèle", html: "Ouvrez le menu du graphique et choisissez Templates &rarr; Save Template." },
+        { title: "Nommez-le pour qu'il apparaisse en premier", html: "Donnez-lui un nom qui se classe en haut de votre liste, un modèle de base nommé de façon à apparaître en premier, afin qu'il soit facile à sélectionner pour chaque nouveau graphique." },
+        { title: "Appliquez-le avant d'ajouter des indicateurs", html: "Pour chaque nouvel onglet de graphique, appliquez ce modèle de base avant d'ajouter vos indicateurs. Cela garantit que les indicateurs s'initialisent dès le départ sur le nombre complet de bougies, afin qu'ils ne sautent jamais." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-4.png`, alt: "Menu du graphique Tradovate montrant l'option Templates Save Template" },
+    { type: "heading", text: "Corriger la cause 4 : dompter Autofit pour que la vue arrête de se réinitialiser" },
+    { type: "paragraph", html: "La réinitialisation du zoom/de l'échelle est un levier distinct du nombre de bougies. Dans les paramètres avancés du graphique, Tradovate expose le comportement d'autofit, généralement une option On, où tout le contenu du graphique (bougies et indicateurs) se réajuste après un défilement ou un zoom, contre une option Bars Only, ainsi qu'un interrupteur Continuously Autofit." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez les paramètres avancés", html: "Ouvrez les Advanced Settings du graphique." },
+        { title: "Ajustez Autofit", html: "Ajustez le comportement d'Autofit, désactivez l'ajustement continu de tous les éléments si vous voulez que le graphique conserve votre échelle manuelle lorsque vous revenez sur l'onglet." },
+        { title: "Testez et signalez si nécessaire", html: "Testez en changeant d'onglet puis en revenant. Si la vue se réajuste toujours au changement d'onglet même après avoir augmenté le nombre de bougies et ajusté autofit, il vaut la peine de le signaler au support Tradovate avec les détails de votre configuration." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-5.png`, alt: "Paramètres avancés du graphique Tradovate montrant les options Autofit On et Bars Only" },
+    { type: "heading", text: "Corriger la cause 5 : recharger les données avec des trous ou retardées" },
+    { type: "paragraph", html: "Si des bougies manquent réellement plutôt que d'être simplement non chargées, faites défiler l'historique du graphique ou redémarrez l'application pour forcer un rechargement complet, et vérifiez que vous êtes sur un flux de données en direct (non retardé). Une fois l'ensemble de bougies complet, les indicateurs cessent de se recalculer." },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Signification", "Solution"],
+      rows: [
+        ["L'EMA/VWAP saute lors du défilement en arrière", "L'indicateur s'est recalculé après le chargement de bougies plus anciennes", "Augmentez Minimum Number of Bars to Load au-delà du lookback de l'indicateur"],
+        ["Le saut revient à chaque nouvel onglet de graphique", "Les nouveaux onglets sont revenus au nombre de bougies par défaut", "Enregistrez un modèle de base et appliquez-le avant d'ajouter des indicateurs"],
+        ["Le zoom/l'échelle du graphique se réinitialise au changement d'onglet", "Autofit réajuste l'échelle des prix au retour", "Modifiez le paramètre Autofit / Continuously Autofit dans Advanced Settings"],
+        ["Une étude à longue période ne s'initialise toujours pas", "Le nombre de bougies reste inférieur à la fenêtre de l'étude", "Augmentez-le vers le maximum de 9999 pour une marge complète"],
+        ["Les indicateurs se déplacent avec des trous visibles dans les bougies", "Données retardées ou avec des trous, pas un problème d'initialisation d'indicateur", "Rechargez l'historique / redémarrez, vérifiez un flux de données en direct"],
+        ["Le paramètre ne s'enregistre pas", "Le changement n'a été appliqué qu'à un seul onglet", "Intégrez la valeur dans un modèle de graphique enregistré"],
+      ],
+    },
+    { type: "heading", text: "Prévenir ce problème avec PickMyTrade" },
+    { type: "paragraph", html: "Le redimensionnement du graphique et les indicateurs qui sautent sont agaçants lorsque vous cliquez manuellement, mais ils deviennent coûteux lorsque vos entrées dépendent d'un graphique que vous observez au moment de l'exécution. Si votre avantage repose sur un croisement d'indicateur ou une reconquête du VWAP, PickMyTrade retire entièrement l'étape fragile du rendu du graphique de la boucle d'exécution :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Entrées pilotées par signal</strong>, les ordres se déclenchent à partir de la logique d'alerte de votre TradingView, et non de ce que le graphique Tradovate affiche après un redimensionnement, de sorte qu'un indicateur qui saute ne déclenche jamais un clic mal synchronisé.",
+        "<strong class='text-white'>Contexte d'indicateur cohérent</strong>, le calcul de l'EMA/VWAP de votre stratégie vit dans TradingView avec votre historique complet, ce qui maintient le signal stable, quelle que soit la façon dont Tradovate réaffiche la vue.",
+        "<strong class='text-white'>Validation de la quantité/du symbole</strong>, bloque les ordres malformés ou sur le mauvais contrat avant leur envoi.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, reflète le même ordre validé sur chaque compte connecté à la fois, pour que vous n'ayez pas à recliquer graphique après graphique.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Hai un setup pulito pronto su ES, passi a un'altra scheda del grafico per due secondi, torni indietro, e ora il grafico si è riscalato su uno zoom diverso, la tua EMA a 50 periodi si trova in una nuova posizione e il VWAP si è spostato dal tuo livello chiave. Sui futures veloci come ES o NQ, quel mezzo secondo di &ldquo;aspetta, dov'è finito il mio livello?&rdquo; basta a rovinare un ingresso in scalping. È una delle stranezze più esasperanti del grafico Tradovate, e di solito si presenta in due varianti: lo zoom o la scala del grafico si azzerano quando cambi scheda o time frame, e indicatori come EMA e VWAP saltano o vengono ricalcolati quando scorri indietro per caricare barre più vecchie. Entrambi derivano dalla stessa causa di fondo: il grafico non precarica abbastanza storico, ed entrambi si risolvono nelle impostazioni del grafico senza mai dover contattare l'assistenza." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per la riscalatura del grafico e il salto degli indicatori",
+      items: [
+        "<strong class='text-white'>Aumenta &ldquo;Minimum Number of Bars to Load&rdquo;</strong>, impostalo abbastanza alto da coprire completamente il lookback più lungo di ogni indicatore nel grafico. Una EMA a 200 periodi richiede almeno 200 barre, più un margine adeguato.",
+        "<strong class='text-white'>Salva un template base del grafico</strong>, crea un template con il numero di barre preferito e applicalo prima di aggiungere indicatori, così ogni nuova scheda si apre con storico sufficiente.",
+        "<strong class='text-white'>Conferma che il valore sia stato effettivamente salvato</strong>, riapri le impostazioni del grafico e verifica che il numero sia stato salvato. Le nuove schede tendono a tornare al valore predefinito basso.",
+        "<strong class='text-white'>Controlla l'impostazione Autofit / Continuously Autofit</strong>, questa determina se il grafico si riscala dopo lo scorrimento o il cambio scheda, ed è la leva per la metà del problema in cui &ldquo;lo zoom continua ad azzerarsi&rdquo;.",
+        "<strong class='text-white'>Escludi dati ritardati o con lacune</strong>, se mancano davvero delle barre, gli indicatori saltano per un motivo diverso. Ricarica prima lo storico.",
+        "<strong class='text-white'>Riaggiungi gli indicatori dopo il caricamento dello storico</strong>, non prima, così si inizializzano sull'intero set di barre.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa davvero “riscalatura del grafico e salto degli indicatori al cambio scheda”" },
+    { type: "paragraph", html: "Qui non c'è nessun messaggio di errore a comparsa, il sintomo è il problema. Due comportamenti distinti vengono raggruppati sotto lo stesso termine." },
+    { type: "paragraph", html: "Il primo è la riscalatura. Passi a un'altra scheda, a un altro time frame o a un altro simbolo, poi torni indietro, e il grafico è scattato su una scala verticale o un livello di zoom diverso invece di mantenere la vista che avevi lasciato. I tuoi livelli disegnati sono ancora lì, ma l'asse dei prezzi si è riadattato, quindi tutto appare spostato." },
+    { type: "paragraph", html: "Il secondo è il salto degli indicatori. Le medie mobili, la EMA a 50 periodi è l'esempio classico, e il VWAP vengono ricalcolati e cambiano visibilmente posizione quando scorri verso sinistra per caricare barre più vecchie. Ecco il motivo: questi indicatori sono precisi solo quanto il numero di barre disponibili al momento del calcolo. Se il grafico ha caricato solo una porzione ridotta di storico, una EMA a 50 periodi calcolata su troppo poche barre è semplicemente sbagliata, e non appena arrivano più barre, viene ricalcolata e si sposta sul valore corretto. Questo sembra un salto. Il VWAP si comporta allo stesso modo perché è ancorato ai dati cumulativi della sessione." },
+    { type: "paragraph", html: "In Tradovate, entrambi i comportamenti dipendono da un'unica impostazione poco visibile: Minimum Number of Bars to Load. Ogni nuova scheda del grafico si apre con un valore predefinito basso, circa 100 barre, che è ben lontano dal bastare per inizializzare un indicatore a periodo più lungo, quindi l'indicatore viene ricalcolato nell'istante in cui scorri per ottenere più storico." },
+    { type: "heading", text: "Le principali cause di riscalatura del grafico e salto degli indicatori" },
+    { type: "heading", text: "1. Minimum Bars to Load è impostato troppo basso" },
+    { type: "paragraph", html: "Questa è la causa principale. Ogni nuova scheda del grafico parte con il valore predefinito di Tradovate per Minimum Number of Bars to Load, un valore basso intorno a 100. Se questo numero è inferiore al periodo di lookback di un indicatore, l'indicatore non può calcolarsi correttamente finché non scorri manualmente indietro e carichi più barre, ed è in quel momento che salta al suo valore reale." },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-1.png`, alt: "Impostazioni del grafico Tradovate che mostrano il campo Minimum Number of Bars to Load impostato su un valore predefinito basso" },
+    { type: "heading", text: "2. Gli indicatori si inizializzano con troppo poco storico" },
+    { type: "paragraph", html: "Una media mobile, una EMA o un VWAP ha bisogno di una finestra completa di barre alle spalle per essere accurato. Su una scheda appena aperta con solo ~100 barre, una EMA a 200 periodi letteralmente non può essere calcolata per la maggior parte dell'intervallo visibile, quindi Tradovate disegna un'approssimazione e poi la corregge, il salto, nell'istante in cui lo scorrimento rivela barre più vecchie." },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-2.png`, alt: "Grafico Tradovate che mostra una EMA a 50 periodi e il VWAP che cambiano posizione dopo il caricamento di barre più vecchie" },
+    { type: "heading", text: "3. Le impostazioni non persistono nelle nuove schede" },
+    { type: "paragraph", html: "Anche dopo aver aumentato il numero di barre su un grafico, l'apertura di una nuova scheda del grafico può tornare al valore predefinito. Tradovate applica valori predefiniti per ogni scheda a meno che tu non integri le tue preferenze in un template salvato, quindi la correzione &ldquo;non tiene&rdquo; e il salto ritorna subito nella finestra successiva che apri." },
+    { type: "heading", text: "4. Autofit riscala la vista al cambio scheda" },
+    { type: "paragraph", html: "L'Autofit del grafico Tradovate riadatta la scala dei prezzi alle barre visualizzate sullo schermo. Quando è impostato sull'autofit continuo, cambiare scheda o time frame attiva un riadattamento, che si percepisce come uno zoom o una scala che &ldquo;si azzerano&rdquo; ogni volta che torni al grafico." },
+    { type: "heading", text: "5. Dati di mercato ritardati o con lacune" },
+    { type: "paragraph", html: "Una causa distinta ma facile da confondere: se il feed dati è ritardato o le barre sono state caricate con lacune, gli indicatori vengono ricalcolati quando le barre mancanti arrivano finalmente. Se aumentare il numero di barre non aiuta, trattalo come un problema di caricamento dati piuttosto che di inizializzazione dell'indicatore." },
+    { type: "heading", text: "Come risolvere la riscalatura del grafico e il salto degli indicatori: passo dopo passo" },
+    { type: "heading", text: "Risolvere le cause 1 e 2: aumentare Minimum Number of Bars to Load" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apri le impostazioni del grafico", html: "Usa l'icona a ingranaggio/impostazioni o il menu a tre puntini sulla toolbar del grafico per accedere all'editor del grafico." },
+        { title: "Trova il campo", html: "Trova il campo Minimum Number of Bars to Load. Alcuni menu lo etichettano semplicemente come &ldquo;Minimum Bars to Load.&rdquo;" },
+        { title: "Aumentalo con un margine", html: "Aumentalo abbastanza da superare comodamente il lookback più lungo tra i tuoi indicatori. Se usi una EMA a 200 periodi, non impostare 200, imposta un valore ben superiore così l'indicatore ha un margine prima che inizi l'intervallo visibile." },
+        { title: "Sfrutta il margine disponibile", html: "Tradovate consente questo valore fino a 9999, quindi hai ampio margine per gli studi a lungo periodo." },
+        { title: "Applica, salva e conferma", html: "Applica e salva, poi scorri indietro e conferma che EMA e VWAP non si spostino più al caricamento di barre più vecchie." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-3.png`, alt: "Editor del grafico Tradovate con Minimum Number of Bars to Load aumentato a un valore più alto" },
+    { type: "heading", text: "Risolvere la causa 3: renderla stabile con un template base del grafico" },
+    { type: "paragraph", html: "Poiché le nuove schede tornano al valore predefinito, la soluzione duratura è un template." },
+    {
+      type: "steps",
+      items: [
+        { title: "Imposta prima il numero di barre", html: "Su un grafico, imposta prima il tuo valore preferito per Minimum Number of Bars to Load, prima di aggiungere qualsiasi indicatore." },
+        { title: "Salva il template", html: "Apri il menu del grafico e scegli Templates &rarr; Save Template." },
+        { title: "Assegnagli un nome che lo ordini per primo", html: "Assegnagli un nome che si posizioni in cima alla tua lista, un template base nominato in modo da comparire per primo, così è facile da selezionare per ogni nuovo grafico." },
+        { title: "Applicalo prima di aggiungere indicatori", html: "Per ogni nuova scheda del grafico, applica questo template base prima di aggiungere i tuoi indicatori. Questo garantisce che gli indicatori si inizializzino fin dall'inizio sul numero completo di barre, così non saltano mai." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-4.png`, alt: "Menu del grafico Tradovate che mostra l'opzione Templates Save Template" },
+    { type: "heading", text: "Risolvere la causa 4: domare Autofit così la vista smette di azzerarsi" },
+    { type: "paragraph", html: "L'azzeramento di zoom/scala è una leva separata dal numero di barre. Nelle impostazioni avanzate del grafico, Tradovate espone il comportamento di autofit, tipicamente un'opzione On, in cui tutto il contenuto del grafico (barre e indicatori) si riadatta dopo lo scorrimento o lo zoom, contro un'opzione Bars Only, più un interruttore Continuously Autofit." },
+    {
+      type: "steps",
+      items: [
+        { title: "Apri le impostazioni avanzate", html: "Apri le Advanced Settings del grafico." },
+        { title: "Regola Autofit", html: "Regola il comportamento di Autofit, disattiva l'autofit continuo di tutti gli elementi se vuoi che il grafico mantenga la tua scala manuale quando torni sulla scheda." },
+        { title: "Testa e segnala se necessario", html: "Testa cambiando scheda e tornando indietro. Se la vista si riadatta ancora al cambio scheda anche dopo aver aumentato il numero di barre e regolato autofit, vale la pena segnalarlo al supporto Tradovate con i dettagli del tuo layout." },
+      ],
+    },
+    { type: "image", src: `${IMG}/chart-zoom-scale-reset-indicators-5.png`, alt: "Impostazioni avanzate del grafico Tradovate che mostrano le opzioni Autofit On e Bars Only" },
+    { type: "heading", text: "Risolvere la causa 5: ricaricare dati con lacune o ritardati" },
+    { type: "paragraph", html: "Se le barre mancano davvero anziché essere semplicemente non caricate, scorri lo storico del grafico o riavvia l'app per forzare un ricaricamento completo, e conferma di essere su un feed dati live (non ritardato). Una volta che il set di barre è completo, gli indicatori smettono di ricalcolarsi." },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Significato", "Soluzione"],
+      rows: [
+        ["EMA/VWAP salta quando scorri indietro", "L'indicatore è stato ricalcolato dopo il caricamento di barre più vecchie", "Aumenta Minimum Number of Bars to Load oltre il lookback dell'indicatore"],
+        ["Il salto si ripresenta a ogni nuova scheda del grafico", "Le nuove schede sono tornate al numero di barre predefinito basso", "Salva un template base e applicalo prima di aggiungere indicatori"],
+        ["Lo zoom/la scala del grafico si azzera al cambio scheda", "Autofit riadatta la scala dei prezzi al ritorno", "Modifica l'impostazione Autofit / Continuously Autofit in Advanced Settings"],
+        ["Uno studio a lungo periodo continua a non inizializzarsi", "Il numero di barre è ancora sotto la finestra dello studio", "Aumenta verso il massimo di 9999 per un margine completo"],
+        ["Gli indicatori si spostano con lacune visibili nelle barre", "Dati ritardati o con lacune, non un problema di inizializzazione dell'indicatore", "Ricarica lo storico / riavvia, conferma un feed dati live"],
+        ["L'impostazione non si salva", "La modifica è stata applicata a una sola scheda", "Integra il valore in un template del grafico salvato"],
+      ],
+    },
+    { type: "heading", text: "Previeni tutto questo con PickMyTrade" },
+    { type: "paragraph", html: "La riscalatura del grafico e gli indicatori che saltano sono fastidiosi quando fai clic manualmente, ma diventano costosi quando i tuoi ingressi dipendono da un grafico che stai osservando nel momento dell'esecuzione. Se il tuo vantaggio è un incrocio di indicatori o un recupero del VWAP, PickMyTrade rimuove completamente il fragile passaggio di rendering del grafico dal ciclo di esecuzione:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ingressi guidati dal segnale</strong>, gli ordini partono dalla logica di alert del tuo TradingView, non da ciò che il grafico Tradovate sta mostrando dopo una riscalatura, così un indicatore che salta non attiva mai un clic mal temporizzato.",
+        "<strong class='text-white'>Contesto indicatori coerente</strong>, il calcolo EMA/VWAP della tua strategia vive in TradingView con il tuo storico completo, mantenendo il segnale stabile indipendentemente da come Tradovate ridisegna la vista.",
+        "<strong class='text-white'>Validazione quantità/simbolo</strong>, blocca ordini malformati o con il contratto sbagliato prima che vengano inviati.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replica lo stesso ordine convalidato su ogni account collegato contemporaneamente, così non devi ricliccare grafico dopo grafico.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade on Stable Signals, Not Jumpy Charts", de: "Handeln Sie mit stabilen Signalen, nicht mit sprunghaften Charts", es: "Opere con señales estables, no con gráficos que saltan", fr: "Négociez sur des signaux stables, pas sur des graphiques instables", it: "Fai trading su segnali stabili, non su grafici che saltano" },
+  ctaText: { en: "Link your TradingView alerts to Tradovate so your entries fire from your indicator logic, never from a chart that just rescaled.", de: "Verknüpfen Sie Ihre TradingView-Alerts mit Tradovate, damit Ihre Einstiege aus der Logik Ihrer Indikatoren ausgelöst werden, nie aus einem Chart, der sich gerade neu skaliert hat.", es: "Vincule sus alertas de TradingView con Tradovate para que sus entradas se disparen desde la lógica de sus indicadores, nunca desde un gráfico que acaba de reescalarse.", fr: "Reliez vos alertes TradingView à Tradovate afin que vos entrées se déclenchent à partir de la logique de vos indicateurs, jamais à partir d'un graphique qui vient de se redimensionner.", it: "Collega i tuoi alert di TradingView a Tradovate così i tuoi ingressi partono dalla logica dei tuoi indicatori, mai da un grafico appena riscalato." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvia la tua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why do my EMA and VWAP move when I scroll back on a Tradovate chart?", a: "They only had a shallow slice of bars to calculate on. When you scroll left and more history loads, the indicator recomputes on the fuller dataset and snaps to its correct value, which looks like it jumped. Raising the Minimum Number of Bars to Load so it exceeds the indicator's period stops this." },
+    { q: "What is “Minimum Number of Bars to Load” and where do I find it?", a: "It's a chart setting that controls how many historical bars Tradovate preloads when the chart opens. You'll find it in the chart's settings/editor. Each new tab starts at a low default of around 100 bars, so you raise it manually or bake a higher value into a template." },
+    { q: "What's the maximum I can set it to?", a: "Tradovate raised the maximum for Minimum Number of Bars to Load to 9999, so you have room for even long-period studies. Set it high enough to fully cover your longest indicator lookback plus a buffer." },
+    { q: "I raised the bar count but new charts still jump. Why?", a: "New chart tabs revert to the default. Save your preferred bar count as a base chart template and apply that template before adding indicators to each new chart, so the setting persists." },
+    { q: "How do I stop the chart zoom from resetting every time I switch tabs?", a: "That's the Autofit behavior, separate from bar count. In the chart's Advanced Settings, change the Autofit / Continuously Autofit option so the chart doesn't re-fit the scale when you return to the tab. If it still resets after that, report it to Tradovate support with your layout." },
+    { q: "Does turning off Continuously Autofit fix the indicator jump too?", a: "No, autofit only affects how the price scale re-fits the view. The indicator jump is a bar-count problem, so you need to raise Minimum Number of Bars to Load (and use a template) to fix that part." },
+    { q: "Could this actually be a data problem instead?", a: "Yes. If bars load with visible gaps or the feed is delayed, indicators recalculate when the missing data arrives. If more bars don't help, reload the chart history or restart the app and confirm you're on a live data feed." },
+  ], de: [
+    { q: "Warum bewegen sich mein EMA und VWAP, wenn ich in einem Tradovate-Chart zurückscrolle?", a: "Sie hatten nur einen dünnen Ausschnitt an Bars zur Berechnung zur Verfügung. Wenn Sie nach links scrollen und mehr Historie geladen wird, berechnet der Indikator auf Basis des vollständigeren Datensatzes neu und springt auf seinen korrekten Wert, was wie ein Sprung aussieht. Das Erhöhen von Minimum Number of Bars to Load über die Periode des Indikators hinaus verhindert das." },
+    { q: "Was ist „Minimum Number of Bars to Load“ und wo finde ich es?", a: "Es ist eine Charteinstellung, die steuert, wie viele historische Bars Tradovate beim Öffnen des Charts vorlädt. Sie finden sie in den Charteinstellungen/im Chart-Editor. Jeder neue Tab startet mit einem niedrigen Standardwert von rund 100 Bars, den Sie manuell erhöhen oder in einem Template höher festlegen können." },
+    { q: "Auf welchen Maximalwert kann ich es einstellen?", a: "Tradovate hat das Maximum für Minimum Number of Bars to Load auf 9999 erhöht, sodass Sie sogar für langfristige Studien Spielraum haben. Stellen Sie den Wert so hoch ein, dass er den längsten Lookback Ihres Indikators plus Puffer vollständig abdeckt." },
+    { q: "Ich habe die Bar-Anzahl erhöht, aber neue Charts springen trotzdem. Warum?", a: "Neue Chart-Tabs fallen auf den Standardwert zurück. Speichern Sie Ihre bevorzugte Bar-Anzahl als Basis-Chart-Template und wenden Sie dieses Template an, bevor Sie bei jedem neuen Chart Indikatoren hinzufügen, damit die Einstellung erhalten bleibt." },
+    { q: "Wie verhindere ich, dass sich der Chart-Zoom bei jedem Tab-Wechsel zurücksetzt?", a: "Das ist das Autofit-Verhalten, unabhängig von der Bar-Anzahl. Ändern Sie in den Advanced Settings des Charts die Option Autofit / Continuously Autofit, damit sich der Chart bei der Rückkehr zum Tab nicht neu skaliert. Setzt er sich danach immer noch zurück, melden Sie dies mit Ihren Layout-Details beim Tradovate-Support." },
+    { q: "Behebt das Deaktivieren von Continuously Autofit auch den Indikator-Sprung?", a: "Nein, Autofit betrifft nur, wie sich die Preisskala an die Ansicht anpasst. Der Indikator-Sprung ist ein Problem der Bar-Anzahl, daher müssen Sie Minimum Number of Bars to Load erhöhen (und ein Template verwenden), um diesen Teil zu beheben." },
+    { q: "Könnte dies stattdessen tatsächlich ein Datenproblem sein?", a: "Ja. Werden Bars mit sichtbaren Lücken geladen oder ist der Feed verzögert, berechnen sich Indikatoren neu, sobald die fehlenden Daten eintreffen. Hilft eine höhere Bar-Anzahl nicht, laden Sie die Chart-Historie neu oder starten Sie die App neu und bestätigen Sie, dass Sie einen Live-Datenfeed nutzen." },
+  ], es: [
+    { q: "¿Por qué se mueven mi EMA y VWAP cuando me desplazo hacia atrás en un gráfico de Tradovate?", a: "Solo disponían de una porción reducida de barras para calcularse. Cuando se desplaza hacia la izquierda y se carga más historial, el indicador se recalcula con el conjunto de datos más completo y salta a su valor correcto, lo que parece un salto. Aumentar Minimum Number of Bars to Load para que supere el periodo del indicador evita esto." },
+    { q: "¿Qué es “Minimum Number of Bars to Load” y dónde lo encuentro?", a: "Es una configuración del gráfico que controla cuántas barras históricas precarga Tradovate al abrir el gráfico. La encontrará en la configuración/editor del gráfico. Cada pestaña nueva comienza con un valor predeterminado bajo de alrededor de 100 barras, así que puede aumentarlo manualmente o fijar un valor más alto en una plantilla." },
+    { q: "¿Cuál es el máximo al que puedo configurarlo?", a: "Tradovate aumentó el máximo de Minimum Number of Bars to Load a 9999, así que tiene margen incluso para estudios de periodo largo. Configúrelo lo bastante alto como para cubrir por completo el lookback más largo de su indicador más un margen." },
+    { q: "Aumenté el número de barras, pero los gráficos nuevos siguen saltando. ¿Por qué?", a: "Las pestañas de gráfico nuevas vuelven al valor predeterminado. Guarde su número de barras preferido como plantilla base del gráfico y aplique esa plantilla antes de añadir indicadores a cada gráfico nuevo, para que la configuración persista." },
+    { q: "¿Cómo evito que el zoom del gráfico se restablezca cada vez que cambio de pestaña?", a: "Ese es el comportamiento de Autofit, independiente del número de barras. En las Advanced Settings del gráfico, cambie la opción Autofit / Continuously Autofit para que el gráfico no reajuste la escala al volver a la pestaña. Si sigue restableciéndose después de eso, repórtelo al soporte de Tradovate con su diseño." },
+    { q: "¿Desactivar Continuously Autofit también soluciona el salto de indicadores?", a: "No, autofit solo afecta cómo se reajusta la escala de precios a la vista. El salto de indicadores es un problema del número de barras, así que necesita aumentar Minimum Number of Bars to Load (y usar una plantilla) para solucionar esa parte." },
+    { q: "¿Podría tratarse en realidad de un problema de datos?", a: "Sí. Si las barras se cargan con huecos visibles o el feed está retrasado, los indicadores se recalculan cuando llegan los datos faltantes. Si más barras no ayudan, recargue el historial del gráfico o reinicie la aplicación y confirme que está usando un feed de datos en vivo." },
+  ], fr: [
+    { q: "Pourquoi mon EMA et mon VWAP bougent-ils lorsque je fais défiler en arrière sur un graphique Tradovate ?", a: "Ils ne disposaient que d'une fine tranche de bougies pour effectuer le calcul. Lorsque vous faites défiler vers la gauche et que davantage d'historique se charge, l'indicateur se recalcule sur l'ensemble de données plus complet et bascule vers sa valeur correcte, ce qui donne l'impression d'un saut. Augmenter Minimum Number of Bars to Load pour qu'il dépasse la période de l'indicateur résout ce problème." },
+    { q: "Qu'est-ce que « Minimum Number of Bars to Load » et où le trouver ?", a: "C'est un paramètre du graphique qui contrôle le nombre de bougies historiques que Tradovate précharge à l'ouverture du graphique. Vous le trouverez dans les paramètres/l'éditeur du graphique. Chaque nouvel onglet démarre avec une valeur par défaut basse d'environ 100 bougies, que vous pouvez augmenter manuellement ou intégrer à une valeur plus élevée dans un modèle." },
+    { q: "Quelle est la valeur maximale que je peux définir ?", a: "Tradovate a relevé le maximum de Minimum Number of Bars to Load à 9999, vous avez donc de la marge même pour des études à longue période. Réglez-le suffisamment haut pour couvrir entièrement le lookback le plus long de votre indicateur, plus une marge." },
+    { q: "J'ai augmenté le nombre de bougies, mais les nouveaux graphiques sautent toujours. Pourquoi ?", a: "Les nouveaux onglets de graphique reviennent à la valeur par défaut. Enregistrez votre nombre de bougies préféré comme modèle de graphique de base et appliquez ce modèle avant d'ajouter des indicateurs à chaque nouveau graphique, afin que le paramètre persiste." },
+    { q: "Comment empêcher le zoom du graphique de se réinitialiser à chaque changement d'onglet ?", a: "C'est le comportement d'Autofit, indépendant du nombre de bougies. Dans les Advanced Settings du graphique, modifiez l'option Autofit / Continuously Autofit pour que le graphique ne réajuste pas l'échelle lorsque vous revenez sur l'onglet. S'il continue à se réinitialiser après cela, signalez-le au support Tradovate avec votre configuration." },
+    { q: "Désactiver Continuously Autofit corrige-t-il aussi le saut des indicateurs ?", a: "Non, autofit n'affecte que la façon dont l'échelle des prix se réajuste à la vue. Le saut des indicateurs est un problème lié au nombre de bougies, vous devez donc augmenter Minimum Number of Bars to Load (et utiliser un modèle) pour corriger cette partie." },
+    { q: "Pourrait-il s'agir en réalité d'un problème de données ?", a: "Oui. Si les bougies se chargent avec des trous visibles ou si le flux est retardé, les indicateurs se recalculent lorsque les données manquantes arrivent. Si l'ajout de bougies ne résout rien, rechargez l'historique du graphique ou redémarrez l'application et vérifiez que vous êtes sur un flux de données en direct." },
+  ], it: [
+    { q: "Perché la mia EMA e il VWAP si spostano quando scorro indietro su un grafico Tradovate?", a: "Avevano a disposizione solo una porzione ridotta di barre per il calcolo. Quando scorri a sinistra e viene caricato più storico, l'indicatore si ricalcola sul dataset più completo e scatta al suo valore corretto, il che sembra un salto. Aumentare Minimum Number of Bars to Load in modo che superi il periodo dell'indicatore risolve il problema." },
+    { q: "Cos'è “Minimum Number of Bars to Load” e dove lo trovo?", a: "È un'impostazione del grafico che controlla quante barre storiche Tradovate precarica all'apertura del grafico. La trovi nelle impostazioni/nell'editor del grafico. Ogni nuova scheda parte con un valore predefinito basso di circa 100 barre, che puoi aumentare manualmente o impostare più alto in un template." },
+    { q: "Qual è il valore massimo che posso impostare?", a: "Tradovate ha innalzato il massimo di Minimum Number of Bars to Load a 9999, quindi hai margine anche per studi a lungo periodo. Impostalo abbastanza alto da coprire completamente il lookback più lungo del tuo indicatore più un margine." },
+    { q: "Ho aumentato il numero di barre, ma i grafici nuovi continuano a saltare. Perché?", a: "Le nuove schede del grafico tornano al valore predefinito. Salva il tuo numero di barre preferito come template base del grafico e applica quel template prima di aggiungere indicatori a ogni nuovo grafico, così l'impostazione persiste." },
+    { q: "Come impedisco che lo zoom del grafico si azzeri ogni volta che cambio scheda?", a: "Quello è il comportamento di Autofit, indipendente dal numero di barre. Nelle Advanced Settings del grafico, modifica l'opzione Autofit / Continuously Autofit così il grafico non riadatta la scala quando torni sulla scheda. Se continua ad azzerarsi dopo questo, segnalalo al supporto Tradovate con i dettagli del tuo layout." },
+    { q: "Disattivare Continuously Autofit risolve anche il salto degli indicatori?", a: "No, autofit influisce solo su come la scala dei prezzi si riadatta alla vista. Il salto degli indicatori è un problema legato al numero di barre, quindi devi aumentare Minimum Number of Bars to Load (e usare un template) per risolvere quella parte." },
+    { q: "Potrebbe invece trattarsi in realtà di un problema di dati?", a: "Sì. Se le barre si caricano con lacune visibili o il feed è ritardato, gli indicatori si ricalcolano quando arrivano i dati mancanti. Se aggiungere più barre non aiuta, ricarica lo storico del grafico o riavvia l'app e conferma di essere su un feed dati live." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Abläufe der Plattform ändern sich im Laufe der Zeit. Bestätigen Sie daher stets den aktuellen Prozess in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent au fil du temps ; vérifiez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un notevole rischio di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e le procedure della piattaforma cambiano nel tempo, pertanto verificare sempre il processo attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}${IMG}/chart-zoom-scale-reset-indicators-1.png`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage={`${IMG}/chart-zoom-scale-reset-indicators-1.png`}
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

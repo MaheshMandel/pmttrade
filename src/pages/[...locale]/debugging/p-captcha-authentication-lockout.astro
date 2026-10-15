@@ -1,0 +1,604 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "p-captcha-authentication-lockout";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate p-captcha Lockout After Bad Logins";
+const META_DESCRIPTION =
+  "Tradovate p-captcha lockout after failed logins? Stop retrying, wait about an hour, and verify your exact credentials before signing in again.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-p-captcha-Sperre nach fehlerhaften Logins", es: "Bloqueo por p-captcha en Tradovate tras inicios de sesión fallidos", fr: "Blocage p-captcha Tradovate après des connexions échouées", it: "Blocco p-captcha di Tradovate dopo login errati" },
+  dek: { en: "A p-captcha flag in your login response is Tradovate's brute-force circuit breaker. Here's what it means, why retrying makes it worse, and the exact steps to clear it and stay out of it.", de: "Ein p-captcha-Flag in Ihrer Login-Antwort ist der Brute-Force-Schutzschalter von Tradovate. Hier erfahren Sie, was es bedeutet, warum erneutes Versuchen es verschlimmert und mit welchen Schritten Sie die Sperre aufheben und künftig vermeiden.", es: "Un indicador p-captcha en su respuesta de inicio de sesión es el cortacircuitos antifuerza bruta de Tradovate. Aquí le explicamos qué significa, por qué reintentar lo empeora y los pasos exactos para despejarlo y no volver a caer en él.", fr: "Un indicateur p-captcha dans votre réponse de connexion est le disjoncteur anti-force brute de Tradovate. Voici ce qu'il signifie, pourquoi réessayer aggrave la situation, et les étapes exactes pour le lever et vous en prémunir.", it: "Un flag p-captcha nella sua risposta di login è l'interruttore anti-forza bruta di Tradovate. Ecco che cosa significa, perché riprovare peggiora le cose e i passaggi esatti per eliminarlo e starne alla larga." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Few things stall a Tradovate session faster than a login that just won't go through, and when the response quietly carries a <code>p-captcha</code> flag, hammering the login button only digs you deeper. That flag is Tradovate's brute-force circuit breaker. After a burst of failed sign-ins, usually the same wrong username or password fired off several times in quick succession, the authentication service stops trusting the request and demands a human-solvable captcha. On automated clients, bridges, or third-party apps that can't display one, the practical result is a temporary lockout." },
+    { type: "paragraph", html: "You'll run into it as a login stuck on “Loading&hellip;,” a captcha that never clears, an <code>Access is denied</code> bounce, or, if you're reading raw API responses, a JSON body carrying <code>\"p-captcha\": true</code> where an access token should be. The fix is almost always the same: stop retrying, wait about an hour, and confirm you're sending the exact right credentials before you try again. Better yet, route through a single stable connection so you never fire off the rapid-fire re-authentication that trips the penalty box in the first place." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for the p-captcha Lockout",
+      items: [
+        "<strong class='text-white'>Response contains <code>\"p-captcha\": true</code>?</strong> Stop. Automated retries won't clear it, wait about an hour before a single clean attempt.",
+        "<strong class='text-white'>Login stuck on “Loading&hellip;” or captcha won't render?</strong> Sync your system clock and clear cache and cookies. A wrong PC clock breaks the captcha widget.",
+        "<strong class='text-white'>Wrong password suspected?</strong> Re-enter your credentials exactly. Tradovate usernames and passwords are case-sensitive, so check Caps Lock and trailing spaces.",
+        "<strong class='text-white'>A bot or bridge re-authenticating in a loop?</strong> Kill the loop first, every failed attempt extends the block.",
+        "<strong class='text-white'>Password changed recently?</strong> Update it everywhere you're logged in. Stale saved credentials keep failing and keep tripping the captcha.",
+        "<strong class='text-white'>Still blocked after an hour with correct details?</strong> Confirm the account is active (not expired, failed, or disabled) before you assume it's a bug.",
+      ],
+    },
+    { type: "heading", text: "What “p-captcha: true” Means" },
+    { type: "paragraph", html: "Tradovate rate-limits both its API and its login flow to stop abuse, brute-force password guessing, credential-stuffing, and denial-of-service traffic. Cross a threshold and the server doesn't process your request; it hands back a small penalty object instead. The mild version is a <em>time penalty</em>: the body carries a <code>p-ticket</code> (a one-time token proving you were throttled) and a <code>p-time</code> (the seconds you need to wait). You wait, then resend the request with the ticket attached. That's a few-second speed bump, nothing more." },
+    { type: "paragraph", html: "A <code>p-captcha</code> field is the harsher variant. When a response carries a <code>p-captcha</code> object, it means a third-party application can't complete the request, and the client should be directed to try again in an hour. Put plainly: the server now wants a human to solve a captcha and prove the traffic isn't a bot, and an automated integration, an API script, or a prop-firm bridge has no way to present that challenge. So instead of a short countdown you can retry through, you get a roughly one-hour cool-down. A handful of “novel” operations that are supposed to run rarely, requesting an access token, signing up, changing a password, or changing contact info, are watched most closely, which is exactly why repeated login attempts are the classic way to land here." },
+    { type: "paragraph", html: "Keep this mental model: <code>p-captcha</code> is not a bug and not a permanent ban. It's a security cool-down triggered by too many failed or suspicious auth attempts. Retrying is the single worst thing you can do, each new attempt reads as more abuse and can keep the window open. The winning move is to go quiet, fix whatever made the logins fail, and come back once." },
+    { type: "heading", text: "Top Causes of the p-captcha Lockout" },
+    { type: "heading", text: "1. Repeated failed logins with wrong credentials" },
+    { type: "paragraph", html: "This is the number-one trigger. Tradovate usernames and passwords are case-sensitive, so a stray Caps Lock, an autocorrected character, or a trailing space fails silently, and a client that keeps resubmitting the same bad details racks up failed attempts fast. Enough of them in a short window, and the auth service escalates from “wrong password” to “prove you're human,” and the <code>p-captcha</code> object shows up." },
+    { type: "heading", text: "2. An automated client or bridge re-authenticating in a loop" },
+    { type: "paragraph", html: "Bots, TradingView bridges, and homegrown scripts that log in, drop, and log in again in a tight loop can burn through the auth threshold on housekeeping alone, before a single order is placed. Because a script can't solve a captcha, that loop guarantees the lockout instead of recovering from it." },
+    { type: "heading", text: "3. A clock or cache problem that makes the captcha never clear" },
+    { type: "paragraph", html: "Sometimes the captcha <em>is</em> being served, but your machine can't complete it. Tradovate's login and captcha widgets are picky about your PC's clock: if the system time is off, the security check can hang on “Loading&hellip;” or reject you outright, which then looks and behaves exactly like a lockout. Stale cached assets and cookies cause the same never-clearing captcha." },
+    { type: "heading", text: "4. Stale saved credentials after a password change" },
+    { type: "paragraph", html: "Change your Tradovate (or prop-firm) password and forget to update it in a connected platform, and that platform quietly keeps trying the old one. Every one of those attempts is a failed login feeding the penalty counter, so a single forgotten field can trigger the captcha over and over." },
+    { type: "heading", text: "5. Shared logins hitting the auth endpoint at once" },
+    { type: "paragraph", html: "One set of credentials driving several sessions, devices, or accounts means multiple simultaneous authentication calls. Prop-firm and copy-trading setups that fan a single login across many connections multiply the auth traffic and reach the abuse threshold far sooner than a single manual login ever would." },
+    { type: "heading", text: "How to Fix the p-captcha Lockout: Step by Step" },
+    { type: "heading", text: "Fixing repeated failed logins (the core cool-down)" },
+    { type: "paragraph", html: "The moment you see <code>p-captcha</code>, or a captcha that won't clear after several tries, the fix is disciplined patience, not persistence:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Stop all retries immediately", html: "Close the automated client, pause the bridge, and stop clicking Login. Continued attempts read as more abuse and can extend the block." },
+        { title: "Wait about an hour", html: "That's Tradovate's stated guidance for a <code>p-captcha</code> response. Don't test it every few minutes, let the full cool-down elapse." },
+        { title: "Verify your exact credentials while you wait", html: "Confirm the username and password character by character, watching case-sensitivity and Caps Lock. If you're unsure, this is the moment to reset (see below) so your <em>next</em> attempt actually succeeds." },
+        { title: "After the wait, log in once, cleanly", html: "Sign in through the Tradovate web platform first. A single successful manual login confirms the credentials before you point any automation back at the account." },
+      ],
+    },
+    { type: "heading", text: "Resetting credentials you're not 100% sure of" },
+    { type: "paragraph", html: "If you can't be certain the password is right, don't keep guessing, every guess is another failed attempt:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Use the platform's password-reset flow</strong> to set a known-good password. Tradovate can also flag credentials that turn up in known breach data, so a reset both confirms the value and clears a compromised one.",
+        "<strong class='text-white'>Update the new password everywhere</strong> it's stored, desktop app, mobile app, TradingView connection, and any bridge or bot, so nothing is still trying the old one.",
+        "<strong class='text-white'>Test the new credentials with a single manual web login</strong> before you re-enable automation.",
+      ],
+    },
+    { type: "heading", text: "Fixing a clock or cache problem so the captcha can render" },
+    { type: "paragraph", html: "If the captcha itself is stuck rather than rejecting you, clear the environment before your next attempt:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Enable automatic time and resync the clock.</strong> On Windows, open Date &amp; time settings, turn on <strong class='text-white'>Set time automatically</strong>, and click <strong class='text-white'>Sync now</strong> so your PC matches Tradovate's servers. The exact toggle wording shifts a little between Windows 10 and 11, but it always lives under Date &amp; time.",
+        "<strong class='text-white'>Clear the browser cache and cookies</strong>, or try a private/incognito window, to force fresh captcha assets to load.",
+        "<strong class='text-white'>Retry the login</strong> once the clock is synced and the cache is clear.",
+      ],
+    },
+    { type: "heading", text: "Stopping automated re-auth storms" },
+    { type: "paragraph", html: "If a script or bridge caused the lockout, fix the <em>pattern</em>, not just this one block:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Reuse the access token until it expires</strong> instead of logging in for every request. Tradovate's access tokens are valid for a set lifetime, so renew before expiry rather than re-authenticating from scratch.",
+        "<strong class='text-white'>Add backoff between reconnect attempts</strong> so a dropped connection doesn't spin into a login loop.",
+        "<strong class='text-white'>Handle the penalty response in code.</strong> If you see <code>p-ticket</code>/<code>p-time</code>, wait and retry with the ticket. If you see <code>p-captcha</code>, halt automated retries entirely and surface the “try again in an hour” message to a human.",
+        "<strong class='text-white'>Confirm the account is actually active.</strong> A <code>p-captcha</code> block clears with time, but an expired, failed, or disabled account keeps failing no matter how long you wait, check status before you blame the captcha.",
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / symptom", "What it means", "Fix"],
+      rows: [
+        ["<code>\"p-captcha\": true</code> in the auth response", "Too many failed or suspicious logins; a human captcha is now required", "Stop retrying, wait about an hour, then log in once with verified credentials"],
+        ["Login stuck on “Loading&hellip;” / captcha never clears", "System clock out of sync or stale cached captcha assets", "Enable Set time automatically and Sync now, clear cache and cookies, retry"],
+        ["Correct password still rejected", "Case-sensitivity or Caps Lock error, or a trailing space", "Re-enter credentials exactly, character by character; test on web first"],
+        ["Captcha reappears every attempt", "A saved/stale password or a bot is still submitting bad logins", "Update credentials everywhere; pause automation until you fix the source"],
+        ["<code>p-ticket</code> + <code>p-time</code> in the body (not <code>p-captcha</code>)", "Standard short time penalty, not a captcha lockout", "Wait <code>p-time</code> seconds, resend the request with the <code>p-ticket</code> attached"],
+        ["<code>429 Too Many Requests</code>", "General request-rate cap hit", "Back off, throttle your request rate, retry after the cooldown"],
+        ["Still locked out after an hour with correct details", "Account may be expired, failed, or disabled, not a captcha issue", "Confirm the account is active and current; contact support if it is"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade routes your TradingView alerts to Tradovate through a managed connection, so you never hand-roll fragile login logic against the raw auth endpoint:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Single stable session</strong>, maintains one clean connection per account instead of re-authenticating on every signal, so you never storm the login endpoint into a captcha.",
+        "<strong class='text-white'>Token reuse and renewal</strong>, holds and refreshes the access token within its lifetime rather than logging in from scratch, keeping auth traffic well under the abuse threshold.",
+        "<strong class='text-white'>Credential validation</strong>, confirms the connection is authenticated once, up front, so a wrong password surfaces as a clear setup error instead of a silent retry loop.",
+        "<strong class='text-white'>Backoff-aware reconnects</strong>, staggers reconnections after a drop, avoiding the re-auth loops that push automated clients straight into the one-hour <code>p-captcha</code> cool-down.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Nur wenige Dinge bremsen eine Tradovate-Sitzung schneller aus als ein Login, der einfach nicht durchgeht, und wenn die Antwort still ein <code>p-captcha</code>-Flag trägt, gräbt Sie das ständige Klicken auf den Login-Button nur tiefer hinein. Dieses Flag ist der Brute-Force-Schutzschalter von Tradovate. Nach einer Serie fehlgeschlagener Anmeldungen, meist derselbe falsche Benutzername oder dasselbe falsche Passwort mehrfach kurz hintereinander, vertraut der Authentifizierungsdienst der Anfrage nicht mehr und verlangt ein von Menschen lösbares Captcha. Bei automatisierten Clients, Brücken oder Drittanbieter-Apps, die keines anzeigen können, ist das praktische Ergebnis eine vorübergehende Sperre." },
+    { type: "paragraph",html: "Sie begegnen dem als Login, der auf „Loading&hellip;“ hängen bleibt, als Captcha, das nie verschwindet, als <code>Access is denied</code>-Abweisung oder, wenn Sie rohe API-Antworten lesen, als JSON-Body mit <code>\"p-captcha\": true</code> anstelle eines Access-Tokens. Die Lösung ist fast immer dieselbe: Hören Sie auf zu wiederholen, warten Sie etwa eine Stunde und vergewissern Sie sich, dass Sie die exakt richtigen Zugangsdaten senden, bevor Sie es erneut versuchen. Noch besser: Leiten Sie über eine einzige stabile Verbindung, sodass Sie die schnelle Folge von Neuauthentifizierungen, die die Strafbank auslöst, gar nicht erst abfeuern." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste für die p-captcha-Sperre",
+      items: [
+        "<strong class='text-white'>Enthält die Antwort <code>\"p-captcha\": true</code>?</strong> Stopp. Automatisierte Wiederholungen heben sie nicht auf; warten Sie etwa eine Stunde vor einem einzigen sauberen Versuch.",
+        "<strong class='text-white'>Login hängt auf „Loading&hellip;“ oder das Captcha wird nicht angezeigt?</strong> Synchronisieren Sie Ihre Systemuhr und leeren Sie Cache und Cookies. Eine falsche PC-Uhr bringt das Captcha-Widget zum Absturz.",
+        "<strong class='text-white'>Falsches Passwort vermutet?</strong> Geben Sie Ihre Zugangsdaten exakt neu ein. Tradovate-Benutzernamen und -Passwörter unterscheiden Groß- und Kleinschreibung; prüfen Sie also Caps Lock und Leerzeichen am Ende.",
+        "<strong class='text-white'>Authentifiziert sich ein Bot oder eine Brücke in einer Schleife neu?</strong> Beenden Sie zuerst die Schleife, jeder fehlgeschlagene Versuch verlängert die Sperre.",
+        "<strong class='text-white'>Passwort kürzlich geändert?</strong> Aktualisieren Sie es überall, wo Sie angemeldet sind. Veraltete gespeicherte Zugangsdaten schlagen weiter fehl und lösen das Captcha immer wieder aus.",
+        "<strong class='text-white'>Nach einer Stunde mit korrekten Angaben weiterhin gesperrt?</strong> Bestätigen Sie, dass das Konto aktiv ist (nicht abgelaufen, fehlgeschlagen oder deaktiviert), bevor Sie von einem Fehler ausgehen.",
+      ],
+    },
+    { type: "heading",text: "Was „p-captcha: true“ bedeutet" },
+    { type: "paragraph",html: "Tradovate begrenzt sowohl seine API als auch seinen Login-Ablauf per Ratenlimit, um Missbrauch, Brute-Force-Passwortraten, Credential-Stuffing und Denial-of-Service-Verkehr zu verhindern. Überschreiten Sie einen Schwellenwert, verarbeitet der Server Ihre Anfrage nicht, sondern gibt stattdessen ein kleines Strafobjekt zurück. Die milde Variante ist eine <em>Zeitstrafe</em>: Der Body enthält ein <code>p-ticket</code> (ein einmaliges Token, das belegt, dass Sie gedrosselt wurden) und eine <code>p-time</code> (die Sekunden, die Sie warten müssen). Sie warten und senden die Anfrage dann mit angehängtem Ticket erneut. Das ist eine Bremsschwelle von wenigen Sekunden, nicht mehr." },
+    { type: "paragraph",html: "Ein <code>p-captcha</code>-Feld ist die härtere Variante. Trägt eine Antwort ein <code>p-captcha</code>-Objekt, bedeutet das, dass eine Drittanbieter-Anwendung die Anfrage nicht abschließen kann und der Client angewiesen werden sollte, es in einer Stunde erneut zu versuchen. Klar gesagt: Der Server will nun, dass ein Mensch ein Captcha löst und beweist, dass der Verkehr kein Bot ist, und eine automatisierte Integration, ein API-Skript oder eine Prop-Firm-Brücke kann diese Aufgabe nicht darstellen. Statt eines kurzen Countdowns, den Sie durchwarten können, erhalten Sie also eine Abkühlphase von etwa einer Stunde. Einige „neuartige“ Operationen, die eigentlich selten ablaufen sollen, etwa das Anfordern eines Access-Tokens, die Registrierung, die Passwortänderung oder die Änderung von Kontaktdaten, werden am genauesten überwacht, weshalb wiederholte Login-Versuche der klassische Weg hierher sind." },
+    { type: "paragraph",html: "Merken Sie sich dieses Denkmodell: <code>p-captcha</code> ist weder ein Fehler noch eine dauerhafte Sperre. Es ist eine Sicherheits-Abkühlphase, ausgelöst durch zu viele fehlgeschlagene oder verdächtige Authentifizierungsversuche. Erneut zu versuchen ist das Schlechteste, was Sie tun können, denn jeder neue Versuch wirkt wie weiterer Missbrauch und kann das Zeitfenster offen halten. Der Gewinnzug ist, still zu werden, die Ursache der fehlgeschlagenen Logins zu beheben und nur einmal zurückzukommen." },
+    { type: "heading",text: "Häufigste Ursachen der p-captcha-Sperre" },
+    { type: "heading",text: "1. Wiederholte fehlgeschlagene Logins mit falschen Zugangsdaten" },
+    { type: "paragraph",html: "Das ist der häufigste Auslöser. Tradovate-Benutzernamen und -Passwörter unterscheiden Groß- und Kleinschreibung; ein verirrtes Caps Lock, ein autokorrigiertes Zeichen oder ein Leerzeichen am Ende schlägt daher lautlos fehl, und ein Client, der dieselben falschen Angaben immer wieder sendet, sammelt schnell fehlgeschlagene Versuche. Genügend davon in kurzer Zeit, und der Authentifizierungsdienst eskaliert von „falsches Passwort“ zu „beweisen Sie, dass Sie ein Mensch sind“, und das <code>p-captcha</code>-Objekt erscheint." },
+    { type: "heading",text: "2. Ein automatisierter Client oder eine Brücke authentifiziert sich in einer Schleife neu" },
+    { type: "paragraph",html: "Bots, TradingView-Brücken und selbstgebaute Skripte, die sich anmelden, die Verbindung verlieren und sich in einer engen Schleife erneut anmelden, können den Authentifizierungs-Schwellenwert allein durch Verwaltungsaufgaben aufbrauchen, bevor überhaupt eine Order platziert wurde. Da ein Skript kein Captcha lösen kann, garantiert diese Schleife die Sperre, statt sich davon zu erholen." },
+    { type: "heading",text: "3. Ein Uhr- oder Cache-Problem, das das Captcha nie verschwinden lässt" },
+    { type: "paragraph",html: "Manchmal <em>wird</em> das Captcha ausgeliefert, aber Ihr Rechner kann es nicht abschließen. Die Login- und Captcha-Widgets von Tradovate sind empfindlich gegenüber der Uhr Ihres PCs: Ist die Systemzeit falsch, kann die Sicherheitsprüfung auf „Loading&hellip;“ hängen bleiben oder Sie sofort abweisen, was dann genau wie eine Sperre aussieht und sich so verhält. Veraltete zwischengespeicherte Ressourcen und Cookies verursachen dasselbe nie verschwindende Captcha." },
+    { type: "heading",text: "4. Veraltete gespeicherte Zugangsdaten nach einer Passwortänderung" },
+    { type: "paragraph",html: "Ändern Sie Ihr Tradovate- (oder Prop-Firm-)Passwort und vergessen, es in einer verbundenen Plattform zu aktualisieren, versucht diese Plattform still weiter das alte. Jeder dieser Versuche ist ein fehlgeschlagener Login, der den Strafzähler füttert, sodass ein einziges vergessenes Feld das Captcha immer wieder auslösen kann." },
+    { type: "heading",text: "5. Gemeinsam genutzte Logins treffen gleichzeitig den Authentifizierungs-Endpunkt" },
+    { type: "paragraph",html: "Ein Satz Zugangsdaten, der mehrere Sitzungen, Geräte oder Konten antreibt, bedeutet mehrere gleichzeitige Authentifizierungsaufrufe. Prop-Firm- und Copy-Trading-Setups, die ein einziges Login auf viele Verbindungen verteilen, vervielfachen den Authentifizierungsverkehr und erreichen die Missbrauchsschwelle weit früher als ein einzelnes manuelles Login." },
+    { type: "heading",text: "So beheben Sie die p-captcha-Sperre: Schritt für Schritt" },
+    { type: "heading",text: "Wiederholte fehlgeschlagene Logins beheben (die eigentliche Abkühlphase)" },
+    { type: "paragraph",html: "Sobald Sie <code>p-captcha</code> sehen, oder ein Captcha, das nach mehreren Versuchen nicht verschwindet, lautet die Lösung diszipliniertes Abwarten, nicht Beharrlichkeit:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Beenden Sie sofort alle Wiederholungen", html: "Schließen Sie den automatisierten Client, pausieren Sie die Brücke und hören Sie auf, auf Login zu klicken. Fortgesetzte Versuche wirken wie weiterer Missbrauch und können die Sperre verlängern." },
+        { title: "Warten Sie etwa eine Stunde", html: "Das ist die erklärte Empfehlung von Tradovate für eine <code>p-captcha</code>-Antwort. Testen Sie nicht alle paar Minuten, lassen Sie die gesamte Abkühlphase verstreichen." },
+        { title: "Überprüfen Sie während des Wartens Ihre exakten Zugangsdaten", html: "Bestätigen Sie Benutzernamen und Passwort Zeichen für Zeichen und achten Sie auf Groß-/Kleinschreibung und Caps Lock. Sind Sie unsicher, ist jetzt der Moment für ein Zurücksetzen (siehe unten), damit Ihr <em>nächster</em> Versuch tatsächlich gelingt." },
+        { title: "Melden Sie sich nach der Wartezeit einmal sauber an", html: "Melden Sie sich zuerst über die Tradovate-Webplattform an. Ein einziges erfolgreiches manuelles Login bestätigt die Zugangsdaten, bevor Sie irgendeine Automatisierung wieder auf das Konto richten." },
+      ],
+    },
+    { type: "heading",text: "Zugangsdaten zurücksetzen, bei denen Sie sich nicht zu 100 % sicher sind" },
+    { type: "paragraph",html: "Wenn Sie nicht sicher sein können, dass das Passwort stimmt, raten Sie nicht weiter, jeder Versuch ist ein weiterer fehlgeschlagener Login:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Nutzen Sie den Passwort-Zurücksetzen-Ablauf der Plattform</strong>, um ein bekanntermaßen korrektes Passwort festzulegen. Tradovate kann außerdem Zugangsdaten markieren, die in bekannten Datenlecks auftauchen; ein Zurücksetzen bestätigt also den Wert und beseitigt einen kompromittierten.",
+        "<strong class='text-white'>Aktualisieren Sie das neue Passwort überall</strong>, wo es gespeichert ist, Desktop-App, Mobil-App, TradingView-Verbindung und jede Brücke oder jeden Bot, damit nichts mehr das alte versucht.",
+        "<strong class='text-white'>Testen Sie die neuen Zugangsdaten mit einem einzigen manuellen Web-Login</strong>, bevor Sie die Automatisierung wieder aktivieren.",
+      ],
+    },
+    { type: "heading",text: "Ein Uhr- oder Cache-Problem beheben, damit das Captcha angezeigt werden kann" },
+    { type: "paragraph",html: "Hängt das Captcha selbst fest, statt Sie abzuweisen, bereinigen Sie die Umgebung vor dem nächsten Versuch:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Aktivieren Sie die automatische Zeit und synchronisieren Sie die Uhr neu.</strong> Öffnen Sie unter Windows die Einstellungen für Datum &amp; Uhrzeit, aktivieren Sie <strong class='text-white'>Set time automatically</strong> und klicken Sie auf <strong class='text-white'>Sync now</strong>, damit Ihr PC mit den Servern von Tradovate übereinstimmt. Die genaue Bezeichnung der Option unterscheidet sich zwischen Windows 10 und 11 ein wenig, sie liegt aber immer unter Datum &amp; Uhrzeit.",
+        "<strong class='text-white'>Leeren Sie Browser-Cache und Cookies</strong> oder probieren Sie ein privates/Inkognito-Fenster, um das Laden frischer Captcha-Ressourcen zu erzwingen.",
+        "<strong class='text-white'>Wiederholen Sie den Login</strong>, sobald die Uhr synchronisiert und der Cache geleert ist.",
+      ],
+    },
+    { type: "heading",text: "Automatisierte Re-Auth-Stürme stoppen" },
+    { type: "paragraph",html: "Hat ein Skript oder eine Brücke die Sperre verursacht, beheben Sie das <em>Muster</em>, nicht nur diese eine Sperre:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Verwenden Sie das Access-Token bis zum Ablauf wieder</strong>, statt sich für jede Anfrage anzumelden. Die Access-Tokens von Tradovate sind für eine festgelegte Lebensdauer gültig, erneuern Sie sie also vor Ablauf, statt sich von Grund auf neu zu authentifizieren.",
+        "<strong class='text-white'>Fügen Sie zwischen Wiederverbindungsversuchen ein Backoff ein</strong>, damit eine unterbrochene Verbindung nicht in eine Login-Schleife gerät.",
+        "<strong class='text-white'>Behandeln Sie die Strafantwort im Code.</strong> Sehen Sie <code>p-ticket</code>/<code>p-time</code>, warten Sie und wiederholen Sie mit dem Ticket. Sehen Sie <code>p-captcha</code>, stoppen Sie automatisierte Wiederholungen vollständig und geben Sie die Meldung „in einer Stunde erneut versuchen“ an einen Menschen weiter.",
+        "<strong class='text-white'>Bestätigen Sie, dass das Konto tatsächlich aktiv ist.</strong> Eine <code>p-captcha</code>-Sperre löst sich mit der Zeit, aber ein abgelaufenes, fehlgeschlagenes oder deaktiviertes Konto scheitert weiter, egal wie lange Sie warten; prüfen Sie den Status, bevor Sie das Captcha beschuldigen.",
+      ],
+    },
+    { type: "heading",text: "Fehlerbehebungstabelle" },
+    { type: "table", headers: ["Fehler / Symptom","Bedeutung","Lösung"], rows: [
+      ["<code>\"p-captcha\": true</code> in der Authentifizierungsantwort","Zu viele fehlgeschlagene oder verdächtige Logins; ein menschliches Captcha ist nun erforderlich","Wiederholungen stoppen, etwa eine Stunde warten, dann einmal mit überprüften Zugangsdaten anmelden"],
+      ["Login hängt auf „Loading&hellip;“ / Captcha verschwindet nie","Systemuhr nicht synchron oder veraltete zwischengespeicherte Captcha-Ressourcen","Set time automatically und Sync now aktivieren, Cache und Cookies leeren, erneut versuchen"],
+      ["Korrektes Passwort wird weiterhin abgelehnt","Fehler bei Groß-/Kleinschreibung oder Caps Lock, oder ein Leerzeichen am Ende","Zugangsdaten exakt Zeichen für Zeichen neu eingeben; zuerst im Web testen"],
+      ["Captcha erscheint bei jedem Versuch erneut","Ein gespeichertes/veraltetes Passwort oder ein Bot sendet weiter fehlerhafte Logins","Zugangsdaten überall aktualisieren; Automatisierung pausieren, bis die Ursache behoben ist"],
+      ["<code>p-ticket</code> + <code>p-time</code> im Body (nicht <code>p-captcha</code>)","Standardmäßige kurze Zeitstrafe, keine Captcha-Sperre","<code>p-time</code> Sekunden warten, Anfrage mit angehängtem <code>p-ticket</code> erneut senden"],
+      ["<code>429 Too Many Requests</code>","Allgemeine Obergrenze der Anfragerate erreicht","Zurückfahren, Anfragerate drosseln, nach der Abkühlphase erneut versuchen"],
+      ["Nach einer Stunde mit korrekten Angaben weiterhin gesperrt","Das Konto ist möglicherweise abgelaufen, fehlgeschlagen oder deaktiviert, kein Captcha-Problem","Bestätigen, dass das Konto aktiv und aktuell ist; bei Bedarf den Support kontaktieren"],
+    ] },
+    { type: "heading",text: "Mit PickMyTrade vorbeugen" },
+    { type: "paragraph",html: "PickMyTrade leitet Ihre TradingView-Alerts über eine verwaltete Verbindung an Tradovate weiter, sodass Sie nie fragile Login-Logik direkt gegen den rohen Authentifizierungs-Endpunkt selbst bauen müssen:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Einzelne stabile Sitzung</strong>, hält pro Konto eine saubere Verbindung aufrecht, statt sich bei jedem Signal neu zu authentifizieren, sodass Sie den Login-Endpunkt nie in ein Captcha hineinstürmen.",
+        "<strong class='text-white'>Token-Wiederverwendung und -Erneuerung</strong>, hält und aktualisiert das Access-Token innerhalb seiner Lebensdauer, statt sich von Grund auf anzumelden, und hält den Authentifizierungsverkehr deutlich unter der Missbrauchsschwelle.",
+        "<strong class='text-white'>Validierung der Zugangsdaten</strong>, bestätigt die Authentifizierung der Verbindung einmal zu Beginn, sodass ein falsches Passwort als klarer Einrichtungsfehler statt als stille Wiederholungsschleife auftaucht.",
+        "<strong class='text-white'>Backoff-bewusste Wiederverbindungen</strong>, staffelt Wiederverbindungen nach einem Abbruch und vermeidet die Re-Auth-Schleifen, die automatisierte Clients direkt in die einstündige <code>p-captcha</code>-Abkühlphase treiben.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Pocas cosas detienen una sesión de Tradovate más rápido que un inicio de sesión que simplemente no entra, y cuando la respuesta lleva en silencio un indicador <code>p-captcha</code>, martillear el botón de inicio de sesión solo le hunde más. Ese indicador es el cortacircuitos antifuerza bruta de Tradovate. Tras una ráfaga de inicios de sesión fallidos, normalmente el mismo usuario o contraseña incorrectos enviados varias veces en rápida sucesión, el servicio de autenticación deja de confiar en la solicitud y exige un captcha que solo una persona pueda resolver. En clientes automatizados, puentes o aplicaciones de terceros que no pueden mostrar uno, el resultado práctico es un bloqueo temporal." },
+    { type: "paragraph",html: "Lo encontrará como un inicio de sesión atascado en «Loading&hellip;», un captcha que nunca se despeja, un rechazo <code>Access is denied</code> o, si lee respuestas crudas de la API, un cuerpo JSON con <code>\"p-captcha\": true</code> donde debería haber un token de acceso. La solución casi siempre es la misma: deje de reintentar, espere aproximadamente una hora y confirme que envía exactamente las credenciales correctas antes de volver a probar. Mejor aún, enrute a través de una única conexión estable para no disparar jamás la reautenticación en ráfaga que activa el banquillo de penalización." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para el bloqueo por p-captcha",
+      items: [
+        "<strong class='text-white'>¿La respuesta contiene <code>\"p-captcha\": true</code>?</strong> Alto. Los reintentos automáticos no lo despejarán; espere aproximadamente una hora antes de un único intento limpio.",
+        "<strong class='text-white'>¿El inicio de sesión se atasca en «Loading&hellip;» o el captcha no se muestra?</strong> Sincronice el reloj de su sistema y borre la caché y las cookies. Un reloj de PC incorrecto rompe el widget del captcha.",
+        "<strong class='text-white'>¿Sospecha de una contraseña incorrecta?</strong> Vuelva a introducir sus credenciales exactamente. Los usuarios y contraseñas de Tradovate distinguen mayúsculas y minúsculas, así que revise el bloqueo de mayúsculas y los espacios al final.",
+        "<strong class='text-white'>¿Un bot o puente se reautentica en bucle?</strong> Detenga primero el bucle, cada intento fallido prolonga el bloqueo.",
+        "<strong class='text-white'>¿Cambió la contraseña recientemente?</strong> Actualícela en todos los lugares donde haya iniciado sesión. Las credenciales guardadas obsoletas siguen fallando y siguen activando el captcha.",
+        "<strong class='text-white'>¿Sigue bloqueado tras una hora con los datos correctos?</strong> Confirme que la cuenta está activa (no caducada, fallida ni deshabilitada) antes de suponer que es un error.",
+      ],
+    },
+    { type: "heading",text: "Qué significa «p-captcha: true»" },
+    { type: "paragraph",html: "Tradovate limita la frecuencia tanto de su API como de su flujo de inicio de sesión para frenar el abuso, la adivinación de contraseñas por fuerza bruta, el credential stuffing y el tráfico de denegación de servicio. Si cruza un umbral, el servidor no procesa su solicitud; en su lugar devuelve un pequeño objeto de penalización. La versión suave es una <em>penalización de tiempo</em>: el cuerpo lleva un <code>p-ticket</code> (un token de un solo uso que demuestra que fue limitado) y un <code>p-time</code> (los segundos que debe esperar). Usted espera y luego reenvía la solicitud con el ticket adjunto. Es un badén de unos segundos, nada más." },
+    { type: "paragraph",html: "Un campo <code>p-captcha</code> es la variante más dura. Cuando una respuesta lleva un objeto <code>p-captcha</code>, significa que una aplicación de terceros no puede completar la solicitud y que el cliente debe ser dirigido a volver a intentarlo en una hora. Dicho claramente: el servidor quiere ahora que una persona resuelva un captcha y demuestre que el tráfico no es un bot, y una integración automatizada, un script de API o un puente de prop firm no tiene forma de presentar ese desafío. Así que, en lugar de una cuenta atrás corta que pueda atravesar reintentando, obtiene un enfriamiento de aproximadamente una hora. Un puñado de operaciones «novedosas» que se supone que se ejecutan rara vez, solicitar un token de acceso, registrarse, cambiar una contraseña o cambiar datos de contacto, se vigilan más de cerca, por lo que los intentos repetidos de inicio de sesión son la forma clásica de acabar aquí." },
+    { type: "paragraph",html: "Quédese con este modelo mental: <code>p-captcha</code> no es un error ni un bloqueo permanente. Es un enfriamiento de seguridad activado por demasiados intentos de autenticación fallidos o sospechosos. Reintentar es lo peor que puede hacer, cada nuevo intento se lee como más abuso y puede mantener la ventana abierta. La jugada ganadora es callarse, corregir lo que hizo fallar los inicios de sesión y volver una sola vez." },
+    { type: "heading",text: "Principales causas del bloqueo por p-captcha" },
+    { type: "heading",text: "1. Inicios de sesión fallidos repetidos con credenciales incorrectas" },
+    { type: "paragraph",html: "Este es el desencadenante número uno. Los usuarios y contraseñas de Tradovate distinguen mayúsculas y minúsculas, de modo que un bloqueo de mayúsculas despistado, un carácter autocorregido o un espacio al final fallan en silencio, y un cliente que sigue reenviando los mismos datos incorrectos acumula intentos fallidos rápidamente. Con suficientes en una ventana corta, el servicio de autenticación escala de «contraseña incorrecta» a «demuestre que es humano», y aparece el objeto <code>p-captcha</code>." },
+    { type: "heading",text: "2. Un cliente automatizado o puente que se reautentica en bucle" },
+    { type: "paragraph",html: "Bots, puentes de TradingView y scripts caseros que inician sesión, se caen y vuelven a iniciar sesión en un bucle cerrado pueden consumir el umbral de autenticación solo con tareas de mantenimiento, antes de colocar una sola orden. Como un script no puede resolver un captcha, ese bucle garantiza el bloqueo en lugar de recuperarse de él." },
+    { type: "heading",text: "3. Un problema de reloj o de caché que impide que el captcha se despeje" },
+    { type: "paragraph",html: "A veces el captcha <em>sí</em> se sirve, pero su equipo no puede completarlo. Los widgets de inicio de sesión y captcha de Tradovate son exigentes con el reloj de su PC: si la hora del sistema está desfasada, la comprobación de seguridad puede colgarse en «Loading&hellip;» o rechazarle de plano, lo que luego se ve y se comporta exactamente como un bloqueo. Los recursos en caché obsoletos y las cookies provocan el mismo captcha que nunca se despeja." },
+    { type: "heading",text: "4. Credenciales guardadas obsoletas tras un cambio de contraseña" },
+    { type: "paragraph",html: "Si cambia su contraseña de Tradovate (o de la prop firm) y olvida actualizarla en una plataforma conectada, esa plataforma sigue probando en silencio la antigua. Cada uno de esos intentos es un inicio de sesión fallido que alimenta el contador de penalizaciones, de modo que un solo campo olvidado puede activar el captcha una y otra vez." },
+    { type: "heading",text: "5. Inicios de sesión compartidos que golpean el endpoint de autenticación a la vez" },
+    { type: "paragraph",html: "Un único conjunto de credenciales que maneja varias sesiones, dispositivos o cuentas implica múltiples llamadas de autenticación simultáneas. Las configuraciones de prop firm y de copy trading que reparten un único inicio de sesión entre muchas conexiones multiplican el tráfico de autenticación y alcanzan el umbral de abuso mucho antes de lo que lo haría jamás un único inicio de sesión manual." },
+    { type: "heading",text: "Cómo solucionar el bloqueo por p-captcha: paso a paso" },
+    { type: "heading",text: "Solucionar los inicios de sesión fallidos repetidos (el enfriamiento principal)" },
+    { type: "paragraph",html: "En cuanto vea <code>p-captcha</code>, o un captcha que no se despeja tras varios intentos, la solución es paciencia disciplinada, no insistencia:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Deje de reintentar de inmediato", html: "Cierre el cliente automatizado, pause el puente y deje de pulsar Login. Los intentos continuados se interpretan como más abuso y pueden prolongar el bloqueo." },
+        { title: "Espere aproximadamente una hora", html: "Esa es la indicación declarada de Tradovate para una respuesta <code>p-captcha</code>. No lo pruebe cada pocos minutos, deje transcurrir el enfriamiento completo." },
+        { title: "Verifique sus credenciales exactas mientras espera", html: "Confirme el usuario y la contraseña carácter por carácter, vigilando mayúsculas y minúsculas y el bloqueo de mayúsculas. Si tiene dudas, este es el momento de restablecerlas (véase más abajo) para que su <em>siguiente</em> intento tenga éxito de verdad." },
+        { title: "Pasada la espera, inicie sesión una vez, limpiamente", html: "Inicie sesión primero a través de la plataforma web de Tradovate. Un único inicio de sesión manual con éxito confirma las credenciales antes de volver a dirigir cualquier automatización a la cuenta." },
+      ],
+    },
+    { type: "heading",text: "Restablecer credenciales de las que no está seguro al 100 %" },
+    { type: "paragraph",html: "Si no puede estar seguro de que la contraseña sea correcta, no siga adivinando, cada intento es otro inicio de sesión fallido:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Use el flujo de restablecimiento de contraseña de la plataforma</strong> para fijar una contraseña buena conocida. Tradovate también puede señalar credenciales que aparecen en datos de filtraciones conocidas, así que restablecer confirma el valor y elimina uno comprometido.",
+        "<strong class='text-white'>Actualice la nueva contraseña en todos los lugares</strong> donde esté almacenada, aplicación de escritorio, aplicación móvil, conexión con TradingView y cualquier puente o bot, para que nada siga probando la antigua.",
+        "<strong class='text-white'>Pruebe las nuevas credenciales con un único inicio de sesión web manual</strong> antes de volver a activar la automatización.",
+      ],
+    },
+    { type: "heading",text: "Solucionar un problema de reloj o de caché para que el captcha pueda mostrarse" },
+    { type: "paragraph",html: "Si el captcha en sí está atascado en lugar de rechazarle, limpie el entorno antes de su siguiente intento:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Active la hora automática y vuelva a sincronizar el reloj.</strong> En Windows, abra la configuración de Fecha y hora, active <strong class='text-white'>Set time automatically</strong> y haga clic en <strong class='text-white'>Sync now</strong> para que su PC coincida con los servidores de Tradovate. El texto exacto del interruptor varía un poco entre Windows 10 y 11, pero siempre está en Fecha y hora.",
+        "<strong class='text-white'>Borre la caché y las cookies del navegador</strong>, o pruebe una ventana privada/incógnito, para forzar la carga de recursos de captcha nuevos.",
+        "<strong class='text-white'>Reintente el inicio de sesión</strong> una vez sincronizado el reloj y borrada la caché.",
+      ],
+    },
+    { type: "heading",text: "Detener las tormentas de reautenticación automatizadas" },
+    { type: "paragraph",html: "Si un script o puente causó el bloqueo, corrija el <em>patrón</em>, no solo este bloqueo:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Reutilice el token de acceso hasta que caduque</strong> en lugar de iniciar sesión en cada solicitud. Los tokens de acceso de Tradovate son válidos durante una vida útil determinada, así que renuévelos antes de que caduquen en lugar de reautenticarse desde cero.",
+        "<strong class='text-white'>Añada un retroceso entre intentos de reconexión</strong> para que una conexión caída no derive en un bucle de inicio de sesión.",
+        "<strong class='text-white'>Gestione la respuesta de penalización en el código.</strong> Si ve <code>p-ticket</code>/<code>p-time</code>, espere y reintente con el ticket. Si ve <code>p-captcha</code>, detenga por completo los reintentos automáticos y muestre a una persona el mensaje «vuelva a intentarlo en una hora».",
+        "<strong class='text-white'>Confirme que la cuenta esté realmente activa.</strong> Un bloqueo <code>p-captcha</code> se despeja con el tiempo, pero una cuenta caducada, fallida o deshabilitada sigue fallando por mucho que espere; compruebe el estado antes de culpar al captcha.",
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Error / síntoma","Qué significa","Solución"], rows: [
+      ["<code>\"p-captcha\": true</code> en la respuesta de autenticación","Demasiados inicios de sesión fallidos o sospechosos; ahora se requiere un captcha humano","Deje de reintentar, espere aproximadamente una hora y luego inicie sesión una vez con credenciales verificadas"],
+      ["Inicio de sesión atascado en «Loading&hellip;» / el captcha nunca se despeja","Reloj del sistema desincronizado o recursos de captcha en caché obsoletos","Active Set time automatically y Sync now, borre la caché y las cookies, reintente"],
+      ["La contraseña correcta sigue siendo rechazada","Error de mayúsculas y minúsculas o del bloqueo de mayúsculas, o un espacio al final","Vuelva a introducir las credenciales exactamente, carácter por carácter; pruebe primero en la web"],
+      ["El captcha reaparece en cada intento","Una contraseña guardada/obsoleta o un bot sigue enviando inicios de sesión incorrectos","Actualice las credenciales en todas partes; pause la automatización hasta corregir el origen"],
+      ["<code>p-ticket</code> + <code>p-time</code> en el cuerpo (no <code>p-captcha</code>)","Penalización de tiempo breve estándar, no un bloqueo por captcha","Espere <code>p-time</code> segundos y reenvíe la solicitud con el <code>p-ticket</code> adjunto"],
+      ["<code>429 Too Many Requests</code>","Se alcanzó el límite general de frecuencia de solicitudes","Retroceda, limite su frecuencia de solicitudes y reintente tras el enfriamiento"],
+      ["Sigue bloqueado tras una hora con los datos correctos","La cuenta puede estar caducada, fallida o deshabilitada, no es un problema de captcha","Confirme que la cuenta está activa y al día; contacte con el soporte si lo está"],
+    ] },
+    { type: "heading",text: "Evítelo con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade enruta sus alertas de TradingView a Tradovate mediante una conexión gestionada, de modo que nunca tiene que improvisar una lógica de inicio de sesión frágil contra el endpoint de autenticación en bruto:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Sesión única y estable</strong>, mantiene una conexión limpia por cuenta en lugar de reautenticarse en cada señal, de modo que nunca sature el endpoint de inicio de sesión hasta provocar un captcha.",
+        "<strong class='text-white'>Reutilización y renovación del token</strong>, conserva y renueva el token de acceso dentro de su vida útil en lugar de iniciar sesión desde cero, manteniendo el tráfico de autenticación muy por debajo del umbral de abuso.",
+        "<strong class='text-white'>Validación de credenciales</strong>, confirma una sola vez, de entrada, que la conexión está autenticada, de modo que una contraseña incorrecta aparezca como un claro error de configuración y no como un bucle de reintentos silencioso.",
+        "<strong class='text-white'>Reconexiones con retroceso</strong>, escalona las reconexiones tras una caída y evita los bucles de reautenticación que empujan a los clientes automatizados directamente al enfriamiento de una hora de <code>p-captcha</code>.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Peu de choses bloquent une session Tradovate plus vite qu'une connexion qui ne passe tout simplement pas, et lorsque la réponse porte discrètement un indicateur <code>p-captcha</code>, marteler le bouton de connexion ne fait que vous enfoncer davantage. Cet indicateur est le disjoncteur anti-force brute de Tradovate. Après une rafale de connexions échouées, généralement le même nom d'utilisateur ou mot de passe erroné envoyé plusieurs fois en succession rapide, le service d'authentification cesse de faire confiance à la requête et exige un captcha résoluble par un humain. Sur les clients automatisés, ponts ou applications tierces qui ne peuvent pas en afficher, le résultat pratique est un blocage temporaire." },
+    { type: "paragraph",html: "Vous le rencontrerez sous la forme d'une connexion bloquée sur « Loading&hellip; », d'un captcha qui ne disparaît jamais, d'un rebond <code>Access is denied</code> ou, si vous lisez les réponses brutes de l'API, d'un corps JSON portant <code>\"p-captcha\": true</code> à la place d'un jeton d'accès. La solution est presque toujours la même : cessez de réessayer, attendez environ une heure et vérifiez que vous envoyez exactement les bons identifiants avant de retenter. Mieux encore, passez par une seule connexion stable afin de ne jamais déclencher la réauthentification en rafale qui active le banc de pénalité." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour le blocage p-captcha",
+      items: [
+        "<strong class='text-white'>La réponse contient <code>\"p-captcha\": true</code> ?</strong> Stop. Les nouvelles tentatives automatiques ne le lèveront pas ; attendez environ une heure avant une seule tentative propre.",
+        "<strong class='text-white'>Connexion bloquée sur « Loading&hellip; » ou captcha qui ne s'affiche pas ?</strong> Synchronisez l'horloge de votre système et videz le cache et les cookies. Une horloge de PC erronée casse le widget du captcha.",
+        "<strong class='text-white'>Vous soupçonnez un mauvais mot de passe ?</strong> Ressaisissez vos identifiants exactement. Les noms d'utilisateur et mots de passe Tradovate sont sensibles à la casse ; vérifiez donc le verrouillage des majuscules et les espaces finaux.",
+        "<strong class='text-white'>Un bot ou un pont se réauthentifie en boucle ?</strong> Tuez d'abord la boucle, chaque tentative échouée prolonge le blocage.",
+        "<strong class='text-white'>Mot de passe modifié récemment ?</strong> Mettez-le à jour partout où vous êtes connecté. Les identifiants enregistrés obsolètes continuent d'échouer et de déclencher le captcha.",
+        "<strong class='text-white'>Toujours bloqué après une heure avec les bons identifiants ?</strong> Confirmez que le compte est actif (non expiré, échoué ou désactivé) avant de supposer qu'il s'agit d'un bogue.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « p-captcha: true »" },
+    { type: "paragraph",html: "Tradovate limite le débit de son API comme de son flux de connexion pour empêcher les abus, les devinettes de mot de passe par force brute, le credential stuffing et le trafic de déni de service. Dépassez un seuil et le serveur ne traite pas votre requête ; il renvoie à la place un petit objet de pénalité. La version douce est une <em>pénalité de temps</em> : le corps contient un <code>p-ticket</code> (un jeton à usage unique prouvant que vous avez été limité) et un <code>p-time</code> (les secondes à attendre). Vous attendez, puis renvoyez la requête avec le ticket joint. C'est un ralentisseur de quelques secondes, rien de plus." },
+    { type: "paragraph",html: "Un champ <code>p-captcha</code> est la variante plus sévère. Lorsqu'une réponse porte un objet <code>p-captcha</code>, cela signifie qu'une application tierce ne peut pas mener la requête à terme et que le client doit être invité à réessayer dans une heure. En clair : le serveur veut maintenant qu'un humain résolve un captcha et prouve que le trafic n'est pas un bot, et une intégration automatisée, un script d'API ou un pont de prop firm n'a aucun moyen de présenter ce défi. Au lieu d'un court compte à rebours que vous pouvez franchir en réessayant, vous obtenez un refroidissement d'environ une heure. Une poignée d'opérations « inédites » censées s'exécuter rarement, demander un jeton d'accès, s'inscrire, changer un mot de passe ou modifier des coordonnées, sont surveillées au plus près, ce qui explique pourquoi les tentatives de connexion répétées sont le moyen classique d'en arriver là." },
+    { type: "paragraph",html: "Gardez ce modèle mental : <code>p-captcha</code> n'est ni un bogue ni un bannissement définitif. C'est un refroidissement de sécurité déclenché par trop de tentatives d'authentification échouées ou suspectes. Réessayer est la pire chose à faire, chaque nouvelle tentative est perçue comme un abus supplémentaire et peut maintenir la fenêtre ouverte. Le coup gagnant est de se faire discret, de corriger ce qui a fait échouer les connexions et de revenir une seule fois." },
+    { type: "heading",text: "Principales causes du blocage p-captcha" },
+    { type: "heading",text: "1. Des connexions échouées répétées avec de mauvais identifiants" },
+    { type: "paragraph",html: "C'est le déclencheur numéro un. Les noms d'utilisateur et mots de passe Tradovate sont sensibles à la casse ; un verrouillage des majuscules égaré, un caractère autocorrigé ou un espace final échoue donc silencieusement, et un client qui renvoie sans cesse les mêmes mauvaises informations accumule vite les tentatives échouées. Assez d'entre elles dans une courte fenêtre, et le service d'authentification passe de « mauvais mot de passe » à « prouvez que vous êtes humain », et l'objet <code>p-captcha</code> apparaît." },
+    { type: "heading",text: "2. Un client automatisé ou un pont qui se réauthentifie en boucle" },
+    { type: "paragraph",html: "Les bots, ponts TradingView et scripts maison qui se connectent, se déconnectent et se reconnectent en boucle serrée peuvent épuiser le seuil d'authentification rien qu'avec des tâches d'intendance, avant qu'un seul ordre ne soit placé. Un script ne pouvant pas résoudre un captcha, cette boucle garantit le blocage au lieu d'en sortir." },
+    { type: "heading",text: "3. Un problème d'horloge ou de cache qui empêche le captcha de se résoudre" },
+    { type: "paragraph",html: "Parfois le captcha <em>est</em> bien servi, mais votre machine ne parvient pas à le terminer. Les widgets de connexion et de captcha de Tradovate sont pointilleux sur l'horloge de votre PC : si l'heure système est décalée, le contrôle de sécurité peut se figer sur « Loading&hellip; » ou vous rejeter d'emblée, ce qui ressemble alors exactement à un blocage et se comporte comme tel. Des ressources en cache périmées et des cookies provoquent le même captcha qui ne se résout jamais." },
+    { type: "heading",text: "4. Des identifiants enregistrés obsolètes après un changement de mot de passe" },
+    { type: "paragraph",html: "Changez votre mot de passe Tradovate (ou de la prop firm) et oubliez de le mettre à jour dans une plateforme connectée, et celle-ci continue discrètement d'essayer l'ancien. Chacune de ces tentatives est une connexion échouée qui alimente le compteur de pénalités ; un seul champ oublié peut donc déclencher le captcha encore et encore." },
+    { type: "heading",text: "5. Des connexions partagées qui sollicitent le point d'authentification en même temps" },
+    { type: "paragraph",html: "Un seul jeu d'identifiants pilotant plusieurs sessions, appareils ou comptes implique plusieurs appels d'authentification simultanés. Les configurations de prop firm et de copy trading qui répartissent une même connexion sur de nombreuses connexions multiplient le trafic d'authentification et atteignent le seuil d'abus bien plus tôt qu'une simple connexion manuelle ne le ferait jamais." },
+    { type: "heading",text: "Comment résoudre le blocage p-captcha : pas à pas" },
+    { type: "heading",text: "Résoudre les connexions échouées répétées (le refroidissement central)" },
+    { type: "paragraph",html: "Dès que vous voyez <code>p-captcha</code>, ou un captcha qui ne disparaît pas après plusieurs essais, la solution est une patience disciplinée, pas l'insistance :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cessez immédiatement toute nouvelle tentative", html: "Fermez le client automatisé, mettez le pont en pause et cessez de cliquer sur Login. Des tentatives continues sont perçues comme un abus supplémentaire et peuvent prolonger le blocage." },
+        { title: "Attendez environ une heure", html: "C'est la consigne indiquée par Tradovate pour une réponse <code>p-captcha</code>. Ne testez pas toutes les quelques minutes, laissez s'écouler tout le refroidissement." },
+        { title: "Vérifiez vos identifiants exacts pendant l'attente", html: "Confirmez le nom d'utilisateur et le mot de passe caractère par caractère, en surveillant la casse et le verrouillage des majuscules. En cas de doute, c'est le moment de les réinitialiser (voir ci-dessous) afin que votre <em>prochaine</em> tentative réussisse vraiment." },
+        { title: "Après l'attente, connectez-vous une fois, proprement", html: "Connectez-vous d'abord via la plateforme web de Tradovate. Une seule connexion manuelle réussie confirme les identifiants avant de rediriger une automatisation vers le compte." },
+      ],
+    },
+    { type: "heading",text: "Réinitialiser des identifiants dont vous n'êtes pas sûr à 100 %" },
+    { type: "paragraph",html: "Si vous ne pouvez pas être certain que le mot de passe est bon, ne continuez pas à deviner, chaque essai est une nouvelle connexion échouée :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Utilisez le flux de réinitialisation de mot de passe de la plateforme</strong> pour définir un mot de passe sûr. Tradovate peut aussi signaler des identifiants qui apparaissent dans des données de fuites connues ; une réinitialisation confirme donc la valeur et élimine un mot de passe compromis.",
+        "<strong class='text-white'>Mettez à jour le nouveau mot de passe partout</strong> où il est enregistré, application de bureau, application mobile, connexion TradingView et tout pont ou bot, pour que plus rien n'essaie l'ancien.",
+        "<strong class='text-white'>Testez les nouveaux identifiants avec une seule connexion web manuelle</strong> avant de réactiver l'automatisation.",
+      ],
+    },
+    { type: "heading",text: "Résoudre un problème d'horloge ou de cache pour que le captcha puisse s'afficher" },
+    { type: "paragraph",html: "Si c'est le captcha lui-même qui reste bloqué plutôt que de vous rejeter, nettoyez l'environnement avant votre prochaine tentative :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Activez l'heure automatique et resynchronisez l'horloge.</strong> Sous Windows, ouvrez les paramètres Date et heure, activez <strong class='text-white'>Set time automatically</strong> et cliquez sur <strong class='text-white'>Sync now</strong> afin que votre PC corresponde aux serveurs de Tradovate. Le libellé exact de l'option varie légèrement entre Windows 10 et 11, mais il se trouve toujours sous Date et heure.",
+        "<strong class='text-white'>Videz le cache et les cookies du navigateur</strong>, ou essayez une fenêtre privée/incognito, pour forcer le chargement de ressources de captcha fraîches.",
+        "<strong class='text-white'>Réessayez la connexion</strong> une fois l'horloge synchronisée et le cache vidé.",
+      ],
+    },
+    { type: "heading",text: "Mettre fin aux tempêtes de réauthentification automatisées" },
+    { type: "paragraph",html: "Si un script ou un pont a causé le blocage, corrigez le <em>schéma</em>, pas seulement ce blocage :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Réutilisez le jeton d'accès jusqu'à son expiration</strong> au lieu de vous connecter à chaque requête. Les jetons d'accès de Tradovate sont valables pour une durée déterminée ; renouvelez-les donc avant expiration plutôt que de vous réauthentifier de zéro.",
+        "<strong class='text-white'>Ajoutez un délai croissant entre les tentatives de reconnexion</strong> pour qu'une connexion interrompue ne dégénère pas en boucle de connexion.",
+        "<strong class='text-white'>Gérez la réponse de pénalité dans le code.</strong> Si vous voyez <code>p-ticket</code>/<code>p-time</code>, attendez et réessayez avec le ticket. Si vous voyez <code>p-captcha</code>, arrêtez complètement les nouvelles tentatives automatiques et présentez à un humain le message « réessayez dans une heure ».",
+        "<strong class='text-white'>Confirmez que le compte est réellement actif.</strong> Un blocage <code>p-captcha</code> se lève avec le temps, mais un compte expiré, échoué ou désactivé continue d'échouer quelle que soit la durée d'attente ; vérifiez le statut avant d'accuser le captcha.",
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Erreur / symptôme","Ce que cela signifie","Solution"], rows: [
+      ["<code>\"p-captcha\": true</code> dans la réponse d'authentification","Trop de connexions échouées ou suspectes ; un captcha humain est désormais requis","Cessez de réessayer, attendez environ une heure, puis connectez-vous une fois avec des identifiants vérifiés"],
+      ["Connexion bloquée sur « Loading&hellip; » / le captcha ne disparaît jamais","Horloge système désynchronisée ou ressources de captcha en cache périmées","Activez Set time automatically et Sync now, videz le cache et les cookies, réessayez"],
+      ["Le bon mot de passe est quand même refusé","Erreur de casse ou de verrouillage des majuscules, ou espace final","Ressaisissez les identifiants exactement, caractère par caractère ; testez d'abord sur le web"],
+      ["Le captcha réapparaît à chaque tentative","Un mot de passe enregistré/obsolète ou un bot continue d'envoyer de mauvaises connexions","Mettez à jour les identifiants partout ; mettez l'automatisation en pause jusqu'à correction de la source"],
+      ["<code>p-ticket</code> + <code>p-time</code> dans le corps (pas <code>p-captcha</code>)","Pénalité de temps courte standard, pas un blocage captcha","Attendez <code>p-time</code> secondes, renvoyez la requête avec le <code>p-ticket</code> joint"],
+      ["<code>429 Too Many Requests</code>","Plafond général de débit de requêtes atteint","Ralentissez, limitez votre débit de requêtes, réessayez après le refroidissement"],
+      ["Toujours bloqué après une heure avec les bons identifiants","Le compte est peut-être expiré, échoué ou désactivé, ce n'est pas un problème de captcha","Confirmez que le compte est actif et à jour ; contactez le support si c'est le cas"],
+    ] },
+    { type: "heading",text: "Prévenir cela avec PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade achemine vos alertes TradingView vers Tradovate via une connexion gérée, de sorte que vous n'avez jamais à bricoler une logique de connexion fragile face au point d'authentification brut :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Session unique et stable</strong>, maintient une connexion propre par compte au lieu de se réauthentifier à chaque signal, pour que vous ne submergiez jamais le point de connexion jusqu'au captcha.",
+        "<strong class='text-white'>Réutilisation et renouvellement du jeton</strong>, conserve et rafraîchit le jeton d'accès pendant sa durée de vie au lieu de se connecter de zéro, ce qui maintient le trafic d'authentification bien en deçà du seuil d'abus.",
+        "<strong class='text-white'>Validation des identifiants</strong>, confirme une seule fois, dès le départ, que la connexion est authentifiée, de sorte qu'un mauvais mot de passe apparaisse comme une erreur de configuration claire plutôt que comme une boucle de nouvelles tentatives silencieuse.",
+        "<strong class='text-white'>Reconnexions avec délai croissant</strong>, échelonne les reconnexions après une coupure et évite les boucles de réauthentification qui poussent les clients automatisés droit dans le refroidissement d'une heure du <code>p-captcha</code>.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Poche cose bloccano una sessione Tradovate più in fretta di un login che semplicemente non passa, e quando la risposta porta silenziosamente un flag <code>p-captcha</code>, martellare il pulsante di login la affonda soltanto di più. Quel flag è l'interruttore anti-forza bruta di Tradovate. Dopo una raffica di accessi falliti, di solito lo stesso nome utente o la stessa password errati inviati più volte in rapida successione, il servizio di autenticazione smette di fidarsi della richiesta e richiede un captcha risolvibile da una persona. Su client automatizzati, bridge o app di terze parti che non possono mostrarne uno, il risultato pratico è un blocco temporaneo." },
+    { type: "paragraph",html: "Lo incontrerà come un login bloccato su «Loading&hellip;», un captcha che non si risolve mai, un rimbalzo <code>Access is denied</code> oppure, se legge le risposte API grezze, un corpo JSON con <code>\"p-captcha\": true</code> al posto di un token di accesso. La soluzione è quasi sempre la stessa: smetta di riprovare, attenda circa un'ora e confermi di inviare le credenziali esatte prima di riprovare. Meglio ancora, instradi tramite un'unica connessione stabile così da non scatenare mai la riautenticazione a raffica che fa scattare la panchina delle penalità." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per il blocco p-captcha",
+      items: [
+        "<strong class='text-white'>La risposta contiene <code>\"p-captcha\": true</code>?</strong> Stop. I tentativi automatici non lo elimineranno; attenda circa un'ora prima di un unico tentativo pulito.",
+        "<strong class='text-white'>Login bloccato su «Loading&hellip;» o il captcha non viene visualizzato?</strong> Sincronizzi l'orologio di sistema e svuoti cache e cookie. Un orologio del PC errato rompe il widget del captcha.",
+        "<strong class='text-white'>Sospetta una password sbagliata?</strong> Reinserisca le credenziali esattamente. Nomi utente e password di Tradovate distinguono maiuscole e minuscole, quindi controlli il blocco maiuscole e gli spazi finali.",
+        "<strong class='text-white'>Un bot o un bridge si riautentica in loop?</strong> Elimini prima il loop, ogni tentativo fallito allunga il blocco.",
+        "<strong class='text-white'>Password cambiata di recente?</strong> La aggiorni ovunque sia connesso. Le credenziali salvate obsolete continuano a fallire e a far scattare il captcha.",
+        "<strong class='text-white'>Ancora bloccato dopo un'ora con i dati corretti?</strong> Confermi che il conto sia attivo (non scaduto, fallito o disabilitato) prima di presumere un bug.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significa «p-captcha: true»" },
+    { type: "paragraph",html: "Tradovate limita la frequenza sia della sua API sia del suo flusso di login per frenare abusi, tentativi di indovinare le password a forza bruta, credential stuffing e traffico di denial-of-service. Superata una soglia, il server non elabora la richiesta; restituisce invece un piccolo oggetto di penalità. La versione lieve è una <em>penalità di tempo</em>: il corpo contiene un <code>p-ticket</code> (un token monouso che prova che è stato limitato) e un <code>p-time</code> (i secondi da attendere). Attende, poi reinvia la richiesta con il ticket allegato. È un dosso di pochi secondi, nulla di più." },
+    { type: "paragraph",html: "Un campo <code>p-captcha</code> è la variante più severa. Quando una risposta porta un oggetto <code>p-captcha</code>, significa che un'applicazione di terze parti non può completare la richiesta e che il client deve essere indirizzato a riprovare tra un'ora. In parole povere: il server vuole ora che una persona risolva un captcha e dimostri che il traffico non è un bot, e un'integrazione automatizzata, uno script API o un bridge di prop firm non ha modo di presentare quella sfida. Quindi, anziché un breve conto alla rovescia che si può superare riprovando, ottiene un raffreddamento di circa un'ora. Una manciata di operazioni «insolite» che dovrebbero essere eseguite di rado, richiedere un token di accesso, registrarsi, cambiare una password o modificare i dati di contatto, sono sorvegliate più da vicino, ed è proprio per questo che i tentativi di login ripetuti sono il modo classico per finire qui." },
+    { type: "paragraph",html: "Tenga a mente questo modello: <code>p-captcha</code> non è un bug né un ban permanente. È un raffreddamento di sicurezza innescato da troppi tentativi di autenticazione falliti o sospetti. Riprovare è la cosa peggiore che possa fare, ogni nuovo tentativo viene letto come ulteriore abuso e può tenere aperta la finestra. La mossa vincente è fare silenzio, correggere ciò che ha fatto fallire i login e tornare una sola volta." },
+    { type: "heading",text: "Principali cause del blocco p-captcha" },
+    { type: "heading",text: "1. Login falliti ripetuti con credenziali errate" },
+    { type: "paragraph",html: "Questo è il fattore scatenante numero uno. Nomi utente e password di Tradovate distinguono maiuscole e minuscole, quindi un blocco maiuscole involontario, un carattere corretto automaticamente o uno spazio finale falliscono in silenzio, e un client che continua a reinviare gli stessi dati errati accumula rapidamente tentativi falliti. Ne bastano abbastanza in una finestra breve e il servizio di autenticazione passa da «password errata» a «dimostri di essere umano», e compare l'oggetto <code>p-captcha</code>." },
+    { type: "heading",text: "2. Un client automatizzato o un bridge che si riautentica in loop" },
+    { type: "paragraph",html: "Bot, bridge TradingView e script fatti in casa che accedono, si disconnettono e accedono di nuovo in un ciclo stretto possono consumare la soglia di autenticazione con la sola gestione ordinaria, prima ancora di inserire un solo ordine. Poiché uno script non può risolvere un captcha, quel loop garantisce il blocco invece di riprendersi da esso." },
+    { type: "heading",text: "3. Un problema di orologio o cache che impedisce al captcha di risolversi" },
+    { type: "paragraph",html: "A volte il captcha <em>viene</em> servito, ma la sua macchina non riesce a completarlo. I widget di login e captcha di Tradovate sono pignoli riguardo all'orologio del suo PC: se l'ora di sistema è sfasata, il controllo di sicurezza può bloccarsi su «Loading&hellip;» o rifiutarla subito, e questo poi ha l'aspetto e il comportamento esatti di un blocco. Risorse in cache obsolete e cookie causano lo stesso captcha che non si risolve mai." },
+    { type: "heading",text: "4. Credenziali salvate obsolete dopo un cambio di password" },
+    { type: "paragraph",html: "Se cambia la sua password di Tradovate (o della prop firm) e dimentica di aggiornarla in una piattaforma collegata, quella piattaforma continua silenziosamente a provare la vecchia. Ognuno di quei tentativi è un login fallito che alimenta il contatore delle penalità, quindi un solo campo dimenticato può far scattare il captcha ancora e ancora." },
+    { type: "heading",text: "5. Login condivisi che colpiscono l'endpoint di autenticazione contemporaneamente" },
+    { type: "paragraph",html: "Un unico insieme di credenziali che pilota più sessioni, dispositivi o conti significa più chiamate di autenticazione simultanee. Le configurazioni di prop firm e copy trading che distribuiscono un singolo login su molte connessioni moltiplicano il traffico di autenticazione e raggiungono la soglia di abuso molto prima di quanto farebbe mai un singolo login manuale." },
+    { type: "heading",text: "Come risolvere il blocco p-captcha: passo dopo passo" },
+    { type: "heading",text: "Risolvere i login falliti ripetuti (il raffreddamento principale)" },
+    { type: "paragraph",html: "Nel momento in cui vede <code>p-captcha</code>, o un captcha che non si risolve dopo diversi tentativi, la soluzione è una pazienza disciplinata, non l'insistenza:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Smetta subito di riprovare", html: "Chiuda il client automatizzato, metta in pausa il bridge e smetta di cliccare su Login. Tentativi continui vengono letti come ulteriore abuso e possono prolungare il blocco." },
+        { title: "Attenda circa un'ora", html: "Questa è l'indicazione dichiarata da Tradovate per una risposta <code>p-captcha</code>. Non lo verifichi ogni pochi minuti, lasci trascorrere l'intero raffreddamento." },
+        { title: "Verifichi le sue credenziali esatte mentre attende", html: "Confermi nome utente e password carattere per carattere, facendo attenzione a maiuscole e minuscole e al blocco maiuscole. Se ha dubbi, questo è il momento di reimpostarle (vedi sotto) così che il suo <em>prossimo</em> tentativo riesca davvero." },
+        { title: "Dopo l'attesa, acceda una volta, in modo pulito", html: "Acceda prima tramite la piattaforma web di Tradovate. Un singolo login manuale riuscito conferma le credenziali prima di puntare di nuovo qualsiasi automazione sul conto." },
+      ],
+    },
+    { type: "heading",text: "Reimpostare credenziali di cui non è sicuro al 100%" },
+    { type: "paragraph",html: "Se non può essere certo che la password sia giusta, non continui a tirare a indovinare, ogni tentativo è un altro login fallito:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Usi il flusso di reimpostazione password della piattaforma</strong> per impostare una password sicuramente valida. Tradovate può inoltre segnalare credenziali presenti in dati di violazioni noti, quindi una reimpostazione conferma il valore ed elimina una password compromessa.",
+        "<strong class='text-white'>Aggiorni la nuova password ovunque</strong> sia memorizzata, app desktop, app mobile, connessione TradingView e qualsiasi bridge o bot, così che nulla provi ancora la vecchia.",
+        "<strong class='text-white'>Provi le nuove credenziali con un singolo login web manuale</strong> prima di riattivare l'automazione.",
+      ],
+    },
+    { type: "heading",text: "Risolvere un problema di orologio o cache così che il captcha possa essere visualizzato" },
+    { type: "paragraph",html: "Se è il captcha stesso a bloccarsi anziché rifiutarla, ripulisca l'ambiente prima del prossimo tentativo:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Attivi l'ora automatica e risincronizzi l'orologio.</strong> In Windows, apra le impostazioni di Data e ora, attivi <strong class='text-white'>Set time automatically</strong> e faccia clic su <strong class='text-white'>Sync now</strong> così che il suo PC corrisponda ai server di Tradovate. La dicitura esatta dell'interruttore cambia un po' tra Windows 10 e 11, ma si trova sempre sotto Data e ora.",
+        "<strong class='text-white'>Svuoti cache e cookie del browser</strong>, oppure provi una finestra privata/in incognito, per forzare il caricamento di risorse captcha nuove.",
+        "<strong class='text-white'>Riprovi il login</strong> una volta sincronizzato l'orologio e svuotata la cache.",
+      ],
+    },
+    { type: "heading",text: "Fermare le tempeste di riautenticazione automatizzate" },
+    { type: "paragraph",html: "Se a causare il blocco è stato uno script o un bridge, corregga lo <em>schema</em>, non solo questo singolo blocco:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Riutilizzi il token di accesso fino alla scadenza</strong> anziché effettuare il login a ogni richiesta. I token di accesso di Tradovate sono validi per una durata stabilita, quindi li rinnovi prima della scadenza invece di riautenticarsi da zero.",
+        "<strong class='text-white'>Aggiunga un backoff tra i tentativi di riconnessione</strong> in modo che una connessione caduta non degeneri in un loop di login.",
+        "<strong class='text-white'>Gestisca la risposta di penalità nel codice.</strong> Se vede <code>p-ticket</code>/<code>p-time</code>, attenda e riprovi con il ticket. Se vede <code>p-captcha</code>, interrompa del tutto i tentativi automatici e mostri a una persona il messaggio «riprovi tra un'ora».",
+        "<strong class='text-white'>Confermi che il conto sia davvero attivo.</strong> Un blocco <code>p-captcha</code> si risolve con il tempo, ma un conto scaduto, fallito o disabilitato continua a fallire per quanto attenda; controlli lo stato prima di dare la colpa al captcha.",
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Errore / sintomo","Che cosa significa","Soluzione"], rows: [
+      ["<code>\"p-captcha\": true</code> nella risposta di autenticazione","Troppi login falliti o sospetti; ora è richiesto un captcha umano","Smetta di riprovare, attenda circa un'ora, poi acceda una volta con credenziali verificate"],
+      ["Login bloccato su «Loading&hellip;» / il captcha non si risolve mai","Orologio di sistema non sincronizzato o risorse captcha in cache obsolete","Attivi Set time automatically e Sync now, svuoti cache e cookie, riprovi"],
+      ["La password corretta viene comunque rifiutata","Errore di maiuscole/minuscole o del blocco maiuscole, oppure uno spazio finale","Reinserisca le credenziali esattamente, carattere per carattere; provi prima sul web"],
+      ["Il captcha ricompare a ogni tentativo","Una password salvata/obsoleta o un bot continua a inviare login errati","Aggiorni le credenziali ovunque; metta in pausa l'automazione finché non corregge la fonte"],
+      ["<code>p-ticket</code> + <code>p-time</code> nel corpo (non <code>p-captcha</code>)","Breve penalità di tempo standard, non un blocco captcha","Attenda <code>p-time</code> secondi, reinvii la richiesta con il <code>p-ticket</code> allegato"],
+      ["<code>429 Too Many Requests</code>","Raggiunto il limite generale di frequenza delle richieste","Rallenti, limiti la frequenza delle richieste, riprovi dopo il raffreddamento"],
+      ["Ancora bloccato dopo un'ora con i dati corretti","Il conto potrebbe essere scaduto, fallito o disabilitato, non è un problema di captcha","Confermi che il conto sia attivo e in regola; contatti il supporto se lo è"],
+    ] },
+    { type: "heading",text: "Prevenga tutto questo con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade instrada i suoi alert di TradingView a Tradovate tramite una connessione gestita, così non deve mai costruirsi da sé una fragile logica di login contro l'endpoint di autenticazione grezzo:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Singola sessione stabile</strong>, mantiene una connessione pulita per conto anziché riautenticarsi a ogni segnale, così non intasa mai l'endpoint di login fino a provocare un captcha.",
+        "<strong class='text-white'>Riutilizzo e rinnovo del token</strong>, conserva e aggiorna il token di accesso entro la sua durata anziché accedere da zero, mantenendo il traffico di autenticazione ben al di sotto della soglia di abuso.",
+        "<strong class='text-white'>Validazione delle credenziali</strong>, conferma una sola volta, all'inizio, che la connessione sia autenticata, così una password errata emerge come un chiaro errore di configurazione anziché come un silenzioso loop di tentativi.",
+        "<strong class='text-white'>Riconnessioni con backoff</strong>, scagliona le riconnessioni dopo una caduta ed evita i loop di riautenticazione che spingono i client automatizzati dritti nel raffreddamento di un'ora del <code>p-captcha</code>.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Lockout-Free", de: "Handeln ohne Sperren", es: "Opere sin bloqueos", fr: "Tradez sans blocage", it: "Operi senza blocchi" },
+  ctaText: { en: "Link your TradingView alerts to Tradovate through one stable connection, no re-auth storms, no captcha penalty box.", de: "Verbinden Sie Ihre TradingView-Alerts über eine einzige stabile Verbindung mit Tradovate, ohne Re-Auth-Stürme und ohne Captcha-Strafbank.", es: "Vincule sus alertas de TradingView con Tradovate mediante una única conexión estable, sin tormentas de reautenticación ni banquillo de captcha.", fr: "Reliez vos alertes TradingView à Tradovate via une seule connexion stable, sans tempêtes de réauthentification ni banc de touche captcha.", it: "Colleghi i suoi alert di TradingView a Tradovate tramite un'unica connessione stabile, senza tempeste di riautenticazione né panchina del captcha." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does \"p-captcha\": true mean in Tradovate?", a: "It's Tradovate's security response telling you a human-solvable captcha is now required to continue. It shows up after too many failed or suspicious login attempts, and because a third-party or automated app can't solve a captcha, the guidance is to try again in about an hour rather than retry immediately." },
+    { q: "How long does the p-captcha lockout last?", a: "Roughly one hour, per Tradovate's developer guidance. Treat it as a cool-down: wait the full window without retrying, since each new attempt can be read as more abuse and keep the block open." },
+    { q: "Can I solve the captcha from an API, bot, or bridge?", a: "No. A p-captcha response specifically means an automated or third-party application can't complete the request. Your code should stop retrying and surface the “try again in an hour” message to a human instead of looping." },
+    { q: "My password is correct, why did I still get p-captcha?", a: "Common culprits are case-sensitivity or a Caps Lock slip, a trailing space, a stale saved password in a connected platform, or an automated client re-authenticating in a loop. Any of these produces repeated failed logins that trip the captcha even when you think the password is right." },
+    { q: "Is p-captcha the same as p-ticket / p-time?", a: "No. p-ticket and p-time are a short time penalty, you wait the stated seconds and resend the request with the ticket attached. p-captcha is stricter: there's no ticket to retry with, and the wait is about an hour because a human captcha is required." },
+    { q: "Does p-captcha mean my account is banned?", a: "No. It's a temporary, automatic security cool-down, not a permanent ban. Once the window passes and you sign in with correct credentials, access returns. If it doesn't, the problem is usually account status, expired, failed, or disabled, not the captcha." },
+    { q: "Why does the captcha get stuck on \"Loading...\" and never let me finish?", a: "That's usually a clock or cache problem rather than a lockout. If your PC's clock is out of sync, Tradovate's captcha and login widgets can hang or reject you. Enable automatic time, sync the clock, clear your cache and cookies, then retry." },
+    { q: "How do I stop the p-captcha lockout from happening again?", a: "Verify and store correct, case-exact credentials everywhere; reuse and renew your access token instead of logging in per request; add backoff between reconnects; and keep a single stable session per account rather than fanning one login across many simultaneous connections." },
+  ], de: [
+    { q: "Was bedeutet \"p-captcha\": true bei Tradovate?", a: "Es ist die Sicherheitsantwort von Tradovate, die Ihnen mitteilt, dass nun ein von Menschen lösbares Captcha erforderlich ist, um fortzufahren. Sie erscheint nach zu vielen fehlgeschlagenen oder verdächtigen Login-Versuchen, und da eine Drittanbieter- oder automatisierte App kein Captcha lösen kann, lautet die Empfehlung, es in etwa einer Stunde erneut zu versuchen, statt sofort zu wiederholen." },
+    { q: "Wie lange dauert die p-captcha-Sperre?", a: "Laut den Entwicklerhinweisen von Tradovate etwa eine Stunde. Betrachten Sie es als Abkühlphase: Warten Sie das gesamte Zeitfenster ohne Wiederholung ab, denn jeder neue Versuch kann als weiterer Missbrauch gewertet werden und die Sperre aufrechterhalten." },
+    { q: "Kann ich das Captcha über eine API, einen Bot oder eine Brücke lösen?", a: "Nein. Eine p-captcha-Antwort bedeutet gerade, dass eine automatisierte oder Drittanbieter-Anwendung die Anfrage nicht abschließen kann. Ihr Code sollte keine Wiederholungen mehr senden und stattdessen die Meldung „in einer Stunde erneut versuchen“ an einen Menschen weitergeben, statt in einer Schleife zu laufen." },
+    { q: "Mein Passwort ist korrekt, warum habe ich trotzdem p-captcha bekommen?", a: "Häufige Ursachen sind Groß-/Kleinschreibung oder ein Caps-Lock-Ausrutscher, ein Leerzeichen am Ende, ein veraltetes gespeichertes Passwort in einer verbundenen Plattform oder ein automatisierter Client, der sich in einer Schleife neu authentifiziert. Jede davon erzeugt wiederholte fehlgeschlagene Logins, die das Captcha auslösen, selbst wenn Sie glauben, das Passwort stimme." },
+    { q: "Ist p-captcha dasselbe wie p-ticket / p-time?", a: "Nein. p-ticket und p-time sind eine kurze Zeitstrafe: Sie warten die angegebenen Sekunden und senden die Anfrage mit angehängtem Ticket erneut. p-captcha ist strenger: Es gibt kein Ticket, mit dem Sie es erneut versuchen könnten, und die Wartezeit beträgt etwa eine Stunde, weil ein menschliches Captcha erforderlich ist." },
+    { q: "Bedeutet p-captcha, dass mein Konto gesperrt ist?", a: "Nein. Es ist eine vorübergehende, automatische Sicherheits-Abkühlphase, keine dauerhafte Sperre. Sobald das Zeitfenster vorbei ist und Sie sich mit korrekten Zugangsdaten anmelden, kehrt der Zugriff zurück. Falls nicht, liegt das Problem meist beim Kontostatus, abgelaufen, fehlgeschlagen oder deaktiviert, nicht beim Captcha." },
+    { q: "Warum bleibt das Captcha auf \"Loading...\" hängen und lässt mich nie fertig werden?", a: "Das ist meist ein Problem mit Uhr oder Cache, keine Sperre. Wenn die Uhr Ihres PCs nicht synchron ist, können die Captcha- und Login-Widgets von Tradovate hängen bleiben oder Sie abweisen. Aktivieren Sie die automatische Zeit, synchronisieren Sie die Uhr, leeren Sie Cache und Cookies und versuchen Sie es erneut." },
+    { q: "Wie verhindere ich, dass die p-captcha-Sperre erneut auftritt?", a: "Überprüfen und hinterlegen Sie überall korrekte, auf die Groß-/Kleinschreibung genaue Zugangsdaten; verwenden und erneuern Sie Ihr Access-Token, statt sich pro Anfrage anzumelden; fügen Sie zwischen Wiederverbindungen ein Backoff ein; und halten Sie pro Konto eine einzige stabile Sitzung, statt ein Login auf viele gleichzeitige Verbindungen zu verteilen." },
+  ], es: [
+    { q: "¿Qué significa \"p-captcha\": true en Tradovate?", a: "Es la respuesta de seguridad de Tradovate que le indica que ahora se requiere un captcha que solo una persona puede resolver para continuar. Aparece tras demasiados intentos de inicio de sesión fallidos o sospechosos, y como una aplicación de terceros o automatizada no puede resolver un captcha, la indicación es volver a intentarlo en aproximadamente una hora en lugar de reintentar de inmediato." },
+    { q: "¿Cuánto dura el bloqueo por p-captcha?", a: "Aproximadamente una hora, según la guía para desarrolladores de Tradovate. Considérelo un periodo de enfriamiento: espere la ventana completa sin reintentar, ya que cada nuevo intento puede interpretarse como más abuso y mantener el bloqueo abierto." },
+    { q: "¿Puedo resolver el captcha desde una API, un bot o un puente?", a: "No. Una respuesta p-captcha significa precisamente que una aplicación automatizada o de terceros no puede completar la solicitud. Su código debe dejar de reintentar y mostrar a una persona el mensaje «vuelva a intentarlo en una hora» en lugar de entrar en bucle." },
+    { q: "Mi contraseña es correcta, ¿por qué recibí p-captcha de todos modos?", a: "Los culpables habituales son la distinción entre mayúsculas y minúsculas o un despiste con el bloqueo de mayúsculas, un espacio al final, una contraseña guardada obsoleta en una plataforma conectada, o un cliente automatizado que se reautentica en bucle. Cualquiera de estos produce inicios de sesión fallidos repetidos que activan el captcha aunque crea que la contraseña es correcta." },
+    { q: "¿Es p-captcha lo mismo que p-ticket / p-time?", a: "No. p-ticket y p-time son una penalización de tiempo breve: espera los segundos indicados y reenvía la solicitud con el ticket adjunto. p-captcha es más estricto: no hay ticket con el que reintentar, y la espera es de aproximadamente una hora porque se requiere un captcha humano." },
+    { q: "¿Significa p-captcha que mi cuenta está bloqueada?", a: "No. Es un periodo de enfriamiento de seguridad temporal y automático, no un bloqueo permanente. Una vez transcurrida la ventana y al iniciar sesión con credenciales correctas, el acceso vuelve. Si no es así, el problema suele ser el estado de la cuenta, caducada, fallida o deshabilitada, no el captcha." },
+    { q: "¿Por qué el captcha se queda atascado en \"Loading...\" y nunca me deja terminar?", a: "Suele ser un problema de reloj o de caché, no un bloqueo. Si el reloj de su PC no está sincronizado, los widgets de captcha e inicio de sesión de Tradovate pueden colgarse o rechazarle. Active la hora automática, sincronice el reloj, borre la caché y las cookies y vuelva a intentarlo." },
+    { q: "¿Cómo evito que el bloqueo por p-captcha vuelva a ocurrir?", a: "Verifique y almacene en todas partes credenciales correctas y exactas en mayúsculas y minúsculas; reutilice y renueve su token de acceso en lugar de iniciar sesión en cada solicitud; añada un retroceso entre reconexiones; y mantenga una única sesión estable por cuenta en lugar de repartir un inicio de sesión entre muchas conexiones simultáneas." },
+  ], fr: [
+    { q: "Que signifie \"p-captcha\": true dans Tradovate ?", a: "C'est la réponse de sécurité de Tradovate qui vous indique qu'un captcha résoluble par un humain est désormais requis pour continuer. Il apparaît après trop de tentatives de connexion échouées ou suspectes, et comme une application tierce ou automatisée ne peut pas résoudre un captcha, la consigne est de réessayer dans environ une heure plutôt que de réessayer immédiatement." },
+    { q: "Combien de temps dure le blocage p-captcha ?", a: "Environ une heure, selon les consignes développeurs de Tradovate. Considérez-le comme une période de refroidissement : attendez toute la fenêtre sans réessayer, car chaque nouvelle tentative peut être perçue comme un abus supplémentaire et maintenir le blocage." },
+    { q: "Puis-je résoudre le captcha depuis une API, un bot ou un pont ?", a: "Non. Une réponse p-captcha signifie précisément qu'une application automatisée ou tierce ne peut pas mener la requête à terme. Votre code doit cesser de réessayer et présenter à un humain le message « réessayez dans une heure » plutôt que de boucler." },
+    { q: "Mon mot de passe est correct, pourquoi ai-je quand même reçu p-captcha ?", a: "Les coupables habituels sont la sensibilité à la casse ou une erreur de verrouillage des majuscules, un espace final, un mot de passe enregistré obsolète dans une plateforme connectée, ou un client automatisé qui se réauthentifie en boucle. Chacun de ces cas produit des connexions échouées répétées qui déclenchent le captcha même si vous pensez que le mot de passe est bon." },
+    { q: "p-captcha est-il identique à p-ticket / p-time ?", a: "Non. p-ticket et p-time constituent une courte pénalité de temps : vous attendez le nombre de secondes indiqué et renvoyez la requête avec le ticket joint. p-captcha est plus strict : il n'y a pas de ticket avec lequel réessayer, et l'attente est d'environ une heure car un captcha humain est requis." },
+    { q: "p-captcha signifie-t-il que mon compte est banni ?", a: "Non. C'est un refroidissement de sécurité temporaire et automatique, pas un bannissement définitif. Une fois la fenêtre écoulée et lorsque vous vous connectez avec des identifiants corrects, l'accès revient. Si ce n'est pas le cas, le problème est généralement le statut du compte, expiré, échoué ou désactivé, pas le captcha." },
+    { q: "Pourquoi le captcha reste-t-il bloqué sur \"Loading...\" et ne me laisse-t-il jamais terminer ?", a: "C'est généralement un problème d'horloge ou de cache plutôt qu'un blocage. Si l'horloge de votre PC n'est pas synchronisée, les widgets de captcha et de connexion de Tradovate peuvent se figer ou vous rejeter. Activez l'heure automatique, synchronisez l'horloge, videz le cache et les cookies, puis réessayez." },
+    { q: "Comment éviter que le blocage p-captcha ne se reproduise ?", a: "Vérifiez et enregistrez partout des identifiants corrects et exacts à la casse près ; réutilisez et renouvelez votre jeton d'accès au lieu de vous connecter à chaque requête ; ajoutez un délai croissant entre les reconnexions ; et conservez une seule session stable par compte plutôt que de répartir une connexion sur de nombreuses connexions simultanées." },
+  ], it: [
+    { q: "Che cosa significa \"p-captcha\": true in Tradovate?", a: "È la risposta di sicurezza di Tradovate che le comunica che ora è richiesto un captcha risolvibile da una persona per proseguire. Compare dopo troppi tentativi di login falliti o sospetti e, poiché un'app di terze parti o automatizzata non può risolvere un captcha, l'indicazione è di riprovare tra circa un'ora anziché riprovare subito." },
+    { q: "Quanto dura il blocco p-captcha?", a: "Circa un'ora, secondo le indicazioni per sviluppatori di Tradovate. Lo consideri un periodo di raffreddamento: attenda l'intera finestra senza riprovare, poiché ogni nuovo tentativo può essere interpretato come ulteriore abuso e mantenere il blocco." },
+    { q: "Posso risolvere il captcha da un'API, un bot o un bridge?", a: "No. Una risposta p-captcha significa specificamente che un'applicazione automatizzata o di terze parti non può completare la richiesta. Il suo codice deve smettere di riprovare e mostrare a una persona il messaggio «riprovi tra un'ora» anziché andare in loop." },
+    { q: "La mia password è corretta, perché ho ricevuto comunque p-captcha?", a: "I colpevoli più comuni sono la distinzione tra maiuscole e minuscole o una svista con il blocco maiuscole, uno spazio finale, una password salvata obsoleta in una piattaforma collegata, oppure un client automatizzato che si riautentica in loop. Ognuno di questi produce login falliti ripetuti che fanno scattare il captcha anche quando pensa che la password sia giusta." },
+    { q: "p-captcha è la stessa cosa di p-ticket / p-time?", a: "No. p-ticket e p-time sono una breve penalità di tempo: si attendono i secondi indicati e si reinvia la richiesta con il ticket allegato. p-captcha è più severo: non c'è alcun ticket con cui riprovare, e l'attesa è di circa un'ora perché è richiesto un captcha umano." },
+    { q: "p-captcha significa che il mio conto è stato bannato?", a: "No. È un raffreddamento di sicurezza temporaneo e automatico, non un ban permanente. Una volta trascorsa la finestra e accedendo con credenziali corrette, l'accesso ritorna. In caso contrario, il problema è di solito lo stato del conto, scaduto, fallito o disabilitato, non il captcha." },
+    { q: "Perché il captcha resta bloccato su \"Loading...\" e non mi lascia mai finire?", a: "Di solito è un problema di orologio o di cache, non un blocco. Se l'orologio del suo PC non è sincronizzato, i widget di captcha e login di Tradovate possono bloccarsi o rifiutarla. Attivi l'ora automatica, sincronizzi l'orologio, svuoti cache e cookie, quindi riprovi." },
+    { q: "Come evito che il blocco p-captcha si ripresenti?", a: "Verifichi e memorizzi ovunque credenziali corrette ed esatte nelle maiuscole; riutilizzi e rinnovi il suo token di accesso anziché effettuare il login a ogni richiesta; aggiunga un backoff tra le riconnessioni; e mantenga una singola sessione stabile per conto anziché distribuire un login su molte connessioni simultanee." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von dieser weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas registradas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que confirme siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par celle-ci. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent au fil du temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, perciò confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

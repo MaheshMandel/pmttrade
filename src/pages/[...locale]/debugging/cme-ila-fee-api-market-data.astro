@@ -1,0 +1,570 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "cme-ila-fee-api-market-data";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API Needs CME ILA Fee (~$290/mo)";
+const META_DESCRIPTION =
+  "Tradovate CME ILA fee (~$290/mo) applies only to real-time API data, send orders on free 10-minute delayed data to skip it and automate cheaper.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API benötigt CME ILA-Gebühr (~290 $/Monat)", es: "La API de Tradovate necesita la tarifa CME ILA (~290 $/mes)", fr: "L'API Tradovate nécessite les frais CME ILA (~290 $/mois)", it: "L'API Tradovate richiede la tariffa CME ILA (~290 $/mese)" },
+  dek: { en: "You request a real-time quote over the API and get &ldquo;Symbol is inaccessible,&rdquo; or you learn live data over the API needs a CME sub-vendor license around $290 a month. Here's the one distinction that saves most traders the fee entirely.", de: "Sie fordern über die API eine Echtzeit-Kursnotierung an und erhalten &ldquo;Symbol is inaccessible,&rdquo; oder Sie erfahren, dass Live-Daten über die API eine CME-Sub-Vendor-Lizenz für rund 290 $ pro Monat erfordern. Hier ist die eine Unterscheidung, die den meisten Tradern die Gebühr komplett erspart.", es: "Solicita una cotización en tiempo real a través de la API y recibe &ldquo;Symbol is inaccessible,&rdquo; o descubre que los datos en vivo a través de la API requieren una licencia de subproveedor de CME de unos 290 $ al mes. Esta es la única distinción que le ahorra la tarifa por completo a la mayoría de los traders.", fr: "Vous demandez une cotation en temps réel via l'API et recevez &ldquo;Symbol is inaccessible,&rdquo; ou vous découvrez que les données en direct via l'API nécessitent une licence de sous-fournisseur CME d'environ 290 $ par mois. Voici la seule distinction qui permet à la plupart des traders d'éviter entièrement ces frais.", it: "Richiede una quotazione in tempo reale tramite l'API e riceve &ldquo;Symbol is inaccessible,&rdquo; oppure scopre che i dati live tramite l'API richiedono una licenza da sub-vendor CME di circa 290 $ al mese. Ecco l'unica distinzione che permette alla maggior parte dei trader di evitare del tutto la tariffa." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You wire up the Tradovate API, request a real-time quote over the WebSocket, and instead of streaming prices you get <strong class='text-white'>&ldquo;Symbol is inaccessible.&rdquo;</strong> Or you find out that live market data over the API is going to run you a CME sub-vendor license of <strong class='text-white'>around $290 a month</strong> on top of everything else. It's one of the most misunderstood costs in Tradovate automation, and it stops plenty of retail algo traders cold before they ever place an order. Here's the part almost nobody tells you up front: the <strong class='text-white'>CME ILA fee only covers real-time market data streamed through the API</strong>. It does <strong class='text-white'>not</strong> apply to sending orders. That one distinction is the difference between paying $290+ a month and paying nothing extra. Below, I'll walk through what the CME Information License Agreement (ILA) sub-vendor requirement actually is, why the API triggers it, and three ways to keep automating, including routing your signals through PickMyTrade so you never touch the fee at all." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for the CME ILA API Fee",
+      items: [
+        "<strong class='text-white'>Are you paying for data, or for orders?</strong> Sending orders via the API does not require the CME ILA. Only streaming real-time Tradovate market data does. Get clear on which one you actually need.",
+        "<strong class='text-white'>Seeing &ldquo;Symbol is inaccessible&rdquo;?</strong> That WebSocket response usually means your API session isn't entitled to real-time data for that symbol, not that the symbol is wrong.",
+        "<strong class='text-white'>Look at free delayed data.</strong> Tradovate gives you 10-minute delayed data at no cost, which is plenty when your entry signals come from TradingView or another feed.",
+        "<strong class='text-white'>Keep data off the API.</strong> If your Pine Script or indicator logic runs on TradingView, you don't need Tradovate's real-time API feed at all, use the API for execution only.",
+        "<strong class='text-white'>Budget before you commit.</strong> Real-time API market-data licensing is priced by CME data tier and it moves over time, so confirm the current number with Tradovate and CME before you sign anything.",
+        "<strong class='text-white'>Prop accounts play by different rules.</strong> On evaluation or funded accounts, the prop firm controls market data, so don't try to self-register as a sub-vendor there.",
+      ],
+    },
+    { type: "heading", text: "What the CME ILA (Sub-Vendor) Requirement Means" },
+    { type: "paragraph", html: "The <strong class='text-white'>CME Information License Agreement (ILA)</strong> is a market-data licensing agreement with CME Group, the exchange behind ES, NQ, CL, GC, and the rest of the CME/CBOT/NYMEX/COMEX futures you trade on Tradovate. When you consume real-time exchange data through a broker's user interface, the broker handles that licensing for you. Pull the exact same real-time data programmatically through the <strong class='text-white'>API</strong>, and CME treats you differently: you become a <strong class='text-white'>sub-vendor</strong> of the data, and you have to be registered and licensed as one." },
+    { type: "paragraph", html: "This isn't a Tradovate invention. A CME ruling that took effect <strong class='text-white'>September 30, 2022</strong> changed the rules: to keep offering market data over the API, brokers now have to require any user who wants that data to register as a sub-vendor. In practice that means an ILA and a recurring fee, usually <strong class='text-white'>around $290 a month</strong> for the base tier, with broader or higher data tiers costing more. Since exchange data pricing shifts over time and varies by the tier you pick, treat any exact figure as a starting point and verify the current cost directly with Tradovate and CME." },
+    { type: "paragraph", html: "Now the part that saves most traders money: <strong class='text-white'>the ILA covers market data, not order execution.</strong> You can authenticate to the API, place orders, modify them, and read your account and fills without ever registering as a sub-vendor. Sending trades through the API works fine without a CME ILA. The fee is a <strong class='text-white'>data</strong> cost, not an <strong class='text-white'>automation</strong> cost." },
+    { type: "heading", text: "Top Causes of the CME ILA API Fee Surprise" },
+    { type: "heading", text: "1. You assumed API access included real-time data" },
+    { type: "paragraph", html: "Getting API access, the add-on plus your key and secret, is a separate thing from being entitled to stream real-time exchange data through that API. Access lets you connect and trade. Real-time market data over the API is the piece that drags in the CME sub-vendor requirement." },
+    { type: "heading", text: "2. You tried to subscribe to real-time quotes over the WebSocket" },
+    { type: "paragraph", html: "The moment your code calls the market-data endpoint, say a <code>md/subscribeQuote</code>-style request, for a live CME symbol without the entitlement, the feed either won't stream or comes back with <strong class='text-white'>&ldquo;Symbol is inaccessible.&rdquo;</strong> The error reads like a bad symbol, but it's really an entitlement and licensing gap." },
+    { type: "heading", text: "3. You confused Tradovate's API add-on fee with the CME data fee" },
+    { type: "paragraph", html: "There are two different charges here. Tradovate may bill a modest monthly <strong class='text-white'>API add-on</strong> to enable programmatic access, and CME bills the <strong class='text-white'>ILA data license</strong> separately. Stacking them together in your head makes the number look scarier than it is, and the big one, the ILA, is avoidable if you don't need real-time API data." },
+    { type: "heading", text: "4. You're on a prop or evaluation account" },
+    { type: "paragraph", html: "On funded or evaluation accounts, the prop firm, not you, owns and controls the market-data entitlement. Registering yourself as a CME sub-vendor on a prop account is the wrong path. Data problems there get solved by the firm." },
+    { type: "heading", text: "5. Your strategy never needed Tradovate's real-time feed" },
+    { type: "paragraph", html: "Plenty of automated strategies compute their entry and exit signals on <strong class='text-white'>TradingView</strong> (or another charting source) and only need Tradovate to execute. If that's you, paying CME ~$290 a month for a duplicate real-time feed is money spent on data you never touch." },
+    { type: "heading", text: "How to Fix the CME ILA API Fee: Step-by-Step" },
+    { type: "paragraph", html: "There are three legitimate routes, from cheapest to most expensive. Pick based on whether your strategy truly needs real-time data from the Tradovate API." },
+    { type: "heading", text: "Fixing it with free 10-minute delayed data (cheapest)" },
+    { type: "paragraph", html: "If your logic doesn't depend on live Tradovate ticks, you trade a slower timeframe, or your signals come from elsewhere, use Tradovate's free delayed data and skip the ILA entirely." },
+    {
+      type: "steps",
+      items: [
+        { title: "Know what &ldquo;delayed&rdquo; means", html: "Quotes and chart data lag real time by roughly 10 minutes, and they cost nothing." },
+        { title: "Watch for the visual flag", html: "In the platform, delayed symbols are flagged visually, a symbol name shown in orange means delayed rather than live data." },
+        { title: "Keep order routing on the API", html: "Placing and managing orders doesn't need the ILA, so execution stays fully live even while your data is delayed." },
+        { title: "Confirm the lag is acceptable", html: "Only go this route if a ~10-minute data lag is acceptable for your strategy. It's no good for scalping or anything that keys off live ticks." },
+      ],
+    },
+    { type: "heading", text: "Fixing it by moving market data off the API (recommended for most automation)" },
+    { type: "paragraph", html: "The most common real-world setup is to execute through the Tradovate API but source signals from a feed you already pay for, so you never trip the CME sub-vendor requirement." },
+    {
+      type: "steps",
+      items: [
+        { title: "Generate signals where your charts live", html: "Generate your entry and exit signals where your charts already live, usually TradingView, on the real-time data plan you already have there." },
+        { title: "Fire webhook alerts", html: "Fire those signals as webhook alerts to an automation layer, your own server or a bridge service." },
+        { title: "Call the API for execution only", html: "Have that layer call the Tradovate API to place orders. Order placement doesn't require the ILA, so no CME data fee applies." },
+        { title: "Pay once, on the charting side", html: "The result: you pay for real-time data once, on the charting side you were already using, and the API does execution only." },
+      ],
+    },
+    { type: "heading", text: "Fixing it by licensing real-time API data (when you genuinely need it)" },
+    { type: "paragraph", html: "If your strategy really does have to consume live Tradovate/CME data through the API, a latency-sensitive book-building or market-making style bot, for example, then the ILA is unavoidable and you should budget for it." },
+    {
+      type: "steps",
+      items: [
+        { title: "Contact Tradovate", html: "Contact Tradovate to start the CME sub-vendor / ILA registration for API market data." },
+        { title: "Choose the right data tier", html: "Pricing varies by tier and changes over time, so get the current schedule in writing. The base tier is usually quoted around $290 a month, with broader tiers higher." },
+        { title: "Complete the license paperwork", html: "Complete the sub-vendor license paperwork with CME as directed. This is a real exchange agreement, not a checkbox." },
+        { title: "Confirm live data flows", html: "Once you're entitled, your API market-data subscriptions, real-time quote streams and the like, return live data instead of &ldquo;Symbol is inaccessible&rdquo; or delayed values." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / Situation", "What it means", "Fix"],
+      rows: [
+        ["&ldquo;Symbol is inaccessible&rdquo; on <code>md/subscribeQuote</code>", "Your API session isn't entitled to real-time data for that symbol", "Use free delayed data, source data off-API, or license real-time via the CME ILA"],
+        ["Quoted ~$290/month &ldquo;CME sub-vendor&rdquo; fee", "The CME ILA for streaming real-time data through the API", "Only pay it if you truly need live API data; orders don't require it"],
+        ["API market data is 10 minutes behind", "You're on Tradovate's free delayed feed", "Fine for slower strategies; license real-time data only if you need live ticks"],
+        ["Orders reject and you assume it's the ILA", "Order execution never needs the ILA", "Look elsewhere, risk limits, data agreements, contract/symbol, not the CME data license"],
+        ["Symbol name shows in orange", "Visual flag for delayed (not live) data", "Expected on the free feed; no action needed unless you want live ticks"],
+        ["Prop/eval account has no real-time data", "The prop firm controls the entitlement", "Contact the firm; don't self-register as a CME sub-vendor"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "The cleanest way to sidestep the CME ILA fee is to keep your signals on the charting platform you already pay for and let a purpose-built bridge handle execution on Tradovate. That's exactly the model PickMyTrade runs, data stays on TradingView, orders route to Tradovate, and the ~$290/month CME data license never enters the picture." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Data-off-API architecture</strong>, signals come from your TradingView plan and orders route to Tradovate for execution, so you don't consume real-time market data through the API and don't trigger the CME sub-vendor requirement.",
+        "<strong class='text-white'>No personal API key juggling</strong>, you link your account once instead of managing your own API credentials and data entitlements per account.",
+        "<strong class='text-white'>Qty / symbol validation</strong>, orders are checked against your configured contract, size, and risk before they're sent, so a bad signal doesn't fire a malformed order.",
+        "<strong class='text-white'>Multi-account sync</strong>, mirror the same alert across multiple Tradovate accounts from one setup, without licensing data separately for each.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie richten die Tradovate API ein, fordern über den WebSocket eine Echtzeit-Kursnotierung an und erhalten statt streamender Kurse <strong class='text-white'>&ldquo;Symbol is inaccessible.&rdquo;</strong> Oder Sie stellen fest, dass Live-Marktdaten über die API zusätzlich eine CME-Sub-Vendor-Lizenz von <strong class='text-white'>rund 290 $ pro Monat</strong> kosten. Es ist einer der am meisten missverstandenen Kostenpunkte bei der Tradovate-Automatisierung und bringt viele Privatanleger-Algo-Trader gleich zu Beginn ins Stocken, noch bevor sie überhaupt eine Order aufgeben. Hier ist der Teil, den fast niemand von vornherein erklärt: Die <strong class='text-white'>CME-ILA-Gebühr deckt nur Echtzeit-Marktdaten ab, die über die API gestreamt werden</strong>. Sie gilt <strong class='text-white'>nicht</strong> für das Senden von Orders. Genau diese Unterscheidung macht den Unterschied zwischen 290 $+ pro Monat und keinen zusätzlichen Kosten aus. Im Folgenden erkläre ich, was die CME-Information-License-Agreement-(ILA)-Sub-Vendor-Anforderung eigentlich ist, warum die API sie auslöst, und drei Wege, wie Sie weiter automatisieren können – unter anderem, indem Sie Ihre Signale über PickMyTrade leiten, sodass Sie die Gebühr nie berühren." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste für die CME-ILA-API-Gebühr",
+      items: [
+        "<strong class='text-white'>Zahlen Sie für Daten oder für Orders?</strong> Das Senden von Orders über die API erfordert keine CME ILA. Nur das Streamen von Tradovate-Echtzeit-Marktdaten tut das. Klären Sie zunächst, was Sie tatsächlich benötigen.",
+        "<strong class='text-white'>Sehen Sie &ldquo;Symbol is inaccessible&rdquo;?</strong> Diese WebSocket-Antwort bedeutet in der Regel, dass Ihre API-Sitzung nicht zum Bezug von Echtzeitdaten für dieses Symbol berechtigt ist – nicht, dass das Symbol falsch ist.",
+        "<strong class='text-white'>Prüfen Sie die kostenlosen verzögerten Daten.</strong> Tradovate stellt Ihnen kostenlos um 10 Minuten verzögerte Daten bereit, was völlig ausreicht, wenn Ihre Einstiegssignale von TradingView oder einer anderen Quelle stammen.",
+        "<strong class='text-white'>Halten Sie Daten von der API fern.</strong> Wenn Ihre Pine-Script- oder Indikatorlogik auf TradingView läuft, benötigen Sie den Tradovate-Echtzeit-API-Feed überhaupt nicht – nutzen Sie die API nur zur Ausführung.",
+        "<strong class='text-white'>Kalkulieren Sie, bevor Sie sich festlegen.</strong> Die Lizenzierung von Echtzeit-API-Marktdaten richtet sich nach der CME-Datenstufe und ändert sich im Laufe der Zeit. Bestätigen Sie daher den aktuellen Betrag bei Tradovate und CME, bevor Sie etwas unterschreiben.",
+        "<strong class='text-white'>Für Prop-Konten gelten andere Regeln.</strong> Bei Evaluierungs- oder finanzierten Konten kontrolliert die Prop-Firma die Marktdaten. Versuchen Sie dort nicht, sich selbst als Sub-Vendor zu registrieren.",
+      ],
+    },
+    { type: "heading", text: "Was die CME-ILA-(Sub-Vendor-)Anforderung bedeutet" },
+    { type: "paragraph", html: "Das <strong class='text-white'>CME Information License Agreement (ILA)</strong> ist eine Marktdaten-Lizenzvereinbarung mit der CME Group, der Börse hinter ES, NQ, CL, GC und den übrigen CME-/CBOT-/NYMEX-/COMEX-Futures, die Sie auf Tradovate handeln. Wenn Sie Echtzeit-Börsendaten über die Benutzeroberfläche eines Brokers beziehen, übernimmt der Broker diese Lizenzierung für Sie. Beziehen Sie dieselben Echtzeitdaten programmatisch über die <strong class='text-white'>API</strong>, behandelt CME Sie anders: Sie werden zu einem <strong class='text-white'>Sub-Vendor</strong> der Daten und müssen als solcher registriert und lizenziert sein." },
+    { type: "paragraph", html: "Das ist keine Erfindung von Tradovate. Eine CME-Regelung, die am <strong class='text-white'>30. September 2022</strong> in Kraft trat, änderte die Vorgaben: Um weiterhin Marktdaten über die API anzubieten, müssen Broker seither jeden Nutzer, der diese Daten will, zur Registrierung als Sub-Vendor verpflichten. In der Praxis bedeutet das eine ILA und eine wiederkehrende Gebühr, üblicherweise <strong class='text-white'>rund 290 $ pro Monat</strong> für die Basisstufe, wobei umfangreichere oder höhere Datenstufen mehr kosten. Da sich die Preise für Börsendaten mit der Zeit ändern und je nach gewählter Stufe variieren, betrachten Sie jede genannte Zahl nur als Ausgangspunkt und bestätigen Sie die aktuellen Kosten direkt bei Tradovate und CME." },
+    { type: "paragraph", html: "Jetzt kommt der Teil, der den meisten Tradern Geld spart: <strong class='text-white'>Die ILA deckt Marktdaten ab, nicht die Orderausführung.</strong> Sie können sich bei der API authentifizieren, Orders aufgeben, ändern und Ihr Konto sowie Ihre Fills auslesen, ohne sich jemals als Sub-Vendor registrieren zu müssen. Das Senden von Trades über die API funktioniert einwandfrei ohne CME ILA. Die Gebühr ist eine <strong class='text-white'>Daten</strong>kosten, keine <strong class='text-white'>Automatisierungs</strong>kosten." },
+    { type: "heading", text: "Häufigste Ursachen für die überraschende CME-ILA-API-Gebühr" },
+    { type: "heading", text: "1. Sie gingen davon aus, dass der API-Zugang Echtzeitdaten einschließt" },
+    { type: "paragraph", html: "Der API-Zugang – das Add-on plus Ihr Key und Secret – ist etwas anderes als die Berechtigung, Echtzeit-Börsendaten über diese API zu streamen. Der Zugang ermöglicht Ihnen Verbindung und Handel. Echtzeit-Marktdaten über die API sind der Punkt, der die CME-Sub-Vendor-Anforderung auslöst." },
+    { type: "heading", text: "2. Sie haben versucht, Echtzeit-Kurse über den WebSocket zu abonnieren" },
+    { type: "paragraph", html: "Sobald Ihr Code den Marktdaten-Endpunkt aufruft, etwa eine Anfrage im Stil von <code>md/subscribeQuote</code>, für ein Live-CME-Symbol ohne die entsprechende Berechtigung, streamt der Feed entweder nicht oder liefert <strong class='text-white'>&ldquo;Symbol is inaccessible.&rdquo;</strong> zurück. Der Fehler liest sich wie ein falsches Symbol, ist aber tatsächlich eine Berechtigungs- und Lizenzlücke." },
+    { type: "heading", text: "3. Sie haben die API-Add-on-Gebühr von Tradovate mit der CME-Datengebühr verwechselt" },
+    { type: "paragraph", html: "Hier gibt es zwei unterschiedliche Kostenpunkte. Tradovate berechnet möglicherweise ein moderates monatliches <strong class='text-white'>API-Add-on</strong>, um den programmatischen Zugang zu ermöglichen, und CME stellt die <strong class='text-white'>ILA-Datenlizenz</strong> separat in Rechnung. Wenn Sie beide gedanklich zusammenzählen, wirkt die Summe bedrohlicher, als sie ist – und der große Posten, die ILA, lässt sich vermeiden, wenn Sie keine Echtzeit-API-Daten benötigen." },
+    { type: "heading", text: "4. Sie nutzen ein Prop- oder Evaluierungskonto" },
+    { type: "paragraph", html: "Bei finanzierten oder Evaluierungskonten besitzt und kontrolliert die Prop-Firma – nicht Sie – die Marktdatenberechtigung. Sich bei einem Prop-Konto selbst als CME-Sub-Vendor zu registrieren, ist der falsche Weg. Datenprobleme werden dort von der Firma gelöst." },
+    { type: "heading", text: "5. Ihre Strategie hat den Echtzeit-Feed von Tradovate nie gebraucht" },
+    { type: "paragraph", html: "Viele automatisierte Strategien berechnen ihre Einstiegs- und Ausstiegssignale auf <strong class='text-white'>TradingView</strong> (oder einer anderen Chart-Quelle) und benötigen Tradovate nur zur Ausführung. Wenn das auf Sie zutrifft, zahlen Sie mit ~290 $ pro Monat an CME für einen doppelten Echtzeit-Feed, den Sie nie anfassen." },
+    { type: "heading", text: "So beheben Sie die CME-ILA-API-Gebühr: Schritt für Schritt" },
+    { type: "paragraph", html: "Es gibt drei legitime Wege, vom günstigsten zum teuersten. Wählen Sie danach, ob Ihre Strategie wirklich Echtzeitdaten von der Tradovate API benötigt." },
+    { type: "heading", text: "Lösung mit kostenlosen, um 10 Minuten verzögerten Daten (am günstigsten)" },
+    { type: "paragraph", html: "Wenn Ihre Logik nicht von Live-Tradovate-Ticks abhängt, Sie einen langsameren Zeitrahmen handeln oder Ihre Signale von anderswo kommen, nutzen Sie die kostenlosen verzögerten Daten von Tradovate und umgehen Sie die ILA vollständig." },
+    {
+      type: "steps",
+      items: [
+        { title: "Wissen, was &ldquo;delayed&rdquo; bedeutet", html: "Kurse und Chart-Daten hinken der Echtzeit um etwa 10 Minuten hinterher und kosten nichts." },
+        { title: "Auf die visuelle Kennzeichnung achten", html: "In der Plattform werden verzögerte Symbole visuell gekennzeichnet – ein orange dargestellter Symbolname bedeutet verzögerte statt Live-Daten." },
+        { title: "Orderrouting auf der API belassen", html: "Das Aufgeben und Verwalten von Orders benötigt keine ILA, sodass die Ausführung vollständig live bleibt, auch wenn Ihre Daten verzögert sind." },
+        { title: "Bestätigen, dass die Verzögerung akzeptabel ist", html: "Wählen Sie diesen Weg nur, wenn eine Verzögerung von ~10 Minuten für Ihre Strategie akzeptabel ist. Für Scalping oder alles, was auf Live-Ticks reagiert, ist er ungeeignet." },
+      ],
+    },
+    { type: "heading", text: "Lösung durch Auslagerung der Marktdaten von der API (für die meisten Automatisierungen empfohlen)" },
+    { type: "paragraph", html: "Der in der Praxis häufigste Aufbau besteht darin, über die Tradovate API auszuführen, die Signale jedoch aus einem Feed zu beziehen, den Sie bereits bezahlen, sodass Sie die CME-Sub-Vendor-Anforderung nie auslösen." },
+    {
+      type: "steps",
+      items: [
+        { title: "Signale dort erzeugen, wo Ihre Charts liegen", html: "Erzeugen Sie Ihre Einstiegs- und Ausstiegssignale dort, wo Ihre Charts bereits liegen, meist TradingView, auf dem Echtzeitdatenplan, den Sie dort bereits haben." },
+        { title: "Webhook-Alerts auslösen", html: "Senden Sie diese Signale als Webhook-Alerts an eine Automatisierungsebene, Ihren eigenen Server oder einen Bridge-Dienst." },
+        { title: "Die API nur zur Ausführung aufrufen", html: "Lassen Sie diese Ebene die Tradovate API aufrufen, um Orders zu platzieren. Die Orderplatzierung erfordert keine ILA, sodass keine CME-Datengebühr anfällt." },
+        { title: "Nur einmal zahlen, auf der Chart-Seite", html: "Das Ergebnis: Sie zahlen Echtzeitdaten nur einmal, auf der Chart-Seite, die Sie ohnehin schon genutzt haben, und die API übernimmt ausschließlich die Ausführung." },
+      ],
+    },
+    { type: "heading", text: "Lösung durch Lizenzierung von Echtzeit-API-Daten (wenn Sie sie wirklich benötigen)" },
+    { type: "paragraph", html: "Wenn Ihre Strategie tatsächlich Live-Tradovate-/CME-Daten über die API benötigt – etwa ein latenzsensibler Bot für Orderbuchaufbau oder Market-Making –, ist die ILA unvermeidlich, und Sie sollten sie einkalkulieren." },
+    {
+      type: "steps",
+      items: [
+        { title: "Tradovate kontaktieren", html: "Kontaktieren Sie Tradovate, um die CME-Sub-Vendor-/ILA-Registrierung für API-Marktdaten zu starten." },
+        { title: "Die richtige Datenstufe wählen", html: "Die Preise variieren je nach Stufe und ändern sich mit der Zeit. Lassen Sie sich die aktuelle Preisliste schriftlich geben. Die Basisstufe wird meist mit rund 290 $ pro Monat angegeben, umfangreichere Stufen kosten mehr." },
+        { title: "Die Lizenzunterlagen abschließen", html: "Schließen Sie die Sub-Vendor-Lizenzunterlagen wie von CME vorgegeben ab. Dies ist eine echte Börsenvereinbarung, kein bloßes Häkchen." },
+        { title: "Bestätigen, dass Live-Daten fließen", html: "Sobald Sie berechtigt sind, liefern Ihre API-Marktdaten-Abonnements, etwa Echtzeit-Kurs-Streams, Live-Daten statt &ldquo;Symbol is inaccessible&rdquo; oder verzögerter Werte." },
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Fehler/Situation", "Was es bedeutet", "Lösung"],
+      rows: [
+        ["&ldquo;Symbol is inaccessible&rdquo; bei <code>md/subscribeQuote</code>", "Ihre API-Sitzung ist für dieses Symbol nicht zu Echtzeitdaten berechtigt", "Kostenlose verzögerte Daten nutzen, Daten außerhalb der API beziehen oder Echtzeitdaten über die CME ILA lizenzieren"],
+        ["Angebotene ~290 $/Monat &ldquo;CME-Sub-Vendor&rdquo;-Gebühr", "Die CME ILA für das Streamen von Echtzeitdaten über die API", "Nur zahlen, wenn Sie wirklich Live-API-Daten benötigen; Orders erfordern sie nicht"],
+        ["API-Marktdaten sind 10 Minuten im Rückstand", "Sie nutzen den kostenlosen verzögerten Feed von Tradovate", "In Ordnung für langsamere Strategien; Echtzeitdaten nur lizenzieren, wenn Sie Live-Ticks benötigen"],
+        ["Orders werden abgelehnt und Sie vermuten die ILA als Ursache", "Die Orderausführung benötigt nie die ILA", "Suchen Sie anderswo: Risikolimits, Datenvereinbarungen, Kontrakt/Symbol – nicht die CME-Datenlizenz"],
+        ["Symbolname wird orange angezeigt", "Visuelle Kennzeichnung für verzögerte (nicht Live-) Daten", "Auf dem kostenlosen Feed zu erwarten; keine Maßnahme nötig, außer Sie wollen Live-Ticks"],
+        ["Prop-/Evaluierungskonto hat keine Echtzeitdaten", "Die Prop-Firma kontrolliert die Berechtigung", "Wenden Sie sich an die Firma; registrieren Sie sich nicht selbst als CME-Sub-Vendor"],
+      ],
+    },
+    { type: "heading", text: "So vermeiden Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "Der sauberste Weg, die CME-ILA-Gebühr zu umgehen, besteht darin, Ihre Signale auf der Chart-Plattform zu belassen, die Sie ohnehin bezahlen, und eine dafür gebaute Bridge die Ausführung auf Tradovate übernehmen zu lassen. Genau nach diesem Modell arbeitet PickMyTrade: Die Daten bleiben auf TradingView, Orders werden an Tradovate weitergeleitet, und die CME-Datenlizenz von ~290 $/Monat kommt nie ins Spiel." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Daten-außerhalb-der-API-Architektur</strong> – Signale stammen aus Ihrem TradingView-Plan, und Orders werden zur Ausführung an Tradovate weitergeleitet, sodass Sie keine Echtzeit-Marktdaten über die API beziehen und die CME-Sub-Vendor-Anforderung nicht auslösen.",
+        "<strong class='text-white'>Kein Jonglieren mit eigenen API-Schlüsseln</strong> – Sie verknüpfen Ihr Konto einmalig, statt eigene API-Zugangsdaten und Datenberechtigungen pro Konto zu verwalten.",
+        "<strong class='text-white'>Mengen-/Symbolvalidierung</strong> – Orders werden vor dem Versand gegen Ihren konfigurierten Kontrakt, Ihre Größe und Ihr Risiko geprüft, sodass ein fehlerhaftes Signal keine fehlerhafte Order auslöst.",
+        "<strong class='text-white'>Multi-Konten-Synchronisierung</strong> – spiegeln Sie denselben Alert über mehrere Tradovate-Konten aus einem einzigen Setup, ohne für jedes Konto separat Daten zu lizenzieren.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Configura la API de Tradovate, solicita una cotización en tiempo real a través del WebSocket y, en lugar de recibir precios en streaming, obtiene <strong class='text-white'>&ldquo;Symbol is inaccessible.&rdquo;</strong> O descubre que los datos de mercado en vivo a través de la API le van a costar una licencia de subproveedor de CME de <strong class='text-white'>unos 290 $ al mes</strong> además de todo lo demás. Es uno de los costos más malinterpretados de la automatización en Tradovate, y detiene en seco a muchos traders algorítmicos minoristas antes de que lleguen a enviar una sola orden. Esto es lo que casi nadie le explica de entrada: la <strong class='text-white'>tarifa CME ILA solo cubre los datos de mercado en tiempo real transmitidos a través de la API</strong>. <strong class='text-white'>No</strong> se aplica al envío de órdenes. Esa única distinción marca la diferencia entre pagar 290 $+ al mes y no pagar nada adicional. A continuación explico qué es realmente el requisito de subproveedor del CME Information License Agreement (ILA), por qué la API lo activa y tres formas de seguir automatizando, incluida la de dirigir sus señales a través de PickMyTrade para no tener que lidiar nunca con la tarifa." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida sobre la tarifa CME ILA de la API",
+      items: [
+        "<strong class='text-white'>¿Está pagando por datos o por órdenes?</strong> Enviar órdenes a través de la API no requiere la CME ILA. Solo la transmisión de datos de mercado de Tradovate en tiempo real la requiere. Aclare cuál de las dos necesita realmente.",
+        "<strong class='text-white'>¿Ve &ldquo;Symbol is inaccessible&rdquo;?</strong> Esa respuesta del WebSocket suele significar que su sesión de API no tiene derecho a datos en tiempo real para ese símbolo, no que el símbolo esté mal.",
+        "<strong class='text-white'>Considere los datos gratuitos con retraso.</strong> Tradovate le ofrece datos con 10 minutos de retraso sin costo alguno, lo cual es más que suficiente cuando sus señales de entrada provienen de TradingView u otra fuente.",
+        "<strong class='text-white'>Mantenga los datos fuera de la API.</strong> Si su lógica de Pine Script o de indicadores se ejecuta en TradingView, no necesita en absoluto el feed en tiempo real de la API de Tradovate; use la API solo para la ejecución.",
+        "<strong class='text-white'>Calcule el presupuesto antes de comprometerse.</strong> La licencia de datos de mercado en tiempo real de la API se cobra según el nivel de datos de CME y cambia con el tiempo, así que confirme la cifra actual con Tradovate y CME antes de firmar nada.",
+        "<strong class='text-white'>Las cuentas prop siguen otras reglas.</strong> En cuentas de evaluación o financiadas, la firma prop controla los datos de mercado, así que no intente registrarse usted mismo como subproveedor en ese caso.",
+      ],
+    },
+    { type: "heading", text: "Qué significa el requisito CME ILA (subproveedor)" },
+    { type: "paragraph", html: "El <strong class='text-white'>CME Information License Agreement (ILA)</strong> es un acuerdo de licencia de datos de mercado con CME Group, la bolsa detrás de ES, NQ, CL, GC y el resto de los futuros CME/CBOT/NYMEX/COMEX que opera en Tradovate. Cuando consume datos de la bolsa en tiempo real a través de la interfaz de un bróker, el bróker gestiona esa licencia por usted. Si obtiene exactamente los mismos datos en tiempo real de forma programática a través de la <strong class='text-white'>API</strong>, CME lo trata de forma distinta: se convierte en un <strong class='text-white'>subproveedor</strong> de los datos y debe registrarse y contar con licencia como tal." },
+    { type: "paragraph", html: "Esto no es una invención de Tradovate. Una resolución de CME que entró en vigor el <strong class='text-white'>30 de septiembre de 2022</strong> cambió las reglas: para seguir ofreciendo datos de mercado a través de la API, los brókers ahora deben exigir que cualquier usuario que quiera esos datos se registre como subproveedor. En la práctica eso implica una ILA y una tarifa recurrente, normalmente de <strong class='text-white'>unos 290 $ al mes</strong> para el nivel base, con niveles de datos más amplios o superiores que cuestan más. Dado que el precio de los datos de la bolsa cambia con el tiempo y varía según el nivel elegido, tome cualquier cifra exacta como punto de partida y verifique el costo actual directamente con Tradovate y CME." },
+    { type: "paragraph", html: "Ahora la parte que ahorra dinero a la mayoría de los traders: <strong class='text-white'>la ILA cubre los datos de mercado, no la ejecución de órdenes.</strong> Puede autenticarse en la API, enviar órdenes, modificarlas y consultar su cuenta y sus ejecuciones sin registrarse jamás como subproveedor. Enviar operaciones a través de la API funciona perfectamente sin una CME ILA. La tarifa es un costo de <strong class='text-white'>datos</strong>, no un costo de <strong class='text-white'>automatización</strong>." },
+    { type: "heading", text: "Principales causas de la sorpresa por la tarifa CME ILA de la API" },
+    { type: "heading", text: "1. Asumió que el acceso a la API incluía datos en tiempo real" },
+    { type: "paragraph", html: "Obtener acceso a la API, el complemento más su clave y secreto, es algo distinto de tener derecho a transmitir datos de la bolsa en tiempo real a través de esa API. El acceso le permite conectarse y operar. Los datos de mercado en tiempo real a través de la API son lo que activa el requisito de subproveedor de CME." },
+    { type: "heading", text: "2. Intentó suscribirse a cotizaciones en tiempo real por el WebSocket" },
+    { type: "paragraph", html: "En el momento en que su código llama al endpoint de datos de mercado, por ejemplo una solicitud del tipo <code>md/subscribeQuote</code>, para un símbolo CME en vivo sin el derecho correspondiente, el feed no transmite o devuelve <strong class='text-white'>&ldquo;Symbol is inaccessible.&rdquo;</strong> El error parece un símbolo incorrecto, pero en realidad es una brecha de derecho de acceso y licencia." },
+    { type: "heading", text: "3. Confundió la tarifa del complemento de API de Tradovate con la tarifa de datos de CME" },
+    { type: "paragraph", html: "Aquí hay dos cargos diferentes. Tradovate puede cobrar un modesto <strong class='text-white'>complemento de API</strong> mensual para habilitar el acceso programático, y CME cobra la <strong class='text-white'>licencia de datos ILA</strong> por separado. Sumarlos mentalmente hace que la cifra parezca más alarmante de lo que es, y el importe grande, la ILA, es evitable si no necesita datos de API en tiempo real." },
+    { type: "heading", text: "4. Está en una cuenta prop o de evaluación" },
+    { type: "paragraph", html: "En cuentas financiadas o de evaluación, la firma prop, no usted, posee y controla el derecho a los datos de mercado. Registrarse usted mismo como subproveedor de CME en una cuenta prop es el camino equivocado. Los problemas de datos ahí los resuelve la firma." },
+    { type: "heading", text: "5. Su estrategia nunca necesitó el feed en tiempo real de Tradovate" },
+    { type: "paragraph", html: "Muchas estrategias automatizadas calculan sus señales de entrada y salida en <strong class='text-white'>TradingView</strong> (u otra fuente de gráficos) y solo necesitan que Tradovate ejecute. Si es su caso, pagarle a CME ~290 $ al mes por un feed en tiempo real duplicado es dinero gastado en datos que nunca usa." },
+    { type: "heading", text: "Cómo solucionar la tarifa CME ILA de la API: paso a paso" },
+    { type: "paragraph", html: "Hay tres vías legítimas, de la más económica a la más costosa. Elija según si su estrategia realmente necesita datos en tiempo real de la API de Tradovate." },
+    { type: "heading", text: "Solucionarlo con datos gratuitos con 10 minutos de retraso (la opción más económica)" },
+    { type: "paragraph", html: "Si su lógica no depende de ticks en vivo de Tradovate, opera en un marco temporal más lento, o sus señales provienen de otro lugar, use los datos gratuitos con retraso de Tradovate y evite la ILA por completo." },
+    {
+      type: "steps",
+      items: [
+        { title: "Entender qué significa &ldquo;delayed&rdquo;", html: "Las cotizaciones y los datos del gráfico van con un retraso de unos 10 minutos respecto al tiempo real, y no cuestan nada." },
+        { title: "Fíjese en la marca visual", html: "En la plataforma, los símbolos con retraso se marcan visualmente; un nombre de símbolo en naranja indica datos con retraso en lugar de en vivo." },
+        { title: "Mantenga el enrutamiento de órdenes en la API", html: "Enviar y gestionar órdenes no necesita la ILA, así que la ejecución sigue siendo totalmente en vivo aunque sus datos tengan retraso." },
+        { title: "Confirme que el retraso es aceptable", html: "Opte por esta vía solo si un retraso de datos de ~10 minutos es aceptable para su estrategia. No sirve para el scalping ni para nada que dependa de ticks en vivo." },
+      ],
+    },
+    { type: "heading", text: "Solucionarlo sacando los datos de mercado de la API (recomendado para la mayoría de las automatizaciones)" },
+    { type: "paragraph", html: "La configuración más habitual en la práctica consiste en ejecutar a través de la API de Tradovate, pero obtener las señales de un feed que ya paga, de modo que nunca active el requisito de subproveedor de CME." },
+    {
+      type: "steps",
+      items: [
+        { title: "Genere señales donde ya están sus gráficos", html: "Genere sus señales de entrada y salida donde ya están sus gráficos, normalmente TradingView, con el plan de datos en tiempo real que ya tiene allí." },
+        { title: "Envíe alertas por webhook", html: "Envíe esas señales como alertas de webhook a una capa de automatización, su propio servidor o un servicio puente." },
+        { title: "Use la API solo para la ejecución", html: "Haga que esa capa llame a la API de Tradovate para enviar órdenes. El envío de órdenes no requiere la ILA, así que no se aplica ninguna tarifa de datos de CME." },
+        { title: "Pague una sola vez, en el lado de los gráficos", html: "El resultado: paga los datos en tiempo real una sola vez, en el lado de gráficos que ya usaba, y la API se encarga únicamente de la ejecución." },
+      ],
+    },
+    { type: "heading", text: "Solucionarlo licenciando datos de API en tiempo real (cuando realmente los necesita)" },
+    { type: "paragraph", html: "Si su estrategia realmente tiene que consumir datos en vivo de Tradovate/CME a través de la API, por ejemplo un bot sensible a la latencia para la construcción de libro de órdenes o market-making, entonces la ILA es inevitable y debe presupuestarla." },
+    {
+      type: "steps",
+      items: [
+        { title: "Contacte a Tradovate", html: "Contacte a Tradovate para iniciar el registro de subproveedor/ILA de CME para datos de mercado de la API." },
+        { title: "Elija el nivel de datos adecuado", html: "El precio varía según el nivel y cambia con el tiempo, así que solicite el listado de precios actual por escrito. El nivel base suele cotizarse en torno a 290 $ al mes, con niveles más amplios más caros." },
+        { title: "Complete la documentación de la licencia", html: "Complete la documentación de la licencia de subproveedor con CME según se le indique. Es un acuerdo real con la bolsa, no un simple trámite." },
+        { title: "Confirme que fluyen los datos en vivo", html: "Una vez que tenga el derecho, sus suscripciones de datos de mercado de la API, como los streams de cotizaciones en tiempo real, devolverán datos en vivo en lugar de &ldquo;Symbol is inaccessible&rdquo; o valores con retraso." },
+      ],
+    },
+    { type: "heading", text: "Tabla de resolución de problemas" },
+    {
+      type: "table",
+      headers: ["Error / situación", "Qué significa", "Solución"],
+      rows: [
+        ["&ldquo;Symbol is inaccessible&rdquo; en <code>md/subscribeQuote</code>", "Su sesión de API no tiene derecho a datos en tiempo real para ese símbolo", "Use datos gratuitos con retraso, obtenga los datos fuera de la API o licencie datos en tiempo real mediante la CME ILA"],
+        ["Tarifa &ldquo;subproveedor de CME&rdquo; cotizada en ~290 $/mes", "La CME ILA por transmitir datos en tiempo real a través de la API", "Páguela solo si realmente necesita datos de API en vivo; las órdenes no la requieren"],
+        ["Los datos de mercado de la API van 10 minutos atrasados", "Está usando el feed gratuito con retraso de Tradovate", "Adecuado para estrategias más lentas; licencie datos en tiempo real solo si necesita ticks en vivo"],
+        ["Las órdenes se rechazan y usted supone que es por la ILA", "La ejecución de órdenes nunca necesita la ILA", "Busque en otro lado: límites de riesgo, acuerdos de datos, contrato/símbolo, no la licencia de datos de CME"],
+        ["El nombre del símbolo aparece en naranja", "Marca visual de datos con retraso (no en vivo)", "Es lo esperado en el feed gratuito; no hace falta ninguna acción salvo que quiera ticks en vivo"],
+        ["La cuenta prop/de evaluación no tiene datos en tiempo real", "La firma prop controla el derecho de acceso", "Contacte a la firma; no se registre usted mismo como subproveedor de CME"],
+      ],
+    },
+    { type: "heading", text: "Evite esto con PickMyTrade" },
+    { type: "paragraph", html: "La forma más limpia de evitar la tarifa CME ILA es mantener sus señales en la plataforma de gráficos que ya paga y dejar que un puente diseñado para ello se encargue de la ejecución en Tradovate. Ese es exactamente el modelo que usa PickMyTrade: los datos permanecen en TradingView, las órdenes se dirigen a Tradovate y la licencia de datos de CME de ~290 $/mes nunca entra en juego." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Arquitectura de datos fuera de la API</strong>: las señales provienen de su plan de TradingView y las órdenes se dirigen a Tradovate para su ejecución, de modo que no consume datos de mercado en tiempo real a través de la API y no activa el requisito de subproveedor de CME.",
+        "<strong class='text-white'>Sin manejar claves de API personales</strong>: vincula su cuenta una sola vez en lugar de gestionar sus propias credenciales de API y derechos de datos por cuenta.",
+        "<strong class='text-white'>Validación de cantidad/símbolo</strong>: las órdenes se verifican frente a su contrato, tamaño y riesgo configurados antes de enviarse, de modo que una señal defectuosa no dispare una orden mal formada.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>: replique la misma alerta en varias cuentas de Tradovate desde una sola configuración, sin necesidad de licenciar datos por separado para cada una.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous configurez l'API Tradovate, demandez une cotation en temps réel via le WebSocket et, au lieu de recevoir des prix en streaming, vous obtenez <strong class='text-white'>&laquo;Symbol is inaccessible.&raquo;</strong> Ou vous découvrez que les données de marché en direct via l'API vont vous coûter une licence de sous-fournisseur CME d'<strong class='text-white'>environ 290 $ par mois</strong> en plus de tout le reste. C'est l'un des coûts les plus mal compris de l'automatisation sur Tradovate, et il arrête net de nombreux traders algorithmiques particuliers avant même qu'ils n'envoient un seul ordre. Voici ce que presque personne ne vous dit d'emblée : les <strong class='text-white'>frais CME ILA ne couvrent que les données de marché en temps réel diffusées via l'API</strong>. Ils <strong class='text-white'>ne</strong> s'appliquent pas à l'envoi d'ordres. Cette seule distinction fait toute la différence entre payer 290 $+ par mois et ne rien payer de plus. Ci-dessous, je détaille ce qu'est réellement l'exigence de sous-fournisseur du CME Information License Agreement (ILA), pourquoi l'API la déclenche, et trois façons de continuer à automatiser, y compris en acheminant vos signaux via PickMyTrade afin de ne jamais avoir affaire à ces frais." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour les frais CME ILA de l'API",
+      items: [
+        "<strong class='text-white'>Payez-vous pour des données ou pour des ordres ?</strong> L'envoi d'ordres via l'API ne nécessite pas la CME ILA. Seule la diffusion de données de marché Tradovate en temps réel la nécessite. Déterminez clairement ce dont vous avez réellement besoin.",
+        "<strong class='text-white'>Vous voyez &laquo;Symbol is inaccessible&raquo; ?</strong> Cette réponse du WebSocket signifie généralement que votre session API n'a pas le droit d'accéder aux données en temps réel pour ce symbole, pas que le symbole est incorrect.",
+        "<strong class='text-white'>Pensez aux données différées gratuites.</strong> Tradovate vous donne accès à des données différées de 10 minutes sans frais, ce qui est largement suffisant lorsque vos signaux d'entrée proviennent de TradingView ou d'un autre flux.",
+        "<strong class='text-white'>Gardez les données hors de l'API.</strong> Si votre logique Pine Script ou d'indicateur s'exécute sur TradingView, vous n'avez pas du tout besoin du flux API en temps réel de Tradovate ; utilisez l'API uniquement pour l'exécution.",
+        "<strong class='text-white'>Établissez votre budget avant de vous engager.</strong> La licence de données de marché en temps réel via l'API est tarifée selon le niveau de données CME et évolue dans le temps, alors confirmez le montant actuel auprès de Tradovate et de CME avant de signer quoi que ce soit.",
+        "<strong class='text-white'>Les comptes prop suivent des règles différentes.</strong> Sur les comptes d'évaluation ou financés, c'est la société de prop trading qui contrôle les données de marché, alors n'essayez pas de vous enregistrer vous-même comme sous-fournisseur dans ce cas.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie l'exigence CME ILA (sous-fournisseur)" },
+    { type: "paragraph", html: "Le <strong class='text-white'>CME Information License Agreement (ILA)</strong> est un accord de licence de données de marché avec CME Group, la bourse derrière ES, NQ, CL, GC et le reste des contrats à terme CME/CBOT/NYMEX/COMEX que vous négociez sur Tradovate. Lorsque vous consommez des données de bourse en temps réel via l'interface utilisateur d'un courtier, celui-ci se charge de cette licence pour vous. Récupérez exactement les mêmes données en temps réel de façon programmatique via l'<strong class='text-white'>API</strong>, et CME vous traite différemment : vous devenez un <strong class='text-white'>sous-fournisseur</strong> des données et devez être enregistré et titulaire d'une licence en tant que tel." },
+    { type: "paragraph", html: "Ce n'est pas une invention de Tradovate. Une décision de CME entrée en vigueur le <strong class='text-white'>30 septembre 2022</strong> a changé les règles : pour continuer à proposer des données de marché via l'API, les courtiers doivent désormais exiger que tout utilisateur souhaitant ces données s'enregistre comme sous-fournisseur. En pratique, cela signifie une ILA et des frais récurrents, généralement d'<strong class='text-white'>environ 290 $ par mois</strong> pour le niveau de base, les niveaux de données plus étendus ou plus élevés coûtant davantage. Comme la tarification des données de bourse évolue dans le temps et varie selon le niveau choisi, considérez tout chiffre précis comme un point de départ et vérifiez le coût actuel directement auprès de Tradovate et de CME." },
+    { type: "paragraph", html: "Voici maintenant la partie qui fait économiser de l'argent à la plupart des traders : <strong class='text-white'>l'ILA couvre les données de marché, pas l'exécution des ordres.</strong> Vous pouvez vous authentifier auprès de l'API, passer des ordres, les modifier et consulter votre compte et vos exécutions sans jamais vous enregistrer comme sous-fournisseur. L'envoi d'ordres via l'API fonctionne parfaitement sans CME ILA. Les frais correspondent à un coût de <strong class='text-white'>données</strong>, pas à un coût d'<strong class='text-white'>automatisation</strong>." },
+    { type: "heading", text: "Principales causes de la surprise des frais CME ILA de l'API" },
+    { type: "heading", text: "1. Vous avez supposé que l'accès API incluait les données en temps réel" },
+    { type: "paragraph", html: "Obtenir l'accès à l'API, c'est-à-dire l'option payante plus votre clé et votre secret, est distinct du droit de diffuser des données de bourse en temps réel via cette API. L'accès vous permet de vous connecter et de trader. Les données de marché en temps réel via l'API sont l'élément qui déclenche l'exigence de sous-fournisseur CME." },
+    { type: "heading", text: "2. Vous avez essayé de vous abonner à des cotations en temps réel via le WebSocket" },
+    { type: "paragraph", html: "Dès que votre code appelle le point de terminaison de données de marché, par exemple une requête de type <code>md/subscribeQuote</code>, pour un symbole CME en direct sans le droit correspondant, le flux ne se diffuse pas ou renvoie <strong class='text-white'>&laquo;Symbol is inaccessible.&raquo;</strong> L'erreur ressemble à un symbole incorrect, mais il s'agit en réalité d'un problème de droit d'accès et de licence." },
+    { type: "heading", text: "3. Vous avez confondu les frais d'option API de Tradovate avec les frais de données CME" },
+    { type: "paragraph", html: "Il y a ici deux frais distincts. Tradovate peut facturer une modeste <strong class='text-white'>option API</strong> mensuelle pour activer l'accès programmatique, tandis que CME facture séparément la <strong class='text-white'>licence de données ILA</strong>. Les additionner mentalement rend le montant plus effrayant qu'il ne l'est réellement, et le gros poste, l'ILA, est évitable si vous n'avez pas besoin de données API en temps réel." },
+    { type: "heading", text: "4. Vous êtes sur un compte prop ou d'évaluation" },
+    { type: "paragraph", html: "Sur les comptes financés ou d'évaluation, c'est la société de prop trading, et non vous, qui détient et contrôle le droit aux données de marché. S'enregistrer soi-même comme sous-fournisseur CME sur un compte prop est la mauvaise approche. Les problèmes de données y sont résolus par la société." },
+    { type: "heading", text: "5. Votre stratégie n'a jamais eu besoin du flux en temps réel de Tradovate" },
+    { type: "paragraph", html: "De nombreuses stratégies automatisées calculent leurs signaux d'entrée et de sortie sur <strong class='text-white'>TradingView</strong> (ou une autre source de graphiques) et n'ont besoin de Tradovate que pour l'exécution. Si c'est votre cas, payer à CME environ 290 $ par mois pour un flux en temps réel redondant, c'est de l'argent dépensé pour des données que vous n'utilisez jamais." },
+    { type: "heading", text: "Comment corriger les frais CME ILA de l'API : étape par étape" },
+    { type: "paragraph", html: "Il existe trois voies légitimes, de la moins chère à la plus chère. Choisissez selon que votre stratégie a réellement besoin de données en temps réel de l'API Tradovate." },
+    { type: "heading", text: "La corriger avec les données différées gratuites de 10 minutes (la moins chère)" },
+    { type: "paragraph", html: "Si votre logique ne dépend pas des ticks en direct de Tradovate, si vous tradez sur une unité de temps plus lente, ou si vos signaux proviennent d'ailleurs, utilisez les données différées gratuites de Tradovate et évitez entièrement l'ILA." },
+    {
+      type: "steps",
+      items: [
+        { title: "Comprendre ce que signifie &laquo;delayed&raquo;", html: "Les cotations et les données de graphique accusent un retard d'environ 10 minutes par rapport au temps réel, et elles ne coûtent rien." },
+        { title: "Repérez l'indicateur visuel", html: "Sur la plateforme, les symboles différés sont signalés visuellement : un nom de symbole affiché en orange signifie des données différées plutôt qu'en direct." },
+        { title: "Gardez l'acheminement des ordres sur l'API", html: "Passer et gérer des ordres ne nécessite pas l'ILA, donc l'exécution reste entièrement en direct même lorsque vos données sont différées." },
+        { title: "Vérifiez que le décalage est acceptable", html: "N'optez pour cette voie que si un décalage de données d'environ 10 minutes est acceptable pour votre stratégie. Elle ne convient pas au scalping ni à tout ce qui réagit aux ticks en direct." },
+      ],
+    },
+    { type: "heading", text: "La corriger en sortant les données de marché de l'API (recommandé pour la plupart des automatisations)" },
+    { type: "paragraph", html: "La configuration la plus courante en pratique consiste à exécuter via l'API Tradovate tout en tirant les signaux d'un flux que vous payez déjà, de sorte que vous ne déclenchez jamais l'exigence de sous-fournisseur CME." },
+    {
+      type: "steps",
+      items: [
+        { title: "Générez les signaux là où se trouvent déjà vos graphiques", html: "Générez vos signaux d'entrée et de sortie là où se trouvent déjà vos graphiques, généralement TradingView, sur le forfait de données en temps réel dont vous disposez déjà là-bas." },
+        { title: "Déclenchez des alertes webhook", html: "Envoyez ces signaux sous forme d'alertes webhook vers une couche d'automatisation, votre propre serveur ou un service passerelle." },
+        { title: "N'appelez l'API que pour l'exécution", html: "Faites en sorte que cette couche appelle l'API Tradovate pour passer les ordres. Le placement d'ordres ne nécessite pas l'ILA, donc aucun frais de données CME ne s'applique." },
+        { title: "Payez une seule fois, côté graphiques", html: "Résultat : vous payez les données en temps réel une seule fois, du côté graphiques que vous utilisiez déjà, et l'API se limite à l'exécution." },
+      ],
+    },
+    { type: "heading", text: "La corriger en obtenant une licence de données API en temps réel (lorsque vous en avez réellement besoin)" },
+    { type: "paragraph", html: "Si votre stratégie doit réellement consommer des données Tradovate/CME en direct via l'API, par exemple un bot sensible à la latence pour la construction de carnet d'ordres ou le market making, alors l'ILA est incontournable et vous devez la budgétiser." },
+    {
+      type: "steps",
+      items: [
+        { title: "Contactez Tradovate", html: "Contactez Tradovate pour lancer l'enregistrement de sous-fournisseur / ILA CME pour les données de marché de l'API." },
+        { title: "Choisissez le bon niveau de données", html: "La tarification varie selon le niveau et évolue dans le temps, alors demandez le barème actuel par écrit. Le niveau de base est généralement affiché à environ 290 $ par mois, les niveaux plus étendus coûtant davantage." },
+        { title: "Complétez les documents de licence", html: "Complétez les documents de licence de sous-fournisseur avec CME selon les instructions fournies. Il s'agit d'un véritable accord de bourse, pas d'une simple formalité." },
+        { title: "Vérifiez que les données en direct circulent", html: "Une fois que vous avez le droit d'accès, vos abonnements de données de marché de l'API, tels que les flux de cotations en temps réel, renvoient des données en direct au lieu de &laquo;Symbol is inaccessible&raquo; ou de valeurs différées." },
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Erreur / situation", "Ce que cela signifie", "Solution"],
+      rows: [
+        ["&laquo;Symbol is inaccessible&raquo; sur <code>md/subscribeQuote</code>", "Votre session API n'a pas le droit d'accéder aux données en temps réel pour ce symbole", "Utilisez les données différées gratuites, sourcez les données hors de l'API, ou obtenez une licence de données en temps réel via la CME ILA"],
+        ["Frais &laquo;sous-fournisseur CME&raquo; d'environ 290 $/mois annoncés", "La CME ILA pour la diffusion de données en temps réel via l'API", "Ne les payez que si vous avez réellement besoin de données API en direct ; les ordres ne le nécessitent pas"],
+        ["Les données de marché de l'API ont 10 minutes de retard", "Vous êtes sur le flux différé gratuit de Tradovate", "Convient aux stratégies plus lentes ; n'obtenez une licence de données en temps réel que si vous avez besoin de ticks en direct"],
+        ["Les ordres sont rejetés et vous pensez que c'est à cause de l'ILA", "L'exécution des ordres n'a jamais besoin de l'ILA", "Cherchez ailleurs : limites de risque, accords de données, contrat/symbole, pas la licence de données CME"],
+        ["Le nom du symbole s'affiche en orange", "Indicateur visuel de données différées (pas en direct)", "Normal sur le flux gratuit ; aucune action nécessaire sauf si vous souhaitez des ticks en direct"],
+        ["Le compte prop/d'évaluation n'a pas de données en temps réel", "La société de prop trading contrôle le droit d'accès", "Contactez la société ; ne vous enregistrez pas vous-même comme sous-fournisseur CME"],
+      ],
+    },
+    { type: "heading", text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph", html: "Le moyen le plus simple d'éviter les frais CME ILA consiste à garder vos signaux sur la plateforme de graphiques que vous payez déjà et à laisser une passerelle conçue à cet effet gérer l'exécution sur Tradovate. C'est exactement le modèle utilisé par PickMyTrade : les données restent sur TradingView, les ordres sont acheminés vers Tradovate, et la licence de données CME d'environ 290 $/mois n'entre jamais en jeu." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Architecture données hors API</strong>, les signaux proviennent de votre forfait TradingView et les ordres sont acheminés vers Tradovate pour l'exécution, de sorte que vous ne consommez pas de données de marché en temps réel via l'API et ne déclenchez pas l'exigence de sous-fournisseur CME.",
+        "<strong class='text-white'>Pas de gestion de clés API personnelles</strong>, vous liez votre compte une seule fois au lieu de gérer vos propres identifiants API et droits de données par compte.",
+        "<strong class='text-white'>Validation quantité / symbole</strong>, les ordres sont vérifiés par rapport à votre contrat, votre taille et votre risque configurés avant d'être envoyés, de sorte qu'un signal erroné ne déclenche pas un ordre mal formé.",
+        "<strong class='text-white'>Synchronisation multi-compte</strong>, répliquez la même alerte sur plusieurs comptes Tradovate depuis une seule configuration, sans avoir à obtenir une licence de données séparée pour chacun.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Configura l'API Tradovate, richiede una quotazione in tempo reale tramite il WebSocket e, invece di ricevere prezzi in streaming, riceve <strong class='text-white'>&ldquo;Symbol is inaccessible.&rdquo;</strong> Oppure scopre che i dati di mercato live tramite l'API le costeranno una licenza da sub-vendor CME di <strong class='text-white'>circa 290 $ al mese</strong> in aggiunta a tutto il resto. È uno dei costi più fraintesi nell'automazione su Tradovate e blocca sul nascere molti trader algoritmici retail ancor prima che inviino un ordine. Ecco la parte che quasi nessuno le spiega in anticipo: la <strong class='text-white'>tariffa CME ILA copre solo i dati di mercato in tempo reale trasmessi tramite l'API</strong>. <strong class='text-white'>Non</strong> si applica all'invio di ordini. Questa unica distinzione fa la differenza tra pagare 290 $+ al mese e non pagare nulla in più. Di seguito spiego cosa sia realmente il requisito da sub-vendor del CME Information License Agreement (ILA), perché l'API lo attiva e tre modi per continuare ad automatizzare, incluso instradare i suoi segnali tramite PickMyTrade in modo da non dover mai avere a che fare con la tariffa." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per la tariffa CME ILA dell'API",
+      items: [
+        "<strong class='text-white'>Sta pagando per i dati o per gli ordini?</strong> L'invio di ordini tramite l'API non richiede la CME ILA. Solo lo streaming di dati di mercato Tradovate in tempo reale la richiede. Chiarisca di quale delle due ha effettivamente bisogno.",
+        "<strong class='text-white'>Vede &ldquo;Symbol is inaccessible&rdquo;?</strong> Questa risposta del WebSocket di solito significa che la sua sessione API non è abilitata ai dati in tempo reale per quel simbolo, non che il simbolo sia sbagliato.",
+        "<strong class='text-white'>Consideri i dati gratuiti differiti.</strong> Tradovate le offre dati differiti di 10 minuti senza costi, il che è più che sufficiente quando i suoi segnali di ingresso provengono da TradingView o da un altro feed.",
+        "<strong class='text-white'>Tenga i dati fuori dall'API.</strong> Se la sua logica Pine Script o degli indicatori gira su TradingView, non le serve affatto il feed API in tempo reale di Tradovate: usi l'API solo per l'esecuzione.",
+        "<strong class='text-white'>Faccia un budget prima di impegnarsi.</strong> La licenza per i dati di mercato in tempo reale via API viene tariffata in base al livello dati CME e cambia nel tempo, quindi confermi la cifra attuale con Tradovate e CME prima di firmare qualsiasi cosa.",
+        "<strong class='text-white'>Gli account prop seguono regole diverse.</strong> Su account di valutazione o finanziati, è la prop firm a controllare i dati di mercato, quindi non provi a registrarsi da sola come sub-vendor in quel caso.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa il requisito CME ILA (sub-vendor)" },
+    { type: "paragraph", html: "Il <strong class='text-white'>CME Information License Agreement (ILA)</strong> è un accordo di licenza per i dati di mercato con CME Group, la borsa dietro ES, NQ, CL, GC e il resto dei futures CME/CBOT/NYMEX/COMEX che negozia su Tradovate. Quando consuma dati di borsa in tempo reale tramite l'interfaccia utente di un broker, è il broker a occuparsi di quella licenza per lei. Se recupera esattamente gli stessi dati in tempo reale in modo programmatico tramite l'<strong class='text-white'>API</strong>, CME la tratta diversamente: diventa un <strong class='text-white'>sub-vendor</strong> dei dati e deve essere registrata e concessa in licenza come tale." },
+    { type: "paragraph", html: "Non è un'invenzione di Tradovate. Una delibera CME entrata in vigore il <strong class='text-white'>30 settembre 2022</strong> ha cambiato le regole: per continuare a offrire dati di mercato tramite l'API, i broker ora devono richiedere a chiunque voglia quei dati di registrarsi come sub-vendor. In pratica ciò significa un'ILA e una tariffa ricorrente, di solito <strong class='text-white'>circa 290 $ al mese</strong> per il livello base, con livelli di dati più ampi o superiori che costano di più. Poiché il prezzo dei dati di borsa cambia nel tempo e varia in base al livello scelto, consideri qualsiasi cifra esatta come punto di partenza e verifichi il costo attuale direttamente con Tradovate e CME." },
+    { type: "paragraph", html: "Ora la parte che fa risparmiare denaro alla maggior parte dei trader: <strong class='text-white'>l'ILA copre i dati di mercato, non l'esecuzione degli ordini.</strong> Può autenticarsi con l'API, inviare ordini, modificarli e leggere il proprio account e le proprie esecuzioni senza mai registrarsi come sub-vendor. L'invio di operazioni tramite l'API funziona perfettamente senza una CME ILA. La tariffa è un costo relativo ai <strong class='text-white'>dati</strong>, non un costo di <strong class='text-white'>automazione</strong>." },
+    { type: "heading", text: "Cause principali della sorpresa della tariffa CME ILA dell'API" },
+    { type: "heading", text: "1. Ha dato per scontato che l'accesso API includesse i dati in tempo reale" },
+    { type: "paragraph", html: "Ottenere l'accesso API, ossia il componente aggiuntivo più la sua chiave e il suo secret, è cosa diversa dall'essere abilitati a trasmettere dati di borsa in tempo reale tramite quella API. L'accesso le permette di connettersi e negoziare. I dati di mercato in tempo reale tramite l'API sono l'elemento che fa scattare il requisito da sub-vendor CME." },
+    { type: "heading", text: "2. Ha provato ad abbonarsi a quotazioni in tempo reale tramite il WebSocket" },
+    { type: "paragraph", html: "Nel momento in cui il suo codice chiama l'endpoint dei dati di mercato, ad esempio una richiesta in stile <code>md/subscribeQuote</code>, per un simbolo CME live senza l'abilitazione, il feed non trasmette oppure restituisce <strong class='text-white'>&ldquo;Symbol is inaccessible.&rdquo;</strong> L'errore sembra un simbolo sbagliato, ma in realtà è una lacuna di abilitazione e licenza." },
+    { type: "heading", text: "3. Ha confuso la tariffa del componente aggiuntivo API di Tradovate con la tariffa dati CME" },
+    { type: "paragraph", html: "Qui ci sono due addebiti distinti. Tradovate può addebitare un modesto <strong class='text-white'>componente aggiuntivo API</strong> mensile per abilitare l'accesso programmatico, mentre CME addebita separatamente la <strong class='text-white'>licenza dati ILA</strong>. Sommarli mentalmente fa sembrare la cifra più spaventosa di quanto sia, e la voce grande, l'ILA, è evitabile se non le servono dati API in tempo reale." },
+    { type: "heading", text: "4. È su un account prop o di valutazione" },
+    { type: "paragraph", html: "Sugli account finanziati o di valutazione, è la prop firm, non lei, a possedere e controllare l'abilitazione ai dati di mercato. Registrarsi da soli come sub-vendor CME su un account prop è la strada sbagliata. Lì i problemi di dati vengono risolti dalla firm." },
+    { type: "heading", text: "5. La sua strategia non ha mai avuto bisogno del feed in tempo reale di Tradovate" },
+    { type: "paragraph", html: "Molte strategie automatizzate calcolano i propri segnali di ingresso e uscita su <strong class='text-white'>TradingView</strong> (o un'altra fonte di grafici) e necessitano di Tradovate solo per l'esecuzione. Se è il suo caso, pagare a CME ~290 $ al mese per un feed in tempo reale duplicato è denaro speso per dati che non tocca mai." },
+    { type: "heading", text: "Come risolvere la tariffa CME ILA dell'API: passo dopo passo" },
+    { type: "paragraph", html: "Ci sono tre strade legittime, dalla più economica alla più costosa. Scelga in base al fatto che la sua strategia necessiti davvero di dati in tempo reale dall'API Tradovate." },
+    { type: "heading", text: "Risolverlo con i dati gratuiti differiti di 10 minuti (la più economica)" },
+    { type: "paragraph", html: "Se la sua logica non dipende dai tick live di Tradovate, negozia su un timeframe più lento, oppure i suoi segnali provengono da altrove, usi i dati gratuiti differiti di Tradovate ed eviti del tutto l'ILA." },
+    {
+      type: "steps",
+      items: [
+        { title: "Sapere cosa significa &ldquo;delayed&rdquo;", html: "Le quotazioni e i dati dei grafici sono in ritardo rispetto al tempo reale di circa 10 minuti e non costano nulla." },
+        { title: "Fare attenzione all'indicatore visivo", html: "Nella piattaforma, i simboli differiti sono contrassegnati visivamente: un nome di simbolo mostrato in arancione indica dati differiti anziché live." },
+        { title: "Mantenere l'instradamento degli ordini sull'API", html: "L'invio e la gestione degli ordini non richiedono l'ILA, quindi l'esecuzione resta completamente live anche quando i suoi dati sono differiti." },
+        { title: "Confermare che il ritardo sia accettabile", html: "Scelga questa strada solo se un ritardo dati di ~10 minuti è accettabile per la sua strategia. Non è adatta allo scalping o a qualsiasi logica che reagisca ai tick live." },
+      ],
+    },
+    { type: "heading", text: "Risolverlo spostando i dati di mercato fuori dall'API (consigliato per la maggior parte delle automazioni)" },
+    { type: "paragraph", html: "La configurazione più comune nella pratica consiste nell'eseguire tramite l'API Tradovate ma nell'ottenere i segnali da un feed che già paga, in modo da non far scattare mai il requisito da sub-vendor CME." },
+    {
+      type: "steps",
+      items: [
+        { title: "Generare i segnali dove si trovano già i suoi grafici", html: "Generi i suoi segnali di ingresso e uscita dove si trovano già i suoi grafici, di solito TradingView, sul piano dati in tempo reale che ha già lì." },
+        { title: "Inviare avvisi webhook", html: "Invii quei segnali come avvisi webhook a un livello di automazione, al proprio server o a un servizio bridge." },
+        { title: "Chiamare l'API solo per l'esecuzione", html: "Faccia sì che quel livello chiami l'API Tradovate per inviare ordini. L'invio degli ordini non richiede l'ILA, quindi non si applica alcuna tariffa dati CME." },
+        { title: "Pagare una sola volta, sul lato grafici", html: "Il risultato: paga i dati in tempo reale una sola volta, sul lato grafici che stava già usando, e l'API si occupa solo dell'esecuzione." },
+      ],
+    },
+    { type: "heading", text: "Risolverlo ottenendo la licenza per i dati API in tempo reale (quando servono davvero)" },
+    { type: "paragraph", html: "Se la sua strategia deve davvero consumare dati Tradovate/CME live tramite l'API, ad esempio un bot sensibile alla latenza per la costruzione del book o il market making, allora l'ILA è inevitabile e dovrebbe metterla a budget." },
+    {
+      type: "steps",
+      items: [
+        { title: "Contattare Tradovate", html: "Contatti Tradovate per avviare la registrazione da sub-vendor / ILA CME per i dati di mercato dell'API." },
+        { title: "Scegliere il livello dati giusto", html: "Il prezzo varia in base al livello e cambia nel tempo, quindi si faccia dare per iscritto il listino attuale. Il livello base è di solito quotato intorno a 290 $ al mese, con livelli più ampi più costosi." },
+        { title: "Completare la documentazione della licenza", html: "Completi la documentazione della licenza da sub-vendor con CME secondo le indicazioni fornite. È un vero accordo con la borsa, non una semplice formalità." },
+        { title: "Confermare che i dati live fluiscano", html: "Una volta abilitata, i suoi abbonamenti ai dati di mercato dell'API, come gli stream di quotazioni in tempo reale, restituiscono dati live invece di &ldquo;Symbol is inaccessible&rdquo; o valori differiti." },
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Errore / situazione", "Cosa significa", "Soluzione"],
+      rows: [
+        ["&ldquo;Symbol is inaccessible&rdquo; su <code>md/subscribeQuote</code>", "La sua sessione API non è abilitata ai dati in tempo reale per quel simbolo", "Usi dati gratuiti differiti, ottenga i dati fuori dall'API, oppure ottenga la licenza per i dati in tempo reale tramite la CME ILA"],
+        ["Tariffa &ldquo;sub-vendor CME&rdquo; indicata a ~290 $/mese", "La CME ILA per lo streaming di dati in tempo reale tramite l'API", "La paghi solo se le servono davvero dati API live; gli ordini non la richiedono"],
+        ["I dati di mercato dell'API sono in ritardo di 10 minuti", "Sta usando il feed gratuito differito di Tradovate", "Va bene per strategie più lente; ottenga la licenza per i dati in tempo reale solo se le servono tick live"],
+        ["Gli ordini vengono rifiutati e presume sia colpa dell'ILA", "L'esecuzione degli ordini non richiede mai l'ILA", "Cerchi altrove: limiti di rischio, accordi sui dati, contratto/simbolo, non la licenza dati CME"],
+        ["Il nome del simbolo appare in arancione", "Indicatore visivo di dati differiti (non live)", "Previsto sul feed gratuito; nessuna azione necessaria a meno che non voglia tick live"],
+        ["L'account prop/di valutazione non ha dati in tempo reale", "La prop firm controlla l'abilitazione", "Contatti la firm; non si registri da sola come sub-vendor CME"],
+      ],
+    },
+    { type: "heading", text: "Come evitarlo con PickMyTrade" },
+    { type: "paragraph", html: "Il modo più pulito per evitare la tariffa CME ILA è mantenere i suoi segnali sulla piattaforma di grafici che già paga e lasciare che un bridge costruito appositamente gestisca l'esecuzione su Tradovate. È esattamente il modello adottato da PickMyTrade: i dati restano su TradingView, gli ordini vengono instradati verso Tradovate e la licenza dati CME di ~290 $/mese non entra mai in gioco." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Architettura con dati fuori dall'API</strong>, i segnali provengono dal suo piano TradingView e gli ordini vengono instradati verso Tradovate per l'esecuzione, così non consuma dati di mercato in tempo reale tramite l'API e non fa scattare il requisito da sub-vendor CME.",
+        "<strong class='text-white'>Nessuna gestione di chiavi API personali</strong>, collega il suo account una sola volta invece di gestire le proprie credenziali API e abilitazioni ai dati per ogni account.",
+        "<strong class='text-white'>Validazione di quantità/simbolo</strong>, gli ordini vengono verificati rispetto al contratto, alla dimensione e al rischio configurati prima di essere inviati, così un segnale errato non genera un ordine malformato.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replica lo stesso alert su più account Tradovate da un'unica configurazione, senza dover ottenere una licenza dati separata per ciascuno.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Automate Tradovate Without the CME Data Fee", de: "Tradovate automatisieren – ohne CME-Datengebühr", es: "Automatice Tradovate sin la tarifa de datos de CME", fr: "Automatisez Tradovate sans les frais de données CME", it: "Automatizzi Tradovate senza la tariffa dati CME" },
+  ctaText: { en: "Keep your signals on TradingView and let PickMyTrade route execution to Tradovate, no real-time API data, no CME sub-vendor license required.", de: "Behalten Sie Ihre Signale auf TradingView und lassen Sie PickMyTrade die Ausführung an Tradovate weiterleiten – keine Echtzeit-API-Daten, keine CME-Sub-Vendor-Lizenz erforderlich.", es: "Mantenga sus señales en TradingView y deje que PickMyTrade dirija la ejecución a Tradovate: sin datos de API en tiempo real, sin necesidad de licencia de subproveedor de CME.", fr: "Gardez vos signaux sur TradingView et laissez PickMyTrade acheminer l'exécution vers Tradovate, sans données API en temps réel, sans licence de sous-fournisseur CME requise.", it: "Mantenga i suoi segnali su TradingView e lasci che PickMyTrade instradi l'esecuzione verso Tradovate, senza dati API in tempo reale, senza necessità di licenza da sub-vendor CME." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-tägige Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvii la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Do I have to pay the CME ILA fee just to place orders through the Tradovate API in 2026?", a: "No. You can send trades through the API without a CME ILA. The fee applies only to streaming real-time market data through the API, not to order execution." },
+    { q: "How much is the Tradovate CME ILA fee?", a: "It runs about $290 a month for the base tier, with broader data tiers costing more. Exchange data pricing changes over time and varies by tier, so confirm the current amount directly with Tradovate and CME before you budget." },
+    { q: "Why does the API charge for real-time data when the platform doesn't?", a: "A CME ruling effective September 30, 2022 requires anyone consuming real-time data programmatically via the API to register as a CME sub-vendor under an Information License Agreement. Consuming the same data through Tradovate's own interface is licensed by the broker." },
+    { q: "What does &ldquo;Symbol is inaccessible&rdquo; mean on a market-data request?", a: "It usually means your API session isn't entitled to real-time data for that symbol, a licensing gap, rather than an invalid symbol. Fix it by using delayed data, sourcing data off the API, or licensing real-time data through the ILA." },
+    { q: "Can I automate on Tradovate for free market data?", a: "Yes, in two ways: use Tradovate's free 10-minute delayed data if a lag is acceptable, or generate signals on TradingView (where you already have data) and use the API only to place orders." },
+    { q: "Is the ~$290/month the same as Tradovate's API access fee?", a: "No, they're separate. Tradovate may charge a modest monthly API add-on to enable programmatic access, while CME charges the ILA data license separately. The ILA is the big, avoidable one." },
+    { q: "I'm on a prop/evaluation account and my data isn't live, do I need the ILA?", a: "No. On funded and evaluation accounts the prop firm controls the market-data entitlement. Contact the firm to enable or fix your data; don't try to register as a CME sub-vendor yourself." },
+    { q: "Is 10-minute delayed data good enough for automated trading?", a: "It depends on the strategy. It's fine when your entries and exits are computed from another real-time source, like TradingView, and Tradovate only executes. It is not suitable for scalping or any logic that reacts to live Tradovate ticks." },
+  ], de: [
+    { q: "Muss ich 2026 die CME-ILA-Gebühr zahlen, nur um Orders über die Tradovate API aufzugeben?", a: "Nein. Sie können Trades über die API senden, ohne eine CME ILA zu benötigen. Die Gebühr gilt nur für das Streamen von Echtzeit-Marktdaten über die API, nicht für die Orderausführung." },
+    { q: "Wie hoch ist die Tradovate-CME-ILA-Gebühr?", a: "Sie liegt bei etwa 290 $ pro Monat für die Basisstufe, wobei umfangreichere Datenstufen mehr kosten. Die Preise für Börsendaten ändern sich mit der Zeit und variieren je nach Stufe. Bestätigen Sie den aktuellen Betrag daher direkt bei Tradovate und CME, bevor Sie kalkulieren." },
+    { q: "Warum berechnet die API Echtzeitdaten, wenn die Plattform es nicht tut?", a: "Eine CME-Regelung, die am 30. September 2022 in Kraft trat, verpflichtet jeden, der Echtzeitdaten programmatisch über die API bezieht, sich unter einem Information License Agreement als CME-Sub-Vendor zu registrieren. Der Bezug derselben Daten über die eigene Oberfläche von Tradovate wird vom Broker lizenziert." },
+    { q: "Was bedeutet &ldquo;Symbol is inaccessible&rdquo; bei einer Marktdatenanfrage?", a: "Es bedeutet meist, dass Ihre API-Sitzung nicht zu Echtzeitdaten für dieses Symbol berechtigt ist – eine Lizenzlücke, nicht ein ungültiges Symbol. Beheben Sie es, indem Sie verzögerte Daten nutzen, Daten außerhalb der API beziehen oder Echtzeitdaten über die ILA lizenzieren." },
+    { q: "Kann ich auf Tradovate mit kostenlosen Marktdaten automatisieren?", a: "Ja, auf zwei Arten: Nutzen Sie die kostenlosen, um 10 Minuten verzögerten Daten von Tradovate, wenn eine Verzögerung akzeptabel ist, oder erzeugen Sie Signale auf TradingView (wo Sie bereits Daten haben) und verwenden Sie die API nur zum Aufgeben von Orders." },
+    { q: "Sind die ~290 $/Monat dasselbe wie die API-Zugangsgebühr von Tradovate?", a: "Nein, das sind getrennte Kosten. Tradovate berechnet möglicherweise ein moderates monatliches API-Add-on, um den programmatischen Zugang zu ermöglichen, während CME die ILA-Datenlizenz separat berechnet. Die ILA ist der große, vermeidbare Posten." },
+    { q: "Ich habe ein Prop-/Evaluierungskonto und meine Daten sind nicht live – brauche ich die ILA?", a: "Nein. Bei finanzierten und Evaluierungskonten kontrolliert die Prop-Firma die Marktdatenberechtigung. Wenden Sie sich an die Firma, um Ihre Daten zu aktivieren oder zu beheben; versuchen Sie nicht, sich selbst als CME-Sub-Vendor zu registrieren." },
+    { q: "Reichen um 10 Minuten verzögerte Daten für automatisiertes Trading aus?", a: "Das hängt von der Strategie ab. Es ist in Ordnung, wenn Ihre Einstiege und Ausstiege aus einer anderen Echtzeitquelle wie TradingView berechnet werden und Tradovate nur ausführt. Für Scalping oder jede Logik, die auf Live-Tradovate-Ticks reagiert, ist es nicht geeignet." },
+  ], es: [
+    { q: "¿Tengo que pagar la tarifa CME ILA solo para enviar órdenes a través de la API de Tradovate en 2026?", a: "No. Puede enviar operaciones a través de la API sin una CME ILA. La tarifa se aplica solo a la transmisión de datos de mercado en tiempo real a través de la API, no a la ejecución de órdenes." },
+    { q: "¿Cuánto cuesta la tarifa CME ILA de Tradovate?", a: "Ronda los 290 $ al mes para el nivel base, con niveles de datos más amplios que cuestan más. El precio de los datos de la bolsa cambia con el tiempo y varía según el nivel, así que confirme el importe actual directamente con Tradovate y CME antes de presupuestar." },
+    { q: "¿Por qué la API cobra por los datos en tiempo real cuando la plataforma no lo hace?", a: "Una resolución de CME vigente desde el 30 de septiembre de 2022 exige que cualquiera que consuma datos en tiempo real de forma programática a través de la API se registre como subproveedor de CME bajo un Information License Agreement. Consumir los mismos datos a través de la interfaz propia de Tradovate está licenciado por el bróker." },
+    { q: "¿Qué significa &ldquo;Symbol is inaccessible&rdquo; en una solicitud de datos de mercado?", a: "Normalmente significa que su sesión de API no tiene derecho a datos en tiempo real para ese símbolo, una brecha de licencia, y no que el símbolo sea inválido. Soluciónelo usando datos con retraso, obteniendo los datos fuera de la API o licenciando datos en tiempo real mediante la ILA." },
+    { q: "¿Puedo automatizar en Tradovate con datos de mercado gratuitos?", a: "Sí, de dos formas: use los datos gratuitos con 10 minutos de retraso de Tradovate si un retraso es aceptable, o genere señales en TradingView (donde ya tiene datos) y use la API solo para enviar órdenes." },
+    { q: "¿Los ~290 $/mes son lo mismo que la tarifa de acceso a la API de Tradovate?", a: "No, son cosas separadas. Tradovate puede cobrar un modesto complemento de API mensual para habilitar el acceso programático, mientras que CME cobra la licencia de datos ILA por separado. La ILA es el gasto grande y evitable." },
+    { q: "Tengo una cuenta prop/de evaluación y mis datos no son en vivo, ¿necesito la ILA?", a: "No. En cuentas financiadas y de evaluación, la firma prop controla el derecho a los datos de mercado. Contacte a la firma para habilitar o solucionar sus datos; no intente registrarse usted mismo como subproveedor de CME." },
+    { q: "¿Son suficientes los datos con 10 minutos de retraso para el trading automatizado?", a: "Depende de la estrategia. Está bien cuando sus entradas y salidas se calculan a partir de otra fuente en tiempo real, como TradingView, y Tradovate solo ejecuta. No es adecuado para el scalping ni para ninguna lógica que reaccione a ticks en vivo de Tradovate." },
+  ], fr: [
+    { q: "Dois-je payer les frais CME ILA juste pour passer des ordres via l'API Tradovate en 2026 ?", a: "Non. Vous pouvez envoyer des opérations via l'API sans CME ILA. Les frais ne s'appliquent qu'à la diffusion de données de marché en temps réel via l'API, pas à l'exécution des ordres." },
+    { q: "Combien coûtent les frais CME ILA de Tradovate ?", a: "Ils s'élèvent à environ 290 $ par mois pour le niveau de base, les niveaux de données plus étendus coûtant davantage. La tarification des données de bourse évolue dans le temps et varie selon le niveau, alors confirmez le montant actuel directement auprès de Tradovate et de CME avant d'établir votre budget." },
+    { q: "Pourquoi l'API facture-t-elle les données en temps réel alors que la plateforme ne le fait pas ?", a: "Une décision de CME en vigueur depuis le 30 septembre 2022 exige que toute personne consommant des données en temps réel de façon programmatique via l'API s'enregistre comme sous-fournisseur CME dans le cadre d'un Information License Agreement. La consommation des mêmes données via l'interface propre de Tradovate est licenciée par le courtier." },
+    { q: "Que signifie &laquo;Symbol is inaccessible&raquo; sur une requête de données de marché ?", a: "Cela signifie généralement que votre session API n'a pas le droit d'accéder aux données en temps réel pour ce symbole, un problème de licence, plutôt qu'un symbole invalide. Corrigez cela en utilisant des données différées, en sourçant les données hors de l'API, ou en obtenant une licence de données en temps réel via l'ILA." },
+    { q: "Puis-je automatiser sur Tradovate avec des données de marché gratuites ?", a: "Oui, de deux façons : utilisez les données différées gratuites de 10 minutes de Tradovate si un décalage est acceptable, ou générez les signaux sur TradingView (où vous disposez déjà de données) et utilisez l'API uniquement pour passer les ordres." },
+    { q: "Les ~290 $/mois correspondent-ils aux frais d'accès à l'API de Tradovate ?", a: "Non, ce sont deux choses distinctes. Tradovate peut facturer une modeste option API mensuelle pour activer l'accès programmatique, tandis que CME facture séparément la licence de données ILA. L'ILA est le poste important et évitable." },
+    { q: "Je suis sur un compte prop/d'évaluation et mes données ne sont pas en direct, ai-je besoin de l'ILA ?", a: "Non. Sur les comptes financés et d'évaluation, c'est la société de prop trading qui contrôle le droit aux données de marché. Contactez la société pour activer ou corriger vos données ; n'essayez pas de vous enregistrer vous-même comme sous-fournisseur CME." },
+    { q: "Les données différées de 10 minutes suffisent-elles pour le trading automatisé ?", a: "Cela dépend de la stratégie. C'est acceptable lorsque vos entrées et sorties sont calculées à partir d'une autre source en temps réel, comme TradingView, et que Tradovate ne fait qu'exécuter. Ce n'est pas adapté au scalping ni à toute logique qui réagit aux ticks en direct de Tradovate." },
+  ], it: [
+    { q: "Deve pagare la tariffa CME ILA solo per inviare ordini tramite l'API Tradovate nel 2026?", a: "No. Può inviare operazioni tramite l'API senza una CME ILA. La tariffa si applica solo allo streaming di dati di mercato in tempo reale tramite l'API, non all'esecuzione degli ordini." },
+    { q: "Quanto costa la tariffa CME ILA di Tradovate?", a: "È di circa 290 $ al mese per il livello base, con livelli di dati più ampi che costano di più. Il prezzo dei dati di borsa cambia nel tempo e varia in base al livello, quindi confermi l'importo attuale direttamente con Tradovate e CME prima di fare un budget." },
+    { q: "Perché l'API addebita i dati in tempo reale mentre la piattaforma no?", a: "Una delibera CME in vigore dal 30 settembre 2022 richiede a chiunque consumi dati in tempo reale in modo programmatico tramite l'API di registrarsi come sub-vendor CME nell'ambito di un Information License Agreement. Il consumo degli stessi dati tramite l'interfaccia propria di Tradovate è concesso in licenza dal broker." },
+    { q: "Cosa significa &ldquo;Symbol is inaccessible&rdquo; in una richiesta di dati di mercato?", a: "Di solito significa che la sua sessione API non è abilitata ai dati in tempo reale per quel simbolo, una lacuna di licenza, piuttosto che un simbolo non valido. Lo risolva usando dati differiti, ottenendo i dati fuori dall'API, oppure ottenendo la licenza per i dati in tempo reale tramite l'ILA." },
+    { q: "Posso automatizzare su Tradovate con dati di mercato gratuiti?", a: "Sì, in due modi: usi i dati gratuiti differiti di 10 minuti di Tradovate se un ritardo è accettabile, oppure generi i segnali su TradingView (dove ha già i dati) e usi l'API solo per inviare ordini." },
+    { q: "I ~290 $/mese corrispondono alla tariffa di accesso API di Tradovate?", a: "No, sono cose separate. Tradovate può addebitare un modesto componente aggiuntivo API mensile per abilitare l'accesso programmatico, mentre CME addebita separatamente la licenza dati ILA. L'ILA è la voce grande ed evitabile." },
+    { q: "Ho un account prop/di valutazione e i miei dati non sono live, mi serve l'ILA?", a: "No. Sugli account finanziati e di valutazione è la prop firm a controllare l'abilitazione ai dati di mercato. Contatti la firm per abilitare o risolvere i suoi dati; non provi a registrarsi da sola come sub-vendor CME." },
+    { q: "I dati differiti di 10 minuti sono sufficienti per il trading automatizzato?", a: "Dipende dalla strategia. Va bene quando i suoi ingressi e le sue uscite vengono calcolati da un'altra fonte in tempo reale, come TradingView, e Tradovate si limita a eseguire. Non è adatto allo scalping né a qualsiasi logica che reagisca ai tick live di Tradovate." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit. Bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque important de perte et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni parrainée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; confirmez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha uno scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio significativo di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, pertanto verifichi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

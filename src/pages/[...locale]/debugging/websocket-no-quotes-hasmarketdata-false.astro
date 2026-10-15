@@ -1,0 +1,544 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "websocket-no-quotes-hasmarketdata-false";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate WS Subscribes But No Quotes (No Data)";
+const META_DESCRIPTION =
+  "WebSocket subscribes but no quotes? Enable your account's live market-data entitlement so hasMarketData turns true and real-time quote frames stream.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate-WS abonniert, aber keine Kurse (keine Daten)", es: "WS de Tradovate se suscribe pero sin cotizaciones (sin datos)", fr: "WS Tradovate abonné mais aucune cotation (pas de données)", it: "WS Tradovate sottoscrive ma nessuna quotazione (nessun dato)" },
+  dek: { en: "Your md/subscribeQuote call returns a clean 200, and still nothing streams but heartbeats. Check the account's hasMarketData flag, that's almost always the real story.", de: "Ihr md/subscribeQuote-Aufruf liefert ein sauberes 200, und trotzdem strömt nichts außer Heartbeats. Prüfen Sie das hasMarketData-Flag des Kontos, das ist fast immer die eigentliche Ursache.", es: "Su llamada a md/subscribeQuote devuelve un 200 limpio y, aun así, no se transmite nada salvo heartbeats. Compruebe el indicador hasMarketData de la cuenta, casi siempre es la verdadera explicación.", fr: "Votre appel md/subscribeQuote renvoie un 200 propre, et pourtant rien n'est diffusé hormis des heartbeats. Vérifiez l'indicateur hasMarketData du compte, c'est presque toujours la vraie explication.", it: "La sua chiamata md/subscribeQuote restituisce un 200 pulito, eppure non arriva in streaming altro che heartbeat. Controlli il flag hasMarketData dell'account, è quasi sempre la vera spiegazione." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You wired up the Tradovate WebSocket, authorized cleanly, fired off <code>md/subscribeQuote</code>, and got back a tidy <code>{\"s\":200,\"i\":1}</code>, success. Then nothing. Just an endless run of <code>h</code> heartbeat frames and not a single <code>a</code> data frame carrying a bid or ask. Inspect the account and one line explains the whole thing: <code>\"hasMarketData\": false</code>. The socket is doing exactly what you told it to; the account simply isn't entitled to receive live quotes. This is one of the more confusing Tradovate API snags precisely because every log line reads &ldquo;OK&rdquo; while your price feed stays dead silent. Here's the full breakdown, what the flag means, why it happens, and how to turn the quotes back on." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for No Real-Time Quotes",
+      items: [
+        "<strong class='text-white'>\"hasMarketData\": false on the account</strong>, the account has no live market-data entitlement. Enable or subscribe to market data before you expect any a data frames.",
+        "<strong class='text-white'>Wrong socket</strong>, quotes come from the market-data WebSocket (md.tradovateapi.com), not the trading socket (live.tradovateapi.com). Subscribe on the wrong one and you get heartbeats only.",
+        "<strong class='text-white'>Wrong token</strong>, the market-data socket must be authorized with the mdAccessToken, not the trading accessToken.",
+        "<strong class='text-white'>Demo/simulated feed</strong>, a demo or eval account may serve delayed or simulated data instead of exchange real-time. Confirm the account's data plan.",
+        "<strong class='text-white'>Bad symbol</strong>, subscribe to a valid front-month contract (e.g. MNQU5), not a continuous alias, or you may get \"Symbol is inaccessible.\"",
+        "<strong class='text-white'>Prop/funded account</strong>, on evaluation accounts, only the prop firm can enable live data. You can't self-subscribe.",
+      ],
+    },
+    { type: "heading", text: "What \"hasMarketData\": false Means" },
+    { type: "paragraph", html: "<code>hasMarketData</code> is an account-level flag Tradovate returns in your account settings. When it's <code>true</code>, the account holds an active market-data entitlement, so the exchange's real-time quote stream is cleared to flow to it. When it's <code>false</code>, the account has <strong class='text-white'>no live market-data agreement or subscription attached</strong>, and that single flag overrides everything downstream." },
+    { type: "paragraph", html: "The key thing to grasp is that entitlement and subscription are two separate layers. <code>md/subscribeQuote</code> returning <code>{\"s\":200}</code> only confirms the <em>subscription request</em> was well-formed and accepted by the socket. It says nothing about whether the account is <em>entitled</em> to receive the data behind that subscription. So you land in the exact trap the flag describes: a valid, &ldquo;successful&rdquo; subscription that produces zero <code>a</code> frames because the account was never cleared to receive live prices in the first place." },
+    { type: "paragraph", html: "Put plainly: the pipe is connected and open, but the tap upstream is shut. Opening it is an account and entitlement action, not a code fix, no amount of re-subscribing will flip a <code>false</code> flag." },
+    { type: "heading", text: "Top Causes of No Quotes Over the WebSocket" },
+    { type: "heading", text: "1. The account has no live market-data entitlement (hasMarketData: false)" },
+    { type: "paragraph", html: "This is the root cause the flag is literally reporting. Real-time futures quotes are exchange-licensed data. To receive them, the account needs an active market-data subscription plus the matching exchange data agreement on file, for CME products, that's the CME non-professional or professional agreement. Until that entitlement exists, the exchange won't release live ticks to the account, so the socket has nothing to forward." },
+    { type: "heading", text: "2. Subscribing on the trading socket instead of the market-data socket" },
+    { type: "paragraph", html: "Tradovate runs <strong class='text-white'>two separate WebSocket connections</strong>. Order routing and account data flow over the trading socket (<code>wss://live.tradovateapi.com/v1/websocket</code>, or <code>wss://demo.tradovateapi.com/...</code> on demo). Quotes, DOM, and charts flow over the <strong class='text-white'>market-data socket</strong> (<code>wss://md.tradovateapi.com/v1/websocket</code>, or <code>wss://md-demo.tradovateapi.com/...</code> on demo). Send <code>md/subscribeQuote</code> to the trading socket and you may still get a <code>200</code> acknowledgment plus heartbeats, but the real-time <code>a</code> frames never arrive, because that socket doesn't serve market data." },
+    { type: "heading", text: "3. Authorizing the market-data socket with the wrong token" },
+    { type: "paragraph", html: "When you authenticate, Tradovate hands back <strong class='text-white'>two tokens</strong>: <code>accessToken</code> for the trading socket and <code>mdAccessToken</code> for the market-data socket. Each socket has to be authorized with its own token via the authorize frame after you open it. Authorize the md socket with the trading <code>accessToken</code> and the connection behaves as if it were never properly entitled, heartbeats, but no quotes." },
+    { type: "heading", text: "4. You're on a demo/simulated or delayed feed" },
+    { type: "paragraph", html: "A brand-new or demo environment often delivers simulated or delayed data rather than an exchange real-time feed. That's why testing on the demo endpoint so often shows a clean subscribe followed by no live ticks, the environment simply isn't wired to a paid, entitled real-time stream. Confirm whether the account is meant to have live exchange data at all before you assume a code bug." },
+    { type: "heading", text: "5. Invalid symbol or \"Symbol is inaccessible\"" },
+    { type: "paragraph", html: "Even with entitlement in place, subscribing to a symbol your account isn't licensed for, or to a continuous/alias symbol instead of a real front-month contract, can return a <code>Symbol is inaccessible</code> error and no data. Always subscribe to the current front-month contract using the correct CME month code (for example <code>MNQU5</code>), not a generic root or a charting alias." },
+    { type: "heading", text: "How to Fix No Quotes Over the WebSocket: Step-by-Step" },
+    { type: "heading", text: "Fixing the Entitlement (Turning hasMarketData True)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Log in to the web platform", html: "Log in to the Tradovate web platform with the same account you're connecting via the API." },
+        { title: "Open the market-data settings", html: "Open the account/market-data settings and find the market-data subscription section." },
+        { title: "Add a real-time subscription and sign the agreement", html: "Add a real-time market-data subscription for the exchange(s) you trade (CME for ES, NQ, MNQ, MES, and so on) and complete and sign the required exchange data agreement, non-professional for most retail traders. The correct tier and current fee vary, so check Tradovate's current rates." },
+        { title: "Log out and back in to propagate", html: "Save, then fully log out and log back in so the entitlement propagates. Re-query the account and confirm <code>\"hasMarketData\": true</code>." },
+      ],
+    },
+    { type: "heading", text: "Fixing the Socket and Token Wiring" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open a second WebSocket to the market-data host", html: "Open a <strong class='text-white'>second</strong> WebSocket to the market-data host: <code>wss://md.tradovateapi.com/v1/websocket</code> (use <code>md-demo.tradovateapi.com</code> for the demo environment)." },
+        { title: "Authorize with mdAccessToken", html: "After the <code>o</code> open frame, send an authorize frame using the <strong class='text-white'>mdAccessToken</strong> from your auth response, not the trading accessToken." },
+        { title: "Subscribe to a valid front-month symbol", html: "Wait for the <code>200</code> authorize acknowledgment, then send <code>md/subscribeQuote</code> with a valid front-month symbol (e.g. <code>MNQU5</code>)." },
+        { title: "Watch the frames", html: "Watch the frames: heartbeats arrive as <code>h</code>; real quotes now arrive as <code>a</code> data frames containing bid/ask/last. If you still see only <code>h</code>, the entitlement (step above) is your blocker, not the wiring." },
+      ],
+    },
+    { type: "heading", text: "Fixing a Prop / Evaluation Account" },
+    {
+      type: "steps",
+      items: [
+        { title: "Don't self-subscribe", html: "If the account is a prop-firm evaluation or funded account, don't try to self-subscribe, the firm provisions data centrally." },
+        { title: "Contact the prop firm's support", html: "Contact the prop firm's support and ask them to enable or repair live market data on your account." },
+        { title: "Re-check after confirmation", html: "Once they confirm, log out and back in and re-check hasMarketData." },
+      ],
+    },
+    { type: "heading", text: "API-Specific Note" },
+    { type: "paragraph", html: "Programmatic real-time data through the API carries its own exchange licensing on top of platform data. Depending on your usage and the exchange, that can require registered market-data-vendor status and a recurring license fee, the amount varies by exchange and changes over time, so confirm the current CME/Tradovate figure before you budget. If you only need to <em>place</em> orders, you can route them on free delayed data and skip the real-time license entirely." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom / Error", "Meaning", "Fix"],
+      rows: [
+        ["\"hasMarketData\": false in account settings", "Account has no live market-data entitlement", "Add a real-time market-data subscription and sign the exchange data agreement, then re-login"],
+        ["Subscribe returns {\"s\":200} but only h frames", "Subscription accepted but no data authorized/served", "Verify entitlement is true, correct socket, and correct token"],
+        ["Only heartbeats on live.tradovateapi.com", "Subscribed on the trading socket", "Open the md.tradovateapi.com market-data socket and subscribe there"],
+        ["Quotes fail after authorizing", "md socket authorized with trading token", "Authorize the md socket with mdAccessToken, not accessToken"],
+        ["Symbol is inaccessible", "Not entitled for that symbol, or invalid/continuous symbol", "Use a licensed front-month contract with the correct month code"],
+        ["Live ticks never arrive on demo", "Demo/simulated or delayed feed", "Confirm the account is meant to carry an entitled real-time feed"],
+        ["Prop/eval account shows no data", "Only the firm can enable data", "Ask the prop firm to enable live market data"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "If your goal is to automate Tradovate from TradingView rather than hand-build a raw market-data socket, PickMyTrade sidesteps most of this by routing your TradingView alerts straight to your Tradovate account for execution:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>No raw market-data socket to wire</strong>, PickMyTrade acts on your TradingView signals, so you're not maintaining md/subscribeQuote streams or juggling two sockets and two tokens.",
+        "<strong class='text-white'>Entitlement and data-agreement aware</strong>, order routing respects the account's live-data and agreement state, so you're not blindsided by a silent hasMarketData: false.",
+        "<strong class='text-white'>Rate-limit-safe routing</strong>, order flow is spaced out so nothing bounces off Tradovate's request limits.",
+        "<strong class='text-white'>Multi-account sync</strong>, mirror the same automated order across multiple Tradovate accounts at once.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie haben den Tradovate-WebSocket verdrahtet, sich sauber autorisiert, <code>md/subscribeQuote</code> abgefeuert und ein ordentliches <code>{\"s\":200,\"i\":1}</code> zurückerhalten, Erfolg. Und dann nichts. Nur eine endlose Folge von <code>h</code>-Heartbeat-Frames und nicht ein einziger <code>a</code>-Datenframe mit Bid oder Ask. Prüfen Sie das Konto, und eine Zeile erklärt alles: <code>\"hasMarketData\": false</code>. Der Socket tut genau das, was Sie ihm gesagt haben; das Konto ist schlicht nicht berechtigt, Live-Kurse zu empfangen. Das ist eine der verwirrenderen Stolperfallen der Tradovate-API, genau weil jede Logzeile &ldquo;OK&rdquo; meldet, während Ihr Kurs-Feed völlig stumm bleibt. Hier die vollständige Aufschlüsselung, was das Flag bedeutet, warum es dazu kommt und wie Sie die Kurse wieder einschalten." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste bei fehlenden Echtzeitkursen",
+      items: [
+        "<strong class='text-white'>\"hasMarketData\": false am Konto</strong>, das Konto hat keine Berechtigung für Live-Marktdaten. Aktivieren oder abonnieren Sie Marktdaten, bevor Sie a-Datenframes erwarten.",
+        "<strong class='text-white'>Falscher Socket</strong>, Kurse kommen vom Marktdaten-WebSocket (md.tradovateapi.com), nicht vom Handels-Socket (live.tradovateapi.com). Abonnieren Sie auf dem falschen, erhalten Sie nur Heartbeats.",
+        "<strong class='text-white'>Falsches Token</strong>, der Marktdaten-Socket muss mit dem mdAccessToken autorisiert werden, nicht mit dem Handels-accessToken.",
+        "<strong class='text-white'>Demo-/simulierter Feed</strong>, ein Demo- oder Eval-Konto liefert möglicherweise verzögerte oder simulierte Daten statt Börsen-Echtzeitdaten. Prüfen Sie den Datenplan des Kontos.",
+        "<strong class='text-white'>Ungültiges Symbol</strong>, abonnieren Sie einen gültigen Front-Month-Kontrakt (z. B. MNQU5), keinen kontinuierlichen Alias, sonst erhalten Sie womöglich \"Symbol is inaccessible.\"",
+        "<strong class='text-white'>Prop-/Funded-Konto</strong>, bei Evaluierungskonten kann nur die Prop Firm Live-Daten aktivieren. Sie können sich nicht selbst abonnieren.",
+      ],
+    },
+    { type: "heading",text: "Was \"hasMarketData\": false bedeutet" },
+    { type: "paragraph",html: "<code>hasMarketData</code> ist ein Flag auf Kontoebene, das Tradovate in Ihren Kontoeinstellungen zurückgibt. Ist es <code>true</code>, besitzt das Konto eine aktive Marktdatenberechtigung, sodass der Echtzeit-Kursstrom der Börse dorthin fließen darf. Ist es <code>false</code>, hat das Konto <strong class='text-white'>keine Live-Marktdatenvereinbarung und kein Abonnement</strong>, und dieses eine Flag setzt alles Nachgelagerte außer Kraft." },
+    { type: "paragraph",html: "Entscheidend ist, dass Berechtigung und Abonnement zwei getrennte Ebenen sind. <code>md/subscribeQuote</code> mit der Antwort <code>{\"s\":200}</code> bestätigt nur, dass die <em>Abonnementanfrage</em> wohlgeformt war und vom Socket akzeptiert wurde. Es sagt nichts darüber aus, ob das Konto <em>berechtigt</em> ist, die Daten hinter diesem Abonnement zu empfangen. So tappen Sie in genau die Falle, die das Flag beschreibt: ein gültiges, &ldquo;erfolgreiches&rdquo; Abonnement, das null <code>a</code>-Frames erzeugt, weil das Konto nie für den Empfang von Live-Preisen freigegeben wurde." },
+    { type: "paragraph",html: "Klar gesagt: Die Leitung ist verbunden und offen, aber der Hahn davor ist zu. Ihn zu öffnen ist eine Konto- und Berechtigungsmaßnahme, keine Code-Korrektur, kein noch so häufiges erneutes Abonnieren stellt ein <code>false</code>-Flag um." },
+    { type: "heading",text: "Häufigste Ursachen für fehlende Kurse über den WebSocket" },
+    { type: "heading",text: "1. Das Konto hat keine Live-Marktdatenberechtigung (hasMarketData: false)" },
+    { type: "paragraph",html: "Das ist die Grundursache, die das Flag buchstäblich meldet. Echtzeit-Futures-Kurse sind lizenzierte Börsendaten. Um sie zu erhalten, braucht das Konto ein aktives Marktdaten-Abonnement plus die passende Börsendatenvereinbarung, für CME-Produkte ist das die CME-Vereinbarung für Nicht-Professionelle oder Professionelle. Solange diese Berechtigung fehlt, gibt die Börse keine Live-Ticks an das Konto frei, sodass der Socket nichts weiterleiten kann." },
+    { type: "heading",text: "2. Abonnement auf dem Handels-Socket statt auf dem Marktdaten-Socket" },
+    { type: "paragraph",html: "Tradovate betreibt <strong class='text-white'>zwei getrennte WebSocket-Verbindungen</strong>. Order-Routing und Kontodaten laufen über den Handels-Socket (<code>wss://live.tradovateapi.com/v1/websocket</code> bzw. <code>wss://demo.tradovateapi.com/...</code> in der Demo). Kurse, DOM und Charts laufen über den <strong class='text-white'>Marktdaten-Socket</strong> (<code>wss://md.tradovateapi.com/v1/websocket</code> bzw. <code>wss://md-demo.tradovateapi.com/...</code> in der Demo). Senden Sie <code>md/subscribeQuote</code> an den Handels-Socket, erhalten Sie womöglich trotzdem eine <code>200</code>-Bestätigung plus Heartbeats, aber die <code>a</code>-Echtzeitframes kommen nie an, weil dieser Socket keine Marktdaten ausliefert." },
+    { type: "heading",text: "3. Marktdaten-Socket mit dem falschen Token autorisiert" },
+    { type: "paragraph",html: "Bei der Authentifizierung liefert Tradovate <strong class='text-white'>zwei Tokens</strong> zurück: <code>accessToken</code> für den Handels-Socket und <code>mdAccessToken</code> für den Marktdaten-Socket. Jeder Socket muss nach dem Öffnen mit dem Authorize-Frame und seinem eigenen Token autorisiert werden. Autorisieren Sie den md-Socket mit dem Handels-<code>accessToken</code>, verhält sich die Verbindung so, als wäre sie nie ordnungsgemäß berechtigt gewesen: Heartbeats, aber keine Kurse." },
+    { type: "heading",text: "4. Sie befinden sich auf einem Demo-/simulierten oder verzögerten Feed" },
+    { type: "paragraph",html: "Eine neue oder Demo-Umgebung liefert oft simulierte oder verzögerte Daten statt eines Börsen-Echtzeit-Feeds. Deshalb zeigt das Testen am Demo-Endpunkt so oft ein sauberes Abonnement gefolgt von keinen Live-Ticks, die Umgebung ist schlicht nicht an einen bezahlten, berechtigten Echtzeitstrom angebunden. Klären Sie, ob das Konto überhaupt Live-Börsendaten haben soll, bevor Sie einen Code-Fehler vermuten." },
+    { type: "heading",text: "5. Ungültiges Symbol oder \"Symbol is inaccessible\"" },
+    { type: "paragraph",html: "Selbst bei vorhandener Berechtigung kann das Abonnieren eines Symbols, für das Ihr Konto nicht lizenziert ist, oder eines kontinuierlichen/Alias-Symbols statt eines echten Front-Month-Kontrakts einen <code>Symbol is inaccessible</code>-Fehler und keine Daten liefern. Abonnieren Sie immer den aktuellen Front-Month-Kontrakt mit dem korrekten CME-Monatscode (zum Beispiel <code>MNQU5</code>), nicht eine generische Wurzel oder einen Chart-Alias." },
+    { type: "heading",text: "So beheben Sie fehlende Kurse über den WebSocket: Schritt für Schritt" },
+    { type: "heading",text: "Die Berechtigung korrigieren (hasMarketData auf true setzen)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Bei der Web-Plattform anmelden", html: "Melden Sie sich bei der Tradovate-Web-Plattform mit demselben Konto an, das Sie über die API verbinden." },
+        { title: "Die Marktdaten-Einstellungen öffnen", html: "Öffnen Sie die Konto-/Marktdaten-Einstellungen und suchen Sie den Abschnitt für das Marktdaten-Abonnement." },
+        { title: "Ein Echtzeit-Abonnement hinzufügen und die Vereinbarung unterzeichnen", html: "Fügen Sie ein Echtzeit-Marktdaten-Abonnement für die Börse(n) hinzu, die Sie handeln (CME für ES, NQ, MNQ, MES usw.), und füllen Sie die erforderliche Börsendatenvereinbarung aus und unterzeichnen Sie sie, für die meisten Privathändler als Nicht-Professioneller. Die richtige Stufe und die aktuelle Gebühr variieren, prüfen Sie daher die aktuellen Tarife von Tradovate." },
+        { title: "Ab- und wieder anmelden, damit es wirksam wird", html: "Speichern Sie, melden Sie sich dann vollständig ab und wieder an, damit die Berechtigung übernommen wird. Fragen Sie das Konto erneut ab und bestätigen Sie <code>\"hasMarketData\": true</code>." },
+      ],
+    },
+    { type: "heading",text: "Socket und Token-Verdrahtung korrigieren" },
+    {
+      type: "steps",
+      items: [
+        { title: "Einen zweiten WebSocket zum Marktdaten-Host öffnen", html: "Öffnen Sie einen <strong class='text-white'>zweiten</strong> WebSocket zum Marktdaten-Host: <code>wss://md.tradovateapi.com/v1/websocket</code> (verwenden Sie <code>md-demo.tradovateapi.com</code> für die Demo-Umgebung)." },
+        { title: "Mit mdAccessToken autorisieren", html: "Senden Sie nach dem <code>o</code>-Open-Frame einen Authorize-Frame mit dem <strong class='text-white'>mdAccessToken</strong> aus Ihrer Auth-Antwort, nicht mit dem Handels-accessToken." },
+        { title: "Ein gültiges Front-Month-Symbol abonnieren", html: "Warten Sie die <code>200</code>-Bestätigung der Autorisierung ab und senden Sie dann <code>md/subscribeQuote</code> mit einem gültigen Front-Month-Symbol (z. B. <code>MNQU5</code>)." },
+        { title: "Die Frames beobachten", html: "Beobachten Sie die Frames: Heartbeats kommen als <code>h</code> an, echte Kurse jetzt als <code>a</code>-Datenframes mit Bid/Ask/Last. Sehen Sie weiterhin nur <code>h</code>, ist die Berechtigung (Schritt oben) Ihr Hindernis, nicht die Verdrahtung." },
+      ],
+    },
+    { type: "heading",text: "Ein Prop-/Evaluierungskonto korrigieren" },
+    {
+      type: "steps",
+      items: [
+        { title: "Nicht selbst abonnieren", html: "Ist das Konto eine Evaluierung oder ein Funded-Konto einer Prop Firm, versuchen Sie nicht, sich selbst zu abonnieren, die Firma stellt die Daten zentral bereit." },
+        { title: "Den Support der Prop Firm kontaktieren", html: "Wenden Sie sich an den Support der Prop Firm und bitten Sie darum, Live-Marktdaten für Ihr Konto zu aktivieren oder zu reparieren." },
+        { title: "Nach der Bestätigung erneut prüfen", html: "Sobald diese es bestätigt, melden Sie sich ab und wieder an und prüfen Sie hasMarketData erneut." },
+      ],
+    },
+    { type: "heading",text: "API-spezifischer Hinweis" },
+    { type: "paragraph",html: "Programmatische Echtzeitdaten über die API unterliegen zusätzlich zu den Plattformdaten einer eigenen Börsenlizenz. Je nach Nutzung und Börse kann das den Status als registrierter Marktdatenanbieter und eine wiederkehrende Lizenzgebühr erfordern, der Betrag variiert je nach Börse und ändert sich im Lauf der Zeit, bestätigen Sie daher die aktuelle CME-/Tradovate-Zahl, bevor Sie budgetieren. Wenn Sie nur Orders <em>platzieren</em> möchten, können Sie sie auf kostenlosen verzögerten Daten routen und die Echtzeitlizenz komplett überspringen." },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Symptom / Fehler","Bedeutung","Lösung"], rows: [
+      ["\"hasMarketData\": false in den Kontoeinstellungen","Konto hat keine Live-Marktdatenberechtigung","Ein Echtzeit-Marktdaten-Abonnement hinzufügen und die Börsendatenvereinbarung unterzeichnen, dann neu anmelden"],
+      ["Subscribe liefert {\"s\":200}, aber nur h-Frames","Abonnement akzeptiert, aber keine Daten freigegeben/geliefert","Prüfen, ob die Berechtigung true ist, sowie richtigen Socket und richtiges Token"],
+      ["Nur Heartbeats auf live.tradovateapi.com","Auf dem Handels-Socket abonniert","Den Marktdaten-Socket md.tradovateapi.com öffnen und dort abonnieren"],
+      ["Kurse schlagen nach der Autorisierung fehl","md-Socket mit Handels-Token autorisiert","Den md-Socket mit mdAccessToken autorisieren, nicht mit accessToken"],
+      ["Symbol is inaccessible","Nicht für dieses Symbol berechtigt oder ungültiges/kontinuierliches Symbol","Einen lizenzierten Front-Month-Kontrakt mit dem korrekten Monatscode verwenden"],
+      ["Live-Ticks kommen in der Demo nie an","Demo-/simulierter oder verzögerter Feed","Klären, ob das Konto einen berechtigten Echtzeit-Feed führen soll"],
+      ["Prop-/Eval-Konto zeigt keine Daten","Nur die Firma kann Daten aktivieren","Die Prop Firm bitten, Live-Marktdaten zu aktivieren"],
+    ] },
+    { type: "heading",text: "Vermeiden Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Wenn Ihr Ziel darin besteht, Tradovate aus TradingView zu automatisieren, statt selbst einen rohen Marktdaten-Socket zu bauen, umgeht PickMyTrade das meiste davon, indem es Ihre TradingView-Alerts direkt zur Ausführung an Ihr Tradovate-Konto weiterleitet:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Kein roher Marktdaten-Socket zu verdrahten</strong>, PickMyTrade handelt auf Ihre TradingView-Signale, sodass Sie keine md/subscribeQuote-Streams pflegen oder zwei Sockets und zwei Tokens jonglieren müssen.",
+        "<strong class='text-white'>Berechtigungs- und Datenvereinbarungs-bewusst</strong>, das Order-Routing berücksichtigt den Live-Daten- und Vereinbarungsstatus des Kontos, sodass Sie nicht von einem stillen hasMarketData: false überrascht werden.",
+        "<strong class='text-white'>Ratenlimit-sicheres Routing</strong>, der Orderfluss wird getaktet, sodass nichts an den Anfragelimits von Tradovate abprallt.",
+        "<strong class='text-white'>Multi-Account-Synchronisierung</strong>, spiegeln Sie dieselbe automatisierte Order gleichzeitig auf mehrere Tradovate-Konten.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Conectó el WebSocket de Tradovate, se autorizó sin problemas, lanzó <code>md/subscribeQuote</code> y recibió un ordenado <code>{\"s\":200,\"i\":1}</code>, éxito. Y luego nada. Solo una racha interminable de tramas de heartbeat <code>h</code> y ni una sola trama de datos <code>a</code> con un bid o un ask. Inspeccione la cuenta y una línea lo explica todo: <code>\"hasMarketData\": false</code>. El socket hace exactamente lo que usted le indicó; la cuenta simplemente no tiene derecho a recibir cotizaciones en vivo. Es uno de los tropiezos más confusos de la API de Tradovate precisamente porque cada línea del registro dice &ldquo;OK&rdquo; mientras su feed de precios permanece en absoluto silencio. Aquí tiene el desglose completo: qué significa el indicador, por qué ocurre y cómo reactivar las cotizaciones." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para la ausencia de cotizaciones en tiempo real",
+      items: [
+        "<strong class='text-white'>\"hasMarketData\": false en la cuenta</strong>, la cuenta no tiene derecho a datos de mercado en vivo. Active o contrate datos de mercado antes de esperar tramas de datos a.",
+        "<strong class='text-white'>Socket equivocado</strong>, las cotizaciones llegan por el WebSocket de datos de mercado (md.tradovateapi.com), no por el socket de trading (live.tradovateapi.com). Si se suscribe en el equivocado, solo obtiene heartbeats.",
+        "<strong class='text-white'>Token equivocado</strong>, el socket de datos de mercado debe autorizarse con el mdAccessToken, no con el accessToken de trading.",
+        "<strong class='text-white'>Feed demo/simulado</strong>, una cuenta demo o de evaluación puede servir datos diferidos o simulados en lugar de tiempo real de bolsa. Confirme el plan de datos de la cuenta.",
+        "<strong class='text-white'>Símbolo incorrecto</strong>, suscríbase a un contrato válido del mes frontal (p. ej. MNQU5), no a un alias continuo, o podría recibir \"Symbol is inaccessible.\"",
+        "<strong class='text-white'>Cuenta prop/fondeada</strong>, en las cuentas de evaluación, solo la prop firm puede activar los datos en vivo. No puede suscribirse por su cuenta.",
+      ],
+    },
+    { type: "heading",text: "Qué significa \"hasMarketData\": false" },
+    { type: "paragraph",html: "<code>hasMarketData</code> es un indicador a nivel de cuenta que Tradovate devuelve en la configuración de su cuenta. Cuando es <code>true</code>, la cuenta posee un derecho activo de datos de mercado, de modo que el flujo de cotizaciones en tiempo real de la bolsa está autorizado a llegar a ella. Cuando es <code>false</code>, la cuenta <strong class='text-white'>no tiene ningún acuerdo ni suscripción de datos de mercado en vivo</strong>, y ese único indicador anula todo lo que viene después." },
+    { type: "paragraph",html: "Lo clave es entender que el derecho y la suscripción son dos capas distintas. <code>md/subscribeQuote</code> devolviendo <code>{\"s\":200}</code> solo confirma que la <em>solicitud de suscripción</em> estaba bien formada y fue aceptada por el socket. No dice nada sobre si la cuenta <em>tiene derecho</em> a recibir los datos detrás de esa suscripción. Así cae en la trampa exacta que describe el indicador: una suscripción válida y &ldquo;exitosa&rdquo; que produce cero tramas <code>a</code> porque la cuenta nunca fue autorizada a recibir precios en vivo." },
+    { type: "paragraph",html: "Dicho claramente: la tubería está conectada y abierta, pero el grifo aguas arriba está cerrado. Abrirlo es una acción de cuenta y de derechos, no una corrección de código; ninguna cantidad de nuevas suscripciones cambiará un indicador <code>false</code>." },
+    { type: "heading",text: "Principales causas de la ausencia de cotizaciones por el WebSocket" },
+    { type: "heading",text: "1. La cuenta no tiene derecho a datos de mercado en vivo (hasMarketData: false)" },
+    { type: "paragraph",html: "Esta es la causa raíz que el indicador reporta literalmente. Las cotizaciones de futuros en tiempo real son datos con licencia de bolsa. Para recibirlas, la cuenta necesita una suscripción activa de datos de mercado más el acuerdo de datos de la bolsa correspondiente; para los productos CME, es el acuerdo CME para no profesionales o profesionales. Mientras ese derecho no exista, la bolsa no liberará ticks en vivo a la cuenta, así que el socket no tiene nada que reenviar." },
+    { type: "heading",text: "2. Suscribirse en el socket de trading en lugar del de datos de mercado" },
+    { type: "paragraph",html: "Tradovate ejecuta <strong class='text-white'>dos conexiones WebSocket separadas</strong>. El enrutamiento de órdenes y los datos de cuenta fluyen por el socket de trading (<code>wss://live.tradovateapi.com/v1/websocket</code>, o <code>wss://demo.tradovateapi.com/...</code> en demo). Las cotizaciones, el DOM y los gráficos fluyen por el <strong class='text-white'>socket de datos de mercado</strong> (<code>wss://md.tradovateapi.com/v1/websocket</code>, o <code>wss://md-demo.tradovateapi.com/...</code> en demo). Si envía <code>md/subscribeQuote</code> al socket de trading, aún puede recibir un acuse <code>200</code> más heartbeats, pero las tramas <code>a</code> en tiempo real nunca llegan, porque ese socket no sirve datos de mercado." },
+    { type: "heading",text: "3. Autorizar el socket de datos de mercado con el token equivocado" },
+    { type: "paragraph",html: "Al autenticarse, Tradovate devuelve <strong class='text-white'>dos tokens</strong>: <code>accessToken</code> para el socket de trading y <code>mdAccessToken</code> para el socket de datos de mercado. Cada socket debe autorizarse con su propio token mediante la trama authorize tras abrirlo. Si autoriza el socket md con el <code>accessToken</code> de trading, la conexión se comporta como si nunca hubiera tenido derecho: heartbeats, pero ninguna cotización." },
+    { type: "heading",text: "4. Está en un feed demo/simulado o diferido" },
+    { type: "paragraph",html: "Un entorno nuevo o demo suele entregar datos simulados o diferidos en lugar de un feed de bolsa en tiempo real. Por eso probar en el endpoint demo muestra tan a menudo una suscripción limpia seguida de ningún tick en vivo: el entorno simplemente no está conectado a un flujo en tiempo real de pago y con derecho. Confirme si la cuenta está pensada para tener datos de bolsa en vivo antes de suponer un error de código." },
+    { type: "heading",text: "5. Símbolo no válido o \"Symbol is inaccessible\"" },
+    { type: "paragraph",html: "Incluso con el derecho en regla, suscribirse a un símbolo para el que su cuenta no tiene licencia, o a un símbolo continuo/alias en lugar de un contrato real del mes frontal, puede devolver un error <code>Symbol is inaccessible</code> y ningún dato. Suscríbase siempre al contrato actual del mes frontal usando el código de mes de CME correcto (por ejemplo <code>MNQU5</code>), no a una raíz genérica ni a un alias de gráfico." },
+    { type: "heading",text: "Cómo solucionar la ausencia de cotizaciones por el WebSocket: paso a paso" },
+    { type: "heading",text: "Corregir el derecho de datos (poner hasMarketData en true)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Inicie sesión en la plataforma web", html: "Inicie sesión en la plataforma web de Tradovate con la misma cuenta que conecta mediante la API." },
+        { title: "Abra la configuración de datos de mercado", html: "Abra la configuración de cuenta/datos de mercado y localice la sección de suscripción de datos de mercado." },
+        { title: "Añada una suscripción en tiempo real y firme el acuerdo", html: "Añada una suscripción de datos de mercado en tiempo real para las bolsas que opera (CME para ES, NQ, MNQ, MES, etc.) y complete y firme el acuerdo de datos de bolsa requerido, no profesional para la mayoría de los traders minoristas. El nivel correcto y la tarifa actual varían, así que consulte las tarifas actuales de Tradovate." },
+        { title: "Cierre sesión y vuelva a iniciarla para propagar", html: "Guarde, luego cierre sesión por completo y vuelva a iniciarla para que el derecho se propague. Vuelva a consultar la cuenta y confirme <code>\"hasMarketData\": true</code>." },
+      ],
+    },
+    { type: "heading",text: "Corregir el cableado del socket y del token" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra un segundo WebSocket al host de datos de mercado", html: "Abra un <strong class='text-white'>segundo</strong> WebSocket al host de datos de mercado: <code>wss://md.tradovateapi.com/v1/websocket</code> (use <code>md-demo.tradovateapi.com</code> para el entorno demo)." },
+        { title: "Autorice con mdAccessToken", html: "Tras la trama open <code>o</code>, envíe una trama authorize con el <strong class='text-white'>mdAccessToken</strong> de su respuesta de autenticación, no con el accessToken de trading." },
+        { title: "Suscríbase a un símbolo válido del mes frontal", html: "Espere el acuse <code>200</code> de la autorización y luego envíe <code>md/subscribeQuote</code> con un símbolo válido del mes frontal (p. ej. <code>MNQU5</code>)." },
+        { title: "Observe las tramas", html: "Observe las tramas: los heartbeats llegan como <code>h</code>; las cotizaciones reales llegan ahora como tramas de datos <code>a</code> con bid/ask/last. Si sigue viendo solo <code>h</code>, el bloqueo es el derecho de datos (paso anterior), no el cableado." },
+      ],
+    },
+    { type: "heading",text: "Corregir una cuenta prop / de evaluación" },
+    {
+      type: "steps",
+      items: [
+        { title: "No se suscriba por su cuenta", html: "Si la cuenta es una evaluación o cuenta fondeada de una prop firm, no intente suscribirse por su cuenta, la firma provisiona los datos de forma centralizada." },
+        { title: "Contacte con el soporte de la prop firm", html: "Contacte con el soporte de la prop firm y pídales que activen o reparen los datos de mercado en vivo en su cuenta." },
+        { title: "Vuelva a comprobar tras la confirmación", html: "Cuando lo confirmen, cierre sesión, vuelva a iniciarla y compruebe de nuevo hasMarketData." },
+      ],
+    },
+    { type: "heading",text: "Nota específica de la API" },
+    { type: "paragraph",html: "Los datos en tiempo real programáticos a través de la API conllevan su propia licencia de bolsa además de los datos de la plataforma. Según su uso y la bolsa, eso puede requerir la condición de proveedor de datos de mercado registrado y una tarifa de licencia recurrente, el importe varía según la bolsa y cambia con el tiempo, así que confirme la cifra actual de CME/Tradovate antes de presupuestar. Si solo necesita <em>enviar</em> órdenes, puede enrutarlas con datos diferidos gratuitos y omitir por completo la licencia en tiempo real." },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma / error","Significado","Solución"], rows: [
+      ["\"hasMarketData\": false en la configuración de la cuenta","La cuenta no tiene derecho a datos de mercado en vivo","Añadir una suscripción de datos de mercado en tiempo real y firmar el acuerdo de datos de bolsa, luego volver a iniciar sesión"],
+      ["Subscribe devuelve {\"s\":200} pero solo tramas h","Suscripción aceptada pero sin datos autorizados/servidos","Verificar que el derecho sea true, el socket correcto y el token correcto"],
+      ["Solo heartbeats en live.tradovateapi.com","Suscrito en el socket de trading","Abrir el socket de datos de mercado md.tradovateapi.com y suscribirse allí"],
+      ["Las cotizaciones fallan tras autorizar","Socket md autorizado con el token de trading","Autorizar el socket md con mdAccessToken, no con accessToken"],
+      ["Symbol is inaccessible","Sin derecho para ese símbolo, o símbolo no válido/continuo","Usar un contrato del mes frontal con licencia y el código de mes correcto"],
+      ["Los ticks en vivo nunca llegan en demo","Feed demo/simulado o diferido","Confirmar que la cuenta está pensada para llevar un feed en tiempo real con derecho"],
+      ["La cuenta prop/de evaluación no muestra datos","Solo la firma puede activar los datos","Pedir a la prop firm que active los datos de mercado en vivo"],
+    ] },
+    { type: "heading",text: "Evítelo con PickMyTrade" },
+    { type: "paragraph",html: "Si su objetivo es automatizar Tradovate desde TradingView en lugar de construir a mano un socket de datos de mercado en bruto, PickMyTrade evita la mayor parte de esto enrutando sus alertas de TradingView directamente a su cuenta de Tradovate para su ejecución:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Sin socket de datos de mercado en bruto que conectar</strong>, PickMyTrade actúa sobre sus señales de TradingView, por lo que no mantiene flujos md/subscribeQuote ni maneja dos sockets y dos tokens.",
+        "<strong class='text-white'>Consciente de derechos y acuerdos de datos</strong>, el enrutamiento de órdenes respeta el estado de datos en vivo y de acuerdo de la cuenta, así que no le sorprende un silencioso hasMarketData: false.",
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de tasa</strong>, el flujo de órdenes se espacia para que nada rebote contra los límites de solicitudes de Tradovate.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replique la misma orden automatizada en varias cuentas de Tradovate a la vez.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous avez câblé le WebSocket Tradovate, vous vous êtes autorisé proprement, lancé <code>md/subscribeQuote</code> et reçu un net <code>{\"s\":200,\"i\":1}</code>, succès. Puis plus rien. Juste une série interminable de trames de heartbeat <code>h</code> et pas une seule trame de données <code>a</code> portant un bid ou un ask. Inspectez le compte et une ligne explique tout : <code>\"hasMarketData\": false</code>. Le socket fait exactement ce que vous lui avez dit ; le compte n'est simplement pas habilité à recevoir des cotations en direct. C'est l'un des écueils les plus déroutants de l'API Tradovate précisément parce que chaque ligne de journal indique &ldquo;OK&rdquo; alors que votre flux de prix reste totalement muet. Voici le détail complet, ce que signifie l'indicateur, pourquoi cela arrive et comment réactiver les cotations." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide en l'absence de cotations en temps réel",
+      items: [
+        "<strong class='text-white'>\"hasMarketData\": false sur le compte</strong>, le compte n'a aucun droit aux données de marché en direct. Activez ou souscrivez les données de marché avant d'attendre des trames de données a.",
+        "<strong class='text-white'>Mauvais socket</strong>, les cotations viennent du WebSocket de données de marché (md.tradovateapi.com), pas du socket de trading (live.tradovateapi.com). Abonnez-vous sur le mauvais et vous n'obtenez que des heartbeats.",
+        "<strong class='text-white'>Mauvais jeton</strong>, le socket de données de marché doit être autorisé avec le mdAccessToken, pas avec le accessToken de trading.",
+        "<strong class='text-white'>Flux démo/simulé</strong>, un compte démo ou d'évaluation peut servir des données différées ou simulées au lieu du temps réel de la bourse. Confirmez le forfait de données du compte.",
+        "<strong class='text-white'>Mauvais symbole</strong>, abonnez-vous à un contrat valide du mois en cours (p. ex. MNQU5), pas à un alias continu, sinon vous pourriez obtenir \"Symbol is inaccessible.\"",
+        "<strong class='text-white'>Compte prop/financé</strong>, sur les comptes d'évaluation, seule la prop firm peut activer les données en direct. Vous ne pouvez pas vous abonner vous-même.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie \"hasMarketData\": false" },
+    { type: "paragraph",html: "<code>hasMarketData</code> est un indicateur au niveau du compte que Tradovate renvoie dans les paramètres de votre compte. Lorsqu'il vaut <code>true</code>, le compte détient un droit actif aux données de marché, de sorte que le flux de cotations en temps réel de la bourse est autorisé à lui parvenir. Lorsqu'il vaut <code>false</code>, le compte n'a <strong class='text-white'>aucun accord ni abonnement de données de marché en direct</strong>, et ce seul indicateur prime sur tout le reste en aval." },
+    { type: "paragraph",html: "L'essentiel est de comprendre que le droit et l'abonnement sont deux couches distinctes. <code>md/subscribeQuote</code> renvoyant <code>{\"s\":200}</code> confirme seulement que la <em>requête d'abonnement</em> était bien formée et acceptée par le socket. Cela ne dit rien sur le fait que le compte soit <em>habilité</em> à recevoir les données derrière cet abonnement. Vous tombez donc dans le piège exact que décrit l'indicateur : un abonnement valide, &ldquo;réussi&rdquo;, qui produit zéro trame <code>a</code> parce que le compte n'a jamais été autorisé à recevoir des prix en direct." },
+    { type: "paragraph",html: "Pour le dire simplement : le tuyau est branché et ouvert, mais le robinet en amont est fermé. L'ouvrir est une action de compte et de droits, pas un correctif de code, aucun réabonnement ne fera basculer un indicateur <code>false</code>." },
+    { type: "heading",text: "Principales causes d'absence de cotations via le WebSocket" },
+    { type: "heading",text: "1. Le compte n'a aucun droit aux données de marché en direct (hasMarketData: false)" },
+    { type: "paragraph",html: "C'est la cause racine que l'indicateur rapporte littéralement. Les cotations de futures en temps réel sont des données sous licence de bourse. Pour les recevoir, le compte a besoin d'un abonnement actif aux données de marché ainsi que de l'accord de données boursier correspondant, pour les produits CME, c'est l'accord CME non professionnel ou professionnel. Tant que ce droit n'existe pas, la bourse ne libérera aucun tick en direct vers le compte, et le socket n'a donc rien à transmettre." },
+    { type: "heading",text: "2. S'abonner sur le socket de trading au lieu du socket de données de marché" },
+    { type: "paragraph",html: "Tradovate exploite <strong class='text-white'>deux connexions WebSocket distinctes</strong>. Le routage des ordres et les données de compte transitent par le socket de trading (<code>wss://live.tradovateapi.com/v1/websocket</code>, ou <code>wss://demo.tradovateapi.com/...</code> en démo). Les cotations, le DOM et les graphiques transitent par le <strong class='text-white'>socket de données de marché</strong> (<code>wss://md.tradovateapi.com/v1/websocket</code>, ou <code>wss://md-demo.tradovateapi.com/...</code> en démo). Envoyez <code>md/subscribeQuote</code> au socket de trading et vous pouvez tout de même obtenir un accusé <code>200</code> plus des heartbeats, mais les trames <code>a</code> en temps réel n'arrivent jamais, car ce socket ne sert pas de données de marché." },
+    { type: "heading",text: "3. Autoriser le socket de données de marché avec le mauvais jeton" },
+    { type: "paragraph",html: "Lors de l'authentification, Tradovate renvoie <strong class='text-white'>deux jetons</strong> : <code>accessToken</code> pour le socket de trading et <code>mdAccessToken</code> pour le socket de données de marché. Chaque socket doit être autorisé avec son propre jeton via la trame authorize après son ouverture. Autorisez le socket md avec le <code>accessToken</code> de trading et la connexion se comporte comme si elle n'avait jamais été correctement habilitée : des heartbeats, mais aucune cotation." },
+    { type: "heading",text: "4. Vous êtes sur un flux démo/simulé ou différé" },
+    { type: "paragraph",html: "Un environnement neuf ou de démo livre souvent des données simulées ou différées plutôt qu'un flux boursier en temps réel. C'est pourquoi les tests sur le point de terminaison démo montrent si souvent un abonnement propre suivi d'aucun tick en direct, l'environnement n'est tout simplement pas relié à un flux temps réel payant et habilité. Confirmez si le compte est censé disposer de données boursières en direct avant de supposer un bug de code." },
+    { type: "heading",text: "5. Symbole invalide ou \"Symbol is inaccessible\"" },
+    { type: "paragraph",html: "Même avec le droit en place, s'abonner à un symbole pour lequel votre compte n'est pas licencié, ou à un symbole continu/alias au lieu d'un vrai contrat du mois en cours, peut renvoyer une erreur <code>Symbol is inaccessible</code> et aucune donnée. Abonnez-vous toujours au contrat actuel du mois en cours en utilisant le bon code de mois CME (par exemple <code>MNQU5</code>), pas à une racine générique ni à un alias de graphique." },
+    { type: "heading",text: "Comment corriger l'absence de cotations via le WebSocket : pas à pas" },
+    { type: "heading",text: "Corriger le droit (passer hasMarketData à true)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Connectez-vous à la plateforme web", html: "Connectez-vous à la plateforme web Tradovate avec le même compte que celui que vous connectez via l'API." },
+        { title: "Ouvrez les paramètres de données de marché", html: "Ouvrez les paramètres du compte/des données de marché et repérez la section d'abonnement aux données de marché." },
+        { title: "Ajoutez un abonnement temps réel et signez l'accord", html: "Ajoutez un abonnement aux données de marché en temps réel pour la ou les bourses que vous tradez (CME pour ES, NQ, MNQ, MES, etc.) et remplissez puis signez l'accord de données boursier requis, non professionnel pour la plupart des traders particuliers. Le niveau correct et les frais actuels varient, consultez donc les tarifs actuels de Tradovate." },
+        { title: "Déconnectez-vous puis reconnectez-vous pour propager", html: "Enregistrez, puis déconnectez-vous complètement et reconnectez-vous pour que le droit se propage. Interrogez à nouveau le compte et confirmez <code>\"hasMarketData\": true</code>." },
+      ],
+    },
+    { type: "heading",text: "Corriger le câblage du socket et du jeton" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez un second WebSocket vers l'hôte de données de marché", html: "Ouvrez un <strong class='text-white'>second</strong> WebSocket vers l'hôte de données de marché : <code>wss://md.tradovateapi.com/v1/websocket</code> (utilisez <code>md-demo.tradovateapi.com</code> pour l'environnement démo)." },
+        { title: "Autorisez avec mdAccessToken", html: "Après la trame open <code>o</code>, envoyez une trame authorize avec le <strong class='text-white'>mdAccessToken</strong> de votre réponse d'authentification, pas avec le accessToken de trading." },
+        { title: "Abonnez-vous à un symbole valide du mois en cours", html: "Attendez l'accusé <code>200</code> de l'autorisation, puis envoyez <code>md/subscribeQuote</code> avec un symbole valide du mois en cours (p. ex. <code>MNQU5</code>)." },
+        { title: "Surveillez les trames", html: "Surveillez les trames : les heartbeats arrivent sous la forme <code>h</code> ; les vraies cotations arrivent désormais sous forme de trames de données <code>a</code> contenant bid/ask/last. Si vous ne voyez encore que <code>h</code>, c'est le droit (étape ci-dessus) qui vous bloque, pas le câblage." },
+      ],
+    },
+    { type: "heading",text: "Corriger un compte prop / d'évaluation" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ne vous abonnez pas vous-même", html: "Si le compte est une évaluation ou un compte financé d'une prop firm, n'essayez pas de vous abonner vous-même, la société provisionne les données de façon centralisée." },
+        { title: "Contactez le support de la prop firm", html: "Contactez le support de la prop firm et demandez-lui d'activer ou de réparer les données de marché en direct sur votre compte." },
+        { title: "Revérifiez après confirmation", html: "Une fois qu'elle l'a confirmé, déconnectez-vous, reconnectez-vous et revérifiez hasMarketData." },
+      ],
+    },
+    { type: "heading",text: "Remarque propre à l'API" },
+    { type: "paragraph",html: "Les données en temps réel programmatiques via l'API entraînent leur propre licence boursière en plus des données de la plateforme. Selon votre usage et la bourse, cela peut exiger le statut de fournisseur de données de marché enregistré et des frais de licence récurrents, le montant varie selon la bourse et change avec le temps, confirmez donc le chiffre actuel CME/Tradovate avant de budgéter. Si vous voulez seulement <em>passer</em> des ordres, vous pouvez les router sur des données différées gratuites et ignorer complètement la licence temps réel." },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme / erreur","Signification","Correctif"], rows: [
+      ["\"hasMarketData\": false dans les paramètres du compte","Le compte n'a aucun droit aux données de marché en direct","Ajouter un abonnement aux données de marché en temps réel et signer l'accord de données boursier, puis se reconnecter"],
+      ["Subscribe renvoie {\"s\":200} mais seulement des trames h","Abonnement accepté mais aucune donnée autorisée/servie","Vérifier que le droit vaut true, le bon socket et le bon jeton"],
+      ["Uniquement des heartbeats sur live.tradovateapi.com","Abonné sur le socket de trading","Ouvrir le socket de données de marché md.tradovateapi.com et s'y abonner"],
+      ["Les cotations échouent après l'autorisation","Socket md autorisé avec le jeton de trading","Autoriser le socket md avec mdAccessToken, pas accessToken"],
+      ["Symbol is inaccessible","Pas de droit pour ce symbole, ou symbole invalide/continu","Utiliser un contrat du mois en cours sous licence avec le bon code de mois"],
+      ["Les ticks en direct n'arrivent jamais en démo","Flux démo/simulé ou différé","Confirmer que le compte est censé porter un flux temps réel habilité"],
+      ["Le compte prop/d'évaluation n'affiche aucune donnée","Seule la société peut activer les données","Demander à la prop firm d'activer les données de marché en direct"],
+    ] },
+    { type: "heading",text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph",html: "Si votre objectif est d'automatiser Tradovate depuis TradingView plutôt que de construire à la main un socket de données de marché brut, PickMyTrade contourne l'essentiel de tout cela en acheminant vos alertes TradingView directement vers votre compte Tradovate pour exécution :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Aucun socket de données de marché brut à câbler</strong>, PickMyTrade agit sur vos signaux TradingView, vous n'avez donc pas à maintenir des flux md/subscribeQuote ni à jongler avec deux sockets et deux jetons.",
+        "<strong class='text-white'>Attentif aux droits et aux accords de données</strong>, le routage des ordres respecte l'état des données en direct et de l'accord du compte, de sorte que vous n'êtes pas pris au dépourvu par un hasMarketData: false silencieux.",
+        "<strong class='text-white'>Routage respectueux des limites de débit</strong>, le flux d'ordres est espacé afin que rien ne rebondisse sur les limites de requêtes de Tradovate.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, répliquez le même ordre automatisé sur plusieurs comptes Tradovate à la fois.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Ha collegato il WebSocket di Tradovate, si è autorizzato senza problemi, ha lanciato <code>md/subscribeQuote</code> e ha ricevuto un ordinato <code>{\"s\":200,\"i\":1}</code>, successo. Poi niente. Solo una sequenza infinita di frame di heartbeat <code>h</code> e nemmeno un frame di dati <code>a</code> con un bid o un ask. Ispezioni l'account e una riga spiega tutto: <code>\"hasMarketData\": false</code>. Il socket fa esattamente ciò che gli ha detto; l'account semplicemente non è abilitato a ricevere quotazioni live. È uno degli intoppi più confusi dell'API di Tradovate proprio perché ogni riga di log dice &ldquo;OK&rdquo; mentre il suo feed di prezzi resta del tutto muto. Ecco il dettaglio completo: cosa significa il flag, perché accade e come riattivare le quotazioni." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per l'assenza di quotazioni in tempo reale",
+      items: [
+        "<strong class='text-white'>\"hasMarketData\": false sull'account</strong>, l'account non ha alcuna abilitazione ai dati di mercato live. Attivi o sottoscriva i dati di mercato prima di aspettarsi frame di dati a.",
+        "<strong class='text-white'>Socket sbagliato</strong>, le quotazioni arrivano dal WebSocket dei dati di mercato (md.tradovateapi.com), non dal socket di trading (live.tradovateapi.com). Se sottoscrive su quello sbagliato, ottiene solo heartbeat.",
+        "<strong class='text-white'>Token sbagliato</strong>, il socket dei dati di mercato deve essere autorizzato con il mdAccessToken, non con l'accessToken di trading.",
+        "<strong class='text-white'>Feed demo/simulato</strong>, un account demo o di valutazione può servire dati ritardati o simulati anziché il tempo reale di borsa. Confermi il piano dati dell'account.",
+        "<strong class='text-white'>Simbolo errato</strong>, sottoscriva un contratto valido del mese in corso (ad es. MNQU5), non un alias continuo, altrimenti potrebbe ricevere \"Symbol is inaccessible.\"",
+        "<strong class='text-white'>Account prop/finanziato</strong>, sugli account di valutazione solo la prop firm può abilitare i dati live. Non può sottoscrivere da solo.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa \"hasMarketData\": false" },
+    { type: "paragraph",html: "<code>hasMarketData</code> è un flag a livello di account che Tradovate restituisce nelle impostazioni del suo account. Quando è <code>true</code>, l'account detiene un'abilitazione attiva ai dati di mercato, quindi il flusso di quotazioni in tempo reale della borsa è autorizzato a raggiungerlo. Quando è <code>false</code>, l'account <strong class='text-white'>non ha alcun accordo o sottoscrizione di dati di mercato live</strong>, e quel singolo flag prevale su tutto ciò che sta a valle." },
+    { type: "paragraph",html: "L'aspetto chiave è capire che abilitazione e sottoscrizione sono due livelli distinti. <code>md/subscribeQuote</code> che restituisce <code>{\"s\":200}</code> conferma solo che la <em>richiesta di sottoscrizione</em> era ben formata ed è stata accettata dal socket. Non dice nulla sul fatto che l'account sia <em>abilitato</em> a ricevere i dati dietro quella sottoscrizione. Così finisce nella trappola esatta che il flag descrive: una sottoscrizione valida e &ldquo;riuscita&rdquo; che produce zero frame <code>a</code> perché l'account non è mai stato autorizzato a ricevere prezzi live." },
+    { type: "paragraph",html: "In parole semplici: il tubo è collegato e aperto, ma il rubinetto a monte è chiuso. Aprirlo è un'azione sull'account e sull'abilitazione, non una correzione del codice, nessuna nuova sottoscrizione farà cambiare un flag <code>false</code>." },
+    { type: "heading",text: "Principali cause dell'assenza di quotazioni tramite WebSocket" },
+    { type: "heading",text: "1. L'account non ha alcuna abilitazione ai dati di mercato live (hasMarketData: false)" },
+    { type: "paragraph",html: "Questa è la causa radice che il flag segnala letteralmente. Le quotazioni dei futures in tempo reale sono dati con licenza di borsa. Per riceverle, l'account necessita di una sottoscrizione attiva ai dati di mercato più il relativo accordo sui dati di borsa in archivio, per i prodotti CME, è l'accordo CME non professionale o professionale. Finché tale abilitazione non esiste, la borsa non rilascerà tick live all'account, quindi il socket non ha nulla da inoltrare." },
+    { type: "heading",text: "2. Sottoscrivere sul socket di trading invece che su quello dei dati di mercato" },
+    { type: "paragraph",html: "Tradovate gestisce <strong class='text-white'>due connessioni WebSocket separate</strong>. L'instradamento degli ordini e i dati dell'account passano dal socket di trading (<code>wss://live.tradovateapi.com/v1/websocket</code>, o <code>wss://demo.tradovateapi.com/...</code> in demo). Quotazioni, DOM e grafici passano dal <strong class='text-white'>socket dei dati di mercato</strong> (<code>wss://md.tradovateapi.com/v1/websocket</code>, o <code>wss://md-demo.tradovateapi.com/...</code> in demo). Se invia <code>md/subscribeQuote</code> al socket di trading, può comunque ricevere una conferma <code>200</code> più heartbeat, ma i frame <code>a</code> in tempo reale non arrivano mai, perché quel socket non serve dati di mercato." },
+    { type: "heading",text: "3. Autorizzare il socket dei dati di mercato con il token sbagliato" },
+    { type: "paragraph",html: "Quando si autentica, Tradovate restituisce <strong class='text-white'>due token</strong>: <code>accessToken</code> per il socket di trading e <code>mdAccessToken</code> per il socket dei dati di mercato. Ogni socket deve essere autorizzato con il proprio token tramite il frame authorize dopo l'apertura. Se autorizza il socket md con l'<code>accessToken</code> di trading, la connessione si comporta come se non fosse mai stata abilitata correttamente: heartbeat, ma nessuna quotazione." },
+    { type: "heading",text: "4. Si trova su un feed demo/simulato o ritardato" },
+    { type: "paragraph",html: "Un ambiente nuovo o demo spesso fornisce dati simulati o ritardati anziché un feed di borsa in tempo reale. Ecco perché testare sull'endpoint demo mostra così spesso una sottoscrizione pulita seguita da nessun tick live, l'ambiente semplicemente non è collegato a un flusso in tempo reale a pagamento e abilitato. Confermi se l'account è destinato ad avere dati di borsa live prima di presumere un bug nel codice." },
+    { type: "heading",text: "5. Simbolo non valido o \"Symbol is inaccessible\"" },
+    { type: "paragraph",html: "Anche con l'abilitazione in regola, sottoscrivere un simbolo per cui il suo account non ha licenza, o un simbolo continuo/alias invece di un vero contratto del mese in corso, può restituire un errore <code>Symbol is inaccessible</code> e nessun dato. Sottoscriva sempre il contratto del mese in corso utilizzando il codice mese CME corretto (ad esempio <code>MNQU5</code>), non una radice generica o un alias del grafico." },
+    { type: "heading",text: "Come risolvere l'assenza di quotazioni tramite WebSocket: passo dopo passo" },
+    { type: "heading",text: "Correggere l'abilitazione (portare hasMarketData a true)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Acceda alla piattaforma web", html: "Acceda alla piattaforma web di Tradovate con lo stesso account che collega tramite API." },
+        { title: "Apra le impostazioni dei dati di mercato", html: "Apra le impostazioni dell'account/dei dati di mercato e trovi la sezione della sottoscrizione ai dati di mercato." },
+        { title: "Aggiunga una sottoscrizione in tempo reale e firmi l'accordo", html: "Aggiunga una sottoscrizione ai dati di mercato in tempo reale per le borse che negozia (CME per ES, NQ, MNQ, MES e così via) e completi e firmi l'accordo sui dati di borsa richiesto, non professionale per la maggior parte dei trader retail. Il livello corretto e la tariffa attuale variano, quindi controlli le tariffe attuali di Tradovate." },
+        { title: "Esca e acceda di nuovo per propagare", html: "Salvi, poi esca completamente e acceda di nuovo affinché l'abilitazione si propaghi. Interroghi di nuovo l'account e confermi <code>\"hasMarketData\": true</code>." },
+      ],
+    },
+    { type: "heading",text: "Correggere il collegamento di socket e token" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra un secondo WebSocket verso l'host dei dati di mercato", html: "Apra un <strong class='text-white'>secondo</strong> WebSocket verso l'host dei dati di mercato: <code>wss://md.tradovateapi.com/v1/websocket</code> (usi <code>md-demo.tradovateapi.com</code> per l'ambiente demo)." },
+        { title: "Autorizzi con mdAccessToken", html: "Dopo il frame open <code>o</code>, invii un frame authorize usando il <strong class='text-white'>mdAccessToken</strong> della sua risposta di autenticazione, non l'accessToken di trading." },
+        { title: "Sottoscriva un simbolo valido del mese in corso", html: "Attenda la conferma <code>200</code> dell'autorizzazione, poi invii <code>md/subscribeQuote</code> con un simbolo valido del mese in corso (ad es. <code>MNQU5</code>)." },
+        { title: "Osservi i frame", html: "Osservi i frame: gli heartbeat arrivano come <code>h</code>; le quotazioni reali arrivano ora come frame di dati <code>a</code> contenenti bid/ask/last. Se vede ancora solo <code>h</code>, il suo ostacolo è l'abilitazione (passaggio precedente), non il collegamento." },
+      ],
+    },
+    { type: "heading",text: "Correggere un account prop / di valutazione" },
+    {
+      type: "steps",
+      items: [
+        { title: "Non sottoscriva da solo", html: "Se l'account è una valutazione o un account finanziato di una prop firm, non provi a sottoscrivere da solo, la società fornisce i dati in modo centralizzato." },
+        { title: "Contatti il supporto della prop firm", html: "Contatti il supporto della prop firm e chieda di abilitare o riparare i dati di mercato live sul suo account." },
+        { title: "Ricontrolli dopo la conferma", html: "Una volta che hanno confermato, esca e acceda di nuovo e ricontrolli hasMarketData." },
+      ],
+    },
+    { type: "heading",text: "Nota specifica per l'API" },
+    { type: "paragraph",html: "I dati in tempo reale programmatici tramite API comportano una propria licenza di borsa oltre ai dati della piattaforma. A seconda dell'uso e della borsa, ciò può richiedere lo status di fornitore di dati di mercato registrato e una tariffa di licenza ricorrente, l'importo varia a seconda della borsa e cambia nel tempo, quindi confermi la cifra attuale CME/Tradovate prima di fare il budget. Se vuole solo <em>inviare</em> ordini, può instradarli su dati ritardati gratuiti e saltare del tutto la licenza in tempo reale." },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo / errore","Significato","Correzione"], rows: [
+      ["\"hasMarketData\": false nelle impostazioni dell'account","L'account non ha alcuna abilitazione ai dati di mercato live","Aggiungere una sottoscrizione ai dati di mercato in tempo reale e firmare l'accordo sui dati di borsa, poi accedere di nuovo"],
+      ["Subscribe restituisce {\"s\":200} ma solo frame h","Sottoscrizione accettata ma nessun dato autorizzato/servito","Verificare che l'abilitazione sia true, il socket corretto e il token corretto"],
+      ["Solo heartbeat su live.tradovateapi.com","Sottoscritto sul socket di trading","Aprire il socket dei dati di mercato md.tradovateapi.com e sottoscrivere lì"],
+      ["Le quotazioni falliscono dopo l'autorizzazione","Socket md autorizzato con il token di trading","Autorizzare il socket md con mdAccessToken, non con accessToken"],
+      ["Symbol is inaccessible","Nessuna abilitazione per quel simbolo, o simbolo non valido/continuo","Usare un contratto del mese in corso con licenza e il codice mese corretto"],
+      ["I tick live non arrivano mai in demo","Feed demo/simulato o ritardato","Confermare che l'account sia destinato a portare un feed in tempo reale abilitato"],
+      ["L'account prop/di valutazione non mostra dati","Solo la società può abilitare i dati","Chiedere alla prop firm di abilitare i dati di mercato live"],
+    ] },
+    { type: "heading",text: "Lo eviti con PickMyTrade" },
+    { type: "paragraph",html: "Se il suo obiettivo è automatizzare Tradovate da TradingView anziché costruire a mano un socket di dati di mercato grezzo, PickMyTrade aggira buona parte di tutto questo instradando i suoi alert TradingView direttamente al suo account Tradovate per l'esecuzione:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Nessun socket di dati di mercato grezzo da collegare</strong>, PickMyTrade agisce sui suoi segnali TradingView, quindi non mantiene flussi md/subscribeQuote né deve destreggiarsi tra due socket e due token.",
+        "<strong class='text-white'>Attento ad abilitazioni e accordi sui dati</strong>, l'instradamento degli ordini rispetta lo stato dei dati live e dell'accordo dell'account, così non viene colto di sorpresa da un silenzioso hasMarketData: false.",
+        "<strong class='text-white'>Instradamento sicuro rispetto ai limiti di frequenza</strong>, il flusso degli ordini è distanziato in modo che nulla rimbalzi contro i limiti di richieste di Tradovate.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replichi lo stesso ordine automatizzato su più account Tradovate contemporaneamente.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Automate Without the Raw Socket", de: "Automatisieren ohne rohen Socket", es: "Automatice sin el socket en bruto", fr: "Automatisez sans le socket brut", it: "Automatizzi senza il socket grezzo" },
+  ctaText: { en: "Start your free 7-day trial, automate Tradovate from TradingView without hand-building a market-data socket.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase und automatisieren Sie Tradovate aus TradingView, ohne selbst einen Marktdaten-Socket zu bauen.", es: "Comience su prueba gratuita de 7 días y automatice Tradovate desde TradingView sin construir a mano un socket de datos de mercado.", fr: "Commencez votre essai gratuit de 7 jours et automatisez Tradovate depuis TradingView sans construire à la main un socket de données de marché.", it: "Inizi la prova gratuita di 7 giorni e automatizzi Tradovate da TradingView senza costruire a mano un socket di dati di mercato." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Does a {\"s\":200} response mean my subscription worked?", a: "It means the subscription request was accepted by the socket, not that data is flowing. If hasMarketData is false, you'll still receive only h heartbeat frames and no a data frames." },
+    { q: "What exactly is hasMarketData?", a: "It's an account-level flag Tradovate returns in account settings. True means the account has an active live market-data entitlement; false means no real-time exchange data is authorized for it." },
+    { q: "Why do I get heartbeats but no quotes?", a: "Heartbeat (h) frames only keep the connection alive. Real quotes arrive as a data frames, and those only stream when the account is entitled and you're subscribed on the correct market-data socket with the correct token." },
+    { q: "Which WebSocket should market-data subscriptions go to?", a: "The dedicated market-data socket, wss://md.tradovateapi.com/v1/websocket (or md-demo.tradovateapi.com on demo). The trading socket at live.tradovateapi.com does not serve quotes." },
+    { q: "I have two tokens after login, which one authorizes the quote feed?", a: "Use the mdAccessToken to authorize the market-data socket. The plain accessToken is for the trading socket." },
+    { q: "Do I have to pay for real-time data?", a: "Real-time exchange quotes require a market-data subscription and the exchange's data agreement. Programmatic API access can carry an additional exchange license fee. Amounts vary by exchange and change over time, check Tradovate's current rates." },
+    { q: "My account is a prop-firm evaluation, how do I turn on data?", a: "You can't self-subscribe on most prop/eval accounts. Contact the prop firm's support and ask them to enable live market data, then log out and back in." },
+    { q: "I only want to place orders. Do I need live data at all?", a: "No. You can submit orders on free delayed data and skip the real-time market-data license entirely, the entitlement mainly gates live quotes and charts." },
+  ], de: [
+    { q: "Bedeutet eine {\"s\":200}-Antwort, dass mein Abonnement funktioniert hat?", a: "Sie bedeutet, dass die Abonnementanfrage vom Socket akzeptiert wurde, nicht, dass Daten fließen. Ist hasMarketData false, erhalten Sie weiterhin nur h-Heartbeat-Frames und keine a-Datenframes." },
+    { q: "Was genau ist hasMarketData?", a: "Es ist ein Flag auf Kontoebene, das Tradovate in den Kontoeinstellungen zurückgibt. True bedeutet, dass das Konto eine aktive Berechtigung für Live-Marktdaten besitzt, false bedeutet, dass für das Konto keine Echtzeit-Börsendaten freigegeben sind." },
+    { q: "Warum erhalte ich Heartbeats, aber keine Kurse?", a: "Heartbeat-Frames (h) halten nur die Verbindung am Leben. Echte Kurse kommen als a-Datenframes an, und diese werden nur gestreamt, wenn das Konto berechtigt ist und Sie auf dem richtigen Marktdaten-Socket mit dem richtigen Token abonniert sind." },
+    { q: "An welchen WebSocket gehören Marktdaten-Abonnements?", a: "An den dedizierten Marktdaten-Socket wss://md.tradovateapi.com/v1/websocket (oder md-demo.tradovateapi.com in der Demo). Der Handels-Socket unter live.tradovateapi.com liefert keine Kurse." },
+    { q: "Ich habe nach dem Login zwei Tokens, welches autorisiert den Kurs-Feed?", a: "Verwenden Sie das mdAccessToken, um den Marktdaten-Socket zu autorisieren. Das einfache accessToken ist für den Handels-Socket." },
+    { q: "Muss ich für Echtzeitdaten bezahlen?", a: "Echtzeit-Börsenkurse erfordern ein Marktdaten-Abonnement und die Datenvereinbarung der Börse. Der programmatische API-Zugriff kann eine zusätzliche Börsenlizenzgebühr nach sich ziehen. Die Beträge variieren je nach Börse und ändern sich im Lauf der Zeit, prüfen Sie die aktuellen Tarife von Tradovate." },
+    { q: "Mein Konto ist eine Prop-Firm-Evaluierung, wie aktiviere ich die Daten?", a: "Bei den meisten Prop-/Eval-Konten können Sie sich nicht selbst abonnieren. Wenden Sie sich an den Support der Prop Firm und bitten Sie darum, Live-Marktdaten zu aktivieren, melden Sie sich dann ab und wieder an." },
+    { q: "Ich möchte nur Orders platzieren. Brauche ich überhaupt Live-Daten?", a: "Nein. Sie können Orders auf kostenlosen verzögerten Daten absenden und die Echtzeit-Marktdatenlizenz komplett überspringen, die Berechtigung steuert hauptsächlich den Zugang zu Live-Kursen und Charts." },
+  ], es: [
+    { q: "¿Una respuesta {\"s\":200} significa que mi suscripción funcionó?", a: "Significa que el socket aceptó la solicitud de suscripción, no que fluyan datos. Si hasMarketData es false, seguirá recibiendo solo tramas de heartbeat h y ninguna trama de datos a." },
+    { q: "¿Qué es exactamente hasMarketData?", a: "Es un indicador a nivel de cuenta que Tradovate devuelve en la configuración de la cuenta. True significa que la cuenta tiene un derecho activo de datos de mercado en vivo; false significa que no hay datos de bolsa en tiempo real autorizados para ella." },
+    { q: "¿Por qué recibo heartbeats pero ninguna cotización?", a: "Las tramas de heartbeat (h) solo mantienen viva la conexión. Las cotizaciones reales llegan como tramas de datos a, y solo se transmiten cuando la cuenta tiene derecho y usted está suscrito en el socket de datos de mercado correcto con el token correcto." },
+    { q: "¿A qué WebSocket deben ir las suscripciones de datos de mercado?", a: "Al socket dedicado de datos de mercado, wss://md.tradovateapi.com/v1/websocket (o md-demo.tradovateapi.com en demo). El socket de trading en live.tradovateapi.com no sirve cotizaciones." },
+    { q: "Tengo dos tokens tras iniciar sesión, ¿cuál autoriza el feed de cotizaciones?", a: "Use el mdAccessToken para autorizar el socket de datos de mercado. El accessToken normal es para el socket de trading." },
+    { q: "¿Tengo que pagar por los datos en tiempo real?", a: "Las cotizaciones de bolsa en tiempo real requieren una suscripción de datos de mercado y el acuerdo de datos de la bolsa. El acceso programático por API puede conllevar una tarifa de licencia de bolsa adicional. Los importes varían según la bolsa y cambian con el tiempo, consulte las tarifas actuales de Tradovate." },
+    { q: "Mi cuenta es una evaluación de una prop firm, ¿cómo activo los datos?", a: "En la mayoría de las cuentas prop/de evaluación no puede suscribirse por su cuenta. Contacte con el soporte de la prop firm y pídales que activen los datos de mercado en vivo; después cierre sesión y vuelva a iniciarla." },
+    { q: "Solo quiero enviar órdenes. ¿Necesito datos en vivo?", a: "No. Puede enviar órdenes con datos diferidos gratuitos y omitir por completo la licencia de datos de mercado en tiempo real; el derecho de datos limita principalmente las cotizaciones y los gráficos en vivo." },
+  ], fr: [
+    { q: "Une réponse {\"s\":200} signifie-t-elle que mon abonnement a fonctionné ?", a: "Elle signifie que la requête d'abonnement a été acceptée par le socket, pas que des données circulent. Si hasMarketData vaut false, vous ne recevrez toujours que des trames de heartbeat h et aucune trame de données a." },
+    { q: "Qu'est-ce exactement que hasMarketData ?", a: "C'est un indicateur au niveau du compte que Tradovate renvoie dans les paramètres du compte. True signifie que le compte dispose d'un droit actif aux données de marché en direct ; false signifie qu'aucune donnée de bourse en temps réel n'est autorisée pour lui." },
+    { q: "Pourquoi ai-je des heartbeats mais aucune cotation ?", a: "Les trames de heartbeat (h) ne font que maintenir la connexion en vie. Les vraies cotations arrivent sous forme de trames de données a, et elles ne sont diffusées que si le compte est habilité et que vous êtes abonné sur le bon socket de données de marché avec le bon jeton." },
+    { q: "Sur quel WebSocket faut-il envoyer les abonnements aux données de marché ?", a: "Sur le socket dédié aux données de marché, wss://md.tradovateapi.com/v1/websocket (ou md-demo.tradovateapi.com en démo). Le socket de trading sur live.tradovateapi.com ne sert pas de cotations." },
+    { q: "J'ai deux jetons après la connexion, lequel autorise le flux de cotations ?", a: "Utilisez le mdAccessToken pour autoriser le socket de données de marché. Le accessToken simple est destiné au socket de trading." },
+    { q: "Dois-je payer pour les données en temps réel ?", a: "Les cotations de bourse en temps réel nécessitent un abonnement aux données de marché et l'accord de données de la bourse. L'accès programmatique par API peut entraîner des frais de licence boursière supplémentaires. Les montants varient selon la bourse et changent avec le temps, consultez les tarifs actuels de Tradovate." },
+    { q: "Mon compte est une évaluation de prop firm, comment activer les données ?", a: "Sur la plupart des comptes prop/d'évaluation, vous ne pouvez pas vous abonner vous-même. Contactez le support de la prop firm et demandez-lui d'activer les données de marché en direct, puis déconnectez-vous et reconnectez-vous." },
+    { q: "Je veux seulement passer des ordres. Ai-je besoin de données en direct ?", a: "Non. Vous pouvez soumettre des ordres avec des données différées gratuites et ignorer complètement la licence de données de marché en temps réel, le droit sert surtout à contrôler l'accès aux cotations et aux graphiques en direct." },
+  ], it: [
+    { q: "Una risposta {\"s\":200} significa che la mia sottoscrizione ha funzionato?", a: "Significa che la richiesta di sottoscrizione è stata accettata dal socket, non che i dati stiano fluendo. Se hasMarketData è false, riceverà comunque solo frame di heartbeat h e nessun frame di dati a." },
+    { q: "Che cos'è esattamente hasMarketData?", a: "È un flag a livello di account che Tradovate restituisce nelle impostazioni dell'account. True significa che l'account ha un'abilitazione attiva ai dati di mercato live; false significa che nessun dato di borsa in tempo reale è autorizzato per esso." },
+    { q: "Perché ricevo heartbeat ma nessuna quotazione?", a: "I frame di heartbeat (h) mantengono solo in vita la connessione. Le quotazioni reali arrivano come frame di dati a, e vengono trasmesse solo quando l'account è abilitato e lei è sottoscritto sul socket di dati di mercato corretto con il token corretto." },
+    { q: "A quale WebSocket vanno indirizzate le sottoscrizioni ai dati di mercato?", a: "Al socket dedicato ai dati di mercato, wss://md.tradovateapi.com/v1/websocket (o md-demo.tradovateapi.com in demo). Il socket di trading su live.tradovateapi.com non serve quotazioni." },
+    { q: "Dopo il login ho due token, quale autorizza il feed di quotazioni?", a: "Utilizzi il mdAccessToken per autorizzare il socket dei dati di mercato. Il semplice accessToken è per il socket di trading." },
+    { q: "Devo pagare per i dati in tempo reale?", a: "Le quotazioni di borsa in tempo reale richiedono una sottoscrizione ai dati di mercato e l'accordo sui dati della borsa. L'accesso programmatico via API può comportare una tariffa di licenza di borsa aggiuntiva. Gli importi variano a seconda della borsa e cambiano nel tempo, consulti le tariffe attuali di Tradovate." },
+    { q: "Il mio account è una valutazione di una prop firm, come attivo i dati?", a: "Sulla maggior parte degli account prop/di valutazione non può sottoscrivere da solo. Contatti il supporto della prop firm e chieda di abilitare i dati di mercato live, poi esca e acceda di nuovo." },
+    { q: "Voglio solo inviare ordini. Ho bisogno dei dati live?", a: "No. Può inviare ordini con dati ritardati gratuiti e saltare del tutto la licenza dei dati di mercato in tempo reale, l'abilitazione regola soprattutto quotazioni e grafici live." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Weitere Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. \"Tradovate\" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt weder Finanz-, Anlage- noch Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von Tradovate, Inc. unterstützt noch gesponsert. „Tradovate“ sowie alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit. Prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. « Tradovate » ainsi que tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha esclusivamente finalità educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Operare in futures e in altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo: confermi sempre la procedura aggiornata nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

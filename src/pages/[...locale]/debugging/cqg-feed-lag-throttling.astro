@@ -1,0 +1,613 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "cqg-feed-lag-throttling";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate CQG Feed Throttled to ~2 Updates/Sec";
+const META_DESCRIPTION =
+  "Tradovate feed updating only ~2 times a second? Why CQG conflation throttles market data, what it means for fills, and how to cut extra local lag.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate: feed CQG limitado a ~2 actualizaciones/s", fr: "Tradovate : flux CQG limité à ~2 mises à jour par seconde", it: "Tradovate: feed CQG limitato a ~2 aggiornamenti al secondo" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-CQG-Feed auf ca. 2 Updates/Sek. gedrosselt", es: "Feed CQG de Tradovate limitado a unas 2 actualizaciones por segundo", fr: "Flux CQG de Tradovate limité à environ 2 mises à jour par seconde", it: "Feed CQG di Tradovate limitato a circa 2 aggiornamenti al secondo" },
+  dek: { en: "The DOM redraws in chunks and Time & Sales prints arrive bundled during a fast move. Here's the two-layer reason, what's fixed upstream, and what you can actually tune.", de: "Das DOM aktualisiert sich in Schüben, und Time & Sales-Prints treffen bei einer schnellen Bewegung gebündelt ein. Hier ist der zweischichtige Grund, was upstream fest vorgegeben ist und was Sie tatsächlich anpassen können.", es: "El DOM se redibuja en bloques y las impresiones de Time & Sales llegan agrupadas durante un movimiento rápido. Esta es la razón de dos capas, qué está fijado en el origen y qué puede ajustar realmente.", fr: "Le DOM se redessine par blocs et les impressions Time & Sales arrivent groupées lors d'un mouvement rapide. Voici la raison à deux niveaux, ce qui est figé en amont et ce que vous pouvez réellement ajuster.", it: "Il DOM si ridisegna a blocchi e le stampe Time & Sales arrivano raggruppate durante un movimento rapido. Ecco la ragione a due livelli, cosa è fissato a monte e cosa può effettivamente regolare." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You're watching ES or NQ rip through a news spike, and the tape stutters. The DOM redraws in chunks, the Time &amp; Sales prints arrive bundled, and the whole feed feels like a couple of snapshots a second instead of every tick. Before you reinstall the app or blame your machine, here's the thing worth knowing: Tradovate's market data comes from CQG, and CQG nets its feed down to roughly two updates a second on the tape and depth pulse. That coarse cadence reaches every platform CQG supplies, it's a data-vendor behavior, not a bug on your desk. There's a second layer on top that you can influence, and that's where the fixable part lives. Let's separate the two so you know what to touch and what to accept." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for a Throttled Tradovate Feed",
+      items: [
+        "<strong class='text-white'>Know it's the feed, not your account.</strong> A steady ~2-per-second pulse in fast markets is CQG conflation, shared by every CQG-fed platform, nothing to fix on your side.",
+        "<strong class='text-white'>Confirm your fills are still accurate.</strong> Orders match at the exchange, not against the on-screen tape. A coarse feed is a read problem, not a broken router.",
+        "<strong class='text-white'>Clear local load.</strong> Check Task Manager; a maxed-out CPU or memory triggers Tradovate's own extra throttling on top of the feed.",
+        "<strong class='text-white'>Stabilize your connection.</strong> A slow or unstable network makes the platform throttle your feed below the baseline. Wired beats Wi-Fi.",
+        "<strong class='text-white'>Confirm your data is live, not delayed.</strong> Ten-minute delayed data (orange symbols) is a subscription problem, not throttling, different fix.",
+        "<strong class='text-white'>Escalate only the right cases.</strong> Report data that's far worse than ~2 per second under calm conditions, or delayed data on a prop account (your firm controls that).",
+      ],
+    },
+    { type: "heading", text: "What “~2 Updates a Second” Actually Means" },
+    { type: "paragraph", html: "The number that trips people up is the pulse: the tape and depth of market refresh only about twice a second, not tick-by-tick. That's conflation. Instead of streaming every individual trade and quote change, the feed collapses whatever happened in the last interval into a single snapshot and sends the most recent state, discarding the intermediate steps. In a slow market you'd never notice, two updates a second is plenty when price barely moves. In a fast market, dozens of real events pile up between pulses and arrive bundled, so you see fewer, chunkier updates exactly when the action is thickest." },
+    { type: "paragraph", html: "This matters because a conflated feed is a coarse picture of the market, not a broken one. Your fills still match at the exchange off live prices; the throttling lives in how often the display refreshes, not in the execution path. So a scalper hand-reading the ladder feels this hard, while a trader working off bars or signals barely registers it. Keep that split in mind, it decides which fixes below are worth your time." },
+    { type: "heading", text: "Where the Throttling Comes From: Two Layers" },
+    { type: "paragraph", html: "There are two separate throttles stacked on your feed, and telling them apart is the whole game." },
+    { type: "heading", text: "Layer 1: CQG feed conflation (the part you can't change)" },
+    { type: "paragraph", html: "CQG is the market-data provider behind Tradovate, and its consolidated feed is netted down to roughly two updates a second on the DOM and Time &amp; Sales pulse. That's an upstream design choice at the data vendor, the same conflated cadence shows up on other CQG-fed platforms too, which is the tell that it isn't a Tradovate-only glitch or a problem with your setup. There is no user-facing control anywhere in Tradovate that raises this base cadence, because the limit isn't set in Tradovate. If your feed is holding a steady ~2-per-second pulse, that's the feed working as designed, and no amount of local tuning pushes it faster." },
+    { type: "heading", text: "Layer 2: Tradovate's dynamic throttling (the part you can)" },
+    { type: "paragraph", html: "On top of the base feed, Tradovate can throttle your data further when it thinks you can't keep up. If the client application is performing poorly, or your network is slow, the platform starts bundling responses more aggressively, combining data for multiple symbols into the same message and discarding pending or out-of-date data in favor of the latest. Quotes, the DOM, and chart updates can all be affected. This is the layer you actually control: when a starved CPU or a shaky connection triggers it, you drop below the baseline feed and everything feels doubly sluggish. Clear those local causes and you at least get the full feed CQG is sending, instead of a throttled-down version of it." },
+    { type: "heading", text: "Top Causes of Extra Feed Lag in 2026" },
+    { type: "paragraph", html: "Layer 1 is fixed. These are the Layer-2 triggers that drag you below even the baseline feed." },
+    { type: "heading", text: "1. Local CPU or memory overload" },
+    { type: "paragraph", html: "When the feed gets choppier the longer you run, or clears after a restart, your own machine is usually the culprit. A stack of charts, several DOMs, indicators, and other trading apps can peg the platform's CPU and memory, and a starved client is exactly the condition that trips Tradovate's dynamic throttling. The first diagnostic is Task Manager: if the app or browser tab is near 100% CPU or memory, you've found the extra lag." },
+    { type: "heading", text: "2. Slow or unstable network" },
+    { type: "paragraph", html: "The feed streams live, so a slow or flaky connection is another direct trigger for the platform to throttle your data down. Wi-Fi drops, VPN routing, and a saturated home network all interrupt the stream and read as bundled, catch-up updates. A drifting system clock compounds it, since Tradovate's real-time services are time-sensitive. A wired connection and a synced clock take both off the table." },
+    { type: "heading", text: "3. Delayed data mistaken for throttling" },
+    { type: "paragraph", html: "This one's a category error. If your symbols show in orange or your data runs ten minutes behind, that's not throttling at all, it's a missing live market-data subscription. Delayed data is old; a throttled feed is coarse but current. They look vaguely similar at a glance but have completely different fixes, so confirm which one you're actually looking at before you troubleshoot." },
+    { type: "heading", text: "How to Reduce Extra Feed Lag: Step-by-Step" },
+    { type: "heading", text: "Clear local platform load" },
+    { type: "paragraph", html: "Free up resources so Tradovate stops throttling you below the baseline feed." },
+    {
+      type: "steps",
+      items: [
+        { title: "Check Task Manager", html: "Open Task Manager (Ctrl+Shift+Esc on Windows; Activity Monitor on macOS) and check the CPU and memory used by the Tradovate app or your browser tab. Note whether either is near 100%." },
+        { title: "Close unused charts and DOMs", html: "In Tradovate, close every chart, DOM, and panel you aren't actively trading. Each open module consumes resources and adds to the load." },
+        { title: "Trim instruments and panels", html: "Trim the number of instruments and simultaneous DOMs to only what the current session needs." },
+        { title: "Close competing apps", html: "Close other heavy apps competing for CPU and RAM, then watch whether the tape and ladder loosen up." },
+      ],
+    },
+    { type: "heading", text: "Stabilize your network and clock" },
+    { type: "paragraph", html: "Give the live stream a clean pipe so the platform doesn't throttle it." },
+    {
+      type: "steps",
+      items: [
+        { title: "Switch to wired Ethernet", html: "Switch from Wi-Fi to a wired Ethernet connection where you can, and disable any VPN routing your trading traffic." },
+        { title: "Sync your clock", html: "On Windows, turn on Set time automatically, then click Sync now (Settings &rarr; Time &amp; language &rarr; Date &amp; time) so the system clock matches network time." },
+        { title: "Free up bandwidth", html: "Close background downloads and streams that eat your bandwidth while you trade." },
+      ],
+    },
+    { type: "heading", text: "Confirm your data is live, not delayed" },
+    { type: "paragraph", html: "Rule out the delayed-data trap before you judge the update rate." },
+    {
+      type: "steps",
+      items: [
+        { title: "Check the symbol color", html: "Check whether your symbols display in the normal color or in orange, orange signals delayed, not live, data. Confirm the exact colour and indicator in your current build, as the styling shifts between platform updates." },
+        { title: "Verify your data subscription", html: "Open Tradovate's market-data settings and verify you hold an active real-time subscription for the exchange you're trading (for CME futures, that's the live CME data entitlement)." },
+        { title: "Contact your firm if needed", html: "On a personal account you subscribe yourself; on a prop or evaluation account the firm enables your data, so contact the firm if it's missing. Data entitlements and rules vary by firm and account size, check your firm's current rules." },
+      ],
+    },
+    { type: "heading", text: "Reset, then escalate only the right cases" },
+    { type: "paragraph", html: "When you've cleared your side and something's still off, reset and report." },
+    {
+      type: "steps",
+      items: [
+        { title: "Reset the connection", html: "On the web platform, refresh with F5; on the desktop app, fully close and reopen it to rebuild the data connection. Make sure you're on the latest build." },
+        { title: "Judge against the baseline", html: "Judge what's left against the baseline. A steady ~2-per-second pulse in fast markets is normal CQG conflation, nothing to escalate." },
+        { title: "Contact support if it's still worse", html: "Contact support (or your prop firm, for evaluation accounts) only if the feed is far worse than that under calm conditions, if it stays coarse after you've cleared load and network, or if your data is flat-out delayed. Send the time, instrument, and a screenshot." },
+      ],
+    },
+    { type: "heading", text: "Throttled Feed vs. Other Data Problems" },
+    {
+      type: "table",
+      headers: ["Symptom", "What it means", "Fix"],
+      rows: [
+        ["Steady ~2 updates/sec on tape and DOM", "CQG feed conflation (baseline cadence)", "No user setting changes it; accept it or trade off signals instead of hand-reading"],
+        ["Feed drops below baseline, worse the longer you run", "Tradovate dynamic throttling from local overload", "Close extra charts/DOMs; check Task Manager; restart the app"],
+        ["Bundled, catch-up updates with freezes", "Slow or unstable network / clock drift", "Use wired Ethernet; enable &ldquo;Set time automatically&rdquo; and sync now"],
+        ["Feed coarsens only during volatile bursts", "Conflation collapsing a flood of ticks into one snapshot", "Expected behavior; it snaps back once the surge passes"],
+        ["Data is 10 minutes old / orange symbols", "No live market-data subscription (delayed, not throttled)", "Add the real-time subscription; on a prop account, ask the firm"],
+        ["Coarse feed across every CQG platform at once", "Upstream data-vendor behavior, not Tradovate-specific", "Nothing to change locally; it's shared by all CQG-fed platforms"],
+      ],
+    },
+    { type: "heading", text: "Stop Betting Your Entry on a Coarse Feed" },
+    { type: "paragraph", html: "If your edge depends on eyeballing a tape that pulses a couple of times a second in a market moving many times a second, the tape is the wrong thing to bet on. PickMyTrade lets your strategy act on the signal instead of on whatever a conflated feed happens to show:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signal-based execution</strong>, orders fire from your TradingView strategy the instant your condition triggers, not when a coarse tape finally catches up.",
+        "<strong class='text-white'>Server-side routing</strong>, alerts route to Tradovate from PickMyTrade's servers, so a maxed-out local machine (the thing that trips Tradovate's extra throttling) doesn't gate your entries and exits.",
+        "<strong class='text-white'>Rate-limit-safe order flow</strong>, order routing is spaced sensibly so nothing bounces off Tradovate's request limits.",
+        "<strong class='text-white'>Multi-account sync</strong>, the same automated entry and exit mirror across several Tradovate accounts at once, no per-tick clicking required.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie beobachten, wie ES oder NQ durch einen News-Spike schießt, und das Tape stockt. Das DOM aktualisiert sich in Schüben, die Time &amp; Sales-Prints treffen gebündelt ein, und der gesamte Feed fühlt sich an wie ein paar Schnappschüsse pro Sekunde statt jedes einzelnen Ticks. Bevor Sie die App neu installieren oder Ihrem Rechner die Schuld geben, sollten Sie Folgendes wissen: Die Marktdaten von Tradovate stammen von CQG, und CQG verdichtet seinen Feed auf etwa zwei Updates pro Sekunde beim Tape- und Tiefenpuls. Dieser grobe Takt betrifft jede Plattform, die CQG beliefert, es handelt sich um ein Verhalten des Datenanbieters, nicht um einen Fehler auf Ihrer Seite. Darüber liegt eine zweite Schicht, die Sie beeinflussen können, und dort liegt der behebbare Teil. Trennen wir die beiden, damit Sie wissen, woran Sie etwas ändern können und was Sie hinnehmen müssen." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste für einen gedrosselten Tradovate-Feed",
+      items: [
+        "<strong class='text-white'>Wissen Sie, dass es am Feed liegt, nicht an Ihrem Konto.</strong> Ein gleichmäßiger Puls von ca. 2 pro Sekunde in schnellen Märkten ist CQG-Konflation, die von jeder CQG-belieferten Plattform geteilt wird, auf Ihrer Seite gibt es nichts zu reparieren.",
+        "<strong class='text-white'>Bestätigen Sie, dass Ihre Fills weiterhin korrekt sind.</strong> Orders werden an der Börse gematcht, nicht gegen das Tape auf Ihrem Bildschirm. Ein grober Feed ist ein Ableseproblem, kein defektes Routing.",
+        "<strong class='text-white'>Beseitigen Sie lokale Auslastung.</strong> Prüfen Sie den Task-Manager; eine ausgelastete CPU oder ein ausgelasteter Arbeitsspeicher löst zusätzlich zum Feed Tradovates eigene Drosselung aus.",
+        "<strong class='text-white'>Stabilisieren Sie Ihre Verbindung.</strong> Ein langsames oder instabiles Netzwerk lässt die Plattform Ihren Feed unter den Basiswert drosseln. Kabel schlägt WLAN.",
+        "<strong class='text-white'>Bestätigen Sie, dass Ihre Daten live und nicht verzögert sind.</strong> Zehnminütig verzögerte Daten (orangefarbene Symbole) sind ein Abonnementproblem, keine Drosselung, andere Lösung.",
+        "<strong class='text-white'>Eskalieren Sie nur die richtigen Fälle.</strong> Melden Sie Daten, die unter ruhigen Bedingungen deutlich schlechter als ca. 2 pro Sekunde sind, oder verzögerte Daten bei einem Prop-Konto (das kontrolliert Ihre Firma).",
+      ],
+    },
+    { type: "heading", text: "Was „ca. 2 Updates pro Sekunde“ tatsächlich bedeutet" },
+    { type: "paragraph", html: "Die Zahl, die viele verwirrt, ist der Puls: Tape und Marktiefe aktualisieren sich nur etwa zweimal pro Sekunde, nicht Tick für Tick. Das ist Konflation. Statt jede einzelne Trade- und Quote-Änderung zu streamen, fasst der Feed alles, was im letzten Intervall passiert ist, zu einem einzigen Schnappschuss zusammen und sendet den aktuellsten Stand, wobei die Zwischenschritte verworfen werden. In einem langsamen Markt würden Sie das nie bemerken, zwei Updates pro Sekunde reichen völlig, wenn sich der Preis kaum bewegt. In einem schnellen Markt stapeln sich zwischen den Pulsen Dutzende echter Ereignisse und kommen gebündelt an, sodass Sie genau dann weniger, dafür klobigere Updates sehen, wenn am meisten los ist." },
+    { type: "paragraph", html: "Das ist wichtig, weil ein konflierter Feed ein grobes Bild des Marktes ist, kein kaputtes. Ihre Fills matchen weiterhin an der Börse zu Live-Preisen; die Drosselung betrifft nur, wie oft sich die Anzeige aktualisiert, nicht den Ausführungspfad. Ein Scalper, der die Ladder manuell abliest, spürt das daher stark, während ein Trader, der auf Basis von Bars oder Signalen arbeitet, davon kaum etwas merkt. Behalten Sie diese Unterscheidung im Kopf, sie entscheidet, welche der folgenden Lösungen Ihre Zeit wert sind." },
+    { type: "heading", text: "Woher die Drosselung kommt: zwei Schichten" },
+    { type: "paragraph", html: "Auf Ihrem Feed liegen zwei separate Drosselungen übereinander, und sie auseinanderzuhalten ist die ganze Kunst." },
+    { type: "heading", text: "Schicht 1: CQG-Feed-Konflation (der Teil, den Sie nicht ändern können)" },
+    { type: "paragraph", html: "CQG ist der Marktdatenanbieter hinter Tradovate, und dessen konsolidierter Feed wird beim DOM- und Time-&amp;-Sales-Puls auf etwa zwei Updates pro Sekunde verdichtet. Das ist eine Design-Entscheidung des Datenanbieters weiter oben in der Kette, derselbe konflierte Takt zeigt sich auch auf anderen CQG-belieferten Plattformen, was der Beweis dafür ist, dass es sich nicht um eine reine Tradovate-Störung oder ein Problem Ihres Setups handelt. Es gibt in Tradovate keine für Nutzer zugängliche Einstellung, die diesen Basistakt erhöht, weil das Limit nicht in Tradovate festgelegt wird. Wenn Ihr Feed einen stabilen Puls von ca. 2 pro Sekunde hält, funktioniert der Feed genau wie vorgesehen, und keine lokale Optimierung macht ihn schneller." },
+    { type: "heading", text: "Schicht 2: Tradovates dynamische Drosselung (der Teil, den Sie beeinflussen können)" },
+    { type: "paragraph", html: "Zusätzlich zum Basis-Feed kann Tradovate Ihre Daten weiter drosseln, wenn die Plattform annimmt, dass Sie nicht mitkommen. Wenn die Client-Anwendung schlecht performt oder Ihr Netzwerk langsam ist, beginnt die Plattform, Antworten aggressiver zu bündeln, Daten für mehrere Symbole in dieselbe Nachricht zusammenzufassen und ausstehende oder veraltete Daten zugunsten der aktuellsten zu verwerfen. Betroffen sein können Quotes, das DOM und Chart-Updates. Das ist die Schicht, die Sie tatsächlich kontrollieren: Wenn eine überlastete CPU oder eine wacklige Verbindung sie auslöst, fallen Sie unter den Basis-Feed, und alles fühlt sich doppelt träge an. Beseitigen Sie diese lokalen Ursachen, und Sie erhalten zumindest den vollen Feed, den CQG sendet, statt einer gedrosselten Version davon." },
+    { type: "heading", text: "Häufigste Ursachen für zusätzliche Feed-Verzögerung im Jahr 2026" },
+    { type: "paragraph", html: "Schicht 1 ist fest vorgegeben. Das hier sind die Auslöser von Schicht 2, die Sie sogar unter den Basis-Feed ziehen." },
+    { type: "heading", text: "1. Lokale CPU- oder Arbeitsspeicherüberlastung" },
+    { type: "paragraph", html: "Wenn der Feed umso ruckeliger wird, je länger Sie laufen, oder sich nach einem Neustart wieder legt, ist meist Ihr eigener Rechner der Übeltäter. Ein Stapel von Charts, mehrere DOMs, Indikatoren und andere Trading-Apps können die CPU und den Arbeitsspeicher der Plattform an ihre Grenze bringen, und ein ausgehungerter Client ist genau der Zustand, der Tradovates dynamische Drosselung auslöst. Die erste Diagnose ist der Task-Manager: Liegt die App oder der Browser-Tab bei nahezu 100% CPU oder Arbeitsspeicher, haben Sie die zusätzliche Verzögerung gefunden." },
+    { type: "heading", text: "2. Langsames oder instabiles Netzwerk" },
+    { type: "paragraph", html: "Der Feed streamt live, daher ist eine langsame oder wacklige Verbindung ein weiterer direkter Auslöser dafür, dass die Plattform Ihre Daten drosselt. WLAN-Aussetzer, VPN-Routing und ein ausgelastetes Heimnetzwerk unterbrechen alle den Stream und äußern sich als gebündelte Nachhol-Updates. Eine abweichende Systemuhr verschärft das Problem, da Tradovates Echtzeitdienste zeitkritisch sind. Eine kabelgebundene Verbindung und eine synchronisierte Uhr räumen beide Ursachen aus dem Weg." },
+    { type: "heading", text: "3. Verzögerte Daten fälschlich für Drosselung gehalten" },
+    { type: "paragraph", html: "Das hier ist ein Kategorienfehler. Wenn Ihre Symbole orange angezeigt werden oder Ihre Daten zehn Minuten hinterherhinken, ist das überhaupt keine Drosselung, sondern ein fehlendes Echtzeit-Marktdatenabonnement. Verzögerte Daten sind alt; ein gedrosselter Feed ist grob, aber aktuell. Auf den ersten Blick sehen sie sich ähnlich, haben aber völlig unterschiedliche Lösungen, bestätigen Sie also, womit Sie es tatsächlich zu tun haben, bevor Sie mit der Fehlersuche beginnen." },
+    { type: "heading", text: "So reduzieren Sie zusätzliche Feed-Verzögerung: Schritt für Schritt" },
+    { type: "heading", text: "Lokale Plattformlast beseitigen" },
+    { type: "paragraph", html: "Geben Sie Ressourcen frei, damit Tradovate Sie nicht mehr unter den Basis-Feed drosselt." },
+    {
+      type: "steps",
+      items: [
+        { title: "Task-Manager prüfen", html: "Öffnen Sie den Task-Manager (Strg+Umschalt+Esc unter Windows; Aktivitätsanzeige unter macOS) und prüfen Sie die von der Tradovate-App oder Ihrem Browser-Tab genutzte CPU und den Arbeitsspeicher. Notieren Sie, ob einer der beiden nahe 100% liegt." },
+        { title: "Ungenutzte Charts und DOMs schließen", html: "Schließen Sie in Tradovate jedes Chart, DOM und Panel, das Sie nicht aktiv zum Handeln nutzen. Jedes geöffnete Modul verbraucht Ressourcen und erhöht die Last." },
+        { title: "Instrumente und Panels reduzieren", html: "Reduzieren Sie die Anzahl der Instrumente und gleichzeitigen DOMs auf das, was die aktuelle Sitzung tatsächlich benötigt." },
+        { title: "Konkurrierende Apps schließen", html: "Schließen Sie andere ressourcenintensive Apps, die um CPU und RAM konkurrieren, und beobachten Sie dann, ob sich Tape und Ladder entspannen." },
+      ],
+    },
+    { type: "heading", text: "Netzwerk und Uhrzeit stabilisieren" },
+    { type: "paragraph", html: "Geben Sie dem Live-Stream eine saubere Leitung, damit die Plattform ihn nicht drosselt." },
+    {
+      type: "steps",
+      items: [
+        { title: "Auf kabelgebundenes Ethernet umsteigen", html: "Wechseln Sie wo möglich von WLAN zu einer kabelgebundenen Ethernet-Verbindung und deaktivieren Sie jedes VPN, das Ihren Trading-Traffic routet." },
+        { title: "Uhrzeit synchronisieren", html: "Aktivieren Sie unter Windows „Uhrzeit automatisch festlegen“ und klicken Sie dann auf „Jetzt synchronisieren“ (Einstellungen &rarr; Zeit &amp; Sprache &rarr; Datum &amp; Uhrzeit), damit die Systemuhr mit der Netzwerkzeit übereinstimmt." },
+        { title: "Bandbreite freigeben", html: "Schließen Sie Hintergrund-Downloads und Streams, die während des Handelns Ihre Bandbreite belasten." },
+      ],
+    },
+    { type: "heading", text: "Bestätigen, dass Ihre Daten live und nicht verzögert sind" },
+    { type: "paragraph", html: "Schließen Sie die Falle der verzögerten Daten aus, bevor Sie die Update-Rate beurteilen." },
+    {
+      type: "steps",
+      items: [
+        { title: "Symbolfarbe prüfen", html: "Prüfen Sie, ob Ihre Symbole in der normalen Farbe oder in Orange angezeigt werden, Orange kennzeichnet verzögerte, nicht live, Daten. Bestätigen Sie die genaue Farbe und Kennzeichnung in Ihrer aktuellen Version, da sich das Styling zwischen Plattform-Updates ändert." },
+        { title: "Datenabonnement überprüfen", html: "Öffnen Sie die Marktdaten-Einstellungen von Tradovate und überprüfen Sie, ob Sie ein aktives Echtzeit-Abonnement für die Börse besitzen, an der Sie handeln (bei CME-Futures ist das die Live-CME-Datenberechtigung)." },
+        { title: "Bei Bedarf Ihre Firma kontaktieren", html: "Bei einem persönlichen Konto abonnieren Sie selbst; bei einem Prop- oder Evaluierungskonto aktiviert die Firma Ihre Daten, kontaktieren Sie daher die Firma, wenn sie fehlen. Datenberechtigungen und Regeln variieren je nach Firma und Kontogröße, prüfen Sie die aktuellen Regeln Ihrer Firma." },
+      ],
+    },
+    { type: "heading", text: "Zurücksetzen, dann nur die richtigen Fälle eskalieren" },
+    { type: "paragraph", html: "Wenn Sie Ihre Seite bereinigt haben und etwas immer noch nicht stimmt, setzen Sie zurück und melden Sie es." },
+    {
+      type: "steps",
+      items: [
+        { title: "Verbindung zurücksetzen", html: "Aktualisieren Sie die Web-Plattform mit F5; schließen Sie bei der Desktop-App die Anwendung vollständig und öffnen Sie sie erneut, um die Datenverbindung neu aufzubauen. Stellen Sie sicher, dass Sie die neueste Version verwenden." },
+        { title: "Am Basiswert messen", html: "Messen Sie das verbleibende Problem am Basiswert. Ein gleichmäßiger Puls von ca. 2 pro Sekunde in schnellen Märkten ist normale CQG-Konflation, nichts, was eskaliert werden muss." },
+        { title: "Support kontaktieren, wenn es weiterhin schlechter ist", html: "Kontaktieren Sie den Support (oder bei Evaluierungskonten Ihre Prop-Firma) nur, wenn der Feed unter ruhigen Bedingungen deutlich schlechter ist als das, wenn er auch nach Bereinigung von Last und Netzwerk grob bleibt, oder wenn Ihre Daten schlichtweg verzögert sind. Senden Sie Uhrzeit, Instrument und einen Screenshot." },
+      ],
+    },
+    { type: "heading", text: "Gedrosselter Feed vs. andere Datenprobleme" },
+    {
+      type: "table",
+      headers: ["Symptom", "Was es bedeutet", "Lösung"],
+      rows: [
+        ["Gleichmäßig ca. 2 Updates/Sek. bei Tape und DOM", "CQG-Feed-Konflation (Basistakt)", "Keine Nutzereinstellung ändert das; hinnehmen oder auf Basis von Signalen statt manuellem Ablesen handeln"],
+        ["Feed fällt unter den Basiswert, wird mit der Laufzeit schlechter", "Tradovates dynamische Drosselung durch lokale Überlastung", "Zusätzliche Charts/DOMs schließen; Task-Manager prüfen; App neu starten"],
+        ["Gebündelte Nachhol-Updates mit Aussetzern", "Langsames oder instabiles Netzwerk / Uhrzeitabweichung", "Kabelgebundenes Ethernet nutzen; „Uhrzeit automatisch festlegen“ aktivieren und jetzt synchronisieren"],
+        ["Feed wird nur bei volatilen Ausbrüchen gröber", "Konflation, die eine Flut von Ticks zu einem Schnappschuss zusammenfasst", "Erwartetes Verhalten; normalisiert sich, sobald der Schub vorbei ist"],
+        ["Daten sind 10 Minuten alt / orangefarbene Symbole", "Kein Echtzeit-Marktdatenabonnement (verzögert, nicht gedrosselt)", "Echtzeitabonnement hinzufügen; bei einem Prop-Konto die Firma fragen"],
+        ["Grober Feed gleichzeitig auf jeder CQG-Plattform", "Verhalten des vorgelagerten Datenanbieters, nicht Tradovate-spezifisch", "Lokal nichts zu ändern; betrifft alle CQG-belieferten Plattformen gleichermaßen"],
+      ],
+    },
+    { type: "heading", text: "Setzen Sie Ihren Einstieg nicht länger auf einen groben Feed" },
+    { type: "paragraph", html: "Wenn Ihr Edge davon abhängt, ein Tape mit bloßem Auge abzulesen, das ein paar Mal pro Sekunde pulsiert, während sich der Markt viele Male pro Sekunde bewegt, ist das Tape die falsche Grundlage. PickMyTrade lässt Ihre Strategie auf das Signal reagieren statt auf das, was ein konflierter Feed gerade zeigt:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signalbasierte Ausführung</strong> — Orders werden von Ihrer TradingView-Strategie ausgelöst, sobald Ihre Bedingung erfüllt ist, nicht erst, wenn ein grobes Tape endlich nachzieht.",
+        "<strong class='text-white'>Serverseitiges Routing</strong> — Alerts werden von den Servern von PickMyTrade an Tradovate geroutet, sodass ein überlasteter lokaler Rechner (genau das, was Tradovates zusätzliche Drosselung auslöst) Ihre Ein- und Ausstiege nicht blockiert.",
+        "<strong class='text-white'>Ratenlimit-sicherer Orderfluss</strong> — das Order-Routing ist sinnvoll getaktet, sodass nichts an Tradovates Anfragelimits abprallt.",
+        "<strong class='text-white'>Multi-Account-Synchronisierung</strong> — derselbe automatisierte Ein- und Ausstieg wird gleichzeitig über mehrere Tradovate-Konten gespiegelt, ohne dass Sie bei jedem Tick klicken müssen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Está observando cómo ES o NQ se disparan durante un pico de noticias, y la cinta se entrecorta. El DOM se redibuja en bloques, las impresiones de Time &amp; Sales llegan agrupadas, y todo el feed se siente como un par de instantáneas por segundo en lugar de cada tick. Antes de reinstalar la aplicación o culpar a su equipo, esto es lo que vale la pena saber: los datos de mercado de Tradovate provienen de CQG, y CQG condensa su feed a aproximadamente dos actualizaciones por segundo en el pulso de la cinta y la profundidad. Ese ritmo grueso llega a todas las plataformas que CQG suministra, es un comportamiento del proveedor de datos, no un fallo en su equipo. Hay una segunda capa encima que sí puede influir, y ahí está la parte solucionable. Separemos ambas para que sepa qué puede tocar y qué debe aceptar." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para un feed de Tradovate limitado",
+      items: [
+        "<strong class='text-white'>Sepa que es el feed, no su cuenta.</strong> Un pulso constante de ~2 por segundo en mercados rápidos es conflación de CQG, compartida por todas las plataformas alimentadas por CQG, no hay nada que arreglar de su lado.",
+        "<strong class='text-white'>Confirme que sus ejecuciones siguen siendo precisas.</strong> Las órdenes se emparejan en el mercado, no contra la cinta en pantalla. Un feed grueso es un problema de lectura, no un enrutador roto.",
+        "<strong class='text-white'>Elimine la carga local.</strong> Revise el Administrador de tareas; una CPU o memoria al máximo activa la limitación adicional propia de Tradovate encima del feed.",
+        "<strong class='text-white'>Estabilice su conexión.</strong> Una red lenta o inestable hace que la plataforma limite su feed por debajo del valor base. El cable gana al Wi-Fi.",
+        "<strong class='text-white'>Confirme que sus datos son en vivo, no retrasados.</strong> Los datos con diez minutos de retraso (símbolos naranjas) son un problema de suscripción, no de limitación, la solución es diferente.",
+        "<strong class='text-white'>Escale solo los casos correctos.</strong> Reporte datos que sean mucho peores que ~2 por segundo en condiciones tranquilas, o datos retrasados en una cuenta prop (eso lo controla su firma).",
+      ],
+    },
+    { type: "heading", text: "Qué significa realmente “~2 actualizaciones por segundo”" },
+    { type: "paragraph", html: "El número que confunde a la gente es el pulso: la cinta y la profundidad de mercado se actualizan solo unas dos veces por segundo, no tick a tick. Eso es conflación. En lugar de transmitir cada operación y cambio de cotización individual, el feed condensa lo ocurrido en el último intervalo en una sola instantánea y envía el estado más reciente, descartando los pasos intermedios. En un mercado lento nunca lo notaría, dos actualizaciones por segundo son de sobra cuando el precio apenas se mueve. En un mercado rápido, docenas de eventos reales se acumulan entre pulsos y llegan agrupados, así que ve actualizaciones más escasas y más voluminosas justo cuando la acción es más intensa." },
+    { type: "paragraph", html: "Esto importa porque un feed conflado es una imagen gruesa del mercado, no una imagen rota. Sus ejecuciones siguen emparejándose en el mercado a precios en vivo; la limitación afecta a la frecuencia de actualización de la pantalla, no a la ruta de ejecución. Por eso un scalper que lee la escalera a mano lo nota mucho, mientras que un trader que trabaja con barras o señales apenas lo percibe. Tenga presente esa distinción, determina cuáles de las siguientes soluciones merecen su tiempo." },
+    { type: "heading", text: "De dónde viene la limitación: dos capas" },
+    { type: "paragraph", html: "Hay dos limitaciones independientes superpuestas en su feed, y distinguirlas es la clave de todo." },
+    { type: "heading", text: "Capa 1: conflación del feed de CQG (la parte que no puede cambiar)" },
+    { type: "paragraph", html: "CQG es el proveedor de datos de mercado detrás de Tradovate, y su feed consolidado se condensa a aproximadamente dos actualizaciones por segundo en el pulso del DOM y de Time &amp; Sales. Es una decisión de diseño del proveedor de datos en el origen; ese mismo ritmo conflado aparece también en otras plataformas alimentadas por CQG, lo que demuestra que no es un fallo exclusivo de Tradovate ni un problema de su configuración. No existe ningún control visible para el usuario en Tradovate que eleve este ritmo base, porque el límite no se fija en Tradovate. Si su feed mantiene un pulso constante de ~2 por segundo, el feed está funcionando como está diseñado, y ningún ajuste local lo hará más rápido." },
+    { type: "heading", text: "Capa 2: la limitación dinámica de Tradovate (la parte que sí puede cambiar)" },
+    { type: "paragraph", html: "Por encima del feed base, Tradovate puede limitar aún más sus datos cuando cree que usted no puede seguir el ritmo. Si la aplicación cliente rinde mal, o su red es lenta, la plataforma empieza a agrupar respuestas de forma más agresiva, combinando datos de varios símbolos en el mismo mensaje y descartando datos pendientes o desactualizados en favor de los más recientes. Pueden verse afectados las cotizaciones, el DOM y las actualizaciones de gráficos. Esta es la capa que usted realmente controla: cuando una CPU sobrecargada o una conexión inestable la activan, cae por debajo del feed base y todo se siente doblemente lento. Elimine esas causas locales y al menos obtendrá el feed completo que envía CQG, en lugar de una versión limitada de él." },
+    { type: "heading", text: "Principales causas de latencia adicional del feed en 2026" },
+    { type: "paragraph", html: "La capa 1 es fija. Estos son los disparadores de la capa 2 que le hacen caer incluso por debajo del feed base." },
+    { type: "heading", text: "1. Sobrecarga local de CPU o memoria" },
+    { type: "paragraph", html: "Cuando el feed se vuelve más entrecortado cuanto más tiempo lleva funcionando, o se despeja tras un reinicio, suele ser culpa de su propio equipo. Una pila de gráficos, varios DOM, indicadores y otras aplicaciones de trading pueden saturar la CPU y la memoria de la plataforma, y un cliente hambriento de recursos es exactamente la condición que dispara la limitación dinámica de Tradovate. El primer diagnóstico es el Administrador de tareas: si la aplicación o la pestaña del navegador está cerca del 100% de CPU o memoria, ha encontrado la latencia adicional." },
+    { type: "heading", text: "2. Red lenta o inestable" },
+    { type: "paragraph", html: "El feed transmite en vivo, así que una conexión lenta o inestable es otro disparador directo para que la plataforma limite sus datos. Las caídas de Wi-Fi, el enrutamiento por VPN y una red doméstica saturada interrumpen la transmisión y se perciben como actualizaciones agrupadas de recuperación. Un reloj del sistema desajustado agrava el problema, ya que los servicios en tiempo real de Tradovate son sensibles al tiempo. Una conexión cableada y un reloj sincronizado eliminan ambas causas." },
+    { type: "heading", text: "3. Datos retrasados confundidos con limitación" },
+    { type: "paragraph", html: "Este es un error de categoría. Si sus símbolos aparecen en naranja o sus datos van diez minutos por detrás, eso no es limitación en absoluto, es una suscripción de datos de mercado en vivo faltante. Los datos retrasados son antiguos; un feed limitado es grueso pero actual. A simple vista se parecen, pero tienen soluciones completamente distintas, así que confirme cuál de los dos está viendo antes de solucionar el problema." },
+    { type: "heading", text: "Cómo reducir la latencia adicional del feed: paso a paso" },
+    { type: "heading", text: "Eliminar la carga local de la plataforma" },
+    { type: "paragraph", html: "Libere recursos para que Tradovate deje de limitarle por debajo del feed base." },
+    {
+      type: "steps",
+      items: [
+        { title: "Revisar el Administrador de tareas", html: "Abra el Administrador de tareas (Ctrl+Mayús+Esc en Windows; Monitor de actividad en macOS) y revise la CPU y la memoria que usan la aplicación de Tradovate o su pestaña del navegador. Anote si alguna está cerca del 100%." },
+        { title: "Cerrar gráficos y DOM sin usar", html: "En Tradovate, cierre cada gráfico, DOM y panel que no esté usando activamente para operar. Cada módulo abierto consume recursos y añade carga." },
+        { title: "Reducir instrumentos y paneles", html: "Reduzca el número de instrumentos y DOM simultáneos a solo lo que necesita la sesión actual." },
+        { title: "Cerrar aplicaciones competidoras", html: "Cierre otras aplicaciones pesadas que compitan por CPU y RAM, y luego observe si la cinta y la escalera se agilizan." },
+      ],
+    },
+    { type: "heading", text: "Estabilizar su red y su reloj" },
+    { type: "paragraph", html: "Ofrezca al stream en vivo una conexión limpia para que la plataforma no lo limite." },
+    {
+      type: "steps",
+      items: [
+        { title: "Cambiar a Ethernet por cable", html: "Cambie de Wi-Fi a una conexión Ethernet por cable donde sea posible, y desactive cualquier VPN que enrute su tráfico de trading." },
+        { title: "Sincronizar su reloj", html: "En Windows, active Establecer la hora automáticamente y luego haga clic en Sincronizar ahora (Configuración &rarr; Hora e idioma &rarr; Fecha y hora) para que el reloj del sistema coincida con la hora de red." },
+        { title: "Liberar ancho de banda", html: "Cierre descargas y transmisiones en segundo plano que consuman su ancho de banda mientras opera." },
+      ],
+    },
+    { type: "heading", text: "Confirmar que sus datos son en vivo, no retrasados" },
+    { type: "paragraph", html: "Descarte la trampa de los datos retrasados antes de juzgar la tasa de actualización." },
+    {
+      type: "steps",
+      items: [
+        { title: "Revisar el color del símbolo", html: "Revise si sus símbolos se muestran en el color normal o en naranja; el naranja indica datos retrasados, no en vivo. Confirme el color exacto y el indicador en su versión actual, ya que el estilo cambia entre actualizaciones de la plataforma." },
+        { title: "Verificar su suscripción de datos", html: "Abra la configuración de datos de mercado de Tradovate y verifique que tiene una suscripción en tiempo real activa para el mercado en el que opera (para futuros del CME, es el derecho de datos en vivo del CME)." },
+        { title: "Contactar a su firma si es necesario", html: "En una cuenta personal usted mismo se suscribe; en una cuenta prop o de evaluación es la firma la que habilita sus datos, así que contacte a la firma si faltan. Los derechos de datos y las reglas varían según la firma y el tamaño de la cuenta, revise las reglas vigentes de su firma." },
+      ],
+    },
+    { type: "heading", text: "Reiniciar y luego escalar solo los casos correctos" },
+    { type: "paragraph", html: "Cuando haya despejado su lado y algo sigue sin estar bien, reinicie e informe." },
+    {
+      type: "steps",
+      items: [
+        { title: "Reiniciar la conexión", html: "En la plataforma web, actualice con F5; en la aplicación de escritorio, ciérrela por completo y vuelva a abrirla para reconstruir la conexión de datos. Asegúrese de estar en la versión más reciente." },
+        { title: "Comparar con el valor base", html: "Compare lo que queda con el valor base. Un pulso constante de ~2 por segundo en mercados rápidos es conflación normal de CQG, no hay nada que escalar." },
+        { title: "Contactar soporte si sigue siendo peor", html: "Contacte al soporte (o a su firma prop, en cuentas de evaluación) solo si el feed es mucho peor que eso en condiciones tranquilas, si sigue siendo grueso después de despejar la carga y la red, o si sus datos están claramente retrasados. Envíe la hora, el instrumento y una captura de pantalla." },
+      ],
+    },
+    { type: "heading", text: "Feed limitado frente a otros problemas de datos" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Qué significa", "Solución"],
+      rows: [
+        ["Constante ~2 actualizaciones/seg en cinta y DOM", "Conflación del feed de CQG (ritmo base)", "Ninguna configuración de usuario lo cambia; acéptelo u opere con señales en lugar de leer a mano"],
+        ["El feed cae por debajo del valor base, empeora cuanto más tiempo lleva ejecutándose", "Limitación dinámica de Tradovate por sobrecarga local", "Cierre gráficos/DOM adicionales; revise el Administrador de tareas; reinicie la aplicación"],
+        ["Actualizaciones agrupadas de recuperación con congelamientos", "Red lenta o inestable / desajuste del reloj", "Use Ethernet por cable; active &ldquo;Establecer la hora automáticamente&rdquo; y sincronice ahora"],
+        ["El feed solo se vuelve más grueso durante ráfagas volátiles", "Conflación que condensa una avalancha de ticks en una instantánea", "Comportamiento esperado; se normaliza en cuanto pasa el repunte"],
+        ["Los datos tienen 10 minutos de antigüedad / símbolos naranjas", "Sin suscripción de datos de mercado en vivo (retrasado, no limitado)", "Añada la suscripción en tiempo real; en una cuenta prop, consulte a la firma"],
+        ["Feed grueso en todas las plataformas de CQG a la vez", "Comportamiento del proveedor de datos en el origen, no específico de Tradovate", "Nada que cambiar localmente; lo comparten todas las plataformas alimentadas por CQG"],
+      ],
+    },
+    { type: "heading", text: "Deje de apostar su entrada a un feed grueso" },
+    { type: "paragraph", html: "Si su ventaja depende de leer a simple vista una cinta que pulsa un par de veces por segundo en un mercado que se mueve muchas veces por segundo, la cinta es lo equivocado en lo que apostar. PickMyTrade hace que su estrategia actúe sobre la señal en lugar de sobre lo que un feed conflado decida mostrar:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ejecución basada en señales</strong> — las órdenes se disparan desde su estrategia de TradingView en el instante en que se cumple su condición, no cuando una cinta gruesa finalmente se pone al día.",
+        "<strong class='text-white'>Enrutamiento del lado del servidor</strong> — las alertas se enrutan a Tradovate desde los servidores de PickMyTrade, de modo que un equipo local saturado (justo lo que activa la limitación adicional de Tradovate) no condiciona sus entradas y salidas.",
+        "<strong class='text-white'>Flujo de órdenes seguro frente a límites de tasa</strong> — el enrutamiento de órdenes se espacia con criterio para que nada rebote contra los límites de solicitudes de Tradovate.",
+        "<strong class='text-white'>Sincronización multicuenta</strong> — la misma entrada y salida automatizadas se replican en varias cuentas de Tradovate a la vez, sin necesidad de hacer clic en cada tick.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous observez ES ou NQ s'envoler lors d'un pic d'actualité, et la bande se bloque. Le DOM se redessine par blocs, les impressions Time &amp; Sales arrivent groupées, et l'ensemble du flux donne l'impression de quelques instantanés par seconde au lieu de chaque tick. Avant de réinstaller l'application ou d'incriminer votre machine, voici ce qu'il faut savoir : les données de marché de Tradovate proviennent de CQG, et CQG condense son flux à environ deux mises à jour par seconde sur le pouls de la bande et de la profondeur. Cette cadence grossière touche toutes les plateformes alimentées par CQG, il s'agit d'un comportement du fournisseur de données, pas d'un bug chez vous. Il existe une deuxième couche par-dessus que vous pouvez influencer, et c'est là que se trouve la partie corrigible. Séparons les deux pour que vous sachiez ce que vous pouvez ajuster et ce que vous devez accepter." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour un flux Tradovate limité",
+      items: [
+        "<strong class='text-white'>Sachez que c'est le flux, pas votre compte.</strong> Un pouls stable d'environ 2 par seconde sur les marchés rapides est de la conflation CQG, partagée par toutes les plateformes alimentées par CQG, rien à corriger de votre côté.",
+        "<strong class='text-white'>Confirmez que vos exécutions restent exactes.</strong> Les ordres sont appariés sur le marché, pas contre la bande affichée à l'écran. Un flux grossier est un problème de lecture, pas un routeur défaillant.",
+        "<strong class='text-white'>Réduisez la charge locale.</strong> Vérifiez le Gestionnaire des tâches ; un processeur ou une mémoire saturés déclenchent la limitation supplémentaire propre à Tradovate, en plus du flux.",
+        "<strong class='text-white'>Stabilisez votre connexion.</strong> Un réseau lent ou instable pousse la plateforme à limiter votre flux en dessous du niveau de référence. Le câble l'emporte sur le Wi-Fi.",
+        "<strong class='text-white'>Confirmez que vos données sont en direct, pas différées.</strong> Des données différées de dix minutes (symboles orange) sont un problème d'abonnement, pas de limitation, la solution est différente.",
+        "<strong class='text-white'>N'escaladez que les bons cas.</strong> Signalez des données bien pires qu'environ 2 par seconde en conditions calmes, ou des données différées sur un compte prop (c'est votre société qui contrôle cela).",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie réellement « environ 2 mises à jour par seconde »" },
+    { type: "paragraph", html: "Le chiffre qui déroute les gens, c'est le pouls : la bande et la profondeur de marché ne se rafraîchissent qu'environ deux fois par seconde, pas tick par tick. C'est de la conflation. Au lieu de diffuser chaque transaction et chaque changement de cotation individuellement, le flux condense ce qui s'est passé durant le dernier intervalle en un seul instantané et envoie l'état le plus récent, en écartant les étapes intermédiaires. Sur un marché lent, vous ne le remarqueriez jamais, deux mises à jour par seconde suffisent largement quand le prix bouge à peine. Sur un marché rapide, des dizaines d'événements réels s'accumulent entre les pouls et arrivent groupés, si bien que vous voyez des mises à jour moins nombreuses mais plus volumineuses précisément quand l'action est la plus intense." },
+    { type: "paragraph", html: "C'est important car un flux conflé est une image grossière du marché, pas une image cassée. Vos exécutions continuent de s'apparier sur le marché à des prix en direct ; la limitation concerne la fréquence de rafraîchissement de l'affichage, pas le chemin d'exécution. Un scalpeur qui lit l'échelle à la main le ressent donc durement, tandis qu'un trader qui travaille à partir de barres ou de signaux le remarque à peine. Gardez cette distinction en tête, elle détermine lesquelles des solutions ci-dessous méritent votre temps." },
+    { type: "heading", text: "D'où vient la limitation : deux couches" },
+    { type: "paragraph", html: "Deux limitations distinctes se superposent sur votre flux, et les distinguer est tout l'enjeu." },
+    { type: "heading", text: "Couche 1 : la conflation du flux CQG (la partie que vous ne pouvez pas changer)" },
+    { type: "paragraph", html: "CQG est le fournisseur de données de marché derrière Tradovate, et son flux consolidé est condensé à environ deux mises à jour par seconde sur le pouls du DOM et de Time &amp; Sales. C'est un choix de conception en amont chez le fournisseur de données ; cette même cadence conflée apparaît aussi sur d'autres plateformes alimentées par CQG, ce qui prouve qu'il ne s'agit ni d'un dysfonctionnement propre à Tradovate ni d'un problème de votre configuration. Il n'existe aucun réglage accessible à l'utilisateur dans Tradovate pour augmenter cette cadence de base, car la limite n'est pas fixée par Tradovate. Si votre flux maintient un pouls stable d'environ 2 par seconde, le flux fonctionne exactement comme prévu, et aucun ajustement local ne l'accélérera." },
+    { type: "heading", text: "Couche 2 : la limitation dynamique de Tradovate (la partie que vous pouvez changer)" },
+    { type: "paragraph", html: "En plus du flux de base, Tradovate peut limiter davantage vos données lorsqu'elle estime que vous ne suivez pas le rythme. Si l'application cliente peine, ou si votre réseau est lent, la plateforme se met à regrouper les réponses de manière plus agressive, en combinant les données de plusieurs symboles dans le même message et en écartant les données en attente ou obsolètes au profit des plus récentes. Les cotations, le DOM et les mises à jour de graphiques peuvent tous être touchés. C'est la couche que vous contrôlez réellement : quand un processeur affamé ou une connexion instable la déclenche, vous passez sous le flux de référence et tout paraît deux fois plus lent. Éliminez ces causes locales et vous obtiendrez au moins le flux complet envoyé par CQG, plutôt qu'une version limitée." },
+    { type: "heading", text: "Principales causes de latence supplémentaire du flux en 2026" },
+    { type: "paragraph", html: "La couche 1 est fixe. Voici les déclencheurs de la couche 2 qui vous font tomber en dessous même du flux de référence." },
+    { type: "heading", text: "1. Surcharge locale du processeur ou de la mémoire" },
+    { type: "paragraph", html: "Quand le flux devient plus saccadé à mesure que la session avance, ou se stabilise après un redémarrage, c'est généralement votre propre machine qui est en cause. Une pile de graphiques, plusieurs DOM, des indicateurs et d'autres applications de trading peuvent saturer le processeur et la mémoire de la plateforme, et un client affamé de ressources est exactement la condition qui déclenche la limitation dynamique de Tradovate. Le premier diagnostic est le Gestionnaire des tâches : si l'application ou l'onglet du navigateur approche 100 % de processeur ou de mémoire, vous avez trouvé la latence supplémentaire." },
+    { type: "heading", text: "2. Réseau lent ou instable" },
+    { type: "paragraph", html: "Le flux diffuse en direct, donc une connexion lente ou instable est un autre déclencheur direct pour que la plateforme limite vos données. Les coupures Wi-Fi, le routage VPN et un réseau domestique saturé interrompent tous le flux et se traduisent par des mises à jour groupées de rattrapage. Une horloge système désynchronisée aggrave le problème, car les services en temps réel de Tradovate sont sensibles au temps. Une connexion filaire et une horloge synchronisée éliminent les deux causes." },
+    { type: "heading", text: "3. Données différées confondues avec une limitation" },
+    { type: "paragraph", html: "Il s'agit d'une erreur de catégorie. Si vos symboles s'affichent en orange ou si vos données ont dix minutes de retard, ce n'est pas du tout de la limitation, c'est un abonnement aux données de marché en direct manquant. Les données différées sont anciennes ; un flux limité est grossier mais actuel. Ils se ressemblent vaguement au premier coup d'œil mais ont des solutions totalement différentes, confirmez donc lequel des deux vous observez réellement avant de dépanner." },
+    { type: "heading", text: "Comment réduire la latence supplémentaire du flux : étape par étape" },
+    { type: "heading", text: "Réduire la charge locale de la plateforme" },
+    { type: "paragraph", html: "Libérez des ressources pour que Tradovate cesse de vous limiter en dessous du flux de référence." },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifier le Gestionnaire des tâches", html: "Ouvrez le Gestionnaire des tâches (Ctrl+Maj+Échap sous Windows ; Moniteur d'activité sous macOS) et vérifiez le processeur et la mémoire utilisés par l'application Tradovate ou votre onglet de navigateur. Notez si l'un des deux approche 100 %." },
+        { title: "Fermer les graphiques et DOM inutilisés", html: "Dans Tradovate, fermez tous les graphiques, DOM et panneaux que vous n'utilisez pas activement pour trader. Chaque module ouvert consomme des ressources et alourdit la charge." },
+        { title: "Réduire les instruments et panneaux", html: "Réduisez le nombre d'instruments et de DOM simultanés à ce dont votre session actuelle a réellement besoin." },
+        { title: "Fermer les applications concurrentes", html: "Fermez les autres applications gourmandes qui se disputent le processeur et la RAM, puis observez si la bande et l'échelle se fluidifient." },
+      ],
+    },
+    { type: "heading", text: "Stabiliser votre réseau et votre horloge" },
+    { type: "paragraph", html: "Offrez au flux en direct une connexion propre pour que la plateforme ne le limite pas." },
+    {
+      type: "steps",
+      items: [
+        { title: "Passer à une connexion Ethernet filaire", html: "Passez du Wi-Fi à une connexion Ethernet filaire lorsque c'est possible, et désactivez tout VPN qui achemine votre trafic de trading." },
+        { title: "Synchroniser votre horloge", html: "Sous Windows, activez Régler l'heure automatiquement, puis cliquez sur Synchroniser maintenant (Paramètres &rarr; Heure et langue &rarr; Date et heure) afin que l'horloge système corresponde à l'heure réseau." },
+        { title: "Libérer de la bande passante", html: "Fermez les téléchargements et flux en arrière-plan qui consomment votre bande passante pendant que vous tradez." },
+      ],
+    },
+    { type: "heading", text: "Confirmer que vos données sont en direct, pas différées" },
+    { type: "paragraph", html: "Écartez le piège des données différées avant de juger le taux de mise à jour." },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifier la couleur du symbole", html: "Vérifiez si vos symboles s'affichent dans la couleur normale ou en orange ; l'orange signale des données différées, pas en direct. Vérifiez la couleur exacte et l'indicateur dans votre version actuelle, car le style change entre les mises à jour de la plateforme." },
+        { title: "Vérifier votre abonnement aux données", html: "Ouvrez les paramètres de données de marché de Tradovate et vérifiez que vous disposez d'un abonnement en temps réel actif pour la bourse sur laquelle vous tradez (pour les futures CME, il s'agit du droit aux données CME en direct)." },
+        { title: "Contacter votre société si nécessaire", html: "Sur un compte personnel, vous vous abonnez vous-même ; sur un compte prop ou d'évaluation, c'est la société qui active vos données, contactez-la donc si elles manquent. Les droits sur les données et les règles varient selon la société et la taille du compte, vérifiez les règles actuelles de votre société." },
+      ],
+    },
+    { type: "heading", text: "Réinitialiser, puis n'escalader que les bons cas" },
+    { type: "paragraph", html: "Une fois votre côté nettoyé et si quelque chose ne va toujours pas, réinitialisez et signalez-le." },
+    {
+      type: "steps",
+      items: [
+        { title: "Réinitialiser la connexion", html: "Sur la plateforme web, actualisez avec F5 ; sur l'application de bureau, fermez-la complètement puis rouvrez-la pour reconstruire la connexion aux données. Assurez-vous d'utiliser la dernière version." },
+        { title: "Comparer au niveau de référence", html: "Comparez ce qu'il reste au niveau de référence. Un pouls stable d'environ 2 par seconde sur les marchés rapides est une conflation CQG normale, rien à escalader." },
+        { title: "Contacter le support si c'est toujours pire", html: "Contactez le support (ou votre société prop, pour les comptes d'évaluation) uniquement si le flux est nettement pire que cela en conditions calmes, s'il reste grossier après avoir nettoyé la charge et le réseau, ou si vos données sont carrément différées. Envoyez l'heure, l'instrument et une capture d'écran." },
+      ],
+    },
+    { type: "heading", text: "Flux limité vs autres problèmes de données" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Ce que cela signifie", "Solution"],
+      rows: [
+        ["Environ 2 mises à jour/s stables sur la bande et le DOM", "Conflation du flux CQG (cadence de référence)", "Aucun réglage utilisateur ne le change ; acceptez-le ou tradez à partir de signaux plutôt qu'à la lecture manuelle"],
+        ["Le flux tombe sous le niveau de référence, s'aggrave avec la durée de la session", "Limitation dynamique de Tradovate due à une surcharge locale", "Fermez les graphiques/DOM supplémentaires ; vérifiez le Gestionnaire des tâches ; redémarrez l'application"],
+        ["Mises à jour groupées de rattrapage avec des gels", "Réseau lent ou instable / dérive de l'horloge", "Utilisez une connexion Ethernet filaire ; activez &ldquo;Régler l'heure automatiquement&rdquo; et synchronisez maintenant"],
+        ["Le flux ne devient grossier que lors des rafales volatiles", "La conflation condense un flot de ticks en un instantané", "Comportement attendu ; revient à la normale une fois la poussée passée"],
+        ["Les données ont 10 minutes de retard / symboles orange", "Aucun abonnement aux données de marché en direct (différé, pas limité)", "Ajoutez l'abonnement en temps réel ; sur un compte prop, demandez à la société"],
+        ["Flux grossier sur toutes les plateformes CQG à la fois", "Comportement en amont du fournisseur de données, pas spécifique à Tradovate", "Rien à changer localement ; c'est partagé par toutes les plateformes alimentées par CQG"],
+      ],
+    },
+    { type: "heading", text: "Ne misez plus votre entrée sur un flux grossier" },
+    { type: "paragraph", html: "Si votre avantage dépend de la lecture à l'œil d'une bande qui pulse quelques fois par seconde sur un marché qui bouge de nombreuses fois par seconde, la bande est le mauvais élément sur lequel miser. PickMyTrade permet à votre stratégie d'agir sur le signal plutôt que sur ce qu'un flux conflé montre à un instant donné :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Exécution basée sur le signal</strong> — les ordres se déclenchent depuis votre stratégie TradingView à l'instant où votre condition se réalise, pas quand une bande grossière finit par rattraper son retard.",
+        "<strong class='text-white'>Routage côté serveur</strong> — les alertes sont acheminées vers Tradovate depuis les serveurs de PickMyTrade, si bien qu'une machine locale saturée (exactement ce qui déclenche la limitation supplémentaire de Tradovate) ne conditionne pas vos entrées et sorties.",
+        "<strong class='text-white'>Flux d'ordres sûr face aux limites de débit</strong> — le routage des ordres est espacé intelligemment pour que rien ne se heurte aux limites de requêtes de Tradovate.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong> — la même entrée et sortie automatisées se répliquent sur plusieurs comptes Tradovate à la fois, sans avoir à cliquer à chaque tick.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Sta osservando ES o NQ sfrecciare durante un picco di notizie, e il nastro si blocca a scatti. Il DOM si ridisegna a blocchi, le stampe Time &amp; Sales arrivano raggruppate, e l'intero feed sembra un paio di istantanee al secondo invece di ogni singolo tick. Prima di reinstallare l'app o incolpare il suo computer, ecco cosa vale la pena sapere: i dati di mercato di Tradovate provengono da CQG, e CQG condensa il proprio feed a circa due aggiornamenti al secondo sul polso del nastro e della profondità. Questa cadenza grossolana raggiunge ogni piattaforma alimentata da CQG, è un comportamento del fornitore di dati, non un bug sul suo computer. C'è un secondo livello sopra che può influenzare, ed è lì che si trova la parte risolvibile. Separiamo i due livelli così saprà cosa può modificare e cosa deve accettare." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per un feed Tradovate limitato",
+      items: [
+        "<strong class='text-white'>Sappia che è il feed, non il suo conto.</strong> Un polso costante di circa 2 al secondo nei mercati veloci è conflazione di CQG, condivisa da ogni piattaforma alimentata da CQG, non c'è nulla da correggere dalla sua parte.",
+        "<strong class='text-white'>Confermi che le sue esecuzioni restano accurate.</strong> Gli ordini vengono abbinati sul mercato, non contro il nastro a schermo. Un feed grossolano è un problema di lettura, non un router guasto.",
+        "<strong class='text-white'>Elimini il carico locale.</strong> Controlli il Task Manager; una CPU o una memoria sature attivano la limitazione aggiuntiva propria di Tradovate, oltre al feed.",
+        "<strong class='text-white'>Stabilizzi la sua connessione.</strong> Una rete lenta o instabile fa sì che la piattaforma limiti il suo feed al di sotto del valore di base. Il cavo batte il Wi-Fi.",
+        "<strong class='text-white'>Confermi che i suoi dati sono in tempo reale, non ritardati.</strong> Dati ritardati di dieci minuti (simboli arancioni) sono un problema di abbonamento, non di limitazione, la soluzione è diversa.",
+        "<strong class='text-white'>Esegua l'escalation solo dei casi giusti.</strong> Segnali dati molto peggiori di circa 2 al secondo in condizioni calme, oppure dati ritardati su un conto prop (lo controlla la sua società).",
+      ],
+    },
+    { type: "heading", text: "Cosa significa davvero “circa 2 aggiornamenti al secondo”" },
+    { type: "paragraph", html: "Il numero che confonde le persone è il polso: il nastro e la profondità di mercato si aggiornano solo circa due volte al secondo, non tick per tick. Questa è la conflazione. Invece di trasmettere ogni singola operazione e ogni cambio di quotazione, il feed condensa tutto ciò che è successo nell'ultimo intervallo in un'unica istantanea e invia lo stato più recente, scartando i passaggi intermedi. In un mercato lento non lo noterebbe mai, due aggiornamenti al secondo sono più che sufficienti quando il prezzo si muove appena. In un mercato veloce, decine di eventi reali si accumulano tra un polso e l'altro e arrivano raggruppati, quindi vede aggiornamenti meno frequenti e più corposi proprio quando l'azione è più intensa." },
+    { type: "paragraph", html: "Questo è importante perché un feed conflato è un'immagine grossolana del mercato, non un'immagine rotta. Le sue esecuzioni continuano ad abbinarsi sul mercato a prezzi in tempo reale; la limitazione riguarda la frequenza di aggiornamento del display, non il percorso di esecuzione. Per questo uno scalper che legge la ladder a mano lo percepisce fortemente, mentre un trader che lavora su barre o segnali se ne accorge a malapena. Tenga presente questa distinzione, determina quali delle soluzioni seguenti valgono il suo tempo." },
+    { type: "heading", text: "Da dove viene la limitazione: due livelli" },
+    { type: "paragraph", html: "Ci sono due limitazioni distinte sovrapposte sul suo feed, e distinguerle è tutta la partita." },
+    { type: "heading", text: "Livello 1: conflazione del feed CQG (la parte che non può cambiare)" },
+    { type: "paragraph", html: "CQG è il fornitore di dati di mercato dietro Tradovate, e il suo feed consolidato viene condensato a circa due aggiornamenti al secondo sul polso del DOM e di Time &amp; Sales. Si tratta di una scelta di progettazione a monte presso il fornitore di dati; la stessa cadenza conflata compare anche su altre piattaforme alimentate da CQG, il che dimostra che non è un problema esclusivo di Tradovate né un problema della sua configurazione. Non esiste alcun controllo visibile all'utente in Tradovate che aumenti questa cadenza di base, perché il limite non viene fissato in Tradovate. Se il suo feed mantiene un polso costante di circa 2 al secondo, il feed sta funzionando come previsto, e nessuna ottimizzazione locale lo renderà più veloce." },
+    { type: "heading", text: "Livello 2: la limitazione dinamica di Tradovate (la parte che può cambiare)" },
+    { type: "paragraph", html: "Oltre al feed di base, Tradovate può limitare ulteriormente i suoi dati quando ritiene che lei non riesca a stare al passo. Se l'applicazione client ha prestazioni scarse, o la sua rete è lenta, la piattaforma inizia a raggruppare le risposte in modo più aggressivo, combinando i dati di più simboli nello stesso messaggio e scartando i dati in sospeso o obsoleti a favore di quelli più recenti. Possono essere interessati quotazioni, DOM e aggiornamenti dei grafici. Questo è il livello che lei controlla davvero: quando una CPU affamata o una connessione instabile lo attivano, scende al di sotto del feed di base e tutto sembra doppiamente lento. Elimini queste cause locali e otterrà almeno il feed completo inviato da CQG, invece di una versione limitata." },
+    { type: "heading", text: "Principali cause di latenza aggiuntiva del feed nel 2026" },
+    { type: "paragraph", html: "Il livello 1 è fisso. Questi sono i fattori scatenanti del livello 2 che la trascinano al di sotto persino del feed di base." },
+    { type: "heading", text: "1. Sovraccarico locale di CPU o memoria" },
+    { type: "paragraph", html: "Quando il feed diventa più a scatti quanto più a lungo lo utilizza, o si stabilizza dopo un riavvio, di solito il colpevole è il suo stesso computer. Una pila di grafici, diversi DOM, indicatori e altre app di trading possono saturare la CPU e la memoria della piattaforma, e un client affamato di risorse è esattamente la condizione che innesca la limitazione dinamica di Tradovate. La prima diagnosi è il Task Manager: se l'app o la scheda del browser è vicina al 100% di CPU o memoria, ha trovato la latenza aggiuntiva." },
+    { type: "heading", text: "2. Rete lenta o instabile" },
+    { type: "paragraph", html: "Il feed trasmette in tempo reale, quindi una connessione lenta o instabile è un altro fattore scatenante diretto per la piattaforma nel limitare i suoi dati. Le cadute del Wi-Fi, il routing VPN e una rete domestica satura interrompono tutti il flusso e si manifestano come aggiornamenti raggruppati di recupero. Un orologio di sistema disallineato aggrava il problema, poiché i servizi in tempo reale di Tradovate sono sensibili al tempo. Una connessione via cavo e un orologio sincronizzato eliminano entrambe le cause." },
+    { type: "heading", text: "3. Dati ritardati scambiati per limitazione" },
+    { type: "paragraph", html: "Questo è un errore di categoria. Se i suoi simboli appaiono in arancione o i suoi dati sono in ritardo di dieci minuti, non si tratta affatto di limitazione, ma di un abbonamento ai dati di mercato in tempo reale mancante. I dati ritardati sono vecchi; un feed limitato è grossolano ma attuale. A prima vista sembrano vagamente simili ma hanno soluzioni completamente diverse, quindi confermi quale dei due sta effettivamente osservando prima di risolvere il problema." },
+    { type: "heading", text: "Come ridurre la latenza aggiuntiva del feed: passo dopo passo" },
+    { type: "heading", text: "Eliminare il carico locale della piattaforma" },
+    { type: "paragraph", html: "Liberi risorse in modo che Tradovate smetta di limitarla al di sotto del feed di base." },
+    {
+      type: "steps",
+      items: [
+        { title: "Controllare il Task Manager", html: "Apra il Task Manager (Ctrl+Maiusc+Esc su Windows; Monitoraggio Attività su macOS) e controlli la CPU e la memoria utilizzate dall'app Tradovate o dalla scheda del browser. Noti se una delle due è vicina al 100%." },
+        { title: "Chiudere grafici e DOM inutilizzati", html: "In Tradovate, chiuda ogni grafico, DOM e pannello che non sta utilizzando attivamente per fare trading. Ogni modulo aperto consuma risorse e aumenta il carico." },
+        { title: "Ridurre strumenti e pannelli", html: "Riduca il numero di strumenti e DOM simultanei a ciò che la sessione attuale richiede realmente." },
+        { title: "Chiudere le app concorrenti", html: "Chiuda altre app pesanti che competono per CPU e RAM, quindi osservi se il nastro e la ladder si sbloccano." },
+      ],
+    },
+    { type: "heading", text: "Stabilizzare la rete e l'orologio" },
+    { type: "paragraph", html: "Offra al flusso in tempo reale una connessione pulita in modo che la piattaforma non lo limiti." },
+    {
+      type: "steps",
+      items: [
+        { title: "Passare a Ethernet via cavo", html: "Passi dal Wi-Fi a una connessione Ethernet via cavo dove possibile, e disabiliti qualsiasi VPN che instrada il suo traffico di trading." },
+        { title: "Sincronizzare l'orologio", html: "Su Windows, attivi Imposta l'ora automaticamente, quindi clicchi su Sincronizza ora (Impostazioni &rarr; Ora e lingua &rarr; Data e ora) in modo che l'orologio di sistema corrisponda all'ora di rete." },
+        { title: "Liberare larghezza di banda", html: "Chiuda download e streaming in background che consumano la sua larghezza di banda mentre fa trading." },
+      ],
+    },
+    { type: "heading", text: "Confermare che i dati sono in tempo reale, non ritardati" },
+    { type: "paragraph", html: "Escluda la trappola dei dati ritardati prima di giudicare il tasso di aggiornamento." },
+    {
+      type: "steps",
+      items: [
+        { title: "Controllare il colore del simbolo", html: "Controlli se i suoi simboli vengono visualizzati nel colore normale o in arancione; l'arancione segnala dati ritardati, non in tempo reale. Confermi il colore esatto e l'indicatore nella sua versione attuale, poiché lo stile cambia tra gli aggiornamenti della piattaforma." },
+        { title: "Verificare il suo abbonamento ai dati", html: "Apra le impostazioni dei dati di mercato di Tradovate e verifichi di avere un abbonamento in tempo reale attivo per il mercato su cui fa trading (per i futures CME, si tratta del diritto ai dati CME in tempo reale)." },
+        { title: "Contattare la sua società se necessario", html: "Su un conto personale si abbona lei stesso; su un conto prop o di valutazione è la società ad abilitare i suoi dati, quindi contatti la società se mancano. I diritti sui dati e le regole variano in base alla società e alla dimensione del conto, verifichi le regole attuali della sua società." },
+      ],
+    },
+    { type: "heading", text: "Ripristinare, quindi eseguire l'escalation solo dei casi giusti" },
+    { type: "paragraph", html: "Quando ha ripulito la sua parte e qualcosa non va ancora, ripristini e segnali il problema." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ripristinare la connessione", html: "Sulla piattaforma web, aggiorni con F5; sull'app desktop, la chiuda completamente e la riapra per ricostruire la connessione ai dati. Si assicuri di utilizzare la versione più recente." },
+        { title: "Confrontare con il valore di base", html: "Confronti ciò che resta con il valore di base. Un polso costante di circa 2 al secondo nei mercati veloci è normale conflazione di CQG, nulla su cui fare escalation." },
+        { title: "Contattare il supporto se è ancora peggio", html: "Contatti il supporto (o la sua società prop, per i conti di valutazione) solo se il feed è molto peggiore di questo in condizioni calme, se resta grossolano dopo aver ripulito carico e rete, o se i suoi dati sono decisamente ritardati. Invii l'orario, lo strumento e uno screenshot." },
+      ],
+    },
+    { type: "heading", text: "Feed limitato rispetto ad altri problemi di dati" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Cosa significa", "Soluzione"],
+      rows: [
+        ["Costante circa 2 aggiornamenti/sec su nastro e DOM", "Conflazione del feed CQG (cadenza di base)", "Nessuna impostazione utente la modifica; la accetti oppure faccia trading sui segnali invece di leggere a mano"],
+        ["Il feed scende sotto il valore di base, peggiora quanto più a lungo lo usa", "Limitazione dinamica di Tradovate dovuta a sovraccarico locale", "Chiuda grafici/DOM extra; controlli il Task Manager; riavvii l'app"],
+        ["Aggiornamenti raggruppati di recupero con blocchi", "Rete lenta o instabile / disallineamento dell'orologio", "Usi Ethernet via cavo; attivi &ldquo;Imposta l'ora automaticamente&rdquo; e sincronizzi ora"],
+        ["Il feed diventa grossolano solo durante picchi volatili", "La conflazione condensa un'ondata di tick in un'unica istantanea", "Comportamento previsto; torna alla normalità una volta passato il picco"],
+        ["I dati hanno 10 minuti di anzianità / simboli arancioni", "Nessun abbonamento ai dati di mercato in tempo reale (ritardato, non limitato)", "Aggiunga l'abbonamento in tempo reale; su un conto prop, chieda alla società"],
+        ["Feed grossolano su tutte le piattaforme CQG contemporaneamente", "Comportamento a monte del fornitore di dati, non specifico di Tradovate", "Nulla da cambiare localmente; è condiviso da tutte le piattaforme alimentate da CQG"],
+      ],
+    },
+    { type: "heading", text: "Smetta di scommettere il suo ingresso su un feed grossolano" },
+    { type: "paragraph", html: "Se il suo vantaggio dipende dal leggere a occhio un nastro che pulsa un paio di volte al secondo in un mercato che si muove molte volte al secondo, il nastro è la cosa sbagliata su cui scommettere. PickMyTrade permette alla sua strategia di agire sul segnale invece che su ciò che un feed conflato mostra in quel momento:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Esecuzione basata sul segnale</strong> — gli ordini scattano dalla sua strategia TradingView nell'istante in cui la sua condizione si verifica, non quando un nastro grossolano finalmente recupera il ritardo.",
+        "<strong class='text-white'>Instradamento lato server</strong> — gli alert vengono instradati verso Tradovate dai server di PickMyTrade, così un computer locale saturo (esattamente ciò che attiva la limitazione aggiuntiva di Tradovate) non condiziona i suoi ingressi e uscite.",
+        "<strong class='text-white'>Flusso di ordini sicuro rispetto ai limiti di frequenza</strong> — l'instradamento degli ordini è scaglionato in modo sensato così nulla rimbalza contro i limiti di richieste di Tradovate.",
+        "<strong class='text-white'>Sincronizzazione multi-conto</strong> — lo stesso ingresso e uscita automatizzati si specchiano su più conti Tradovate contemporaneamente, senza bisogno di cliccare a ogni tick.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade the Signal, Not the Tape", de: "Handeln Sie nach dem Signal, nicht nach dem Tape", es: "Opere la señal, no la cinta", fr: "Négociez le signal, pas la bande", it: "Faccia trading sul segnale, non sul nastro" },
+  ctaText: { en: "Automate your entries so a couple of chunky feed updates a second never costs you the fill.", de: "Automatisieren Sie Ihre Einstiege, damit ein paar grobe Feed-Updates pro Sekunde Sie nie den Fill kosten.", es: "Automatice sus entradas para que un par de actualizaciones de feed poco frecuentes por segundo nunca le cuesten la ejecución.", fr: "Automatisez vos entrées pour qu'une poignée de mises à jour de flux grossières par seconde ne vous coûte jamais l'exécution.", it: "Automatizzi i suoi ingressi in modo che un paio di aggiornamenti del feed poco frequenti al secondo non le costino mai l'esecuzione." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvii la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Is the ~2 updates a second a bug in Tradovate?", a: "No. It's the conflated cadence of the CQG market-data feed that Tradovate is built on. CQG nets down its tape and depth pulse to roughly two updates a second, and that same coarse feed reaches every platform CQG supplies, so it's a data-vendor characteristic, not a fault on your machine or your account." },
+    { q: "Will a throttled feed cause bad fills?", a: "Usually not. Orders match at the exchange, not against the picture on your screen. A coarse ~2-per-second feed makes the tape and ladder harder to read in fast conditions, but the execution engine still works off live exchange prices. The throttling is a display and read problem, not a broken order router." },
+    { q: "Can I change how often the feed updates?", a: "There's no user setting that raises the CQG feed's base cadence, that pulse is fixed upstream. What you can control is the second layer: Tradovate applies its own dynamic throttling when your client app is bogged down or your network is slow. Clearing local load and stabilizing your connection removes that extra throttle so you at least get the full ~2-per-second feed instead of something worse." },
+    { q: "Why does the feed look coarser when the market moves fast?", a: "Conflation collapses a burst of ticks into a single snapshot and keeps only the most recent value. When price is ripping, dozens of real trades and quote changes happen between each ~half-second pulse, so they arrive bundled, you see fewer, chunkier updates precisely when the most is happening." },
+    { q: "Does a faster PC or wired connection fix it?", a: "It removes Tradovate's dynamic throttle layer, so it stops your feed being throttled below the baseline. It won't push you past the CQG feed's roughly two-per-second ceiling, though, that limit lives at the data vendor, not on your desk." },
+    { q: "My data is delayed 10 minutes, is that the same thing?", a: "No, that's a different issue. A 10-minute delay (often shown with orange symbol names) means you don't have a live real-time market-data subscription, the data is old, not just coarse. Throttling is about how often live data updates; delay is about whether it's live at all. Fix the subscription first, then judge the update rate." },
+    { q: "When should I contact support or my prop firm?", a: "Escalate if the feed is far worse than a steady ~2-per-second pulse under calm conditions, if it stays coarse after you've cleared local load and your connection, or if your data is delayed rather than throttled. On a prop or evaluation account the firm controls your market data, so contact them, entitlements and rules vary by firm and account size, so check your firm's current rules." },
+  ], de: [
+    { q: "Sind die ca. 2 Updates pro Sekunde ein Fehler in Tradovate?", a: "Nein. Das ist der konflierte Takt des CQG-Marktdaten-Feeds, auf dem Tradovate aufbaut. CQG verdichtet seinen Tape- und Tiefenpuls auf etwa zwei Updates pro Sekunde, und derselbe grobe Feed erreicht jede Plattform, die CQG beliefert, es handelt sich also um eine Eigenschaft des Datenanbieters, nicht um einen Fehler auf Ihrem Rechner oder in Ihrem Konto." },
+    { q: "Führt ein gedrosselter Feed zu schlechten Fills?", a: "Normalerweise nicht. Orders werden an der Börse gematcht, nicht gegen das Bild auf Ihrem Bildschirm. Ein grober ca.-2-pro-Sekunde-Feed macht Tape und Ladder in schnellen Marktphasen schwerer lesbar, aber die Ausführungs-Engine arbeitet weiterhin mit Live-Börsenpreisen. Die Drosselung ist ein Anzeige- und Ableseproblem, kein defektes Order-Routing." },
+    { q: "Kann ich ändern, wie oft sich der Feed aktualisiert?", a: "Es gibt keine Nutzereinstellung, die den Basistakt des CQG-Feeds erhöht, dieser Puls ist upstream fest vorgegeben. Was Sie kontrollieren können, ist die zweite Schicht: Tradovate wendet seine eigene dynamische Drosselung an, wenn Ihre Client-App überlastet ist oder Ihr Netzwerk langsam ist. Das Beseitigen lokaler Last und die Stabilisierung Ihrer Verbindung entfernen diese zusätzliche Drosselung, sodass Sie zumindest den vollen ca.-2-pro-Sekunde-Feed statt etwas Schlechterem erhalten." },
+    { q: "Warum wirkt der Feed gröber, wenn sich der Markt schnell bewegt?", a: "Konflation fasst einen Schub von Ticks zu einem einzigen Schnappschuss zusammen und behält nur den aktuellsten Wert. Wenn der Preis schießt, passieren zwischen jedem ca. halbsekündigen Puls Dutzende echter Trades und Quote-Änderungen, die dann gebündelt eintreffen, sodass Sie genau dann weniger, dafür klobigere Updates sehen, wenn am meisten los ist." },
+    { q: "Behebt ein schnellerer PC oder eine kabelgebundene Verbindung das Problem?", a: "Das entfernt Tradovates Schicht der dynamischen Drosselung, sodass Ihr Feed nicht mehr unter den Basiswert gedrosselt wird. Es bringt Sie jedoch nicht über die Obergrenze von etwa zwei pro Sekunde des CQG-Feeds hinaus, dieses Limit liegt beim Datenanbieter, nicht auf Ihrem Rechner." },
+    { q: "Meine Daten sind 10 Minuten verzögert, ist das dasselbe?", a: "Nein, das ist ein anderes Problem. Eine zehnminütige Verzögerung (oft an orangefarbenen Symbolnamen erkennbar) bedeutet, dass Sie kein Echtzeit-Marktdatenabonnement haben, die Daten sind alt, nicht nur grob. Drosselung betrifft, wie oft sich Live-Daten aktualisieren; Verzögerung betrifft, ob die Daten überhaupt live sind. Beheben Sie zuerst das Abonnement, beurteilen Sie danach die Update-Rate." },
+    { q: "Wann sollte ich den Support oder meine Prop-Firma kontaktieren?", a: "Eskalieren Sie, wenn der Feed unter ruhigen Bedingungen deutlich schlechter ist als ein stabiler ca.-2-pro-Sekunde-Puls, wenn er auch nach Bereinigung von lokaler Last und Verbindung grob bleibt, oder wenn Ihre Daten verzögert statt gedrosselt sind. Bei einem Prop- oder Evaluierungskonto kontrolliert die Firma Ihre Marktdaten, kontaktieren Sie also diese, Berechtigungen und Regeln variieren je nach Firma und Kontogröße, prüfen Sie die aktuellen Regeln Ihrer Firma." },
+  ], es: [
+    { q: "¿Son las ~2 actualizaciones por segundo un fallo en Tradovate?", a: "No. Es el ritmo conflado del feed de datos de mercado de CQG sobre el que se construye Tradovate. CQG condensa su pulso de cinta y profundidad a aproximadamente dos actualizaciones por segundo, y ese mismo feed grueso llega a todas las plataformas que CQG suministra, así que es una característica del proveedor de datos, no un fallo en su equipo ni en su cuenta." },
+    { q: "¿Provocará un feed limitado malas ejecuciones?", a: "Por lo general no. Las órdenes se emparejan en el mercado, no contra la imagen en su pantalla. Un feed grueso de ~2 por segundo hace que la cinta y la escalera sean más difíciles de leer en condiciones rápidas, pero el motor de ejecución sigue trabajando con precios de mercado en vivo. La limitación es un problema de visualización y lectura, no un enrutador de órdenes roto." },
+    { q: "¿Puedo cambiar la frecuencia con la que se actualiza el feed?", a: "No existe ninguna configuración de usuario que eleve el ritmo base del feed de CQG, ese pulso está fijado en el origen. Lo que sí puede controlar es la segunda capa: Tradovate aplica su propia limitación dinámica cuando su aplicación cliente va lenta o su red es lenta. Al eliminar la carga local y estabilizar su conexión, elimina esa limitación adicional para obtener al menos el feed completo de ~2 por segundo en lugar de algo peor." },
+    { q: "¿Por qué el feed parece más grueso cuando el mercado se mueve rápido?", a: "La conflación condensa una ráfaga de ticks en una sola instantánea y conserva solo el valor más reciente. Cuando el precio se dispara, decenas de operaciones y cambios de cotización reales ocurren entre cada pulso de aproximadamente medio segundo, así que llegan agrupados, ve actualizaciones más escasas y más voluminosas justo cuando más está ocurriendo." },
+    { q: "¿Un PC más rápido o una conexión cableada lo soluciona?", a: "Elimina la capa de limitación dinámica de Tradovate, por lo que su feed deja de limitarse por debajo del valor base. Sin embargo, no le hará superar el techo de aproximadamente dos por segundo del feed de CQG, ese límite reside en el proveedor de datos, no en su equipo." },
+    { q: "Mis datos están retrasados 10 minutos, ¿es lo mismo?", a: "No, es un problema diferente. Un retraso de 10 minutos (a menudo mostrado con nombres de símbolo en naranja) significa que no tiene una suscripción de datos de mercado en tiempo real activa, los datos son antiguos, no solo gruesos. La limitación tiene que ver con la frecuencia con la que se actualizan los datos en vivo; el retraso tiene que ver con si los datos son en vivo o no. Solucione primero la suscripción y luego juzgue la tasa de actualización." },
+    { q: "¿Cuándo debo contactar al soporte o a mi firma prop?", a: "Escale si el feed es mucho peor que un pulso constante de ~2 por segundo en condiciones tranquilas, si sigue siendo grueso después de eliminar la carga local y su conexión, o si sus datos están retrasados en lugar de limitados. En una cuenta prop o de evaluación la firma controla sus datos de mercado, así que contáctela, los derechos y las reglas varían según la firma y el tamaño de la cuenta, revise las reglas vigentes de su firma." },
+  ], fr: [
+    { q: "Les environ 2 mises à jour par seconde sont-elles un bug de Tradovate ?", a: "Non. C'est la cadence conflée du flux de données de marché CQG sur lequel Tradovate est construit. CQG condense son pouls de bande et de profondeur à environ deux mises à jour par seconde, et ce même flux grossier atteint toutes les plateformes alimentées par CQG, c'est donc une caractéristique du fournisseur de données, pas un défaut de votre machine ou de votre compte." },
+    { q: "Un flux limité provoquera-t-il de mauvaises exécutions ?", a: "Généralement non. Les ordres sont appariés sur le marché, pas contre l'image affichée à l'écran. Un flux grossier d'environ 2 par seconde rend la bande et l'échelle plus difficiles à lire en conditions rapides, mais le moteur d'exécution continue de travailler avec des prix de marché en direct. La limitation est un problème d'affichage et de lecture, pas un routeur d'ordres défaillant." },
+    { q: "Puis-je changer la fréquence de mise à jour du flux ?", a: "Aucun réglage utilisateur n'augmente la cadence de base du flux CQG, ce pouls est fixé en amont. Ce que vous pouvez contrôler, c'est la deuxième couche : Tradovate applique sa propre limitation dynamique lorsque votre application cliente rame ou que votre réseau est lent. En éliminant la charge locale et en stabilisant votre connexion, vous supprimez cette limitation supplémentaire pour obtenir au moins le flux complet d'environ 2 par seconde plutôt que quelque chose de pire." },
+    { q: "Pourquoi le flux paraît-il plus grossier quand le marché bouge vite ?", a: "La conflation condense une rafale de ticks en un seul instantané et ne conserve que la valeur la plus récente. Quand le prix s'envole, des dizaines de transactions et de changements de cotation réels se produisent entre chaque pouls d'environ une demi-seconde, donc ils arrivent groupés, vous voyez des mises à jour moins nombreuses mais plus volumineuses précisément quand il se passe le plus de choses." },
+    { q: "Un PC plus rapide ou une connexion filaire règlent-ils le problème ?", a: "Cela supprime la couche de limitation dynamique de Tradovate, votre flux cesse donc d'être limité en dessous du niveau de référence. Cela ne vous fera cependant pas dépasser le plafond d'environ deux par seconde du flux CQG, cette limite se situe chez le fournisseur de données, pas sur votre machine." },
+    { q: "Mes données ont 10 minutes de retard, est-ce la même chose ?", a: "Non, c'est un problème différent. Un retard de 10 minutes (souvent indiqué par des noms de symboles en orange) signifie que vous n'avez pas d'abonnement aux données de marché en temps réel actif, les données sont anciennes, pas seulement grossières. La limitation concerne la fréquence de mise à jour des données en direct ; le retard concerne le fait qu'elles soient en direct ou non. Réglez d'abord l'abonnement, puis jugez le taux de mise à jour." },
+    { q: "Quand dois-je contacter le support ou ma société prop ?", a: "Escaladez si le flux est nettement pire qu'un pouls stable d'environ 2 par seconde en conditions calmes, s'il reste grossier après avoir éliminé la charge locale et votre connexion, ou si vos données sont différées plutôt que limitées. Sur un compte prop ou d'évaluation, la société contrôle vos données de marché, contactez-la donc, les droits et les règles varient selon la société et la taille du compte, vérifiez les règles actuelles de votre société." },
+  ], it: [
+    { q: "I circa 2 aggiornamenti al secondo sono un bug di Tradovate?", a: "No. È la cadenza conflata del feed di dati di mercato CQG su cui è costruito Tradovate. CQG condensa il suo polso di nastro e profondità a circa due aggiornamenti al secondo, e lo stesso feed grossolano raggiunge ogni piattaforma alimentata da CQG, quindi è una caratteristica del fornitore di dati, non un difetto del suo computer o del suo conto." },
+    { q: "Un feed limitato causerà esecuzioni scadenti?", a: "Di solito no. Gli ordini vengono abbinati sul mercato, non contro l'immagine sul suo schermo. Un feed grossolano di circa 2 al secondo rende il nastro e la ladder più difficili da leggere in condizioni veloci, ma il motore di esecuzione continua a lavorare con prezzi di mercato in tempo reale. La limitazione è un problema di visualizzazione e lettura, non un router di ordini guasto." },
+    { q: "Posso cambiare la frequenza di aggiornamento del feed?", a: "Non esiste alcuna impostazione utente che aumenti la cadenza di base del feed CQG, quel polso è fisso a monte. Ciò che può controllare è il secondo livello: Tradovate applica la propria limitazione dinamica quando la sua app client è appesantita o la sua rete è lenta. Eliminando il carico locale e stabilizzando la sua connessione, rimuove quella limitazione aggiuntiva così da ottenere almeno il feed completo di circa 2 al secondo invece di qualcosa di peggio." },
+    { q: "Perché il feed sembra più grossolano quando il mercato si muove velocemente?", a: "La conflazione condensa un'ondata di tick in un'unica istantanea e mantiene solo il valore più recente. Quando il prezzo sfreccia, decine di operazioni reali e cambi di quotazione avvengono tra un polso e l'altro di circa mezzo secondo, quindi arrivano raggruppati, vede aggiornamenti meno frequenti e più corposi proprio quando sta succedendo di più." },
+    { q: "Un PC più veloce o una connessione via cavo risolvono il problema?", a: "Elimina il livello di limitazione dinamica di Tradovate, quindi il suo feed smette di essere limitato al di sotto del valore di base. Tuttavia non le farà superare il tetto di circa due al secondo del feed CQG, quel limite risiede presso il fornitore di dati, non sul suo computer." },
+    { q: "I miei dati sono ritardati di 10 minuti, è la stessa cosa?", a: "No, è un problema diverso. Un ritardo di 10 minuti (spesso mostrato con nomi di simboli arancioni) significa che non ha un abbonamento ai dati di mercato in tempo reale attivo, i dati sono vecchi, non solo grossolani. La limitazione riguarda la frequenza con cui si aggiornano i dati live; il ritardo riguarda se i dati sono live o meno. Risolva prima l'abbonamento, poi giudichi il tasso di aggiornamento." },
+    { q: "Quando devo contattare il supporto o la mia società prop?", a: "Esegua l'escalation se il feed è molto peggiore di un polso costante di circa 2 al secondo in condizioni calme, se resta grossolano dopo aver eliminato il carico locale e la sua connessione, o se i suoi dati sono ritardati anziché limitati. Su un conto prop o di valutazione è la società a controllare i suoi dati di mercato, quindi la contatti, i diritti e le regole variano in base alla società e alla dimensione del conto, verifichi le regole attuali della sua società." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -abläufe ändern sich im Laufe der Zeit, bestätigen Sie daher stets den aktuellen Prozess in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; veuillez toujours confirmer la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha uno scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo: confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

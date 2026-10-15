@@ -1,0 +1,634 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "renko-chart-not-updating";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Renko Chart Not Updating in Real Time";
+const META_DESCRIPTION =
+  "Renko bricks look frozen mid-session? Clear your cache, try incognito, or reload the chart to restore live brick updates and rule out a real data glitch.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate Renko-Chart aktualisiert sich nicht in Echtzeit", es: "El gráfico Renko de Tradovate no se actualiza en tiempo real", fr: "Le graphique Renko de Tradovate ne se met pas à jour en temps réel", it: "Il grafico Renko di Tradovate non si aggiorna in tempo reale" },
+  dek: { en: "Price is clearly ticking and the Renko bricks just sit there. Here's how to tell a browser-side render stall apart from normal Renko behavior, and how to fix each one.", de: "Der Kurs tickt eindeutig, und die Renko-Bricks bleiben einfach stehen. So unterscheiden Sie einen browserseitigen Rendering-Stillstand von normalem Renko-Verhalten und beheben jeden Fall.", es: "El precio avanza claramente y los ladrillos de Renko se quedan quietos. Aquí le explicamos cómo distinguir un bloqueo de renderizado del navegador del comportamiento normal de Renko y cómo corregir cada caso.", fr: "Le prix bouge clairement et les briques Renko restent figées. Voici comment distinguer un blocage de rendu côté navigateur du comportement normal de Renko, et comment corriger chaque cas.", it: "Il prezzo si muove chiaramente e i mattoni Renko restano fermi. Ecco come distinguere un blocco di rendering lato browser dal normale comportamento di Renko e come risolvere ciascun caso." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You're watching a Renko chart, price is clearly ticking, and the bricks just&hellip; sit there. New bars don't print, your moving average flatlines or skips values, and the chart feels a beat behind the market. Then you refresh and it snaps back to life, until the next batch of ticks, and it stalls again. On a fast market that lag can cost you a read. Most of the time this is a browser-side render hiccup, and the fastest fix is a reload, a cache clear, or a quick incognito test. The trickier part is telling that glitch apart from <em>normal</em> Renko behavior, where the chart is supposed to look still. Let's sort both out." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for a Renko Chart That Won't Update",
+      items: [
+        "<strong class='text-white'>Is price actually moving a full brick?</strong> Renko only prints a new brick when price travels the whole brick size. If it hasn't, the chart is working as designed, not stuck.",
+        "<strong class='text-white'>Reload the chart first.</strong> Right-click the chart and choose Reload Chart, or press F5. This restores updates in seconds most of the time.",
+        "<strong class='text-white'>Clear cache &amp; cookies, then hard refresh.</strong> Clear for All time, then Ctrl+F5 (Windows) or Cmd+Shift+R (Mac) to pull a fresh copy of the platform.",
+        "<strong class='text-white'>Test in incognito.</strong> Ctrl+Shift+N opens a clean window with no extensions. If Renko updates there, an extension or stale cache is your culprit.",
+        "<strong class='text-white'>Confirm you're on real-time data.</strong> Delayed feed or off-colored symbol names mean the problem is data, not rendering.",
+        "<strong class='text-white'>Rule out session and contract issues.</strong> Too many open sessions or an expired contract month can freeze a chart independently of Renko.",
+        "<strong class='text-white'>Persisting everywhere?</strong> Switch to the desktop app and contact support if the stall survives all of the above.",
+      ],
+    },
+    { type: "heading", text: "Why a Renko Chart Looks Frozen (Bug vs Normal Behavior)" },
+    { type: "paragraph", html: "Before you troubleshoot anything, separate the two causes, because they need opposite responses." },
+    { type: "paragraph", html: "<strong class='text-white'>Normal Renko behavior.</strong> A Renko brick isn't tied to time. It prints only when price moves a set distance in one direction, on Tradovate that distance is defined in <strong class='text-white'>ticks</strong> (say an 8-tick or 16-tick brick). Until price travels that full distance, no new brick appears, no matter how many seconds or minutes pass. So during quiet, choppy, or ranging conditions, a Renko chart can genuinely sit on the same brick for a long stretch. That's not a freeze; that's the chart filtering out noise, which is the whole point of Renko. Reversals are stricter still, price has to travel a full brick <em>against</em> the trend before it flips, so they always lag the raw tick." },
+    { type: "paragraph", html: "<strong class='text-white'>The actual glitch.</strong> The real bug looks different. Price is clearly pushing well past the brick threshold, and yet no new brick draws. Indicators plotted on the Renko chart, a moving average, VWAP, stop advancing, plot out of sequence, or skip values entirely. Then you reload and the missing bricks and indicator points fill in at once, confirming the data was there; the chart just stopped rendering it live. That's a client-side stall, and it's the one the fixes below target." },
+    { type: "paragraph", html: "The one-second diagnostic: open a normal <strong class='text-white'>candlestick</strong> chart on the same symbol beside your Renko chart. If the candles tick but the Renko bricks stay frozen, you've got the render stall, refresh it. If the candles are <em>also</em> flat, it's not a Renko problem; it's a data feed or connection issue you'll fix differently." },
+    { type: "heading", text: "How to Fix a Renko Chart That Stops Updating: Step-by-Step" },
+    { type: "heading", text: "Fix A, Reload the chart (fastest)" },
+    { type: "paragraph", html: "Start here. It clears the stalled render and re-pulls data from the server without touching any settings." },
+    {
+      type: "steps",
+      items: [
+        { title: "Right-click the chart", html: "Right-click directly on the Renko chart." },
+        { title: "Choose Reload Chart", html: "Choose <strong class='text-white'>Reload Chart</strong> (some builds label it <strong class='text-white'>Reset Chart</strong> or <strong class='text-white'>Refresh</strong>) to re-fetch the bars and redraw." },
+        { title: "Reload the full page if needed", html: "If the chart menu doesn't clear it, press <strong class='text-white'>F5</strong> to reload the whole platform page." },
+        { title: "Watch for fresh ticks", html: "Watch for a few ticks. Once new bricks print in step with price, you're back in sync." },
+      ],
+    },
+    { type: "paragraph", html: "If a reload fixes it for a few minutes and then it stalls again, that repeat pattern points to cached files or a browser extension. Move to Fix B." },
+    { type: "heading", text: "Fix B, Clear cache and cookies, then hard refresh" },
+    { type: "paragraph", html: "Stale cached platform files are the most common reason a chart keeps stalling after every reload. A full cache clear forces the browser to download the current version instead of reusing old, half-broken assets." },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Clear browsing data", html: "Open your browser's <strong class='text-white'>Clear browsing data</strong> dialog (in Chrome: menu &rsaquo; Delete browsing data, or paste <code>chrome://settings/clearBrowserData</code>)." },
+        { title: "Set the range to All time", html: "Set the time range to <strong class='text-white'>All time</strong>." },
+        { title: "Check cache and cookies, then clear", html: "Check <strong class='text-white'>Cached images and files</strong> and <strong class='text-white'>Cookies and other site data</strong>, then clear." },
+        { title: "Log back in", html: "Reload Tradovate and log back in (clearing cookies signs you out; your chart layouts are saved to your account, so they return)." },
+        { title: "Force a hard refresh", html: "Force a hard refresh to be sure: <strong class='text-white'>Ctrl+F5</strong> on Windows/Linux, <strong class='text-white'>Cmd+Shift+R</strong> on Mac." },
+      ],
+    },
+    { type: "quote", html: "<strong>Heads up:</strong> jot down your Renko brick size (in ticks) and indicator settings before a full clear. Layouts live on your account, but a 10-second note lets you confirm nothing reset when you log back in. If you run the platform in a browser all day, clearing the cache weekly heads this off." },
+    { type: "heading", text: "Fix C, Test in incognito and disable extensions" },
+    { type: "paragraph", html: "An incognito window loads Tradovate with a clean cache and <em>no extensions</em>. It's the cleanest way to isolate what's breaking the live render." },
+    {
+      type: "steps",
+      items: [
+        { title: "Open an incognito window", html: "Press <strong class='text-white'>Ctrl+Shift+N</strong> (Chrome/Edge) to open an incognito/private window and log in to Tradovate." },
+        { title: "Watch the Renko chart", html: "Open your Renko chart and watch it for a minute. If bricks now update in real time, the problem is an extension or cached data in your normal profile, not Tradovate." },
+        { title: "Disable extensions one at a time", html: "Back in your normal window, go to <code>chrome://extensions</code> and disable extensions one at a time, ad blockers, privacy shields, uBlock, VPN add-ons, and script blockers are the usual offenders." },
+        { title: "Reload after each toggle", html: "Reload after each until the Renko chart holds a live update, then leave that extension off for Tradovate (or allowlist the site)." },
+      ],
+    },
+    { type: "heading", text: "Fix D, Confirm you're actually on real-time data" },
+    { type: "paragraph", html: "If a candle chart on the same symbol is also flat, you're not looking at a Renko render bug, you're looking at delayed or missing market data. Renko can't build live bricks from a feed that isn't live." },
+    {
+      type: "steps",
+      items: [
+        { title: "Check the symbol color and quote", html: "Check the symbol name's color and the quote. Off-colored (often orange) symbol names and quotes that lag by minutes signal <strong class='text-white'>delayed data</strong>." },
+        { title: "Subscribe on a personal account", html: "On a personal account, add or renew your real-time exchange <strong class='text-white'>market-data subscription</strong>, then log out and back in." },
+        { title: "Check with your firm on a prop account", html: "On a prop or evaluation account, you usually can't self-subscribe, the firm enables real-time data on the account. Data rules and fees vary by firm and account size, so check your firm's current rules." },
+      ],
+    },
+    { type: "paragraph", html: "For the full walkthrough on spotting and clearing a delayed feed, see Tradovate's 10-minute delayed data and orange symbols guide." },
+    { type: "heading", text: "Fix E, Rule out session limits and expired contracts" },
+    { type: "paragraph", html: "Two account-level gotchas freeze charts in a way no cache clear will fix:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Too many active sessions.</strong> Tradovate limits how many places you can be logged in at once (web, desktop, mobile, and TradingView all count). Push past it and charts can freeze or disconnect. Sign out everywhere and log in on a single device.",
+        "<strong class='text-white'>An expired contract month.</strong> An old, expired contract no longer moves, so its chart looks permanently frozen. Roll to the current front-month contract.",
+      ],
+    },
+    { type: "heading", text: "Fix F, Switch to the desktop app or contact support" },
+    { type: "paragraph", html: "If the stall survives a cache clear, incognito, and a fresh session, move to the <strong class='text-white'>desktop app</strong>, it runs self-contained, free of browser extensions and the tab-throttling that starves a background chart of updates. If Renko still won't hold a live render there with confirmed real-time data, contact Tradovate support and send a screenshot of the frozen bricks beside a ticking candle chart so they can see the render gap." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["What you see", "Likely cause", "Fix"],
+      rows: [
+        ["No new brick, but price is ranging quietly", "Normal Renko, price hasn't moved a full brick", "Nothing to fix; a brick prints when price travels the brick size"],
+        ["Price blows past the brick threshold, still no new brick; indicators skip", "Client-side render stall", "Right-click &rsaquo; Reload Chart, or F5"],
+        ["Stalls again a few minutes after every reload", "Stale cache or a browser extension", "Clear cache/cookies (All time) + hard refresh; test incognito"],
+        ["Updates fine in incognito, not in normal window", "Ad blocker, VPN, or script-blocker extension", "Disable extensions at chrome://extensions, allowlist the site"],
+        ["Candle chart on same symbol is also flat", "Delayed or missing market data", "Subscribe to / enable real-time data, then relog"],
+        ["Charts freeze or disconnect at random", "Session limit exceeded across devices", "Log out everywhere, sign in on one device"],
+        ["Chart never moves at all", "Charting an expired contract month", "Switch to the current front-month contract"],
+      ],
+    },
+    { type: "heading", text: "Keep Your Execution Off the Chart With PickMyTrade" },
+    { type: "paragraph", html: "Here's the part that matters if you <strong class='text-white'>trade a strategy</strong> rather than eyeball every entry: a Renko render glitch is only a display problem until your entries depend on a chart that's lagging the real price. Click off frozen bricks and you can act on a level that's already gone." },
+    { type: "paragraph", html: "PickMyTrade moves execution off what your screen is drawing. Your strategy fires a signal, a TradingView alert or your own logic, and the order routes to Tradovate <strong class='text-white'>server-side</strong>, so a chart that stops redrawing never sits between your signal and the fill:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signal-driven routing</strong>, orders trigger off your strategy's alert, not off a chart repaint, so a stalled Renko render can't cause a missed or late entry.",
+        "<strong class='text-white'>Server-side execution</strong>, the order leaves for Tradovate from PickMyTrade's side, independent of your browser tab, extensions, or a frozen chart.",
+        "<strong class='text-white'>Multi-account sync</strong>, mirror one signal across several Tradovate accounts at once, each sized to its own limits, instead of babysitting a chart per account.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie beobachten einen Renko-Chart, der Kurs tickt eindeutig, und die Bricks bleiben einfach&hellip; stehen. Neue Balken werden nicht gedruckt, Ihr gleitender Durchschnitt verläuft flach oder überspringt Werte, und der Chart wirkt einen Takt hinter dem Markt. Dann aktualisieren Sie, und er springt wieder zum Leben, bis zum nächsten Schwung an Ticks, und er stockt erneut. In einem schnellen Markt kann dieser Lag Sie eine Einschätzung kosten. Meist handelt es sich um einen browserseitigen Rendering-Aussetzer, und die schnellste Lösung ist ein Neuladen, ein Cache-Löschen oder ein kurzer Inkognito-Test. Der schwierigere Teil ist, diesen Fehler von <em>normalem</em> Renko-Verhalten zu unterscheiden, bei dem der Chart ruhig aussehen soll. Klären wir beides." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste für einen Renko-Chart, der sich nicht aktualisiert",
+      items: [
+        "<strong class='text-white'>Bewegt sich der Kurs tatsächlich um einen vollen Brick?</strong> Renko druckt nur dann einen neuen Brick, wenn der Kurs die gesamte Brick-Größe durchläuft. Ist das nicht der Fall, funktioniert der Chart wie vorgesehen und hängt nicht.",
+        "<strong class='text-white'>Laden Sie den Chart zuerst neu.</strong> Klicken Sie mit der rechten Maustaste auf den Chart und wählen Sie Reload Chart, oder drücken Sie F5. Damit stellen Sie die Aktualisierung meist in Sekunden wieder her.",
+        "<strong class='text-white'>Cache &amp; Cookies löschen, dann hart aktualisieren.</strong> Löschen Sie für All time, dann Strg+F5 (Windows) oder Cmd+Umschalt+R (Mac), um eine frische Kopie der Plattform zu laden.",
+        "<strong class='text-white'>Testen Sie im Inkognito-Modus.</strong> Strg+Umschalt+N öffnet ein sauberes Fenster ohne Erweiterungen. Aktualisiert sich Renko dort, ist eine Erweiterung oder ein veralteter Cache der Übeltäter.",
+        "<strong class='text-white'>Bestätigen Sie, dass Sie Echtzeitdaten nutzen.</strong> Ein verzögerter Feed oder abweichend gefärbte Symbolnamen bedeuten, dass das Problem bei den Daten liegt, nicht beim Rendering.",
+        "<strong class='text-white'>Schließen Sie Sitzungs- und Kontraktprobleme aus.</strong> Zu viele offene Sitzungen oder ein abgelaufener Kontraktmonat können einen Chart unabhängig von Renko einfrieren.",
+        "<strong class='text-white'>Besteht das Problem überall?</strong> Wechseln Sie zur Desktop-App und kontaktieren Sie den Support, wenn der Stillstand alles Obige überlebt.",
+      ],
+    },
+    { type: "heading",text: "Warum ein Renko-Chart eingefroren wirkt (Fehler vs. normales Verhalten)" },
+    { type: "paragraph",html: "Bevor Sie etwas beheben, trennen Sie die beiden Ursachen, denn sie erfordern gegensätzliche Reaktionen." },
+    { type: "paragraph",html: "<strong class='text-white'>Normales Renko-Verhalten.</strong> Ein Renko-Brick ist nicht an die Zeit gebunden. Er wird nur gedruckt, wenn sich der Kurs um eine festgelegte Distanz in eine Richtung bewegt; bei Tradovate wird diese Distanz in <strong class='text-white'>Ticks</strong> angegeben (etwa ein 8-Tick- oder 16-Tick-Brick). Bis der Kurs diese volle Distanz zurückgelegt hat, erscheint kein neuer Brick, egal wie viele Sekunden oder Minuten vergehen. In ruhigen, zähen oder seitwärts laufenden Phasen kann ein Renko-Chart daher tatsächlich lange auf demselben Brick stehen. Das ist kein Einfrieren; das ist der Chart, der Rauschen herausfiltert – genau darum geht es bei Renko. Umkehrungen sind noch strenger: Der Kurs muss einen vollen Brick <em>gegen</em> den Trend laufen, bevor er dreht, daher hinken sie dem rohen Tick stets hinterher." },
+    { type: "paragraph",html: "<strong class='text-white'>Der tatsächliche Fehler.</strong> Der echte Fehler sieht anders aus. Der Kurs drückt eindeutig weit über die Brick-Schwelle hinaus, und trotzdem wird kein neuer Brick gezeichnet. Im Renko-Chart eingezeichnete Indikatoren – ein gleitender Durchschnitt, VWAP – rücken nicht mehr vor, werden außer der Reihe gezeichnet oder überspringen Werte komplett. Dann laden Sie neu, und die fehlenden Bricks und Indikatorpunkte füllen sich auf einen Schlag – ein Beleg dafür, dass die Daten da waren; der Chart hat sie nur nicht mehr live gerendert. Das ist ein clientseitiger Stillstand, und genau ihn adressieren die folgenden Lösungen." },
+    { type: "paragraph",html: "Die Ein-Sekunden-Diagnose: Öffnen Sie neben Ihrem Renko-Chart einen normalen <strong class='text-white'>Kerzenchart</strong> desselben Symbols. Wenn die Kerzen ticken, die Renko-Bricks aber eingefroren bleiben, liegt der Rendering-Stillstand vor – aktualisieren Sie. Wenn die Kerzen <em>ebenfalls</em> flach sind, ist es kein Renko-Problem, sondern ein Datenfeed- oder Verbindungsproblem, das Sie anders beheben." },
+    { type: "heading",text: "So beheben Sie einen Renko-Chart, der sich nicht mehr aktualisiert: Schritt für Schritt" },
+    { type: "heading",text: "Lösung A – Chart neu laden (am schnellsten)" },
+    { type: "paragraph",html: "Beginnen Sie hier. Es beseitigt das hängende Rendering und lädt die Daten vom Server neu, ohne Einstellungen anzutasten." },
+    {
+      type: "steps",
+      items: [
+        { title: "Mit der rechten Maustaste auf den Chart klicken", html: "Klicken Sie direkt auf den Renko-Chart mit der rechten Maustaste." },
+        { title: "Reload Chart wählen", html: "Wählen Sie <strong class='text-white'>Reload Chart</strong> (manche Versionen nennen es <strong class='text-white'>Reset Chart</strong> oder <strong class='text-white'>Refresh</strong>), um die Bars neu abzurufen und neu zu zeichnen." },
+        { title: "Bei Bedarf die ganze Seite neu laden", html: "Wenn das Chart-Menü das Problem nicht beseitigt, drücken Sie <strong class='text-white'>F5</strong>, um die gesamte Plattformseite neu zu laden." },
+        { title: "Auf frische Ticks achten", html: "Beobachten Sie einige Ticks. Sobald neue Bricks im Gleichschritt mit dem Kurs gedruckt werden, sind Sie wieder synchron." },
+      ],
+    },
+    { type: "paragraph",html: "Wenn ein Neuladen das Problem für einige Minuten behebt und der Chart dann erneut stockt, deutet dieses wiederkehrende Muster auf zwischengespeicherte Dateien oder eine Browser-Erweiterung hin. Gehen Sie zu Lösung B." },
+    { type: "heading",text: "Lösung B – Cache und Cookies löschen, dann hart aktualisieren" },
+    { type: "paragraph",html: "Veraltete zwischengespeicherte Plattformdateien sind der häufigste Grund, warum ein Chart nach jedem Neuladen weiter stockt. Ein vollständiges Löschen des Caches zwingt den Browser, die aktuelle Version herunterzuladen, statt alte, halb defekte Assets weiterzuverwenden." },
+    {
+      type: "steps",
+      items: [
+        { title: "Clear browsing data öffnen", html: "Öffnen Sie den Dialog <strong class='text-white'>Clear browsing data</strong> Ihres Browsers (in Chrome: Menü &rsaquo; Browserdaten löschen, oder fügen Sie <code>chrome://settings/clearBrowserData</code> ein)." },
+        { title: "Zeitraum auf All time setzen", html: "Stellen Sie den Zeitraum auf <strong class='text-white'>All time</strong>." },
+        { title: "Cache und Cookies auswählen, dann löschen", html: "Wählen Sie <strong class='text-white'>Cached images and files</strong> und <strong class='text-white'>Cookies and other site data</strong> aus und löschen Sie dann." },
+        { title: "Erneut anmelden", html: "Laden Sie Tradovate neu und melden Sie sich wieder an (das Löschen von Cookies meldet Sie ab; Ihre Chart-Layouts sind in Ihrem Konto gespeichert und kehren daher zurück)." },
+        { title: "Harte Aktualisierung erzwingen", html: "Erzwingen Sie zur Sicherheit eine harte Aktualisierung: <strong class='text-white'>Strg+F5</strong> unter Windows/Linux, <strong class='text-white'>Cmd+Umschalt+R</strong> auf dem Mac." },
+      ],
+    },
+    { type: "quote",html: "<strong>Hinweis:</strong> Notieren Sie sich Ihre Renko-Brick-Größe (in Ticks) und Indikatoreinstellungen vor einem vollständigen Löschen. Layouts liegen in Ihrem Konto, aber eine 10-Sekunden-Notiz erlaubt es Ihnen zu bestätigen, dass sich beim erneuten Anmelden nichts zurückgesetzt hat. Wenn Sie die Plattform den ganzen Tag im Browser betreiben, beugt wöchentliches Leeren des Caches dem vor." },
+    { type: "heading",text: "Lösung C – Im Inkognito-Modus testen und Erweiterungen deaktivieren" },
+    { type: "paragraph",html: "Ein Inkognito-Fenster lädt Tradovate mit sauberem Cache und <em>ohne Erweiterungen</em>. Es ist der sauberste Weg, um herauszufinden, was das Live-Rendering stört." },
+    {
+      type: "steps",
+      items: [
+        { title: "Inkognito-Fenster öffnen", html: "Drücken Sie <strong class='text-white'>Strg+Umschalt+N</strong> (Chrome/Edge), um ein Inkognito-/privates Fenster zu öffnen, und melden Sie sich bei Tradovate an." },
+        { title: "Renko-Chart beobachten", html: "Öffnen Sie Ihren Renko-Chart und beobachten Sie ihn eine Minute lang. Aktualisieren sich die Bricks jetzt in Echtzeit, liegt das Problem an einer Erweiterung oder an zwischengespeicherten Daten in Ihrem normalen Profil, nicht an Tradovate." },
+        { title: "Erweiterungen einzeln deaktivieren", html: "Gehen Sie in Ihrem normalen Fenster zu <code>chrome://extensions</code> und deaktivieren Sie Erweiterungen einzeln – Werbeblocker, Datenschutz-Schilde, uBlock, VPN-Add-ons und Skriptblocker sind die üblichen Verdächtigen." },
+        { title: "Nach jedem Umschalten neu laden", html: "Laden Sie nach jedem Schritt neu, bis der Renko-Chart eine Live-Aktualisierung hält, und lassen Sie diese Erweiterung dann für Tradovate deaktiviert (oder setzen Sie die Seite auf die Positivliste)." },
+      ],
+    },
+    { type: "heading",text: "Lösung D – Bestätigen, dass Sie tatsächlich Echtzeitdaten nutzen" },
+    { type: "paragraph",html: "Wenn auch ein Kerzenchart desselben Symbols flach ist, haben Sie keinen Renko-Rendering-Fehler, sondern verzögerte oder fehlende Marktdaten. Renko kann aus einem Feed, der nicht live ist, keine Live-Bricks bilden." },
+    {
+      type: "steps",
+      items: [
+        { title: "Symbolfarbe und Kurs prüfen", html: "Prüfen Sie die Farbe des Symbolnamens und den Kurs. Abweichend gefärbte (oft orange) Symbolnamen und um Minuten verzögerte Kurse deuten auf <strong class='text-white'>verzögerte Daten</strong> hin." },
+        { title: "Bei einem persönlichen Konto abonnieren", html: "Fügen Sie bei einem persönlichen Konto Ihr Echtzeit-Börsen-<strong class='text-white'>Marktdaten-Abonnement</strong> hinzu oder verlängern Sie es, und melden Sie sich dann ab und wieder an." },
+        { title: "Bei einem Prop-Konto die Firma fragen", html: "Bei einem Prop- oder Evaluierungskonto können Sie in der Regel nicht selbst abonnieren – die Firma schaltet die Echtzeitdaten für das Konto frei. Datenregeln und Gebühren variieren je nach Firma und Kontogröße, prüfen Sie daher die aktuellen Regeln Ihrer Firma." },
+      ],
+    },
+    { type: "paragraph",html: "Die vollständige Anleitung zum Erkennen und Beseitigen eines verzögerten Feeds finden Sie in der Tradovate-Anleitung zu 10 Minuten verzögerten Daten und orangefarbenen Symbolen." },
+    { type: "heading",text: "Lösung E – Sitzungslimits und abgelaufene Kontrakte ausschließen" },
+    { type: "paragraph",html: "Zwei Stolpersteine auf Kontoebene frieren Charts auf eine Weise ein, die kein Cache-Löschen behebt:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Zu viele aktive Sitzungen.</strong> Tradovate begrenzt, an wie vielen Stellen Sie gleichzeitig angemeldet sein können (Web, Desktop, Mobil und TradingView zählen alle). Überschreiten Sie das Limit, können Charts einfrieren oder die Verbindung verlieren. Melden Sie sich überall ab und dann auf einem einzigen Gerät an.",
+        "<strong class='text-white'>Ein abgelaufener Kontraktmonat.</strong> Ein alter, abgelaufener Kontrakt bewegt sich nicht mehr, sein Chart wirkt also dauerhaft eingefroren. Wechseln Sie auf den aktuellen Front-Month-Kontrakt.",
+      ],
+    },
+    { type: "heading",text: "Lösung F – Zur Desktop-App wechseln oder den Support kontaktieren" },
+    { type: "paragraph",html: "Wenn der Stillstand Cache-Löschen, Inkognito und eine frische Sitzung überlebt, wechseln Sie zur <strong class='text-white'>Desktop-App</strong>: Sie läuft eigenständig, frei von Browser-Erweiterungen und der Tab-Drosselung, die einem Hintergrund-Chart Updates vorenthält. Hält Renko dort mit bestätigten Echtzeitdaten immer noch kein Live-Rendering, kontaktieren Sie den Tradovate-Support und senden Sie einen Screenshot der eingefrorenen Bricks neben einem tickenden Kerzenchart, damit er die Rendering-Lücke sehen kann." },
+    { type: "heading",text: "Fehlerbehebungstabelle" },
+    { type: "table", headers: ["Was Sie sehen","Wahrscheinliche Ursache","Lösung"], rows: [
+      ["Kein neuer Brick, aber der Kurs läuft ruhig seitwärts","Normales Renko – der Kurs hat sich nicht um einen vollen Brick bewegt","Nichts zu beheben; ein Brick wird gedruckt, wenn der Kurs die Brick-Größe durchläuft"],
+      ["Kurs überschreitet die Brick-Schwelle deutlich, dennoch kein neuer Brick; Indikatoren überspringen Werte","Clientseitiger Rendering-Stillstand","Rechtsklick &rsaquo; Reload Chart oder F5"],
+      ["Stockt wenige Minuten nach jedem Neuladen erneut","Veralteter Cache oder eine Browser-Erweiterung","Cache/Cookies löschen (All time) + harte Aktualisierung; Inkognito testen"],
+      ["Aktualisiert sich im Inkognito-Modus problemlos, im normalen Fenster nicht","Werbeblocker, VPN oder Skriptblocker-Erweiterung","Erweiterungen unter chrome://extensions deaktivieren, Seite auf die Positivliste setzen"],
+      ["Kerzenchart desselben Symbols ist ebenfalls flach","Verzögerte oder fehlende Marktdaten","Echtzeitdaten abonnieren/aktivieren, dann neu anmelden"],
+      ["Charts frieren zufällig ein oder trennen die Verbindung","Sitzungslimit über Geräte hinweg überschritten","Überall abmelden, auf einem Gerät anmelden"],
+      ["Chart bewegt sich überhaupt nicht","Abgelaufener Kontraktmonat im Chart","Auf den aktuellen Front-Month-Kontrakt wechseln"],
+    ] },
+    { type: "heading",text: "Halten Sie Ihre Ausführung mit PickMyTrade vom Chart fern" },
+    { type: "paragraph",html: "Das ist der Teil, der zählt, wenn Sie <strong class='text-white'>eine Strategie handeln</strong>, statt jeden Einstieg nach Augenmaß zu setzen: Ein Renko-Rendering-Fehler ist nur ein Anzeigeproblem, bis Ihre Einstiege von einem Chart abhängen, der dem echten Kurs hinterherhinkt. Wenn Sie auf eingefrorene Bricks klicken, handeln Sie womöglich auf einem Niveau, das längst vorbei ist." },
+    { type: "paragraph",html: "PickMyTrade verlagert die Ausführung weg von dem, was Ihr Bildschirm zeichnet. Ihre Strategie sendet ein Signal – einen TradingView-Alert oder Ihre eigene Logik –, und die Order wird <strong class='text-white'>serverseitig</strong> an Tradovate geleitet, sodass ein Chart, der sich nicht mehr neu zeichnet, nie zwischen Ihrem Signal und der Ausführung steht:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signalgesteuertes Routing</strong> – Orders werden vom Alert Ihrer Strategie ausgelöst, nicht von einem Chart-Neuzeichnen; ein stockendes Renko-Rendering kann also keinen verpassten oder verspäteten Einstieg verursachen.",
+        "<strong class='text-white'>Serverseitige Ausführung</strong> – die Order verlässt PickMyTrade in Richtung Tradovate, unabhängig von Ihrem Browser-Tab, Ihren Erweiterungen oder einem eingefrorenen Chart.",
+        "<strong class='text-white'>Multi-Account-Synchronisierung</strong> – spiegeln Sie ein Signal gleichzeitig auf mehrere Tradovate-Konten, jedes passend zu seinen eigenen Limits dimensioniert, statt pro Konto einen Chart zu beaufsichtigen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Está mirando un gráfico Renko, el precio avanza claramente y los ladrillos simplemente&hellip; se quedan ahí. No se forman barras nuevas, su media móvil se aplana o se salta valores y el gráfico se siente un paso por detrás del mercado. Entonces actualiza y vuelve a la vida, hasta la siguiente tanda de ticks, y se bloquea otra vez. En un mercado rápido, ese lag puede costarle una lectura. La mayoría de las veces es un fallo de renderizado del lado del navegador, y la solución más rápida es una recarga, un borrado de caché o una breve prueba en incógnito. Lo más delicado es distinguir ese fallo del comportamiento <em>normal</em> de Renko, en el que el gráfico debe verse quieto. Aclaremos ambos." },
+    {
+      type: "checklist",
+      heading: "Lista de comprobación rápida para un gráfico Renko que no se actualiza",
+      items: [
+        "<strong class='text-white'>¿Se está moviendo realmente el precio un ladrillo completo?</strong> Renko solo forma un ladrillo nuevo cuando el precio recorre todo el tamaño del ladrillo. Si no lo ha hecho, el gráfico funciona como está diseñado, no está atascado.",
+        "<strong class='text-white'>Recargue primero el gráfico.</strong> Haga clic derecho en el gráfico y elija Reload Chart, o pulse F5. Esto restablece las actualizaciones en segundos la mayoría de las veces.",
+        "<strong class='text-white'>Borre caché y cookies &amp; haga una actualización forzada.</strong> Borre de All time y luego Ctrl+F5 (Windows) o Cmd+Mayús+R (Mac) para obtener una copia nueva de la plataforma.",
+        "<strong class='text-white'>Pruebe en incógnito.</strong> Ctrl+Mayús+N abre una ventana limpia sin extensiones. Si Renko se actualiza allí, el culpable es una extensión o una caché obsoleta.",
+        "<strong class='text-white'>Confirme que está con datos en tiempo real.</strong> Un feed retrasado o nombres de símbolos de otro color significan que el problema son los datos, no el renderizado.",
+        "<strong class='text-white'>Descarte problemas de sesión y de contrato.</strong> Demasiadas sesiones abiertas o un mes de contrato vencido pueden congelar un gráfico independientemente de Renko.",
+        "<strong class='text-white'>¿Persiste en todas partes?</strong> Cambie a la aplicación de escritorio y contacte con soporte si el bloqueo sobrevive a todo lo anterior.",
+      ],
+    },
+    { type: "heading",text: "Por qué un gráfico Renko parece congelado (error vs. comportamiento normal)" },
+    { type: "paragraph",html: "Antes de solucionar nada, separe las dos causas, porque requieren respuestas opuestas." },
+    { type: "paragraph",html: "<strong class='text-white'>Comportamiento normal de Renko.</strong> Un ladrillo Renko no está ligado al tiempo. Solo se forma cuando el precio se mueve una distancia fija en una dirección; en Tradovate esa distancia se define en <strong class='text-white'>ticks</strong> (por ejemplo, un ladrillo de 8 o 16 ticks). Hasta que el precio recorre esa distancia completa, no aparece ningún ladrillo nuevo, sin importar cuántos segundos o minutos pasen. Así, en condiciones tranquilas, erráticas o laterales, un gráfico Renko puede quedarse realmente en el mismo ladrillo durante un buen rato. Eso no es un congelamiento; es el gráfico filtrando el ruido, que es precisamente el propósito de Renko. Las reversiones son aún más estrictas: el precio tiene que recorrer un ladrillo completo <em>contra</em> la tendencia antes de girar, por lo que siempre van por detrás del tick bruto." },
+    { type: "paragraph",html: "<strong class='text-white'>El fallo real.</strong> El error real es distinto. El precio claramente supera con holgura el umbral del ladrillo y aun así no se dibuja ningún ladrillo nuevo. Los indicadores trazados sobre el gráfico Renko, una media móvil, el VWAP, dejan de avanzar, se trazan fuera de secuencia o se saltan valores por completo. Entonces recarga y los ladrillos y puntos de indicador que faltaban se rellenan de golpe, lo que confirma que los datos estaban ahí; el gráfico simplemente dejó de renderizarlos en vivo. Es un bloqueo del lado del cliente, y es el que atacan las soluciones siguientes." },
+    { type: "paragraph",html: "El diagnóstico de un segundo: abra un gráfico de <strong class='text-white'>velas</strong> normal del mismo símbolo junto a su gráfico Renko. Si las velas avanzan pero los ladrillos de Renko siguen congelados, tiene el bloqueo de renderizado: actualice. Si las velas <em>también</em> están planas, no es un problema de Renko; es un problema del feed de datos o de la conexión que se resuelve de otra forma." },
+    { type: "heading",text: "Cómo arreglar un gráfico Renko que deja de actualizarse: paso a paso" },
+    { type: "heading",text: "Solución A: recargar el gráfico (la más rápida)" },
+    { type: "paragraph",html: "Empiece aquí. Elimina el renderizado bloqueado y vuelve a obtener datos del servidor sin tocar ningún ajuste." },
+    {
+      type: "steps",
+      items: [
+        { title: "Haga clic derecho en el gráfico", html: "Haga clic derecho directamente sobre el gráfico Renko." },
+        { title: "Elija Reload Chart", html: "Elija <strong class='text-white'>Reload Chart</strong> (algunas versiones lo llaman <strong class='text-white'>Reset Chart</strong> o <strong class='text-white'>Refresh</strong>) para volver a obtener las barras y redibujar." },
+        { title: "Recargue la página completa si es necesario", html: "Si el menú del gráfico no lo soluciona, pulse <strong class='text-white'>F5</strong> para recargar toda la página de la plataforma." },
+        { title: "Observe si llegan ticks nuevos", html: "Observe unos cuantos ticks. Cuando los nuevos ladrillos se formen al ritmo del precio, estará de nuevo sincronizado." },
+      ],
+    },
+    { type: "paragraph",html: "Si una recarga lo arregla durante unos minutos y luego se bloquea de nuevo, ese patrón repetido apunta a archivos en caché o a una extensión del navegador. Pase a la Solución B." },
+    { type: "heading",text: "Solución B: borrar caché y cookies y luego hacer una actualización forzada" },
+    { type: "paragraph",html: "Los archivos de plataforma obsoletos en caché son la razón más común de que un gráfico siga bloqueándose tras cada recarga. Un borrado completo de la caché obliga al navegador a descargar la versión actual en lugar de reutilizar recursos antiguos y a medio romper." },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra Clear browsing data", html: "Abra el cuadro de diálogo <strong class='text-white'>Clear browsing data</strong> de su navegador (en Chrome: menú &rsaquo; Eliminar datos de navegación, o pegue <code>chrome://settings/clearBrowserData</code>)." },
+        { title: "Establezca el rango en All time", html: "Establezca el intervalo de tiempo en <strong class='text-white'>All time</strong>." },
+        { title: "Marque caché y cookies y luego borre", html: "Marque <strong class='text-white'>Cached images and files</strong> y <strong class='text-white'>Cookies and other site data</strong> y luego borre." },
+        { title: "Vuelva a iniciar sesión", html: "Recargue Tradovate e inicie sesión de nuevo (borrar las cookies cierra la sesión; los diseños de sus gráficos se guardan en su cuenta, así que regresan)." },
+        { title: "Fuerce una actualización", html: "Fuerce una actualización completa para asegurarse: <strong class='text-white'>Ctrl+F5</strong> en Windows/Linux, <strong class='text-white'>Cmd+Mayús+R</strong> en Mac." },
+      ],
+    },
+    { type: "quote",html: "<strong>Aviso:</strong> anote el tamaño de ladrillo de su Renko (en ticks) y los ajustes de sus indicadores antes de un borrado completo. Los diseños residen en su cuenta, pero una nota de 10 segundos le permite confirmar que nada se restableció al volver a iniciar sesión. Si ejecuta la plataforma en un navegador todo el día, borrar la caché semanalmente lo previene." },
+    { type: "heading",text: "Solución C: probar en incógnito y desactivar extensiones" },
+    { type: "paragraph",html: "Una ventana de incógnito carga Tradovate con una caché limpia y <em>sin extensiones</em>. Es la forma más limpia de aislar qué está rompiendo el renderizado en vivo." },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra una ventana de incógnito", html: "Pulse <strong class='text-white'>Ctrl+Mayús+N</strong> (Chrome/Edge) para abrir una ventana de incógnito/privada e inicie sesión en Tradovate." },
+        { title: "Observe el gráfico Renko", html: "Abra su gráfico Renko y obsérvelo durante un minuto. Si los ladrillos ahora se actualizan en tiempo real, el problema es una extensión o datos en caché de su perfil normal, no Tradovate." },
+        { title: "Desactive las extensiones una a una", html: "De vuelta en su ventana normal, vaya a <code>chrome://extensions</code> y desactive las extensiones una a una; los bloqueadores de anuncios, los escudos de privacidad, uBlock, los complementos de VPN y los bloqueadores de scripts son los culpables habituales." },
+        { title: "Recargue tras cada cambio", html: "Recargue tras cada una hasta que el gráfico Renko mantenga una actualización en vivo y entonces deje esa extensión desactivada para Tradovate (o añada el sitio a la lista de permitidos)." },
+      ],
+    },
+    { type: "heading",text: "Solución D: confirmar que realmente está con datos en tiempo real" },
+    { type: "paragraph",html: "Si un gráfico de velas del mismo símbolo también está plano, no se trata de un error de renderizado de Renko, sino de datos de mercado retrasados o ausentes. Renko no puede construir ladrillos en vivo a partir de un feed que no es en vivo." },
+    {
+      type: "steps",
+      items: [
+        { title: "Revise el color del símbolo y la cotización", html: "Revise el color del nombre del símbolo y la cotización. Los nombres de símbolo de otro color (a menudo naranja) y las cotizaciones con minutos de retraso indican <strong class='text-white'>datos retrasados</strong>." },
+        { title: "Suscríbase en una cuenta personal", html: "En una cuenta personal, añada o renueve su <strong class='text-white'>suscripción de datos de mercado</strong> en tiempo real de la bolsa y luego cierre sesión y vuelva a iniciarla." },
+        { title: "Consulte con su firma en una cuenta prop", html: "En una cuenta prop o de evaluación, normalmente no puede suscribirse usted mismo: la firma activa los datos en tiempo real en la cuenta. Las reglas y tarifas de datos varían según la firma y el tamaño de la cuenta, así que consulte las reglas vigentes de su firma." },
+      ],
+    },
+    { type: "paragraph",html: "Para la guía completa sobre cómo detectar y eliminar un feed retrasado, consulte la guía de Tradovate sobre datos retrasados de 10 minutos y símbolos naranjas." },
+    { type: "heading",text: "Solución E: descartar límites de sesión y contratos vencidos" },
+    { type: "paragraph",html: "Dos trampas a nivel de cuenta congelan los gráficos de una forma que ningún borrado de caché arregla:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Demasiadas sesiones activas.</strong> Tradovate limita en cuántos lugares puede tener la sesión iniciada a la vez (web, escritorio, móvil y TradingView cuentan todos). Si se pasa del límite, los gráficos pueden congelarse o desconectarse. Cierre sesión en todas partes e inicie sesión en un solo dispositivo.",
+        "<strong class='text-white'>Un mes de contrato vencido.</strong> Un contrato antiguo y vencido ya no se mueve, así que su gráfico parece congelado de forma permanente. Cambie al contrato del mes frontal actual.",
+      ],
+    },
+    { type: "heading",text: "Solución F: cambiar a la aplicación de escritorio o contactar con soporte" },
+    { type: "paragraph",html: "Si el bloqueo sobrevive a un borrado de caché, al modo incógnito y a una sesión nueva, pase a la <strong class='text-white'>aplicación de escritorio</strong>: funciona de forma autónoma, sin extensiones de navegador y sin la limitación de pestañas que priva de actualizaciones a un gráfico en segundo plano. Si Renko sigue sin mantener un renderizado en vivo allí con datos en tiempo real confirmados, contacte con el soporte de Tradovate y envíe una captura de los ladrillos congelados junto a un gráfico de velas que avanza para que puedan ver la brecha de renderizado." },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Qué ve","Causa probable","Solución"], rows: [
+      ["Ningún ladrillo nuevo, pero el precio se mueve en rango tranquilo","Renko normal: el precio no se ha movido un ladrillo completo","Nada que arreglar; se forma un ladrillo cuando el precio recorre el tamaño del ladrillo"],
+      ["El precio supera de lejos el umbral del ladrillo, aún sin ladrillo nuevo; los indicadores se saltan valores","Bloqueo de renderizado del lado del cliente","Clic derecho &rsaquo; Reload Chart, o F5"],
+      ["Se bloquea de nuevo unos minutos después de cada recarga","Caché obsoleta o una extensión del navegador","Borre caché/cookies (All time) + actualización forzada; pruebe en incógnito"],
+      ["Se actualiza bien en incógnito, no en la ventana normal","Bloqueador de anuncios, VPN o extensión bloqueadora de scripts","Desactive extensiones en chrome://extensions, añada el sitio a la lista de permitidos"],
+      ["El gráfico de velas del mismo símbolo también está plano","Datos de mercado retrasados o ausentes","Suscríbase / active los datos en tiempo real y vuelva a iniciar sesión"],
+      ["Los gráficos se congelan o se desconectan al azar","Límite de sesiones superado entre dispositivos","Cierre sesión en todas partes, inicie sesión en un solo dispositivo"],
+      ["El gráfico no se mueve en absoluto","Se está graficando un mes de contrato vencido","Cambie al contrato del mes frontal actual"],
+    ] },
+    { type: "heading",text: "Mantenga su ejecución fuera del gráfico con PickMyTrade" },
+    { type: "paragraph",html: "Esta es la parte que importa si usted <strong class='text-white'>opera una estrategia</strong> en lugar de vigilar cada entrada a ojo: un fallo de renderizado de Renko es solo un problema de visualización hasta que sus entradas dependen de un gráfico que va por detrás del precio real. Si hace clic sobre ladrillos congelados, puede actuar sobre un nivel que ya no existe." },
+    { type: "paragraph",html: "PickMyTrade saca la ejecución de lo que dibuja su pantalla. Su estrategia dispara una señal, una alerta de TradingView o su propia lógica, y la orden se enruta a Tradovate <strong class='text-white'>desde el servidor</strong>, de modo que un gráfico que deja de redibujarse nunca se interpone entre su señal y la ejecución:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Enrutamiento basado en señales</strong>: las órdenes se disparan desde la alerta de su estrategia, no desde un repintado del gráfico, así que un renderizado Renko bloqueado no puede causar una entrada perdida o tardía.",
+        "<strong class='text-white'>Ejecución en el servidor</strong>: la orden sale hacia Tradovate desde el lado de PickMyTrade, independientemente de su pestaña del navegador, sus extensiones o un gráfico congelado.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>: replique una señal en varias cuentas de Tradovate a la vez, cada una dimensionada según sus propios límites, en lugar de vigilar un gráfico por cuenta.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous regardez un graphique Renko, le prix bouge clairement, et les briques restent&hellip; là. Aucune nouvelle barre ne se forme, votre moyenne mobile s'aplatit ou saute des valeurs, et le graphique semble en retard d'un temps sur le marché. Puis vous actualisez et il reprend vie, jusqu'à la prochaine salve de ticks, et il se bloque de nouveau. Sur un marché rapide, ce décalage peut vous coûter une lecture. La plupart du temps, il s'agit d'un hoquet de rendu côté navigateur, et la solution la plus rapide est un rechargement, un vidage du cache ou un bref test en navigation privée. Le plus délicat est de distinguer ce défaut du comportement <em>normal</em> de Renko, où le graphique est censé paraître immobile. Éclaircissons les deux." },
+    {
+      type: "checklist",
+      heading: "Check-list rapide pour un graphique Renko qui ne se met pas à jour",
+      items: [
+        "<strong class='text-white'>Le prix parcourt-il réellement une brique complète ?</strong> Renko ne forme une nouvelle brique que lorsque le prix parcourt toute la taille de la brique. Si ce n'est pas le cas, le graphique fonctionne comme prévu, il n'est pas bloqué.",
+        "<strong class='text-white'>Rechargez d'abord le graphique.</strong> Faites un clic droit sur le graphique et choisissez Reload Chart, ou appuyez sur F5. Cela rétablit les mises à jour en quelques secondes la plupart du temps.",
+        "<strong class='text-white'>Videz cache &amp; cookies, puis actualisation forcée.</strong> Videz pour All time, puis Ctrl+F5 (Windows) ou Cmd+Maj+R (Mac) pour récupérer une copie neuve de la plateforme.",
+        "<strong class='text-white'>Testez en navigation privée.</strong> Ctrl+Maj+N ouvre une fenêtre propre sans extensions. Si Renko se met à jour là-bas, une extension ou un cache obsolète est le coupable.",
+        "<strong class='text-white'>Vérifiez que vous êtes en données temps réel.</strong> Un flux différé ou des noms de symboles de couleur différente signifient que le problème vient des données, pas du rendu.",
+        "<strong class='text-white'>Écartez les problèmes de session et de contrat.</strong> Trop de sessions ouvertes ou un mois de contrat expiré peuvent figer un graphique indépendamment de Renko.",
+        "<strong class='text-white'>Le problème persiste partout ?</strong> Passez à l'application de bureau et contactez le support si le blocage résiste à tout ce qui précède.",
+      ],
+    },
+    { type: "heading",text: "Pourquoi un graphique Renko semble figé (bug ou comportement normal)" },
+    { type: "paragraph",html: "Avant de dépanner quoi que ce soit, séparez les deux causes, car elles appellent des réponses opposées." },
+    { type: "paragraph",html: "<strong class='text-white'>Comportement Renko normal.</strong> Une brique Renko n'est pas liée au temps. Elle ne se forme que lorsque le prix parcourt une distance donnée dans une direction ; sur Tradovate, cette distance est définie en <strong class='text-white'>ticks</strong> (par exemple une brique de 8 ou 16 ticks). Tant que le prix n'a pas parcouru cette distance complète, aucune nouvelle brique n'apparaît, quel que soit le nombre de secondes ou de minutes écoulées. Ainsi, en conditions calmes, hachées ou sans tendance, un graphique Renko peut réellement rester sur la même brique pendant longtemps. Ce n'est pas un blocage ; c'est le graphique qui filtre le bruit, ce qui est tout l'intérêt de Renko. Les retournements sont encore plus stricts : le prix doit parcourir une brique complète <em>contre</em> la tendance avant de basculer, ils sont donc toujours en retard sur le tick brut." },
+    { type: "paragraph",html: "<strong class='text-white'>Le vrai défaut.</strong> Le vrai bug est différent. Le prix dépasse nettement le seuil de la brique, et pourtant aucune nouvelle brique ne se dessine. Les indicateurs tracés sur le graphique Renko, une moyenne mobile, le VWAP, cessent d'avancer, se tracent dans le désordre ou sautent complètement des valeurs. Puis vous rechargez et les briques et points d'indicateurs manquants se remplissent d'un coup, ce qui confirme que les données étaient là ; le graphique avait simplement cessé de les afficher en direct. C'est un blocage côté client, et c'est celui que ciblent les correctifs ci-dessous." },
+    { type: "paragraph",html: "Le diagnostic en une seconde : ouvrez un graphique en <strong class='text-white'>chandeliers</strong> classique du même symbole à côté de votre graphique Renko. Si les chandeliers bougent mais que les briques Renko restent figées, vous avez le blocage de rendu : actualisez. Si les chandeliers sont <em>aussi</em> plats, ce n'est pas un problème de Renko ; c'est un problème de flux de données ou de connexion qui se règle autrement." },
+    { type: "heading",text: "Comment corriger un graphique Renko qui cesse de se mettre à jour : pas à pas" },
+    { type: "heading",text: "Correctif A : recharger le graphique (le plus rapide)" },
+    { type: "paragraph",html: "Commencez ici. Cela élimine le rendu bloqué et récupère de nouveau les données du serveur sans toucher à aucun réglage." },
+    {
+      type: "steps",
+      items: [
+        { title: "Faire un clic droit sur le graphique", html: "Faites un clic droit directement sur le graphique Renko." },
+        { title: "Choisir Reload Chart", html: "Choisissez <strong class='text-white'>Reload Chart</strong> (certaines versions l'appellent <strong class='text-white'>Reset Chart</strong> ou <strong class='text-white'>Refresh</strong>) pour récupérer de nouveau les barres et redessiner." },
+        { title: "Recharger toute la page si nécessaire", html: "Si le menu du graphique ne règle pas le problème, appuyez sur <strong class='text-white'>F5</strong> pour recharger toute la page de la plateforme." },
+        { title: "Surveiller les nouveaux ticks", html: "Observez quelques ticks. Dès que de nouvelles briques se forment au rythme du prix, vous êtes de nouveau synchronisé." },
+      ],
+    },
+    { type: "paragraph",html: "Si un rechargement règle le problème pour quelques minutes puis que le graphique se bloque de nouveau, ce schéma répétitif indique des fichiers en cache ou une extension de navigateur. Passez au correctif B." },
+    { type: "heading",text: "Correctif B : vider le cache et les cookies, puis actualisation forcée" },
+    { type: "paragraph",html: "Les fichiers de plateforme obsolètes en cache sont la raison la plus courante pour laquelle un graphique continue de se bloquer après chaque rechargement. Un vidage complet du cache force le navigateur à télécharger la version actuelle au lieu de réutiliser d'anciens éléments à moitié défectueux." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrir Clear browsing data", html: "Ouvrez la boîte de dialogue <strong class='text-white'>Clear browsing data</strong> de votre navigateur (dans Chrome : menu &rsaquo; Effacer les données de navigation, ou collez <code>chrome://settings/clearBrowserData</code>)." },
+        { title: "Définir la plage sur All time", html: "Définissez la période sur <strong class='text-white'>All time</strong>." },
+        { title: "Cocher cache et cookies, puis effacer", html: "Cochez <strong class='text-white'>Cached images and files</strong> et <strong class='text-white'>Cookies and other site data</strong>, puis effacez." },
+        { title: "Se reconnecter", html: "Rechargez Tradovate et reconnectez-vous (effacer les cookies vous déconnecte ; les dispositions de vos graphiques sont enregistrées sur votre compte et reviennent donc)." },
+        { title: "Forcer une actualisation complète", html: "Forcez une actualisation complète pour être sûr : <strong class='text-white'>Ctrl+F5</strong> sous Windows/Linux, <strong class='text-white'>Cmd+Maj+R</strong> sur Mac." },
+      ],
+    },
+    { type: "quote",html: "<strong>À noter :</strong> notez la taille de votre brique Renko (en ticks) et les réglages de vos indicateurs avant un effacement complet. Les dispositions sont sur votre compte, mais une note de 10 secondes vous permet de confirmer que rien n'a été réinitialisé à la reconnexion. Si vous utilisez la plateforme dans un navigateur toute la journée, vider le cache chaque semaine prévient ce problème." },
+    { type: "heading",text: "Correctif C : tester en navigation privée et désactiver les extensions" },
+    { type: "paragraph",html: "Une fenêtre de navigation privée charge Tradovate avec un cache propre et <em>sans extensions</em>. C'est la façon la plus nette d'isoler ce qui casse le rendu en direct." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrir une fenêtre de navigation privée", html: "Appuyez sur <strong class='text-white'>Ctrl+Maj+N</strong> (Chrome/Edge) pour ouvrir une fenêtre privée et connectez-vous à Tradovate." },
+        { title: "Observer le graphique Renko", html: "Ouvrez votre graphique Renko et observez-le pendant une minute. Si les briques se mettent maintenant à jour en temps réel, le problème vient d'une extension ou de données en cache de votre profil normal, pas de Tradovate." },
+        { title: "Désactiver les extensions une par une", html: "De retour dans votre fenêtre normale, allez sur <code>chrome://extensions</code> et désactivez les extensions une par une ; les bloqueurs de publicités, boucliers de confidentialité, uBlock, modules complémentaires VPN et bloqueurs de scripts sont les coupables habituels." },
+        { title: "Recharger après chaque désactivation", html: "Rechargez après chacune jusqu'à ce que le graphique Renko tienne une mise à jour en direct, puis laissez cette extension désactivée pour Tradovate (ou ajoutez le site à la liste d'autorisation)." },
+      ],
+    },
+    { type: "heading",text: "Correctif D : vérifier que vous êtes bien en données temps réel" },
+    { type: "paragraph",html: "Si un graphique en chandeliers du même symbole est aussi plat, vous n'êtes pas face à un bug de rendu Renko, mais à des données de marché différées ou manquantes. Renko ne peut pas construire de briques en direct à partir d'un flux qui n'est pas en direct." },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifier la couleur du symbole et la cotation", html: "Vérifiez la couleur du nom du symbole et la cotation. Des noms de symboles de couleur différente (souvent orange) et des cotations en retard de plusieurs minutes signalent des <strong class='text-white'>données différées</strong>." },
+        { title: "S'abonner sur un compte personnel", html: "Sur un compte personnel, ajoutez ou renouvelez votre <strong class='text-white'>abonnement aux données de marché</strong> temps réel de la bourse, puis déconnectez-vous et reconnectez-vous." },
+        { title: "Vérifier auprès de votre société sur un compte prop", html: "Sur un compte prop ou d'évaluation, vous ne pouvez généralement pas vous abonner vous-même : la société active les données temps réel sur le compte. Les règles et frais de données varient selon la société et la taille du compte, vérifiez donc les règles actuelles de votre société." },
+      ],
+    },
+    { type: "paragraph",html: "Pour le guide complet sur la détection et la suppression d'un flux différé, consultez le guide de Tradovate sur les données différées de 10 minutes et les symboles orange." },
+    { type: "heading",text: "Correctif E : écarter les limites de session et les contrats expirés" },
+    { type: "paragraph",html: "Deux pièges au niveau du compte figent les graphiques d'une manière qu'aucun vidage de cache ne corrige :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Trop de sessions actives.</strong> Tradovate limite le nombre d'endroits où vous pouvez être connecté en même temps (web, bureau, mobile et TradingView comptent tous). Si vous dépassez la limite, les graphiques peuvent se figer ou se déconnecter. Déconnectez-vous partout et reconnectez-vous sur un seul appareil.",
+        "<strong class='text-white'>Un mois de contrat expiré.</strong> Un ancien contrat expiré ne bouge plus, son graphique paraît donc figé en permanence. Passez au contrat du mois en cours.",
+      ],
+    },
+    { type: "heading",text: "Correctif F : passer à l'application de bureau ou contacter le support" },
+    { type: "paragraph",html: "Si le blocage résiste à un vidage de cache, à la navigation privée et à une session neuve, passez à l'<strong class='text-white'>application de bureau</strong> : elle fonctionne de façon autonome, sans extensions de navigateur ni bridage d'onglets qui prive un graphique en arrière-plan de ses mises à jour. Si Renko n'arrive toujours pas à tenir un rendu en direct là-bas avec des données temps réel confirmées, contactez le support Tradovate et envoyez une capture d'écran des briques figées à côté d'un graphique en chandeliers qui bouge, afin qu'il puisse voir l'écart de rendu." },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Ce que vous voyez","Cause probable","Correctif"], rows: [
+      ["Aucune nouvelle brique, mais le prix évolue calmement dans une fourchette","Renko normal : le prix n'a pas parcouru une brique complète","Rien à corriger ; une brique se forme lorsque le prix parcourt la taille de la brique"],
+      ["Le prix dépasse largement le seuil de la brique, toujours pas de nouvelle brique ; les indicateurs sautent des valeurs","Blocage de rendu côté client","Clic droit &rsaquo; Reload Chart, ou F5"],
+      ["Se bloque de nouveau quelques minutes après chaque rechargement","Cache obsolète ou extension de navigateur","Vider cache/cookies (All time) + actualisation forcée ; tester en navigation privée"],
+      ["Se met à jour en navigation privée, pas dans la fenêtre normale","Bloqueur de publicités, VPN ou extension de blocage de scripts","Désactivez les extensions sur chrome://extensions, ajoutez le site à la liste d'autorisation"],
+      ["Le graphique en chandeliers du même symbole est aussi plat","Données de marché différées ou manquantes","Abonnez-vous / activez les données temps réel, puis reconnectez-vous"],
+      ["Les graphiques se figent ou se déconnectent au hasard","Limite de sessions dépassée sur plusieurs appareils","Déconnectez-vous partout, connectez-vous sur un seul appareil"],
+      ["Le graphique ne bouge jamais","Graphique d'un mois de contrat expiré","Passez au contrat du mois en cours"],
+    ] },
+    { type: "heading",text: "Gardez votre exécution hors du graphique avec PickMyTrade" },
+    { type: "paragraph",html: "Voici la partie qui compte si vous <strong class='text-white'>tradez une stratégie</strong> plutôt que de surveiller chaque entrée à vue : un défaut de rendu Renko n'est qu'un problème d'affichage jusqu'à ce que vos entrées dépendent d'un graphique qui retarde sur le prix réel. Cliquer sur des briques figées peut vous faire agir sur un niveau déjà disparu." },
+    { type: "paragraph",html: "PickMyTrade sort l'exécution de ce que dessine votre écran. Votre stratégie émet un signal, une alerte TradingView ou votre propre logique, et l'ordre est acheminé vers Tradovate <strong class='text-white'>côté serveur</strong>, de sorte qu'un graphique qui cesse de se redessiner ne se trouve jamais entre votre signal et l'exécution :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Routage piloté par les signaux</strong> : les ordres se déclenchent à partir de l'alerte de votre stratégie, et non d'un repaint du graphique ; un rendu Renko bloqué ne peut donc pas provoquer une entrée manquée ou tardive.",
+        "<strong class='text-white'>Exécution côté serveur</strong> : l'ordre part vers Tradovate depuis PickMyTrade, indépendamment de votre onglet de navigateur, de vos extensions ou d'un graphique figé.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong> : reproduisez un signal sur plusieurs comptes Tradovate à la fois, chacun dimensionné selon ses propres limites, au lieu de surveiller un graphique par compte.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Sta guardando un grafico Renko, il prezzo si muove chiaramente e i mattoni restano&hellip; lì. Non si formano nuove barre, la Sua media mobile si appiattisce o salta valori e il grafico sembra un passo indietro rispetto al mercato. Poi aggiorna e torna in vita, fino alla successiva raffica di tick, e si blocca di nuovo. In un mercato veloce quel ritardo può costarLe una lettura. Nella maggior parte dei casi è un intoppo di rendering lato browser e la soluzione più rapida è un ricaricamento, una cancellazione della cache o un rapido test in incognito. La parte più complicata è distinguere questo difetto dal comportamento <em>normale</em> di Renko, in cui il grafico deve apparire fermo. Chiariamo entrambi." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per un grafico Renko che non si aggiorna",
+      items: [
+        "<strong class='text-white'>Il prezzo si sta davvero muovendo di un mattone intero?</strong> Renko stampa un nuovo mattone solo quando il prezzo percorre l'intera dimensione del mattone. In caso contrario, il grafico funziona come progettato, non è bloccato.",
+        "<strong class='text-white'>Ricarichi prima il grafico.</strong> Faccia clic con il tasto destro sul grafico e scelga Reload Chart, oppure prema F5. Nella maggior parte dei casi ripristina gli aggiornamenti in pochi secondi.",
+        "<strong class='text-white'>Cancelli cache &amp; cookie, poi aggiornamento forzato.</strong> Cancelli per All time, poi Ctrl+F5 (Windows) o Cmd+Maiusc+R (Mac) per ottenere una copia fresca della piattaforma.",
+        "<strong class='text-white'>Provi in incognito.</strong> Ctrl+Maiusc+N apre una finestra pulita senza estensioni. Se Renko si aggiorna lì, il colpevole è un'estensione o una cache obsoleta.",
+        "<strong class='text-white'>Verifichi di essere su dati in tempo reale.</strong> Un feed ritardato o nomi di simboli di un altro colore significano che il problema sono i dati, non il rendering.",
+        "<strong class='text-white'>Escluda problemi di sessione e di contratto.</strong> Troppe sessioni aperte o un mese di contratto scaduto possono bloccare un grafico indipendentemente da Renko.",
+        "<strong class='text-white'>Persiste ovunque?</strong> Passi all'app desktop e contatti il supporto se il blocco sopravvive a tutto quanto sopra.",
+      ],
+    },
+    { type: "heading",text: "Perché un grafico Renko sembra bloccato (bug vs comportamento normale)" },
+    { type: "paragraph",html: "Prima di risolvere qualsiasi cosa, separi le due cause, perché richiedono risposte opposte." },
+    { type: "paragraph",html: "<strong class='text-white'>Normale comportamento di Renko.</strong> Un mattone Renko non è legato al tempo. Si forma solo quando il prezzo percorre una distanza prefissata in una direzione; su Tradovate quella distanza è definita in <strong class='text-white'>tick</strong> (ad esempio un mattone da 8 o 16 tick). Finché il prezzo non percorre quella distanza completa, non compare alcun nuovo mattone, per quanti secondi o minuti passino. Quindi, in condizioni tranquille, nervose o laterali, un grafico Renko può davvero restare sullo stesso mattone a lungo. Non è un blocco; è il grafico che filtra il rumore, che è lo scopo stesso di Renko. Le inversioni sono ancora più rigide: il prezzo deve percorrere un mattone intero <em>contro</em> il trend prima di girare, quindi sono sempre in ritardo rispetto al tick grezzo." },
+    { type: "paragraph",html: "<strong class='text-white'>Il vero difetto.</strong> Il vero bug ha un aspetto diverso. Il prezzo supera chiaramente la soglia del mattone e tuttavia non viene disegnato alcun nuovo mattone. Gli indicatori tracciati sul grafico Renko, una media mobile, il VWAP, smettono di avanzare, vengono tracciati fuori sequenza o saltano del tutto i valori. Poi ricarica e i mattoni e i punti degli indicatori mancanti si riempiono di colpo, a conferma che i dati c'erano; il grafico aveva semplicemente smesso di renderizzarli in tempo reale. È un blocco lato client ed è quello a cui puntano le soluzioni seguenti." },
+    { type: "paragraph",html: "La diagnosi in un secondo: apra un normale grafico a <strong class='text-white'>candele</strong> sullo stesso simbolo accanto al Suo grafico Renko. Se le candele si muovono ma i mattoni Renko restano bloccati, ha il blocco di rendering: aggiorni. Se le candele sono <em>anch'esse</em> piatte, non è un problema di Renko; è un problema di feed dati o di connessione da risolvere in modo diverso." },
+    { type: "heading",text: "Come risolvere un grafico Renko che smette di aggiornarsi: passo dopo passo" },
+    { type: "heading",text: "Soluzione A: ricaricare il grafico (la più veloce)" },
+    { type: "paragraph",html: "Parta da qui. Elimina il rendering bloccato e riscarica i dati dal server senza toccare alcuna impostazione." },
+    {
+      type: "steps",
+      items: [
+        { title: "Fare clic con il tasto destro sul grafico", html: "Faccia clic con il tasto destro direttamente sul grafico Renko." },
+        { title: "Scegliere Reload Chart", html: "Scelga <strong class='text-white'>Reload Chart</strong> (alcune versioni lo chiamano <strong class='text-white'>Reset Chart</strong> o <strong class='text-white'>Refresh</strong>) per riscaricare le barre e ridisegnare." },
+        { title: "Ricaricare l'intera pagina se necessario", html: "Se il menu del grafico non risolve, prema <strong class='text-white'>F5</strong> per ricaricare l'intera pagina della piattaforma." },
+        { title: "Osservare i nuovi tick", html: "Osservi alcuni tick. Quando i nuovi mattoni si formano al passo con il prezzo, è di nuovo sincronizzato." },
+      ],
+    },
+    { type: "paragraph",html: "Se un ricaricamento risolve per qualche minuto e poi si blocca di nuovo, questo schema ripetuto indica file in cache o un'estensione del browser. Passi alla Soluzione B." },
+    { type: "heading",text: "Soluzione B: cancellare cache e cookie, poi aggiornamento forzato" },
+    { type: "paragraph",html: "I file della piattaforma obsoleti in cache sono il motivo più comune per cui un grafico continua a bloccarsi dopo ogni ricaricamento. Una cancellazione completa della cache costringe il browser a scaricare la versione corrente invece di riutilizzare vecchie risorse mezze rotte." },
+    {
+      type: "steps",
+      items: [
+        { title: "Aprire Clear browsing data", html: "Apra la finestra <strong class='text-white'>Clear browsing data</strong> del browser (in Chrome: menu &rsaquo; Cancella dati di navigazione, oppure incolli <code>chrome://settings/clearBrowserData</code>)." },
+        { title: "Impostare l'intervallo su All time", html: "Imposti l'intervallo di tempo su <strong class='text-white'>All time</strong>." },
+        { title: "Selezionare cache e cookie, poi cancellare", html: "Selezioni <strong class='text-white'>Cached images and files</strong> e <strong class='text-white'>Cookies and other site data</strong>, poi cancelli." },
+        { title: "Accedere di nuovo", html: "Ricarichi Tradovate e acceda di nuovo (cancellare i cookie La disconnette; i layout dei grafici sono salvati nel Suo account, quindi tornano)." },
+        { title: "Forzare un aggiornamento completo", html: "Forzi un aggiornamento completo per sicurezza: <strong class='text-white'>Ctrl+F5</strong> su Windows/Linux, <strong class='text-white'>Cmd+Maiusc+R</strong> su Mac." },
+      ],
+    },
+    { type: "quote",html: "<strong>Attenzione:</strong> annoti la dimensione del mattone Renko (in tick) e le impostazioni degli indicatori prima di una cancellazione completa. I layout risiedono nel Suo account, ma una nota di 10 secondi Le permette di confermare che nulla sia stato reimpostato quando accede di nuovo. Se usa la piattaforma in un browser tutto il giorno, cancellare la cache ogni settimana previene il problema." },
+    { type: "heading",text: "Soluzione C: provare in incognito e disattivare le estensioni" },
+    { type: "paragraph",html: "Una finestra in incognito carica Tradovate con una cache pulita e <em>senza estensioni</em>. È il modo più pulito per isolare ciò che rompe il rendering in tempo reale." },
+    {
+      type: "steps",
+      items: [
+        { title: "Aprire una finestra in incognito", html: "Prema <strong class='text-white'>Ctrl+Maiusc+N</strong> (Chrome/Edge) per aprire una finestra in incognito/privata e acceda a Tradovate." },
+        { title: "Osservare il grafico Renko", html: "Apra il Suo grafico Renko e lo osservi per un minuto. Se i mattoni ora si aggiornano in tempo reale, il problema è un'estensione o dati in cache nel Suo profilo normale, non Tradovate." },
+        { title: "Disattivare le estensioni una alla volta", html: "Tornato nella finestra normale, vada su <code>chrome://extensions</code> e disattivi le estensioni una alla volta; ad blocker, scudi per la privacy, uBlock, componenti aggiuntivi VPN e blocca-script sono i soliti colpevoli." },
+        { title: "Ricaricare dopo ogni modifica", html: "Ricarichi dopo ciascuna finché il grafico Renko non mantiene un aggiornamento in tempo reale, poi lasci quell'estensione disattivata per Tradovate (oppure aggiunga il sito all'elenco consentiti)." },
+      ],
+    },
+    { type: "heading",text: "Soluzione D: verificare di essere davvero su dati in tempo reale" },
+    { type: "paragraph",html: "Se anche un grafico a candele sullo stesso simbolo è piatto, non si tratta di un bug di rendering di Renko, ma di dati di mercato ritardati o mancanti. Renko non può costruire mattoni in tempo reale da un feed che non è in tempo reale." },
+    {
+      type: "steps",
+      items: [
+        { title: "Controllare il colore del simbolo e la quotazione", html: "Controlli il colore del nome del simbolo e la quotazione. Nomi di simboli di un altro colore (spesso arancione) e quotazioni in ritardo di minuti indicano <strong class='text-white'>dati ritardati</strong>." },
+        { title: "Abbonarsi con un conto personale", html: "Con un conto personale, aggiunga o rinnovi la Sua <strong class='text-white'>sottoscrizione ai dati di mercato</strong> in tempo reale della borsa, poi esca e rientri." },
+        { title: "Verificare con la società su un conto prop", html: "Su un conto prop o di valutazione, di solito non può abbonarsi da solo: la società abilita i dati in tempo reale sul conto. Regole e costi dei dati variano in base alla società e alla dimensione del conto, quindi verifichi le regole correnti della Sua società." },
+      ],
+    },
+    { type: "paragraph",html: "Per la guida completa su come individuare ed eliminare un feed ritardato, consulti la guida di Tradovate sui dati ritardati di 10 minuti e sui simboli arancioni." },
+    { type: "heading",text: "Soluzione E: escludere limiti di sessione e contratti scaduti" },
+    { type: "paragraph",html: "Due insidie a livello di conto bloccano i grafici in un modo che nessuna cancellazione della cache risolve:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Troppe sessioni attive.</strong> Tradovate limita in quanti posti può essere connesso contemporaneamente (web, desktop, mobile e TradingView contano tutti). Superando il limite, i grafici possono bloccarsi o disconnettersi. Esca ovunque e acceda su un solo dispositivo.",
+        "<strong class='text-white'>Un mese di contratto scaduto.</strong> Un vecchio contratto scaduto non si muove più, quindi il suo grafico appare bloccato in modo permanente. Passi al contratto del mese corrente (front-month).",
+      ],
+    },
+    { type: "heading",text: "Soluzione F: passare all'app desktop o contattare il supporto" },
+    { type: "paragraph",html: "Se il blocco sopravvive a una cancellazione della cache, all'incognito e a una sessione nuova, passi all'<strong class='text-white'>app desktop</strong>: funziona in modo autonomo, senza estensioni del browser e senza la limitazione delle schede che priva di aggiornamenti un grafico in background. Se Renko non riesce ancora a mantenere un rendering in tempo reale lì con dati in tempo reale confermati, contatti il supporto di Tradovate e invii uno screenshot dei mattoni bloccati accanto a un grafico a candele che si muove, così che possano vedere il divario di rendering." },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Cosa vede","Causa probabile","Soluzione"], rows: [
+      ["Nessun nuovo mattone, ma il prezzo si muove tranquillamente in range","Renko normale: il prezzo non ha percorso un mattone intero","Niente da correggere; un mattone si forma quando il prezzo percorre la dimensione del mattone"],
+      ["Il prezzo supera di molto la soglia del mattone, ancora nessun nuovo mattone; gli indicatori saltano valori","Blocco di rendering lato client","Clic destro &rsaquo; Reload Chart, oppure F5"],
+      ["Si blocca di nuovo pochi minuti dopo ogni ricaricamento","Cache obsoleta o estensione del browser","Cancelli cache/cookie (All time) + aggiornamento forzato; provi in incognito"],
+      ["Si aggiorna bene in incognito, non nella finestra normale","Ad blocker, VPN o estensione blocca-script","Disattivi le estensioni in chrome://extensions, aggiunga il sito all'elenco consentiti"],
+      ["Anche il grafico a candele sullo stesso simbolo è piatto","Dati di mercato ritardati o mancanti","Si abboni / abiliti i dati in tempo reale, poi acceda di nuovo"],
+      ["I grafici si bloccano o si disconnettono a caso","Limite di sessioni superato su più dispositivi","Esca ovunque, acceda su un solo dispositivo"],
+      ["Il grafico non si muove affatto","Grafico di un mese di contratto scaduto","Passi al contratto del mese corrente"],
+    ] },
+    { type: "heading",text: "Tenga la Sua esecuzione fuori dal grafico con PickMyTrade" },
+    { type: "paragraph",html: "Ecco la parte che conta se <strong class='text-white'>opera con una strategia</strong> invece di sorvegliare ogni ingresso a occhio: un difetto di rendering di Renko è solo un problema di visualizzazione finché i Suoi ingressi non dipendono da un grafico che resta indietro rispetto al prezzo reale. Se fa clic su mattoni bloccati, può agire su un livello ormai svanito." },
+    { type: "paragraph",html: "PickMyTrade sposta l'esecuzione fuori da ciò che disegna il Suo schermo. La Sua strategia genera un segnale, un alert di TradingView o la Sua logica, e l'ordine viene instradato a Tradovate <strong class='text-white'>lato server</strong>, così un grafico che smette di ridisegnarsi non si frappone mai tra il Suo segnale e l'esecuzione:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Routing guidato dai segnali</strong>: gli ordini partono dall'alert della Sua strategia, non da un ridisegno del grafico, quindi un rendering Renko bloccato non può causare un ingresso perso o in ritardo.",
+        "<strong class='text-white'>Esecuzione lato server</strong>: l'ordine parte verso Tradovate dal lato di PickMyTrade, indipendentemente dalla scheda del browser, dalle estensioni o da un grafico bloccato.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>: replichi un segnale su più conti Tradovate contemporaneamente, ciascuno dimensionato secondo i propri limiti, invece di sorvegliare un grafico per ogni conto.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Letting a Frozen Chart Cost You Fills", de: "Lassen Sie sich nicht von einem eingefrorenen Chart Ausführungen kosten", es: "No deje que un gráfico congelado le cueste ejecuciones", fr: "Ne laissez pas un graphique figé vous coûter des exécutions", it: "Non lasci che un grafico bloccato Le costi delle esecuzioni" },
+  ctaText: { en: "Start your free trial and route every strategy signal to Tradovate automatically, no chart babysitting required.", de: "Starten Sie Ihre kostenlose Testphase und leiten Sie jedes Strategiesignal automatisch an Tradovate weiter – ganz ohne den Chart zu beaufsichtigen.", es: "Comience su prueba gratuita y enrute automáticamente cada señal de su estrategia a Tradovate, sin tener que vigilar el gráfico.", fr: "Commencez votre essai gratuit et acheminez automatiquement chaque signal de votre stratégie vers Tradovate, sans avoir à surveiller le graphique.", it: "Inizi la prova gratuita e instradi automaticamente ogni segnale della Sua strategia a Tradovate, senza dover sorvegliare il grafico." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does my Tradovate Renko chart stop updating in real time?", a: "Two different things cause it. Either price hasn't moved a full brick distance yet, so a new brick genuinely can't print (that's normal Renko behavior), or the chart's real-time render has stalled and new bricks and indicators stop drawing until you refresh. If a candle chart on the same symbol is ticking but Renko is not, it's the render stall, and a reload brings it back." },
+    { q: "Is a frozen Renko brick a bug or normal behavior?", a: "Often it's normal. A Renko brick only completes when price travels the full brick size you set, so during quiet, ranging price the chart can sit on the same brick for minutes. It's only a bug if price is clearly moving past the brick threshold and no new brick appears, or if indicators skip values, until you refresh." },
+    { q: "How do I force a Tradovate Renko chart to update again?", a: "Refresh first. Right-click the chart and choose Reload Chart, or press F5 to reload the whole page. If it keeps stalling, clear your browser cache and cookies for All time and do a hard refresh (Ctrl+F5 on Windows, Cmd+Shift+R on Mac). Testing in an incognito window rules out an extension or stale cache as the cause." },
+    { q: "Why does the Renko chart update in incognito but not my normal browser?", a: "Incognito loads the platform with no extensions and a clean cache. If Renko updates there but not in your normal window, an ad blocker, privacy tool, VPN, script blocker, or stale cached files are interfering. Disable extensions one at a time at chrome://extensions and clear your cache to fix the normal session." },
+    { q: "My whole platform shows delayed data, not just Renko. What then?", a: "That's a market-data problem, not a chart-render bug. If symbol names show in an off color or quotes lag by minutes, you're on delayed data and need an active real-time subscription. On a personal account you subscribe yourself; on a prop or evaluation account the firm enables it. Requirements vary by firm and account size, so check your firm's current rules." },
+    { q: "Does a frozen Renko chart affect my automated orders?", a: "No. Order routing runs server-side, independent of what your chart is drawing on screen. A stalled Renko render is a display problem, so your working orders and stops are unaffected. The risk is manual: if you trade by eye off a chart that's lagging the real price, you can act on a stale level. Confirm the live price on a DOM or quote board before you click." },
+    { q: "Does clearing my cache lose my Tradovate chart layout?", a: "Clearing cookies signs you out, so you'll log back in. Your chart layouts and templates are saved to your account, not the browser, so they come back after login. Still, note your Renko brick size and indicator settings before a full clear so you can confirm nothing reset." },
+    { q: "Can PickMyTrade help if my Renko chart keeps freezing?", a: "Yes, for execution. PickMyTrade takes your strategy's signals and routes orders to Tradovate server-side, so a chart that stops redrawing on screen never sits between your signal and the fill. It doesn't fix the display glitch, but it keeps a rendering stall from turning into a missed entry on an automated strategy." },
+  ], de: [
+    { q: "Warum aktualisiert sich mein Tradovate-Renko-Chart nicht mehr in Echtzeit?", a: "Dafür gibt es zwei verschiedene Ursachen. Entweder hat sich der Kurs noch nicht um eine volle Brick-Distanz bewegt, sodass tatsächlich kein neuer Brick entstehen kann (das ist normales Renko-Verhalten), oder das Echtzeit-Rendering des Charts ist ins Stocken geraten, und neue Bricks und Indikatoren werden erst nach einer Aktualisierung wieder gezeichnet. Tickt ein Kerzenchart desselben Symbols, Renko aber nicht, handelt es sich um den Rendering-Stillstand, und ein Neuladen bringt ihn zurück." },
+    { q: "Ist ein eingefrorener Renko-Brick ein Fehler oder normales Verhalten?", a: "Oft ist es normal. Ein Renko-Brick wird erst fertiggestellt, wenn der Kurs die von Ihnen festgelegte Brick-Größe vollständig durchläuft; bei ruhigem, seitwärts laufendem Kurs kann der Chart daher minutenlang auf demselben Brick stehen. Es ist nur dann ein Fehler, wenn der Kurs die Brick-Schwelle eindeutig überschreitet und kein neuer Brick erscheint oder Indikatoren Werte überspringen – bis Sie aktualisieren." },
+    { q: "Wie erzwinge ich, dass sich ein Tradovate-Renko-Chart wieder aktualisiert?", a: "Aktualisieren Sie zuerst. Klicken Sie mit der rechten Maustaste auf den Chart und wählen Sie Reload Chart, oder drücken Sie F5, um die gesamte Seite neu zu laden. Wenn er weiter stockt, löschen Sie Cache und Cookies Ihres Browsers für All time und führen Sie eine harte Aktualisierung durch (Strg+F5 unter Windows, Cmd+Umschalt+R auf dem Mac). Ein Test in einem Inkognito-Fenster schließt eine Erweiterung oder einen veralteten Cache als Ursache aus." },
+    { q: "Warum aktualisiert sich der Renko-Chart im Inkognito-Modus, aber nicht in meinem normalen Browser?", a: "Der Inkognito-Modus lädt die Plattform ohne Erweiterungen und mit sauberem Cache. Aktualisiert sich Renko dort, aber nicht in Ihrem normalen Fenster, stören ein Werbeblocker, ein Datenschutz-Tool, ein VPN, ein Skriptblocker oder veraltete Cache-Dateien. Deaktivieren Sie Erweiterungen einzeln unter chrome://extensions und leeren Sie Ihren Cache, um die normale Sitzung zu reparieren." },
+    { q: "Meine gesamte Plattform zeigt verzögerte Daten, nicht nur Renko. Was nun?", a: "Das ist ein Marktdatenproblem, kein Chart-Rendering-Fehler. Wenn Symbolnamen in einer abweichenden Farbe erscheinen oder Kurse um Minuten hinterherhinken, nutzen Sie verzögerte Daten und benötigen ein aktives Echtzeit-Abonnement. Bei einem persönlichen Konto abonnieren Sie es selbst; bei einem Prop- oder Evaluierungskonto schaltet es die Firma frei. Die Anforderungen variieren je nach Firma und Kontogröße, prüfen Sie daher die aktuellen Regeln Ihrer Firma." },
+    { q: "Beeinflusst ein eingefrorener Renko-Chart meine automatisierten Orders?", a: "Nein. Das Order-Routing läuft serverseitig, unabhängig davon, was Ihr Chart auf dem Bildschirm zeichnet. Ein stockendes Renko-Rendering ist ein Anzeigeproblem, Ihre laufenden Orders und Stops sind also nicht betroffen. Das Risiko liegt im manuellen Handel: Wenn Sie nach Augenmaß von einem Chart handeln, der dem echten Kurs hinterherhinkt, können Sie auf ein veraltetes Niveau reagieren. Bestätigen Sie den Live-Kurs in einem DOM oder Kursboard, bevor Sie klicken." },
+    { q: "Gehen meine Chart-Layouts in Tradovate verloren, wenn ich den Cache lösche?", a: "Das Löschen von Cookies meldet Sie ab, Sie müssen sich also neu anmelden. Ihre Chart-Layouts und Vorlagen sind in Ihrem Konto gespeichert, nicht im Browser, und kehren nach der Anmeldung zurück. Notieren Sie sich dennoch Ihre Renko-Brick-Größe und Indikatoreinstellungen vor einem vollständigen Löschen, damit Sie bestätigen können, dass nichts zurückgesetzt wurde." },
+    { q: "Kann PickMyTrade helfen, wenn mein Renko-Chart ständig einfriert?", a: "Ja, bei der Ausführung. PickMyTrade nimmt die Signale Ihrer Strategie entgegen und leitet Orders serverseitig an Tradovate weiter, sodass ein Chart, der sich nicht mehr neu zeichnet, nie zwischen Ihrem Signal und der Ausführung steht. Es behebt den Anzeigefehler nicht, verhindert aber, dass ein Rendering-Stillstand bei einer automatisierten Strategie zu einem verpassten Einstieg wird." },
+  ], es: [
+    { q: "¿Por qué mi gráfico Renko de Tradovate deja de actualizarse en tiempo real?", a: "Hay dos causas distintas. O bien el precio aún no se ha movido una distancia completa de ladrillo, por lo que realmente no puede formarse un ladrillo nuevo (comportamiento normal de Renko), o bien el renderizado en tiempo real del gráfico se ha bloqueado y los nuevos ladrillos e indicadores dejan de dibujarse hasta que usted actualiza. Si un gráfico de velas del mismo símbolo avanza pero Renko no, es el bloqueo de renderizado, y una recarga lo recupera." },
+    { q: "¿Un ladrillo Renko congelado es un error o un comportamiento normal?", a: "A menudo es normal. Un ladrillo Renko solo se completa cuando el precio recorre todo el tamaño de ladrillo que usted definió, por lo que con un precio tranquilo y lateral el gráfico puede quedarse minutos en el mismo ladrillo. Solo es un error si el precio supera claramente el umbral del ladrillo y no aparece ningún ladrillo nuevo, o si los indicadores se saltan valores, hasta que usted actualiza." },
+    { q: "¿Cómo fuerzo a un gráfico Renko de Tradovate a actualizarse de nuevo?", a: "Actualice primero. Haga clic derecho en el gráfico y elija Reload Chart, o pulse F5 para recargar toda la página. Si sigue bloqueándose, borre la caché y las cookies de su navegador de All time y haga una actualización forzada (Ctrl+F5 en Windows, Cmd+Mayús+R en Mac). Probar en una ventana de incógnito descarta una extensión o una caché obsoleta como causa." },
+    { q: "¿Por qué el gráfico Renko se actualiza en incógnito pero no en mi navegador normal?", a: "El modo incógnito carga la plataforma sin extensiones y con una caché limpia. Si Renko se actualiza allí pero no en su ventana normal, algo interfiere: un bloqueador de anuncios, una herramienta de privacidad, una VPN, un bloqueador de scripts o archivos en caché obsoletos. Desactive las extensiones una a una en chrome://extensions y borre su caché para arreglar la sesión normal." },
+    { q: "Toda mi plataforma muestra datos retrasados, no solo Renko. ¿Qué hago?", a: "Eso es un problema de datos de mercado, no un error de renderizado del gráfico. Si los nombres de los símbolos aparecen en otro color o las cotizaciones van con minutos de retraso, está con datos retrasados y necesita una suscripción activa en tiempo real. En una cuenta personal usted mismo se suscribe; en una cuenta prop o de evaluación lo activa la firma. Los requisitos varían según la firma y el tamaño de la cuenta, así que consulte las reglas vigentes de su firma." },
+    { q: "¿Un gráfico Renko congelado afecta a mis órdenes automatizadas?", a: "No. El enrutamiento de órdenes se ejecuta en el servidor, independientemente de lo que su gráfico dibuje en pantalla. Un renderizado Renko bloqueado es un problema de visualización, por lo que sus órdenes activas y stops no se ven afectados. El riesgo es manual: si opera a ojo con un gráfico que va por detrás del precio real, puede actuar sobre un nivel obsoleto. Confirme el precio en vivo en un DOM o panel de cotizaciones antes de hacer clic." },
+    { q: "¿Pierdo el diseño de mis gráficos de Tradovate si borro la caché?", a: "Borrar las cookies cierra su sesión, así que deberá volver a iniciar sesión. Sus diseños y plantillas de gráficos se guardan en su cuenta, no en el navegador, por lo que regresan tras iniciar sesión. Aun así, anote el tamaño de ladrillo de Renko y los ajustes de sus indicadores antes de un borrado completo para poder confirmar que nada se restableció." },
+    { q: "¿Puede PickMyTrade ayudar si mi gráfico Renko se sigue congelando?", a: "Sí, en la ejecución. PickMyTrade toma las señales de su estrategia y enruta las órdenes a Tradovate desde el servidor, de modo que un gráfico que deja de redibujarse en pantalla nunca se interpone entre su señal y la ejecución. No corrige el fallo de visualización, pero evita que un bloqueo de renderizado se convierta en una entrada perdida en una estrategia automatizada." },
+  ], fr: [
+    { q: "Pourquoi mon graphique Renko Tradovate cesse-t-il de se mettre à jour en temps réel ?", a: "Deux causes différentes. Soit le prix n'a pas encore parcouru une distance complète de brique, donc une nouvelle brique ne peut réellement pas se former (comportement Renko normal), soit le rendu en temps réel du graphique s'est bloqué et les nouvelles briques et indicateurs cessent de se dessiner jusqu'à ce que vous actualisiez. Si un graphique en chandeliers du même symbole bouge mais pas le Renko, il s'agit du blocage de rendu, et un rechargement le rétablit." },
+    { q: "Une brique Renko figée est-elle un bug ou un comportement normal ?", a: "C'est souvent normal. Une brique Renko ne se complète que lorsque le prix parcourt toute la taille de brique que vous avez définie ; en période calme et sans tendance, le graphique peut donc rester sur la même brique pendant plusieurs minutes. Ce n'est un bug que si le prix dépasse nettement le seuil de la brique sans qu'aucune nouvelle brique n'apparaisse, ou si les indicateurs sautent des valeurs, jusqu'à ce que vous actualisiez." },
+    { q: "Comment forcer un graphique Renko Tradovate à se mettre à jour de nouveau ?", a: "Actualisez d'abord. Faites un clic droit sur le graphique et choisissez Reload Chart, ou appuyez sur F5 pour recharger toute la page. S'il continue de se bloquer, videz le cache et les cookies de votre navigateur pour All time et faites une actualisation forcée (Ctrl+F5 sous Windows, Cmd+Maj+R sur Mac). Un test dans une fenêtre de navigation privée permet d'écarter une extension ou un cache obsolète comme cause." },
+    { q: "Pourquoi le graphique Renko se met-il à jour en navigation privée mais pas dans mon navigateur normal ?", a: "La navigation privée charge la plateforme sans extensions et avec un cache propre. Si Renko se met à jour là-bas mais pas dans votre fenêtre normale, un bloqueur de publicités, un outil de confidentialité, un VPN, un bloqueur de scripts ou des fichiers en cache obsolètes interfèrent. Désactivez les extensions une par une sur chrome://extensions et videz votre cache pour réparer la session normale." },
+    { q: "Toute ma plateforme affiche des données retardées, pas seulement Renko. Que faire ?", a: "C'est un problème de données de marché, pas un bug de rendu du graphique. Si les noms de symboles s'affichent dans une couleur différente ou si les cotations ont plusieurs minutes de retard, vous êtes sur des données différées et avez besoin d'un abonnement temps réel actif. Sur un compte personnel, vous vous abonnez vous-même ; sur un compte prop ou d'évaluation, c'est la société qui l'active. Les exigences varient selon la société et la taille du compte, vérifiez donc les règles actuelles de votre société." },
+    { q: "Un graphique Renko figé affecte-t-il mes ordres automatisés ?", a: "Non. Le routage des ordres s'exécute côté serveur, indépendamment de ce que votre graphique dessine à l'écran. Un rendu Renko bloqué est un problème d'affichage, vos ordres actifs et vos stops ne sont donc pas affectés. Le risque est manuel : si vous tradez à vue d'après un graphique qui retarde sur le prix réel, vous pouvez agir sur un niveau périmé. Confirmez le prix en direct sur un DOM ou un tableau de cotations avant de cliquer." },
+    { q: "Vider mon cache fait-il perdre la disposition de mes graphiques Tradovate ?", a: "Effacer les cookies vous déconnecte, vous devrez donc vous reconnecter. Vos dispositions et modèles de graphiques sont enregistrés sur votre compte, pas dans le navigateur, et reviennent après connexion. Notez tout de même votre taille de brique Renko et vos réglages d'indicateurs avant un effacement complet afin de pouvoir confirmer que rien n'a été réinitialisé." },
+    { q: "PickMyTrade peut-il aider si mon graphique Renko continue de se figer ?", a: "Oui, pour l'exécution. PickMyTrade prend les signaux de votre stratégie et achemine les ordres vers Tradovate côté serveur, de sorte qu'un graphique qui cesse de se redessiner à l'écran ne se trouve jamais entre votre signal et l'exécution. Il ne corrige pas le défaut d'affichage, mais empêche un blocage de rendu de se transformer en entrée manquée sur une stratégie automatisée." },
+  ], it: [
+    { q: "Perché il mio grafico Renko di Tradovate smette di aggiornarsi in tempo reale?", a: "Ci sono due cause diverse. O il prezzo non ha ancora percorso una distanza completa di mattone, quindi un nuovo mattone non può davvero formarsi (è il normale comportamento di Renko), oppure il rendering in tempo reale del grafico si è bloccato e i nuovi mattoni e indicatori smettono di essere disegnati finché non aggiorna. Se un grafico a candele sullo stesso simbolo si muove ma Renko no, è il blocco di rendering e un ricaricamento lo ripristina." },
+    { q: "Un mattone Renko bloccato è un bug o un comportamento normale?", a: "Spesso è normale. Un mattone Renko si completa solo quando il prezzo percorre l'intera dimensione del mattone che ha impostato, quindi con un prezzo tranquillo e laterale il grafico può restare sullo stesso mattone per minuti. È un bug solo se il prezzo supera chiaramente la soglia del mattone e non compare nessun nuovo mattone, o se gli indicatori saltano valori, finché non aggiorna." },
+    { q: "Come forzo un grafico Renko di Tradovate ad aggiornarsi di nuovo?", a: "Aggiorni prima di tutto. Faccia clic con il tasto destro sul grafico e scelga Reload Chart, oppure prema F5 per ricaricare l'intera pagina. Se continua a bloccarsi, cancelli cache e cookie del browser per All time e faccia un aggiornamento forzato (Ctrl+F5 su Windows, Cmd+Maiusc+R su Mac). Provare in una finestra di navigazione in incognito esclude un'estensione o una cache obsoleta come causa." },
+    { q: "Perché il grafico Renko si aggiorna in incognito ma non nel mio browser normale?", a: "La modalità incognito carica la piattaforma senza estensioni e con una cache pulita. Se Renko si aggiorna lì ma non nella finestra normale, interferiscono un ad blocker, uno strumento per la privacy, una VPN, un blocca-script o file in cache obsoleti. Disattivi le estensioni una alla volta in chrome://extensions e cancelli la cache per correggere la sessione normale." },
+    { q: "Tutta la mia piattaforma mostra dati ritardati, non solo Renko. E ora?", a: "È un problema di dati di mercato, non un bug di rendering del grafico. Se i nomi dei simboli appaiono di un altro colore o le quotazioni sono in ritardo di minuti, sta usando dati ritardati e ha bisogno di una sottoscrizione attiva in tempo reale. Con un conto personale si abbona da solo; con un conto prop o di valutazione la attiva la società. I requisiti variano in base alla società e alla dimensione del conto, quindi verifichi le regole correnti della Sua società." },
+    { q: "Un grafico Renko bloccato influisce sui miei ordini automatizzati?", a: "No. Il routing degli ordini avviene lato server, indipendentemente da ciò che il Suo grafico disegna sullo schermo. Un rendering Renko bloccato è un problema di visualizzazione, quindi i Suoi ordini attivi e gli stop non sono interessati. Il rischio è manuale: se opera a occhio su un grafico che resta indietro rispetto al prezzo reale, può agire su un livello obsoleto. Confermi il prezzo in tempo reale su un DOM o su una tabella delle quotazioni prima di fare clic." },
+    { q: "Cancellare la cache mi fa perdere il layout dei grafici di Tradovate?", a: "Cancellare i cookie La disconnette, quindi dovrà effettuare di nuovo l'accesso. I layout e i modelli dei grafici sono salvati nel Suo account, non nel browser, e tornano dopo l'accesso. Annoti comunque la dimensione del mattone Renko e le impostazioni degli indicatori prima di una cancellazione completa, così da poter confermare che nulla sia stato reimpostato." },
+    { q: "PickMyTrade può aiutare se il mio grafico Renko continua a bloccarsi?", a: "Sì, per l'esecuzione. PickMyTrade prende i segnali della Sua strategia e instrada gli ordini a Tradovate lato server, così un grafico che smette di ridisegnarsi sullo schermo non si frappone mai tra il Suo segnale e l'esecuzione. Non corregge il difetto di visualizzazione, ma evita che un blocco di rendering si trasformi in un ingresso perso su una strategia automatizzata." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Weitere Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von dieser weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque substantiel de perte et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par celle-ci. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha scopi esclusivamente educativi e informativi e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura corrente nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

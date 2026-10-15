@@ -1,0 +1,413 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "footprint-chart-blank-bid-ask-volume";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Footprint Chart Blank on Bid-Ask Volume";
+const META_DESCRIPTION =
+  "Footprint chart blank on bid-ask volume? Confirm your order-flow data entitlement and fix the chart scaling so volume prints inside each candle again.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate: gráfico footprint en blanco en volumen bid-ask" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate Footprint-Chart leer beim Bid-Ask-Volumen", es: "Gráfico footprint de Tradovate en blanco en el volumen bid-ask", fr: "Graphique footprint Tradovate vide sur le volume bid-ask", it: "Grafico footprint di Tradovate vuoto sul volume bid-ask" },
+  dek: { en: "You switch a chart to Bid-Ask Volume expecting order flow at every price and get an empty grid instead. Here's why the footprint goes dark and how to bring it back.", de: "Sie stellen einen Chart auf Bid-Ask-Volumen um, erwarten den Orderfluss auf jedem Preisniveau und erhalten stattdessen ein leeres Raster. Hier erfahren Sie, warum der Footprint dunkel bleibt und wie Sie ihn wieder zum Laufen bringen.", es: "Cambia un gráfico a Bid-Ask Volume esperando ver el flujo de órdenes en cada precio y, en su lugar, obtiene una cuadrícula vacía. Esto es lo que hace que el footprint se quede en blanco y cómo recuperarlo.", fr: "Vous passez un graphique en Bid-Ask Volume en vous attendant à voir le flux d'ordres à chaque prix, et vous obtenez à la place une grille vide. Voici pourquoi le footprint reste vide et comment le rétablir.", it: "Passate un grafico a Bid-Ask Volume aspettandovi il flusso ordini a ogni prezzo e ottenete invece una griglia vuota. Ecco perché il footprint resta al buio e come farlo tornare a funzionare." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You switch a chart to Bid-Ask Volume, expecting to read order flow at every price, and instead you get an empty grid. Maybe a couple of moving averages float over blank candles. Maybe the candles are there but there's not a single volume number inside them. Either way, the footprint is useless until you find out why it went dark." },
+    { type: "paragraph", html: "The quick version: a blank Bid-Ask Volume chart is almost always one of two problems. Either you don't have the live market-data entitlement that feeds per-price volume, or the data is flowing fine but the chart's price scale is squeezed so tight the numbers can't render. This guide walks both down in order, plus the prop-account and session-timing edge cases that trip people up." },
+    { type: "heading", text: "What a Footprint Chart Actually Needs to Draw" },
+    { type: "paragraph", html: "Tradovate's Bid-Ask Volume chart (the footprint, sometimes called volumetric) is a different beast from a plain candlestick. A candlestick only needs open, high, low and close. A footprint has to know how many contracts traded at the bid and at the ask, for every single price level inside every bar. That's a much heavier, tick-level feed." },
+    { type: "paragraph", html: "So when the grid is blank, ask one question before anything else: is real-time order-flow data actually reaching this chart? If the answer is no, no setting on the chart will fix it. Start with the entitlement." },
+    { type: "heading", text: "Cause 1: No Real-Time Market-Data Entitlement" },
+    { type: "paragraph", html: "This is the top reason, and it's the one the page summary points at. Live charts, SuperDOMs and the Bid-Ask Volume chart all require an active real-time market-data subscription to the exchange that lists the instrument you're watching. Trading NQ or ES? You need the CME real-time package on your account. Without it, you're on delayed or free data, and delayed data doesn't carry the live bid/ask volume a footprint depends on. The candles may still form, but the per-price numbers stay empty." },
+    { type: "paragraph", html: "Here's how to confirm and fix it:" },
+    {
+      type: "list",
+      items: [
+        "Open your Tradovate account settings and find the Market Data (or Market Data Subscriptions) section.",
+        "Check whether you have an active real-time subscription for the exchange that lists your instrument. A CME product needs the CME feed, and so on for each exchange.",
+        "If it's missing, add the subscription for that exchange, then log fully out and back in so the entitlement loads.",
+        "Reopen the Bid-Ask Volume chart and let a live session run for a minute. Volume should start filling the price levels.",
+      ],
+    },
+    { type: "paragraph", html: "One tell that you're on delayed data: symbol names often show up in a different colour and quotes lag by several minutes. If that's what you're seeing, the footprint being blank is a symptom of the same root problem, not a separate bug." },
+    { type: "quote", html: "Market-data fees vary by exchange and data level, and Tradovate changes the packages from time to time. Check the current pricing in your account before you subscribe rather than trusting an old figure." },
+    { type: "heading", text: "Cause 2: The Data Is There, the Scaling Hides It" },
+    { type: "paragraph", html: "This one fools a lot of people. The feed is live, the candles are drawing, but there's not a number in sight. That's not missing data. It's the chart deciding it doesn't have room to print." },
+    { type: "paragraph", html: "The rule is simple: volume numbers only appear when there's enough vertical space to show them at the minimum font size. When a single bar holds many price levels and the price scale is zoomed out, the levels get crushed together and the numbers vanish to try to fit the bars. Two settings control this:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Turn Auto-fit off.</strong> With Auto-fit on, the chart keeps compressing to fit the whole range on screen, which is exactly what starves the numbers of space. Find the Auto-fit toggle for the chart and switch it off.",
+        "<strong class='text-white'>Rescale the price axis by hand.</strong> Move your cursor over the price axis on the right edge of the chart and use your scroll wheel. Scrolling there stretches the vertical scale so each price level gets taller. As the levels open up, the bid/ask numbers reappear.",
+      ],
+    },
+    { type: "paragraph", html: "Expect a trade-off. To read individual price levels clearly you'll be zoomed in fairly tight, which means less time on screen at once. On a fast, wide-ranging instrument the footprint is genuinely hard to read zoomed out, so you're balancing detail against how much history you can see. That's a limitation of the chart, not something you broke." },
+    { type: "heading", text: "Cause 3: Legacy Chart Quirk, Force a Refit" },
+    { type: "paragraph", html: "Sometimes the volume just doesn't print on first load even with a live feed and sane scaling. The older chart engine has a known habit of not always drawing the volume until you nudge it. The fix is manual: scroll your wheel over the chart to refit it, and the numbers snap in." },
+    { type: "paragraph", html: "If that works once but keeps happening, do a harder reset. Close the Bid-Ask Volume chart, reopen a fresh one, or switch to a different chart style and back to Bid-Ask Volume. On the desktop app, a restart clears rendering state that a refresh won't." },
+    { type: "heading", text: "Cause 4: You're Not Actually on the Bid-Ask Volume Style" },
+    { type: "paragraph", html: "Worth a ten-second check before you go deeper. Tradovate ships several chart styles, and it's easy to think you selected the footprint when you're still on candlesticks with no per-price data. The available styles include Candlesticks (the default), OHLC, Line on Close, Bid-Ask Volume, Heiken-Ashi, Renko, Point and Figure, and TPO." },
+    { type: "paragraph", html: "Open the chart's style or chart-type selector and confirm Bid-Ask Volume is the one highlighted. If the label doesn't match what you expected, that's your answer. Bid-Ask Volume is the footprint you want for per-price bid/ask breakdown; TPO is a different market-profile view." },
+    { type: "heading", text: "Cause 5: Prop or Evaluation Account, the Firm Owns the Data" },
+    { type: "paragraph", html: "If you're trading a funded or evaluation account from a prop firm, you don't control the market-data feed. The firm does. When their data package isn't enabled on your account, or hasn't been provisioned yet, the footprint stays blank and there's no self-serve subscription you can buy through Tradovate to fix it." },
+    { type: "paragraph", html: "Don't burn an hour fiddling with chart settings in that case. Contact the prop firm's support and ask them to confirm real-time market data is enabled on your account. The requirements and timing vary by firm and account size, so check your firm's current rules." },
+    { type: "heading", text: "Cause 6: Thin Session or Market Closed" },
+    { type: "paragraph", html: "A footprint only paints where trades actually happened. Load it deep in the overnight lull or on a market holiday and the newest candles can look almost empty simply because little to nothing traded. That's not a fault. Pull the chart up during an active session, or scroll back to a busy period, and the volume fills in. Rule this out before you assume the data is broken, especially if the rest of your platform looks healthy." },
+    { type: "heading", text: "Quick Reference: Symptom to Fix" },
+    {
+      type: "table",
+      headers: ["What you see", "Likely cause", "Fix"],
+      rows: [
+        ["Totally blank grid, maybe just moving averages", "No real-time data entitlement", "Add the exchange's real-time subscription, log out and back in"],
+        ["Candles draw but no numbers inside", "Price scale compressed, Auto-fit on", "Turn Auto-fit off, scroll the price axis to zoom in"],
+        ["Numbers missing until you touch the chart", "Legacy rendering quirk", "Scroll-wheel refit, or reopen the chart / restart the app"],
+        ["No per-price data at all", "Wrong chart style selected", "Set the chart type to Bid-Ask Volume"],
+        ["Blank on a funded or eval account", "Firm hasn't enabled data", "Ask the prop firm to turn on real-time market data"],
+        ["Only recent overnight candles empty", "Thin or closed session", "View during an active session, or scroll to a busy period"],
+      ],
+    },
+    { type: "heading", text: "When to Contact Support" },
+    { type: "paragraph", html: "You've confirmed an active real-time subscription for the right exchange, turned Auto-fit off, rescaled the price axis, checked you're on the Bid-Ask Volume style, and it's mid-session with plenty of trading, yet the footprint is still blank. At that point it's worth raising with Tradovate support (or your prop firm if it's a funded account). Tell them the instrument, that other live windows like the SuperDOM are or aren't updating, and that the Bid-Ask Volume chart renders empty specifically. If your candlestick charts and quotes are dead too, this is a broader data problem." },
+    { type: "heading", text: "Reading Order Flow Is Only Half the Job" },
+    { type: "paragraph", html: "A footprint tells you where volume traded. Acting on it fast and consistently is a separate problem, and that's where clicking bid-ask levels by hand tends to fall apart. If your edge comes from an order-flow or price signal you can define, you can route it straight to Tradovate instead of babysitting the chart." },
+  ], de: [
+    { type: "paragraph", html: "Sie stellen einen Chart auf Bid-Ask-Volumen um, erwarten den Orderfluss auf jedem Preisniveau zu sehen, und erhalten stattdessen ein leeres Raster. Vielleicht schweben ein paar gleitende Durchschnitte über leeren Kerzen. Vielleicht sind die Kerzen da, aber es befindet sich keine einzige Volumenzahl darin. So oder so ist der Footprint nutzlos, bis Sie herausfinden, warum er dunkel geworden ist." },
+    { type: "paragraph", html: "Die Kurzversion: Ein leerer Bid-Ask-Volumen-Chart ist fast immer eines von zwei Problemen. Entweder fehlt Ihnen die Live-Marktdatenberechtigung, die das Volumen je Preis speist, oder die Daten fließen einwandfrei, aber die Preisskala des Charts ist so eng gestaucht, dass die Zahlen nicht dargestellt werden können. Dieser Leitfaden geht beide der Reihe nach durch, plus die Sonderfälle bei Prop-Konten und Session-Timing, die immer wieder Probleme bereiten." },
+    { type: "heading", text: "Was ein Footprint-Chart tatsächlich zum Zeichnen braucht" },
+    { type: "paragraph", html: "Tradovates Bid-Ask-Volumen-Chart (der Footprint, manchmal auch volumetrisch genannt) ist ein ganz anderes Tier als eine einfache Kerze. Eine Kerze braucht nur Eröffnung, Hoch, Tief und Schluss. Ein Footprint muss wissen, wie viele Kontrakte auf der Geld- und auf der Briefseite gehandelt wurden, für jedes einzelne Preisniveau innerhalb jeder Bar. Das ist ein deutlich schwererer Feed auf Tick-Ebene." },
+    { type: "paragraph", html: "Wenn das Raster also leer ist, stellen Sie sich zuerst eine Frage: Erreichen Echtzeit-Orderflow-Daten diesen Chart überhaupt? Wenn die Antwort Nein lautet, wird keine Chart-Einstellung das beheben. Beginnen Sie mit der Berechtigung." },
+    { type: "heading", text: "Ursache 1: Keine Echtzeit-Marktdatenberechtigung" },
+    { type: "paragraph", html: "Das ist der Hauptgrund, und darauf verweist auch die Seitenzusammenfassung. Live-Charts, SuperDOMs und der Bid-Ask-Volumen-Chart benötigen alle ein aktives Echtzeit-Marktdatenabonnement für die Börse, die das beobachtete Instrument listet. Sie handeln NQ oder ES? Dann brauchen Sie das CME-Echtzeitpaket auf Ihrem Konto. Ohne es befinden Sie sich auf verzögerten oder kostenlosen Daten, und verzögerte Daten enthalten nicht das Live-Bid/Ask-Volumen, auf das ein Footprint angewiesen ist. Die Kerzen können sich zwar noch bilden, aber die Zahlen je Preis bleiben leer." },
+    { type: "paragraph", html: "So bestätigen und beheben Sie es:" },
+    {
+      type: "list",
+      items: [
+        "Öffnen Sie Ihre Tradovate-Kontoeinstellungen und suchen Sie den Bereich Market Data (oder Market Data Subscriptions).",
+        "Prüfen Sie, ob Sie ein aktives Echtzeitabonnement für die Börse haben, die Ihr Instrument listet. Ein CME-Produkt benötigt den CME-Feed, und so weiter für jede Börse.",
+        "Falls es fehlt, fügen Sie das Abonnement für diese Börse hinzu und melden Sie sich anschließend vollständig ab und wieder an, damit die Berechtigung geladen wird.",
+        "Öffnen Sie den Bid-Ask-Volumen-Chart erneut und lassen Sie eine Live-Session eine Minute laufen. Das Volumen sollte beginnen, die Preisniveaus zu füllen.",
+      ],
+    },
+    { type: "paragraph", html: "Ein Anzeichen dafür, dass Sie auf verzögerten Daten sind: Symbolnamen erscheinen oft in einer anderen Farbe und Kurse hinken mehrere Minuten hinterher. Wenn Sie das sehen, ist der leere Footprint ein Symptom desselben Grundproblems, kein separater Fehler." },
+    { type: "quote", html: "Marktdatengebühren variieren je nach Börse und Datenstufe, und Tradovate ändert die Pakete von Zeit zu Zeit. Prüfen Sie die aktuellen Preise in Ihrem Konto, bevor Sie abonnieren, statt sich auf eine alte Zahl zu verlassen." },
+    { type: "heading", text: "Ursache 2: Die Daten sind da, die Skalierung versteckt sie" },
+    { type: "paragraph", html: "Diese Ursache täuscht viele Nutzer. Der Feed ist live, die Kerzen zeichnen sich, aber es ist keine Zahl in Sicht. Das sind keine fehlenden Daten. Der Chart entscheidet lediglich, dass er keinen Platz zum Drucken hat." },
+    { type: "paragraph", html: "Die Regel ist einfach: Volumenzahlen erscheinen nur, wenn genug vertikaler Platz vorhanden ist, um sie in der Mindestschriftgröße darzustellen. Wenn eine einzelne Bar viele Preisniveaus enthält und die Preisskala herausgezoomt ist, werden die Niveaus zusammengequetscht und die Zahlen verschwinden, um die Bars unterzubringen. Zwei Einstellungen steuern das:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Auto-fit ausschalten.</strong> Mit aktiviertem Auto-fit komprimiert der Chart weiterhin, um die gesamte Spanne auf dem Bildschirm anzuzeigen, was den Zahlen genau den Platz nimmt. Suchen Sie den Auto-fit-Schalter für den Chart und schalten Sie ihn aus.",
+        "<strong class='text-white'>Die Preisachse manuell neu skalieren.</strong> Bewegen Sie den Cursor über die Preisachse am rechten Rand des Charts und benutzen Sie Ihr Mausrad. Das Scrollen dort dehnt die vertikale Skala, sodass jedes Preisniveau höher wird. Sobald sich die Niveaus öffnen, erscheinen die Bid/Ask-Zahlen wieder.",
+      ],
+    },
+    { type: "paragraph", html: "Rechnen Sie mit einem Kompromiss. Um einzelne Preisniveaus klar zu lesen, sind Sie ziemlich weit hineingezoomt, was weniger Zeit auf einmal auf dem Bildschirm bedeutet. Bei einem schnellen, breit schwankenden Instrument ist der Footprint herausgezoomt tatsächlich schwer zu lesen, sodass Sie Detailtiefe gegen die sichtbare Historie abwägen. Das ist eine Einschränkung des Charts, kein Fehler Ihrerseits." },
+    { type: "heading", text: "Ursache 3: Eigenheit der älteren Chart-Engine, ein Refit erzwingen" },
+    { type: "paragraph", html: "Manchmal wird das Volumen beim ersten Laden einfach nicht gedruckt, selbst bei einem Live-Feed und sinnvoller Skalierung. Die ältere Chart-Engine hat die bekannte Eigenart, das Volumen nicht immer sofort zu zeichnen, bis man sie anstößt. Die Lösung ist manuell: Scrollen Sie mit dem Mausrad über den Chart, um ihn neu einzupassen, und die Zahlen springen ein." },
+    { type: "paragraph", html: "Wenn das einmal funktioniert, aber immer wieder auftritt, führen Sie einen härteren Reset durch. Schließen Sie den Bid-Ask-Volumen-Chart, öffnen Sie einen neuen, oder wechseln Sie zu einem anderen Chart-Stil und zurück zu Bid-Ask-Volumen. In der Desktop-App löscht ein Neustart Rendering-Zustände, die ein Refresh nicht löscht." },
+    { type: "heading", text: "Ursache 4: Sie sind gar nicht wirklich auf dem Bid-Ask-Volumen-Stil" },
+    { type: "paragraph", html: "Eine Zehn-Sekunden-Prüfung wert, bevor Sie tiefer graben. Tradovate bietet mehrere Chart-Stile an, und es ist leicht zu glauben, man habe den Footprint ausgewählt, während man noch auf Kerzencharts ohne Daten je Preis ist. Die verfügbaren Stile umfassen Candlesticks (die Standardeinstellung), OHLC, Line on Close, Bid-Ask Volume, Heiken-Ashi, Renko, Point and Figure und TPO." },
+    { type: "paragraph", html: "Öffnen Sie den Stil- oder Chart-Typ-Selektor des Charts und bestätigen Sie, dass Bid-Ask Volume hervorgehoben ist. Stimmt die Bezeichnung nicht mit Ihrer Erwartung überein, haben Sie Ihre Antwort. Bid-Ask Volume ist der Footprint für die Bid/Ask-Aufschlüsselung je Preis; TPO ist eine andere Market-Profile-Ansicht." },
+    { type: "heading", text: "Ursache 5: Prop- oder Evaluierungskonto, die Firma besitzt die Daten" },
+    { type: "paragraph", html: "Wenn Sie ein finanziertes Konto oder Evaluierungskonto einer Prop-Firma handeln, kontrollieren Sie den Marktdaten-Feed nicht selbst. Das macht die Firma. Wenn deren Datenpaket auf Ihrem Konto nicht aktiviert oder noch nicht bereitgestellt wurde, bleibt der Footprint leer, und es gibt kein Self-Service-Abonnement, das Sie über Tradovate kaufen können, um das zu beheben." },
+    { type: "paragraph", html: "Verschwenden Sie in diesem Fall keine Stunde mit Chart-Einstellungen. Kontaktieren Sie den Support der Prop-Firma und bitten Sie um Bestätigung, dass Echtzeit-Marktdaten auf Ihrem Konto aktiviert sind. Die Anforderungen und der Zeitrahmen variieren je nach Firma und Kontogröße, prüfen Sie also die aktuellen Regeln Ihrer Firma." },
+    { type: "heading", text: "Ursache 6: Schwache Session oder geschlossener Markt" },
+    { type: "paragraph", html: "Ein Footprint zeichnet nur dort, wo tatsächlich gehandelt wurde. Laden Sie ihn tief in der Übernachtruhe oder an einem Markt-Feiertag, können die neuesten Kerzen nahezu leer erscheinen, einfach weil kaum bis gar nichts gehandelt wurde. Das ist kein Fehler. Rufen Sie den Chart während einer aktiven Session auf oder scrollen Sie zu einer geschäftigen Phase zurück, und das Volumen füllt sich. Schließen Sie das aus, bevor Sie annehmen, die Daten seien defekt, besonders wenn der Rest Ihrer Plattform gesund aussieht." },
+    { type: "heading", text: "Kurzreferenz: Symptom zur Lösung" },
+    {
+      type: "table",
+      headers: ["Was Sie sehen", "Wahrscheinliche Ursache", "Lösung"],
+      rows: [
+        ["Komplett leeres Raster, vielleicht nur gleitende Durchschnitte", "Keine Echtzeit-Datenberechtigung", "Echtzeitabonnement der Börse hinzufügen, ab- und wieder anmelden"],
+        ["Kerzen zeichnen sich, aber keine Zahlen darin", "Preisskala gestaucht, Auto-fit aktiv", "Auto-fit ausschalten, Preisachse zum Hineinzoomen scrollen"],
+        ["Zahlen fehlen, bis Sie den Chart berühren", "Eigenheit der älteren Rendering-Engine", "Refit per Mausrad, oder Chart neu öffnen / App neu starten"],
+        ["Überhaupt keine Daten je Preis", "Falscher Chart-Stil ausgewählt", "Den Chart-Typ auf Bid-Ask Volume setzen"],
+        ["Leer bei einem finanzierten oder Eval-Konto", "Firma hat Daten nicht aktiviert", "Die Prop-Firma bitten, Echtzeit-Marktdaten zu aktivieren"],
+        ["Nur die jüngsten Übernachtkerzen leer", "Schwache oder geschlossene Session", "Während einer aktiven Session ansehen oder zu einer geschäftigen Phase zurückscrollen"],
+      ],
+    },
+    { type: "heading", text: "Wann Sie den Support kontaktieren sollten" },
+    { type: "paragraph", html: "Sie haben ein aktives Echtzeitabonnement für die richtige Börse bestätigt, Auto-fit ausgeschaltet, die Preisachse neu skaliert, geprüft, dass Sie auf dem Bid-Ask-Volumen-Stil sind, und es ist mitten in einer Session mit reichlich Handelsaktivität, doch der Footprint bleibt leer. An diesem Punkt lohnt es sich, den Tradovate-Support (oder Ihre Prop-Firma, falls es ein finanziertes Konto ist) zu kontaktieren. Nennen Sie ihnen das Instrument, ob andere Live-Fenster wie der SuperDOM aktualisieren oder nicht, und dass speziell der Bid-Ask-Volumen-Chart leer dargestellt wird. Sind auch Ihre Kerzencharts und Kurse tot, handelt es sich um ein umfassenderes Datenproblem." },
+    { type: "heading", text: "Orderflow zu lesen ist nur die halbe Arbeit" },
+    { type: "paragraph", html: "Ein Footprint zeigt Ihnen, wo Volumen gehandelt wurde. Schnell und konsequent danach zu handeln ist ein separates Problem, und genau daran scheitert das manuelle Klicken von Bid-Ask-Niveaus meist. Wenn Ihr Edge aus einem Orderflow- oder Preissignal stammt, das Sie definieren können, können Sie es direkt an Tradovate weiterleiten, statt den Chart zu überwachen." },
+  ], es: [
+    { type: "paragraph", html: "Cambia un gráfico a Bid-Ask Volume, esperando leer el flujo de órdenes en cada precio, y en su lugar obtiene una cuadrícula vacía. Puede que un par de medias móviles floten sobre velas en blanco. Puede que las velas estén ahí pero no haya ni una sola cifra de volumen dentro de ellas. En cualquier caso, el footprint es inútil hasta que averigüe por qué se ha quedado a oscuras." },
+    { type: "paragraph", html: "La versión rápida: un gráfico de Bid-Ask Volume en blanco casi siempre se debe a uno de dos problemas. O bien no tiene el derecho de datos de mercado en vivo que alimenta el volumen por precio, o los datos fluyen correctamente pero la escala de precios del gráfico está tan comprimida que las cifras no pueden mostrarse. Esta guía repasa ambos casos en orden, además de los casos especiales de cuentas prop y de horario de sesión que suelen confundir a los usuarios." },
+    { type: "heading", text: "Qué necesita realmente un gráfico footprint para dibujarse" },
+    { type: "paragraph", html: "El gráfico Bid-Ask Volume de Tradovate (el footprint, a veces llamado volumétrico) es una bestia distinta a una simple vela. Una vela solo necesita apertura, máximo, mínimo y cierre. Un footprint tiene que saber cuántos contratos se negociaron en el bid y en el ask, en cada nivel de precio dentro de cada barra. Eso es un flujo mucho más pesado, a nivel de tick." },
+    { type: "paragraph", html: "Así que cuando la cuadrícula está en blanco, hágase una pregunta antes que nada: ¿están llegando realmente datos de flujo de órdenes en tiempo real a este gráfico? Si la respuesta es no, ningún ajuste del gráfico lo solucionará. Empiece por el derecho de datos." },
+    { type: "heading", text: "Causa 1: Sin derecho de datos de mercado en tiempo real" },
+    { type: "paragraph", html: "Este es el motivo principal, y es al que apunta el resumen de la página. Los gráficos en vivo, los SuperDOM y el gráfico Bid-Ask Volume requieren todos una suscripción activa de datos de mercado en tiempo real para la bolsa que lista el instrumento que está observando. ¿Opera NQ o ES? Necesita el paquete en tiempo real de CME en su cuenta. Sin él, está en datos retrasados o gratuitos, y los datos retrasados no llevan el volumen bid/ask en vivo del que depende un footprint. Las velas pueden seguir formándose, pero las cifras por precio permanecen vacías." },
+    { type: "paragraph", html: "Así se confirma y se soluciona:" },
+    {
+      type: "list",
+      items: [
+        "Abra la configuración de su cuenta de Tradovate y busque la sección Market Data (o Market Data Subscriptions).",
+        "Compruebe si tiene una suscripción activa en tiempo real para la bolsa que lista su instrumento. Un producto de CME necesita el feed de CME, y así sucesivamente para cada bolsa.",
+        "Si falta, añada la suscripción para esa bolsa y, a continuación, cierre sesión por completo y vuelva a iniciarla para que el derecho se cargue.",
+        "Vuelva a abrir el gráfico Bid-Ask Volume y deje una sesión en vivo corriendo durante un minuto. El volumen debería empezar a llenar los niveles de precio.",
+      ],
+    },
+    { type: "paragraph", html: "Una señal de que está con datos retrasados: los nombres de los símbolos suelen aparecer en un color distinto y las cotizaciones se retrasan varios minutos. Si eso es lo que ve, el footprint en blanco es un síntoma del mismo problema de fondo, no un error aparte." },
+    { type: "quote", html: "Las tarifas de datos de mercado varían según la bolsa y el nivel de datos, y Tradovate cambia los paquetes de vez en cuando. Verifique el precio actual en su cuenta antes de suscribirse, en lugar de confiar en una cifra antigua." },
+    { type: "heading", text: "Causa 2: Los datos están ahí, la escala los oculta" },
+    { type: "paragraph", html: "Este caso engaña a mucha gente. El feed está en vivo, las velas se dibujan, pero no hay ni una cifra a la vista. Eso no son datos faltantes. Es el gráfico decidiendo que no tiene espacio para imprimir." },
+    { type: "paragraph", html: "La regla es simple: las cifras de volumen solo aparecen cuando hay suficiente espacio vertical para mostrarlas con el tamaño de fuente mínimo. Cuando una sola barra contiene muchos niveles de precio y la escala de precios está alejada, los niveles se aplastan entre sí y las cifras desaparecen para intentar encajar en las barras. Dos ajustes controlan esto:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Desactive Auto-fit.</strong> Con Auto-fit activado, el gráfico sigue comprimiéndose para ajustar todo el rango en pantalla, lo cual es precisamente lo que priva a las cifras de espacio. Busque el interruptor de Auto-fit del gráfico y desactívelo.",
+        "<strong class='text-white'>Reescale el eje de precios manualmente.</strong> Mueva el cursor sobre el eje de precios en el borde derecho del gráfico y use la rueda del ratón. Desplazarse ahí estira la escala vertical para que cada nivel de precio sea más alto. A medida que los niveles se abren, las cifras bid/ask reaparecen.",
+      ],
+    },
+    { type: "paragraph", html: "Espere una contrapartida. Para leer con claridad los niveles de precio individuales, estará bastante ampliado, lo que implica menos tiempo visible en pantalla a la vez. En un instrumento rápido y de amplio rango, el footprint es realmente difícil de leer alejado, así que estará equilibrando el detalle frente a la cantidad de historial visible. Esa es una limitación del gráfico, no algo que usted haya roto." },
+    { type: "heading", text: "Causa 3: Peculiaridad del motor de gráficos heredado, forzar un reajuste" },
+    { type: "paragraph", html: "A veces el volumen simplemente no se imprime en la primera carga, incluso con un feed en vivo y una escala razonable. El motor de gráficos más antiguo tiene la conocida costumbre de no dibujar siempre el volumen hasta que se le empuja. La solución es manual: desplace la rueda del ratón sobre el gráfico para reajustarlo, y las cifras encajan de inmediato." },
+    { type: "paragraph", html: "Si eso funciona una vez pero sigue ocurriendo, haga un reinicio más contundente. Cierre el gráfico Bid-Ask Volume, abra uno nuevo, o cambie a otro estilo de gráfico y vuelva a Bid-Ask Volume. En la aplicación de escritorio, un reinicio limpia el estado de renderizado que un simple refresco no elimina." },
+    { type: "heading", text: "Causa 4: En realidad no está en el estilo Bid-Ask Volume" },
+    { type: "paragraph", html: "Merece una comprobación de diez segundos antes de profundizar más. Tradovate ofrece varios estilos de gráfico, y es fácil pensar que ha seleccionado el footprint cuando sigue en velas sin datos por precio. Los estilos disponibles incluyen Candlesticks (el predeterminado), OHLC, Line on Close, Bid-Ask Volume, Heiken-Ashi, Renko, Point and Figure y TPO." },
+    { type: "paragraph", html: "Abra el selector de estilo o tipo de gráfico y confirme que Bid-Ask Volume es el que aparece resaltado. Si la etiqueta no coincide con lo que esperaba, ahí tiene su respuesta. Bid-Ask Volume es el footprint que desea para el desglose bid/ask por precio; TPO es una vista de perfil de mercado distinta." },
+    { type: "heading", text: "Causa 5: Cuenta prop o de evaluación, la firma controla los datos" },
+    { type: "paragraph", html: "Si opera una cuenta financiada o de evaluación de una firma prop, no controla el feed de datos de mercado. Lo hace la firma. Cuando su paquete de datos no está habilitado en su cuenta, o aún no se ha aprovisionado, el footprint permanece en blanco y no existe una suscripción autoservicio que pueda comprar a través de Tradovate para solucionarlo." },
+    { type: "paragraph", html: "No pierda una hora ajustando configuraciones del gráfico en ese caso. Contacte con el soporte de la firma prop y pídales que confirmen que los datos de mercado en tiempo real están habilitados en su cuenta. Los requisitos y los plazos varían según la firma y el tamaño de la cuenta, así que consulte las normas actuales de su firma." },
+    { type: "heading", text: "Causa 6: Sesión de baja actividad o mercado cerrado" },
+    { type: "paragraph", html: "Un footprint solo pinta donde realmente se produjeron operaciones. Cárguelo en plena calma de la sesión nocturna o en un día festivo del mercado, y las velas más recientes pueden parecer casi vacías simplemente porque se negoció poco o nada. Eso no es un fallo. Abra el gráfico durante una sesión activa, o retroceda a un periodo de mucha actividad, y el volumen se llena. Descarte esto antes de asumir que los datos están rotos, especialmente si el resto de su plataforma se ve saludable." },
+    { type: "heading", text: "Referencia rápida: síntoma y solución" },
+    {
+      type: "table",
+      headers: ["Lo que ve", "Causa probable", "Solución"],
+      rows: [
+        ["Cuadrícula totalmente en blanco, quizá solo medias móviles", "Sin derecho de datos en tiempo real", "Añadir la suscripción en tiempo real de la bolsa, cerrar sesión y volver a entrar"],
+        ["Las velas se dibujan pero sin cifras dentro", "Escala de precios comprimida, Auto-fit activado", "Desactivar Auto-fit, desplazar el eje de precios para ampliar"],
+        ["Las cifras faltan hasta que toca el gráfico", "Peculiaridad de renderizado heredada", "Reajuste con la rueda del ratón, o reabrir el gráfico / reiniciar la app"],
+        ["No hay datos por precio en absoluto", "Estilo de gráfico incorrecto seleccionado", "Ajustar el tipo de gráfico a Bid-Ask Volume"],
+        ["En blanco en una cuenta financiada o de evaluación", "La firma no ha habilitado los datos", "Pedir a la firma prop que active los datos de mercado en tiempo real"],
+        ["Solo las velas nocturnas recientes están vacías", "Sesión de baja actividad o cerrada", "Ver durante una sesión activa, o desplazarse a un periodo de mucha actividad"],
+      ],
+    },
+    { type: "heading", text: "Cuándo contactar con soporte" },
+    { type: "paragraph", html: "Ha confirmado una suscripción activa en tiempo real para la bolsa correcta, ha desactivado Auto-fit, ha reescalado el eje de precios, ha comprobado que está en el estilo Bid-Ask Volume, y es plena sesión con abundante negociación, y aun así el footprint sigue en blanco. Llegados a ese punto, merece la pena plantearlo al soporte de Tradovate (o a su firma prop si es una cuenta financiada). Indíqueles el instrumento, si otras ventanas en vivo como el SuperDOM se actualizan o no, y que el gráfico Bid-Ask Volume se muestra vacío específicamente. Si sus gráficos de velas y cotizaciones también están inactivos, se trata de un problema de datos más amplio." },
+    { type: "heading", text: "Leer el flujo de órdenes es solo la mitad del trabajo" },
+    { type: "paragraph", html: "Un footprint le indica dónde se negoció el volumen. Actuar sobre ello con rapidez y consistencia es un problema aparte, y ahí es donde hacer clic manualmente en los niveles bid-ask suele fallar. Si su ventaja proviene de una señal de flujo de órdenes o de precio que puede definir, puede enviarla directamente a Tradovate en lugar de vigilar el gráfico." },
+  ], fr: [
+    { type: "paragraph", html: "Vous passez un graphique en Bid-Ask Volume, en vous attendant à lire le flux d'ordres à chaque prix, et vous obtenez à la place une grille vide. Peut-être que quelques moyennes mobiles flottent au-dessus de bougies vides. Peut-être que les bougies sont là, mais qu'il n'y a pas un seul chiffre de volume à l'intérieur. Dans tous les cas, le footprint est inutilisable tant que vous n'avez pas trouvé pourquoi il s'est éteint." },
+    { type: "paragraph", html: "En résumé : un graphique Bid-Ask Volume vide est presque toujours l'un de ces deux problèmes. Soit vous n'avez pas le droit d'accès aux données de marché en direct qui alimentent le volume par prix, soit les données circulent correctement mais l'échelle de prix du graphique est tellement resserrée que les chiffres ne peuvent pas s'afficher. Ce guide passe les deux en revue dans l'ordre, ainsi que les cas particuliers liés aux comptes prop et au timing des sessions qui posent souvent problème." },
+    { type: "heading", text: "Ce dont un graphique footprint a réellement besoin pour se dessiner" },
+    { type: "paragraph", html: "Le graphique Bid-Ask Volume de Tradovate (le footprint, parfois appelé volumétrique) est une bête bien différente d'une simple bougie. Une bougie n'a besoin que de l'ouverture, du plus haut, du plus bas et de la clôture. Un footprint doit savoir combien de contrats ont été négociés au bid et à l'ask, pour chaque niveau de prix à l'intérieur de chaque barre. C'est un flux beaucoup plus lourd, au niveau du tick." },
+    { type: "paragraph", html: "Donc, quand la grille est vide, posez-vous une question avant tout : les données de flux d'ordres en temps réel atteignent-elles réellement ce graphique ? Si la réponse est non, aucun réglage du graphique ne réglera le problème. Commencez par le droit d'accès aux données." },
+    { type: "heading", text: "Cause 1 : Absence de droit d'accès aux données de marché en temps réel" },
+    { type: "paragraph", html: "C'est la raison principale, et c'est celle que pointe le résumé de la page. Les graphiques en direct, les SuperDOM et le graphique Bid-Ask Volume nécessitent tous un abonnement actif aux données de marché en temps réel pour la bourse qui liste l'instrument que vous consultez. Vous tradez le NQ ou le ES ? Vous avez besoin du forfait temps réel CME sur votre compte. Sans cela, vous êtes sur des données différées ou gratuites, et les données différées ne transportent pas le volume bid/ask en direct dont dépend un footprint. Les bougies peuvent encore se former, mais les chiffres par prix restent vides." },
+    { type: "paragraph", html: "Voici comment vérifier et corriger cela :" },
+    {
+      type: "list",
+      items: [
+        "Ouvrez les paramètres de votre compte Tradovate et trouvez la section Market Data (ou Market Data Subscriptions).",
+        "Vérifiez si vous avez un abonnement temps réel actif pour la bourse qui liste votre instrument. Un produit CME nécessite le flux CME, et ainsi de suite pour chaque bourse.",
+        "S'il manque, ajoutez l'abonnement pour cette bourse, puis déconnectez-vous complètement et reconnectez-vous pour que le droit d'accès se charge.",
+        "Rouvrez le graphique Bid-Ask Volume et laissez une session en direct tourner pendant une minute. Le volume devrait commencer à remplir les niveaux de prix.",
+      ],
+    },
+    { type: "paragraph", html: "Un signe que vous êtes sur des données différées : les noms des symboles apparaissent souvent dans une couleur différente et les cotations accusent plusieurs minutes de retard. Si c'est ce que vous constatez, le footprint vide est un symptôme du même problème de fond, pas un bug distinct." },
+    { type: "quote", html: "Les frais de données de marché varient selon la bourse et le niveau de données, et Tradovate modifie les forfaits de temps en temps. Vérifiez les tarifs actuels dans votre compte avant de vous abonner plutôt que de vous fier à un ancien chiffre." },
+    { type: "heading", text: "Cause 2 : Les données sont là, la mise à l'échelle les masque" },
+    { type: "paragraph", html: "Ce cas trompe beaucoup de monde. Le flux est en direct, les bougies se dessinent, mais aucun chiffre n'est visible. Ce ne sont pas des données manquantes. C'est le graphique qui décide qu'il n'a pas la place pour les afficher." },
+    { type: "paragraph", html: "La règle est simple : les chiffres de volume n'apparaissent que lorsqu'il y a suffisamment d'espace vertical pour les afficher à la taille de police minimale. Lorsqu'une seule barre contient de nombreux niveaux de prix et que l'échelle de prix est dézoomée, les niveaux se compriment les uns sur les autres et les chiffres disparaissent pour tenter de tenir dans les barres. Deux réglages contrôlent cela :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Désactivez Auto-fit.</strong> Avec Auto-fit activé, le graphique continue de se comprimer pour faire tenir toute la plage à l'écran, ce qui prive justement les chiffres d'espace. Trouvez le commutateur Auto-fit du graphique et désactivez-le.",
+        "<strong class='text-white'>Remettez à l'échelle l'axe des prix manuellement.</strong> Déplacez votre curseur sur l'axe des prix, au bord droit du graphique, et utilisez la molette de votre souris. Faire défiler à cet endroit étire l'échelle verticale afin que chaque niveau de prix devienne plus haut. À mesure que les niveaux s'ouvrent, les chiffres bid/ask réapparaissent.",
+      ],
+    },
+    { type: "paragraph", html: "Attendez-vous à un compromis. Pour lire clairement les niveaux de prix individuels, vous serez plutôt zoomé de près, ce qui signifie moins de temps visible à l'écran à la fois. Sur un instrument rapide et à large amplitude, le footprint est vraiment difficile à lire dézoomé, donc vous équilibrez le détail par rapport à la quantité d'historique visible. C'est une limite du graphique, pas quelque chose que vous avez cassé." },
+    { type: "heading", text: "Cause 3 : Particularité de l'ancien moteur de graphique, forcer un réajustement" },
+    { type: "paragraph", html: "Parfois, le volume ne s'affiche tout simplement pas au premier chargement, même avec un flux en direct et une échelle raisonnable. L'ancien moteur graphique a l'habitude connue de ne pas toujours dessiner le volume tant qu'on ne le sollicite pas. La correction est manuelle : faites défiler votre molette sur le graphique pour le réajuster, et les chiffres se mettent en place." },
+    { type: "paragraph", html: "Si cela fonctionne une fois mais continue de se reproduire, effectuez une réinitialisation plus poussée. Fermez le graphique Bid-Ask Volume, rouvrez-en un nouveau, ou passez à un autre style de graphique puis revenez à Bid-Ask Volume. Sur l'application de bureau, un redémarrage efface l'état de rendu qu'un simple rafraîchissement n'efface pas." },
+    { type: "heading", text: "Cause 4 : Vous n'êtes en réalité pas sur le style Bid-Ask Volume" },
+    { type: "paragraph", html: "Cela vaut une vérification de dix secondes avant d'aller plus loin. Tradovate propose plusieurs styles de graphique, et il est facile de croire avoir sélectionné le footprint alors que vous êtes encore en bougies sans données par prix. Les styles disponibles incluent Candlesticks (le style par défaut), OHLC, Line on Close, Bid-Ask Volume, Heiken-Ashi, Renko, Point and Figure et TPO." },
+    { type: "paragraph", html: "Ouvrez le sélecteur de style ou de type de graphique et confirmez que Bid-Ask Volume est bien celui surligné. Si le libellé ne correspond pas à ce que vous attendiez, voilà votre réponse. Bid-Ask Volume est le footprint que vous voulez pour la répartition bid/ask par prix ; TPO est une vue de profil de marché différente." },
+    { type: "heading", text: "Cause 5 : Compte prop ou d'évaluation, la société possède les données" },
+    { type: "paragraph", html: "Si vous tradez un compte financé ou un compte d'évaluation d'une société prop, vous ne contrôlez pas le flux de données de marché. C'est la société qui le contrôle. Lorsque son forfait de données n'est pas activé sur votre compte, ou n'a pas encore été provisionné, le footprint reste vide et il n'existe aucun abonnement en libre-service que vous puissiez acheter via Tradovate pour corriger cela." },
+    { type: "paragraph", html: "Ne perdez pas une heure à bidouiller les réglages du graphique dans ce cas. Contactez le support de la société prop et demandez-lui de confirmer que les données de marché en temps réel sont activées sur votre compte. Les exigences et les délais varient selon la société et la taille du compte, alors vérifiez les règles actuelles de votre société." },
+    { type: "heading", text: "Cause 6 : Session peu active ou marché fermé" },
+    { type: "paragraph", html: "Un footprint ne dessine que là où des transactions ont réellement eu lieu. Chargez-le en pleine accalmie nocturne ou lors d'un jour férié du marché, et les bougies les plus récentes peuvent sembler presque vides simplement parce que peu ou rien n'a été échangé. Ce n'est pas un défaut. Ouvrez le graphique pendant une session active, ou revenez à une période animée, et le volume se remplit. Écartez cette hypothèse avant de supposer que les données sont défaillantes, surtout si le reste de votre plateforme semble en bonne santé." },
+    { type: "heading", text: "Référence rapide : symptôme et solution" },
+    {
+      type: "table",
+      headers: ["Ce que vous voyez", "Cause probable", "Solution"],
+      rows: [
+        ["Grille totalement vide, peut-être seulement des moyennes mobiles", "Absence de droit d'accès aux données en temps réel", "Ajouter l'abonnement temps réel de la bourse, se déconnecter puis se reconnecter"],
+        ["Les bougies se dessinent mais sans chiffres à l'intérieur", "Échelle de prix compressée, Auto-fit activé", "Désactiver Auto-fit, faire défiler l'axe des prix pour zoomer"],
+        ["Les chiffres manquent tant que vous ne touchez pas le graphique", "Particularité de rendu de l'ancien moteur", "Réajustement à la molette, ou rouvrir le graphique / redémarrer l'application"],
+        ["Aucune donnée par prix", "Mauvais style de graphique sélectionné", "Régler le type de graphique sur Bid-Ask Volume"],
+        ["Vide sur un compte financé ou d'évaluation", "La société n'a pas activé les données", "Demander à la société prop d'activer les données de marché en temps réel"],
+        ["Seules les bougies nocturnes récentes sont vides", "Session peu active ou fermée", "Consulter pendant une session active, ou revenir à une période animée"],
+      ],
+    },
+    { type: "heading", text: "Quand contacter le support" },
+    { type: "paragraph", html: "Vous avez confirmé un abonnement temps réel actif pour la bonne bourse, désactivé Auto-fit, remis à l'échelle l'axe des prix, vérifié que vous êtes sur le style Bid-Ask Volume, et c'est en pleine session avec beaucoup d'échanges, mais le footprint reste vide. À ce stade, il vaut la peine de contacter le support Tradovate (ou votre société prop s'il s'agit d'un compte financé). Indiquez-leur l'instrument, si d'autres fenêtres en direct comme le SuperDOM se mettent à jour ou non, et que le graphique Bid-Ask Volume s'affiche spécifiquement vide. Si vos graphiques en bougies et vos cotations sont eux aussi inactifs, il s'agit d'un problème de données plus large." },
+    { type: "heading", text: "Lire le flux d'ordres n'est que la moitié du travail" },
+    { type: "paragraph", html: "Un footprint vous indique où le volume a été échangé. Agir dessus rapidement et de manière cohérente est un problème distinct, et c'est là que cliquer manuellement sur les niveaux bid-ask tend à échouer. Si votre avantage provient d'un signal de flux d'ordres ou de prix que vous pouvez définir, vous pouvez l'envoyer directement vers Tradovate au lieu de surveiller le graphique." },
+  ], it: [
+    { type: "paragraph", html: "Passate un grafico a Bid-Ask Volume, aspettandovi di leggere il flusso ordini a ogni prezzo, e invece ottenete una griglia vuota. Forse un paio di medie mobili fluttuano sopra candele vuote. Forse le candele ci sono, ma non c'è un solo numero di volume al loro interno. In ogni caso, il footprint è inutile finché non scoprite perché si è spento." },
+    { type: "paragraph", html: "La versione rapida: un grafico Bid-Ask Volume vuoto è quasi sempre uno di due problemi. O non avete il diritto ai dati di mercato in tempo reale che alimentano il volume per prezzo, oppure i dati fluiscono correttamente ma la scala dei prezzi del grafico è così compressa che i numeri non riescono a renderizzarsi. Questa guida ripercorre entrambi in ordine, oltre ai casi limite legati agli account prop e al timing delle sessioni che spesso confondono gli utenti." },
+    { type: "heading", text: "Di cosa ha davvero bisogno un grafico footprint per disegnarsi" },
+    { type: "paragraph", html: "Il grafico Bid-Ask Volume di Tradovate (il footprint, a volte chiamato volumetrico) è una bestia diversa da una semplice candela. Una candela ha bisogno solo di apertura, massimo, minimo e chiusura. Un footprint deve sapere quanti contratti sono stati scambiati al bid e all'ask, per ogni singolo livello di prezzo all'interno di ogni barra. Si tratta di un feed molto più pesante, a livello di tick." },
+    { type: "paragraph", html: "Quindi, quando la griglia è vuota, fatevi prima di tutto una domanda: i dati di flusso ordini in tempo reale stanno davvero raggiungendo questo grafico? Se la risposta è no, nessuna impostazione del grafico risolverà il problema. Iniziate dal diritto ai dati." },
+    { type: "heading", text: "Causa 1: nessun diritto ai dati di mercato in tempo reale" },
+    { type: "paragraph", html: "Questo è il motivo principale, ed è quello a cui rimanda il riepilogo della pagina. I grafici live, i SuperDOM e il grafico Bid-Ask Volume richiedono tutti un abbonamento attivo ai dati di mercato in tempo reale per la borsa che quota lo strumento che state osservando. Fate trading su NQ o ES? Vi serve il pacchetto in tempo reale CME sul vostro account. Senza di esso, siete su dati ritardati o gratuiti, e i dati ritardati non trasportano il volume bid/ask live da cui dipende un footprint. Le candele possono comunque formarsi, ma i numeri per prezzo restano vuoti." },
+    { type: "paragraph", html: "Ecco come verificarlo e risolverlo:" },
+    {
+      type: "list",
+      items: [
+        "Aprite le impostazioni del vostro account Tradovate e individuate la sezione Market Data (o Market Data Subscriptions).",
+        "Verificate se avete un abbonamento in tempo reale attivo per la borsa che quota il vostro strumento. Un prodotto CME richiede il feed CME, e così via per ogni borsa.",
+        "Se manca, aggiungete l'abbonamento per quella borsa, quindi disconnettetevi completamente e riaccedete affinché il diritto venga caricato.",
+        "Riaprite il grafico Bid-Ask Volume e lasciate girare una sessione live per un minuto. Il volume dovrebbe iniziare a riempire i livelli di prezzo.",
+      ],
+    },
+    { type: "paragraph", html: "Un indizio che siete su dati ritardati: i nomi dei simboli spesso appaiono in un colore diverso e le quotazioni sono in ritardo di diversi minuti. Se è questo che vedete, il footprint vuoto è un sintomo dello stesso problema di fondo, non un bug separato." },
+    { type: "quote", html: "Le commissioni sui dati di mercato variano in base alla borsa e al livello dei dati, e Tradovate modifica i pacchetti di tanto in tanto. Verificate il prezzo attuale nel vostro account prima di abbonarvi, invece di fidarvi di una cifra datata." },
+    { type: "heading", text: "Causa 2: i dati ci sono, la scalatura li nasconde" },
+    { type: "paragraph", html: "Questo caso trae in inganno molte persone. Il feed è live, le candele si disegnano, ma non si vede un numero. Non sono dati mancanti. È il grafico che decide di non avere spazio per stamparli." },
+    { type: "paragraph", html: "La regola è semplice: i numeri di volume compaiono solo quando c'è abbastanza spazio verticale per mostrarli alla dimensione minima del carattere. Quando una singola barra contiene molti livelli di prezzo e la scala dei prezzi è ridotta, i livelli si schiacciano l'uno sull'altro e i numeri spariscono nel tentativo di stare nelle barre. Due impostazioni controllano questo aspetto:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Disattivate Auto-fit.</strong> Con Auto-fit attivo, il grafico continua a comprimersi per far stare l'intero intervallo sullo schermo, il che è esattamente ciò che priva i numeri dello spazio necessario. Trovate l'interruttore Auto-fit del grafico e disattivatelo.",
+        "<strong class='text-white'>Riscalate manualmente l'asse dei prezzi.</strong> Spostate il cursore sull'asse dei prezzi, sul bordo destro del grafico, e usate la rotellina del mouse. Scorrere lì allunga la scala verticale in modo che ogni livello di prezzo diventi più alto. Man mano che i livelli si aprono, i numeri bid/ask riappaiono.",
+      ],
+    },
+    { type: "paragraph", html: "Aspettatevi un compromesso. Per leggere chiaramente i singoli livelli di prezzo sarete abbastanza zoomati, il che significa meno tempo visibile sullo schermo alla volta. Su uno strumento veloce e ad ampio range, il footprint è davvero difficile da leggere quando è ridotto, quindi state bilanciando il dettaglio rispetto a quanta storia riuscite a vedere. È un limite del grafico, non qualcosa che avete rotto voi." },
+    { type: "heading", text: "Causa 3: particolarità del motore grafico legacy, forzare un refit" },
+    { type: "paragraph", html: "A volte il volume semplicemente non si stampa al primo caricamento, anche con un feed live e una scalatura sensata. Il motore grafico più vecchio ha l'abitudine nota di non disegnare sempre il volume finché non lo si sollecita. La soluzione è manuale: scorrete la rotellina sul grafico per riadattarlo, e i numeri scattano al loro posto." },
+    { type: "paragraph", html: "Se funziona una volta ma continua a ripresentarsi, eseguite un reset più deciso. Chiudete il grafico Bid-Ask Volume, riapritene uno nuovo, oppure passate a uno stile di grafico diverso e tornate a Bid-Ask Volume. Sull'app desktop, un riavvio elimina lo stato di rendering che un semplice aggiornamento non cancella." },
+    { type: "heading", text: "Causa 4: in realtà non siete sullo stile Bid-Ask Volume" },
+    { type: "paragraph", html: "Vale la pena una verifica di dieci secondi prima di approfondire. Tradovate offre diversi stili di grafico, ed è facile pensare di aver selezionato il footprint mentre si è ancora su candele senza dati per prezzo. Gli stili disponibili includono Candlesticks (quello predefinito), OHLC, Line on Close, Bid-Ask Volume, Heiken-Ashi, Renko, Point and Figure e TPO." },
+    { type: "paragraph", html: "Aprite il selettore di stile o di tipo di grafico e confermate che Bid-Ask Volume sia quello evidenziato. Se l'etichetta non corrisponde a quanto vi aspettavate, ecco la vostra risposta. Bid-Ask Volume è il footprint che volete per la scomposizione bid/ask per prezzo; TPO è una vista di market profile diversa." },
+    { type: "heading", text: "Causa 5: account prop o di valutazione, la società possiede i dati" },
+    { type: "paragraph", html: "Se fate trading su un account finanziato o di valutazione di una società prop, non controllate voi il feed dei dati di mercato. Lo fa la società. Quando il suo pacchetto dati non è abilitato sul vostro account, o non è ancora stato attivato, il footprint resta vuoto e non esiste un abbonamento self-service che possiate acquistare tramite Tradovate per risolvere il problema." },
+    { type: "paragraph", html: "In questo caso non perdete un'ora ad armeggiare con le impostazioni del grafico. Contattate il supporto della società prop e chiedete di confermare che i dati di mercato in tempo reale siano abilitati sul vostro account. I requisiti e i tempi variano in base alla società e alla dimensione dell'account, quindi verificate le regole attuali della vostra società." },
+    { type: "heading", text: "Causa 6: sessione debole o mercato chiuso" },
+    { type: "paragraph", html: "Un footprint disegna solo dove sono effettivamente avvenute le negoziazioni. Caricatelo nel pieno della calma notturna o in un giorno festivo di mercato, e le candele più recenti possono apparire quasi vuote semplicemente perché si è negoziato poco o nulla. Non è un difetto. Aprite il grafico durante una sessione attiva, oppure tornate indietro a un periodo intenso, e il volume si riempie. Escludete questa possibilità prima di dare per scontato che i dati siano guasti, specialmente se il resto della vostra piattaforma appare sano." },
+    { type: "heading", text: "Riferimento rapido: sintomo e soluzione" },
+    {
+      type: "table",
+      headers: ["Cosa vedete", "Causa probabile", "Soluzione"],
+      rows: [
+        ["Griglia completamente vuota, forse solo medie mobili", "Nessun diritto ai dati in tempo reale", "Aggiungere l'abbonamento in tempo reale della borsa, disconnettersi e riaccedere"],
+        ["Le candele si disegnano ma senza numeri all'interno", "Scala dei prezzi compressa, Auto-fit attivo", "Disattivare Auto-fit, scorrere l'asse dei prezzi per ingrandire"],
+        ["I numeri mancano finché non toccate il grafico", "Particolarità di rendering legacy", "Refit con la rotellina, oppure riaprire il grafico / riavviare l'app"],
+        ["Nessun dato per prezzo", "Stile di grafico errato selezionato", "Impostare il tipo di grafico su Bid-Ask Volume"],
+        ["Vuoto su un account finanziato o di valutazione", "La società non ha abilitato i dati", "Chiedere alla società prop di attivare i dati di mercato in tempo reale"],
+        ["Solo le candele notturne recenti sono vuote", "Sessione debole o chiusa", "Visualizzare durante una sessione attiva, oppure scorrere a un periodo intenso"],
+      ],
+    },
+    { type: "heading", text: "Quando contattare il supporto" },
+    { type: "paragraph", html: "Avete confermato un abbonamento in tempo reale attivo per la borsa giusta, disattivato Auto-fit, riscalato l'asse dei prezzi, verificato di essere sullo stile Bid-Ask Volume, ed è in pieno svolgimento della sessione con abbondanti negoziazioni, eppure il footprint resta vuoto. A questo punto vale la pena rivolgersi al supporto Tradovate (o alla vostra società prop se si tratta di un account finanziato). Indicate loro lo strumento, se altre finestre live come il SuperDOM si aggiornano o meno, e che il grafico Bid-Ask Volume risulta vuoto in modo specifico. Se anche i vostri grafici a candele e le quotazioni sono fermi, si tratta di un problema di dati più ampio." },
+    { type: "heading", text: "Leggere il flusso ordini è solo metà del lavoro" },
+    { type: "paragraph", html: "Un footprint vi mostra dove è stato scambiato il volume. Agire di conseguenza in modo rapido e coerente è un problema separato, ed è lì che cliccare manualmente sui livelli bid-ask tende a fallire. Se il vostro vantaggio deriva da un segnale di flusso ordini o di prezzo che potete definire, potete instradarlo direttamente a Tradovate invece di sorvegliare il grafico." },
+  ] },
+  ctaHeading: { en: "Stop Watching the Footprint All Day", de: "Beobachten Sie den Footprint nicht mehr den ganzen Tag", es: "Deje de vigilar el footprint todo el día", fr: "Arrêtez de surveiller le footprint toute la journée", it: "Smettete di monitorare il footprint tutto il giorno" },
+  ctaText: { en: "Read order flow when you want to, and let PickMyTrade fire your defined signals into Tradovate automatically the rest of the time.", de: "Lesen Sie den Orderfluss, wann Sie möchten, und lassen Sie PickMyTrade Ihre definierten Signale die restliche Zeit automatisch an Tradovate senden.", es: "Lea el flujo de órdenes cuando quiera, y deje que PickMyTrade envíe sus señales definidas a Tradovate automáticamente el resto del tiempo.", fr: "Lisez le flux d'ordres quand vous le souhaitez, et laissez PickMyTrade envoyer automatiquement vos signaux définis vers Tradovate le reste du temps.", it: "Leggete il flusso ordini quando volete, e lasciate che PickMyTrade invii automaticamente i vostri segnali definiti a Tradovate per il resto del tempo." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avviate la vostra prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why is my Tradovate footprint chart blank on bid-ask volume?", a: "Two things cause it most often. First, the Bid-Ask Volume chart needs a live, real-time market-data subscription for the exchange you are viewing. With delayed data or no data package, the per-price volume has nothing to print, so the chart looks empty. Second, if the price scale is zoomed out and Auto-fit is on, the numbers do not have room to render even when the data is flowing. Confirm the data entitlement first, then fix the scaling." },
+    { q: "Do I need a paid subscription to see bid-ask volume in Tradovate?", a: "Yes. Live charts, SuperDOMs and the Bid-Ask Volume chart all require an active real-time market-data subscription to the exchange that lists the instrument. Delayed or free data will not feed live order flow into a footprint chart. Check Tradovate's current market-data pricing, since the fee varies by exchange and data level." },
+    { q: "The chart shows candles but no volume numbers inside them, why?", a: "That is a scaling issue, not missing data. When a candle holds many price levels and the vertical scale is compressed, the numbers cannot meet the minimum font size, so they hide. Turn Auto-fit off, hover over the price axis on the right, and scroll to zoom the vertical scale until each level has room. The volume figures reappear as you expand it." },
+    { q: "Why is bid-ask volume blank on my prop or evaluation account?", a: "On funded and evaluation accounts the prop firm owns the market-data feed, not you. If the firm has not enabled or paid for real-time data on that account, the footprint chart stays blank and you cannot self-subscribe through Tradovate. Contact the firm's support to turn on or fix the data package." },
+    { q: "The footprint is blank outside regular hours, is it broken?", a: "Not necessarily. A footprint chart only draws volume where trades actually printed. During thin overnight periods or a market holiday there may be little or no trade activity, so recent candles look empty. Load the chart during an active session and compare before assuming a data fault." },
+  ], de: [
+    { q: "Warum ist mein Tradovate-Footprint-Chart beim Bid-Ask-Volumen leer?", a: "Meistens sind zwei Dinge die Ursache. Erstens braucht der Bid-Ask-Volumen-Chart ein aktives Echtzeit-Marktdatenabonnement für die Börse, die Sie betrachten. Bei verzögerten Daten oder ohne Datenpaket hat das Volumen je Preis nichts zu drucken, sodass der Chart leer wirkt. Zweitens: Wenn die Preisskala herausgezoomt ist und Auto-fit aktiviert ist, haben die Zahlen keinen Platz zum Rendern, selbst wenn die Daten fließen. Bestätigen Sie zuerst die Datenberechtigung und beheben Sie dann die Skalierung." },
+    { q: "Brauche ich ein kostenpflichtiges Abonnement, um Bid-Ask-Volumen in Tradovate zu sehen?", a: "Ja. Live-Charts, SuperDOMs und der Bid-Ask-Volumen-Chart benötigen alle ein aktives Echtzeit-Marktdatenabonnement für die Börse, die das Instrument listet. Verzögerte oder kostenlose Daten liefern keinen Live-Orderfluss für einen Footprint-Chart. Prüfen Sie die aktuellen Marktdatenpreise von Tradovate, da die Gebühr je nach Börse und Datenstufe variiert." },
+    { q: "Der Chart zeigt Kerzen, aber keine Volumenzahlen darin, warum?", a: "Das ist ein Skalierungsproblem, keine fehlenden Daten. Wenn eine Kerze viele Preisniveaus enthält und die vertikale Skala gestaucht ist, können die Zahlen die Mindestschriftgröße nicht erreichen und verstecken sich daher. Schalten Sie Auto-fit aus, bewegen Sie den Mauszeiger über die Preisachse rechts und scrollen Sie, um die vertikale Skala zu zoomen, bis jedes Niveau Platz hat. Die Volumenwerte erscheinen wieder, während Sie sie erweitern." },
+    { q: "Warum ist das Bid-Ask-Volumen auf meinem Prop- oder Evaluierungskonto leer?", a: "Bei finanzierten Konten und Evaluierungskonten besitzt die Prop-Firma den Marktdaten-Feed, nicht Sie. Wenn die Firma keine Echtzeitdaten für dieses Konto aktiviert oder bezahlt hat, bleibt der Footprint-Chart leer, und Sie können sich nicht selbst über Tradovate abonnieren. Kontaktieren Sie den Support der Firma, um das Datenpaket zu aktivieren oder zu reparieren." },
+    { q: "Der Footprint ist außerhalb der regulären Handelszeiten leer, ist er defekt?", a: "Nicht unbedingt. Ein Footprint-Chart zeichnet Volumen nur dort, wo tatsächlich gehandelt wurde. Während schwacher Übernachtphasen oder an einem Markt-Feiertag kann es kaum oder keine Handelsaktivität geben, sodass jüngste Kerzen leer erscheinen. Laden Sie den Chart während einer aktiven Session und vergleichen Sie, bevor Sie von einem Datenfehler ausgehen." },
+  ], es: [
+    { q: "¿Por qué mi gráfico footprint de Tradovate está en blanco en el volumen bid-ask?", a: "Dos cosas lo causan con mayor frecuencia. Primero, el gráfico Bid-Ask Volume necesita una suscripción de datos de mercado en tiempo real activa para la bolsa que está viendo. Con datos retrasados o sin paquete de datos, el volumen por precio no tiene nada que imprimir, por lo que el gráfico parece vacío. Segundo, si la escala de precios está alejada y Auto-fit está activado, las cifras no tienen espacio para renderizarse aunque los datos estén fluyendo. Confirme primero el derecho de datos y luego corrija la escala." },
+    { q: "¿Necesito una suscripción de pago para ver el volumen bid-ask en Tradovate?", a: "Sí. Los gráficos en vivo, los SuperDOM y el gráfico Bid-Ask Volume requieren todos una suscripción activa de datos de mercado en tiempo real para la bolsa que lista el instrumento. Los datos retrasados o gratuitos no alimentarán el flujo de órdenes en vivo de un gráfico footprint. Consulte los precios actuales de datos de mercado de Tradovate, ya que la tarifa varía según la bolsa y el nivel de datos." },
+    { q: "El gráfico muestra velas pero sin cifras de volumen dentro, ¿por qué?", a: "Eso es un problema de escala, no de datos faltantes. Cuando una vela contiene muchos niveles de precio y la escala vertical está comprimida, las cifras no pueden alcanzar el tamaño de fuente mínimo, así que se ocultan. Desactive Auto-fit, sitúe el cursor sobre el eje de precios a la derecha y desplácese para ampliar la escala vertical hasta que cada nivel tenga espacio. Las cifras de volumen reaparecen a medida que la expande." },
+    { q: "¿Por qué el volumen bid-ask está en blanco en mi cuenta prop o de evaluación?", a: "En las cuentas financiadas y de evaluación, la firma prop es la propietaria del feed de datos de mercado, no usted. Si la firma no ha habilitado o pagado datos en tiempo real para esa cuenta, el gráfico footprint permanece en blanco y no puede suscribirse por su cuenta a través de Tradovate. Contacte con el soporte de la firma para activar o solucionar el paquete de datos." },
+    { q: "El footprint está en blanco fuera del horario habitual, ¿está averiado?", a: "No necesariamente. Un gráfico footprint solo dibuja volumen donde realmente se registraron operaciones. Durante periodos nocturnos de baja actividad o un día festivo del mercado, puede haber poca o ninguna actividad de negociación, por lo que las velas recientes parecen vacías. Cargue el gráfico durante una sesión activa y compare antes de asumir un fallo de datos." },
+  ], fr: [
+    { q: "Pourquoi mon graphique footprint Tradovate est-il vide sur le volume bid-ask ?", a: "Deux choses en sont le plus souvent la cause. Premièrement, le graphique Bid-Ask Volume nécessite un abonnement actif aux données de marché en temps réel pour la bourse que vous consultez. Avec des données différées ou aucun forfait de données, le volume par prix n'a rien à afficher, donc le graphique paraît vide. Deuxièmement, si l'échelle de prix est dézoomée et Auto-fit est activé, les chiffres n'ont pas la place de s'afficher même lorsque les données circulent. Vérifiez d'abord le droit d'accès aux données, puis corrigez la mise à l'échelle." },
+    { q: "Ai-je besoin d'un abonnement payant pour voir le volume bid-ask dans Tradovate ?", a: "Oui. Les graphiques en direct, les SuperDOM et le graphique Bid-Ask Volume nécessitent tous un abonnement actif aux données de marché en temps réel pour la bourse qui liste l'instrument. Des données différées ou gratuites n'alimenteront pas le flux d'ordres en direct d'un graphique footprint. Vérifiez les tarifs actuels des données de marché de Tradovate, car les frais varient selon la bourse et le niveau de données." },
+    { q: "Le graphique affiche des bougies mais aucun chiffre de volume à l'intérieur, pourquoi ?", a: "C'est un problème de mise à l'échelle, pas des données manquantes. Lorsqu'une bougie contient de nombreux niveaux de prix et que l'échelle verticale est compressée, les chiffres ne peuvent pas atteindre la taille de police minimale, donc ils se cachent. Désactivez Auto-fit, survolez l'axe des prix à droite, et faites défiler pour zoomer l'échelle verticale jusqu'à ce que chaque niveau ait de la place. Les chiffres de volume réapparaissent au fur et à mesure que vous l'agrandissez." },
+    { q: "Pourquoi le volume bid-ask est-il vide sur mon compte prop ou d'évaluation ?", a: "Sur les comptes financés et d'évaluation, c'est la société prop qui possède le flux de données de marché, pas vous. Si la société n'a pas activé ou payé de données en temps réel pour ce compte, le graphique footprint reste vide et vous ne pouvez pas vous abonner vous-même via Tradovate. Contactez le support de la société pour activer ou corriger le forfait de données." },
+    { q: "Le footprint est vide en dehors des heures habituelles, est-il défaillant ?", a: "Pas nécessairement. Un graphique footprint ne dessine du volume que là où des transactions ont réellement été enregistrées. Pendant les périodes nocturnes peu actives ou un jour férié du marché, il peut y avoir peu ou pas d'activité de négociation, donc les bougies récentes paraissent vides. Ouvrez le graphique pendant une session active et comparez avant de supposer un défaut de données." },
+  ], it: [
+    { q: "Perché il mio grafico footprint di Tradovate è vuoto sul volume bid-ask?", a: "Nella maggior parte dei casi le cause sono due. Primo, il grafico Bid-Ask Volume richiede un abbonamento ai dati di mercato in tempo reale attivo per la borsa che state visualizzando. Con dati ritardati o nessun pacchetto dati, il volume per prezzo non ha nulla da stampare, quindi il grafico appare vuoto. Secondo, se la scala dei prezzi è ridotta e Auto-fit è attivo, i numeri non hanno spazio per renderizzarsi anche quando i dati fluiscono. Verificate prima il diritto ai dati, poi correggete la scalatura." },
+    { q: "Serve un abbonamento a pagamento per vedere il volume bid-ask in Tradovate?", a: "Sì. I grafici live, i SuperDOM e il grafico Bid-Ask Volume richiedono tutti un abbonamento attivo ai dati di mercato in tempo reale per la borsa che quota lo strumento. Dati ritardati o gratuiti non alimenteranno il flusso ordini live di un grafico footprint. Verificate i prezzi attuali dei dati di mercato di Tradovate, poiché la commissione varia in base alla borsa e al livello dei dati." },
+    { q: "Il grafico mostra le candele ma nessun numero di volume al loro interno, perché?", a: "Si tratta di un problema di scalatura, non di dati mancanti. Quando una candela contiene molti livelli di prezzo e la scala verticale è compressa, i numeri non riescono a raggiungere la dimensione minima del carattere, quindi si nascondono. Disattivate Auto-fit, posizionate il cursore sull'asse dei prezzi a destra e scorrete per ingrandire la scala verticale finché ogni livello non ha spazio. I numeri di volume riappaiono man mano che la espandete." },
+    { q: "Perché il volume bid-ask è vuoto sul mio account prop o di valutazione?", a: "Sugli account finanziati e di valutazione è la società prop a possedere il feed dei dati di mercato, non voi. Se la società non ha abilitato o pagato dati in tempo reale per quell'account, il grafico footprint resta vuoto e non potete abbonarvi autonomamente tramite Tradovate. Contattate il supporto della società per attivare o risolvere il pacchetto dati." },
+    { q: "Il footprint è vuoto fuori dagli orari abituali, è guasto?", a: "Non necessariamente. Un grafico footprint disegna il volume solo dove sono effettivamente avvenute le negoziazioni. Durante periodi notturni deboli o un giorno festivo di mercato potrebbe esserci poca o nessuna attività di negoziazione, quindi le candele recenti appaiono vuote. Caricate il grafico durante una sessione attiva e confrontate prima di dare per scontato un guasto dei dati." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -abläufe ändern sich mit der Zeit, bestätigen Sie daher stets den aktuellen Prozess in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión o de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. o Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni parrainée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verificate sempre il processo attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

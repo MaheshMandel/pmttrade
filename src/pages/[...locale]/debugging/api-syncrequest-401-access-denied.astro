@@ -1,0 +1,448 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-syncrequest-401-access-denied";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate user/syncrequest WS 401 Access Denied";
+const META_DESCRIPTION =
+  "A 401 Access is denied on the user/syncrequest WebSocket call means the socket is not authorized. Get the REST token, send it first, and drop environment.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate WebSocket: 401 Access Denied en user/syncrequest", fr: "WebSocket Tradovate : 401 Access Denied sur user/syncrequest", it: "WebSocket Tradovate: 401 Access Denied su user/syncrequest" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate user/syncrequest WS 401 Access Denied beheben", es: "Cómo solucionar el 401 Access Denied de user/syncrequest en el WebSocket de Tradovate", fr: "Corriger le 401 Access Denied de user/syncrequest sur le WebSocket Tradovate", it: "Come risolvere il 401 Access Denied di user/syncrequest sul WebSocket di Tradovate" },
+  dek: { en: "You open a socket, fire user/syncrequest, and get a flat 401 Access is denied back. The socket was never authorized, here's the exact handshake that fixes it.", de: "Sie öffnen einen Socket, feuern user/syncrequest ab und erhalten glatt ein 401 Access is denied zurück. Der Socket wurde nie autorisiert, hier ist genau der Handshake, der das behebt.", es: "Abre un socket, dispara user/syncrequest, y recibe un rotundo 401 Access is denied. El socket nunca fue autorizado, aquí tiene el handshake exacto que lo soluciona.", fr: "Vous ouvrez un socket, vous lancez user/syncrequest, et vous obtenez un net 401 Access is denied. Le socket n'a jamais été autorisé, voici exactement le handshake qui corrige cela.", it: "Aprite un socket, lanciate user/syncrequest, e ottenete un secco 401 Access is denied. Il socket non è mai stato autorizzato, ecco esattamente l'handshake che lo risolve." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You opened a WebSocket, fired off <code>user/syncrequest</code>, and instead of a stream of account and order data you got a flat <code>401</code> with <em>&ldquo;Access is denied.&rdquo;</em> Nothing is wrong with your login and nothing is broken on the account. The socket simply was never authorized, so the server treats every request on it as anonymous. The fix is a specific order of operations: pull an access token from the REST auth endpoint, hand it to the socket in an authorize frame, wait for the success reply, and only then send <code>user/syncrequest</code>. Get that sequence right and the 401 disappears." },
+    { type: "paragraph", html: "This one trips up almost everyone the first time they wire up the Tradovate socket by hand, usually because they try to authenticate the way REST works. WebSockets don't work that way here. Let's walk through exactly what's happening and the clean path out." },
+    { type: "heading", text: "What the error actually looks like" },
+    { type: "paragraph", html: "In your frame log you'll see the socket connect, the open frame arrive, then your <code>user/syncrequest</code> come straight back with a denial. It reads something like this:" },
+    { type: "quote", html: "<code>&lt;-- o<br>--&gt; user/syncrequest<br>1<br><br>&lt;-- a[{\"i\":1,\"s\":401,\"d\":\"Access is denied\"}]</code>" },
+    { type: "paragraph", html: "The giveaway is the status <code>401</code> paired with <code>Access is denied</code> on the <em>request</em> frame. If you never saw a status-200 reply to an <code>authorize</code> frame before this, that's your answer: the socket isn't authenticated." },
+    { type: "heading", text: "Why the socket throws a 401" },
+    { type: "paragraph", html: "There are really only a handful of root causes, and they stack up in a predictable order." },
+    { type: "heading", text: "1. The socket was never authorized" },
+    { type: "paragraph", html: "This is the big one. A raw WebSocket connection to Tradovate is unauthenticated. Opening it and immediately sending <code>user/syncrequest</code> is like walking into a members' club and ordering a drink without showing your card. You have to send exactly one <code>authorize</code> frame per connection, carrying a valid access token, before anything else will go through." },
+    { type: "heading", text: "2. You tried to get the token over the socket" },
+    { type: "paragraph", html: "A common wrong turn is trying to call <code>accessTokenRequest</code> through the WebSocket itself. That endpoint lives on the REST side. The token is minted over HTTPS, then <em>presented</em> to the socket. The socket never issues tokens." },
+    { type: "heading", text: "3. An environment parameter in the token request" },
+    { type: "paragraph", html: "If you copied a request body from somewhere and it includes <code>\"environment\": \"demo\"</code> (or <code>\"live\"</code>), drop it. That field isn't accepted by <code>accessTokenRequest</code> and can knock the whole request sideways. The environment is decided by the host you call, not by a parameter." },
+    { type: "heading", text: "4. A live account with no deviceId or an unapproved device" },
+    { type: "paragraph", html: "Demo is lenient. Live is not. On a funded/live account you need to send a stable <code>deviceId</code> when you request the token, and the device has to be approved through the confirmation flow Tradovate runs for two-factor security. Miss that and the live token you get back won't authorize the live socket." },
+    { type: "heading", text: "5. The token expired" },
+    { type: "paragraph", html: "If everything worked earlier and then started returning 401 out of nowhere, the token aged out. Access tokens are time-limited, so a long-lived socket will eventually see a 401 as though it was never authorized. That's a renewal problem, not a setup problem." },
+    { type: "heading", text: "The fix, step by step" },
+    {
+      type: "steps",
+      items: [
+        {
+          title: "Get an access token from REST",
+          html: "POST your credentials to the auth endpoint over HTTPS. Use the host that matches the account you want:<br><br><code>POST https://demo.tradovateapi.com/v1/auth/accessTokenRequest &nbsp;&nbsp;(simulated)<br>POST https://live.tradovateapi.com/v1/auth/accessTokenRequest &nbsp;&nbsp;(funded)<br><br>Content-Type: application/json<br>{<br>&nbsp;&nbsp;\"name\": \"your-username\",<br>&nbsp;&nbsp;\"password\": \"your-password\",<br>&nbsp;&nbsp;\"appId\": \"YourAppName\",<br>&nbsp;&nbsp;\"appVersion\": \"1.0\",<br>&nbsp;&nbsp;\"cid\": 0000,<br>&nbsp;&nbsp;\"sec\": \"your-api-secret\",<br>&nbsp;&nbsp;\"deviceId\": \"a-stable-unique-id\"<br>}</code><br><br>The response hands you an <code>accessToken</code> string (plus an expiration timestamp). That token is what the socket wants. Notice there is <strong class='text-white'>no</strong> <code>environment</code> field in that body, the demo host gives you a demo token, the live host gives you a live token.",
+        },
+        {
+          title: "Open the socket and wait for the open frame",
+          html: "Connect to the WebSocket URL that matches your token's environment:<br><br><code>wss://demo.tradovateapi.com/v1/websocket &nbsp;&nbsp;(simulated)<br>wss://live.tradovateapi.com/v1/websocket &nbsp;&nbsp;(funded)</code><br><br>The moment the connection is up, the server sends a single-character open frame: <code>o</code>. Don't send anything until you've seen it. A demo token on the live socket (or the reverse) is its own quiet way to earn a 401, so keep the pair matched.",
+        },
+        {
+          title: "Send the authorize frame",
+          html: "Frames on this socket are plain text: an endpoint, a request id, a blank line for the query string, then the body, each separated by a newline. The authorize frame puts the token in the body:<br><br><code>authorize<br>0<br><br>YOUR_ACCESS_TOKEN</code><br><br>Written as a single string that's <code>authorize\\n0\\n\\nYOUR_ACCESS_TOKEN</code>. The server answers with a data frame and a status you actually care about:<br><br><code>a[{\"i\":0,\"s\":200}]</code><br><br>Status <code>200</code> means the socket is now authenticated for the life of the connection. If you get anything other than 200 here, stop, the token is the problem, and syncing won't fix itself further down the line.",
+        },
+        {
+          title: "Now send user/syncrequest",
+          html: "With the socket authorized, the same call that was failing goes right through. Send it with the next request id and an empty body to sync everything the user has access to:<br><br><code>user/syncrequest<br>1<br><br></code><br><br>That's <code>user/syncrequest\\n1\\n\\n</code>. You'll get back the initial snapshot of accounts, positions, orders, fills and cash balances, and from then on the socket streams incremental updates as they change. <code>user/syncrequest</code> is WebSocket-only, there's no REST equivalent, which is exactly why the socket has to be authorized first.",
+        },
+        {
+          title: "Keep the connection alive",
+          html: "Once authorized, send a heartbeat frame, an empty JSON array, <code>[]</code>, every couple of seconds (roughly every 2.5 seconds) so the server doesn't drop you. The server sends its own heartbeats too. If you stop hearing from it for around ten seconds, treat the socket as dead, reconnect, and run the authorize step again on the fresh connection.",
+        },
+      ],
+    },
+    { type: "heading", text: "Live accounts: the deviceId and permission check" },
+    { type: "paragraph", html: "If demo works flawlessly and live is the only place you hit the 401, the cause is almost always on the device-approval side rather than your code. Two things to confirm." },
+    { type: "paragraph", html: "First, make sure API access is actually enabled on the account and the key has permission to do what you're asking. In the Tradovate web app this lives under the account settings, in the section that manages the API Access add-on and key permissions. (Confirm the exact label in your current version, the wording and location of this add-on screen get tweaked over time.)" },
+    { type: "paragraph", html: "Second, send a <code>deviceId</code> that stays the same across runs and approve it. Live enforces device-based two-factor security; a brand-new or missing <code>deviceId</code> triggers an approval step that, until you clear it, leaves the token unable to authorize the live socket. Generate one stable identifier for your app, reuse it every time, and confirm it through the email Tradovate sends." },
+    { type: "heading", text: "Still getting 401? Run this checklist" },
+    {
+      type: "table",
+      headers: ["Check", "What to confirm"],
+      rows: [
+        ["Authorize came first", "You sent one authorize frame and saw s:200 before any other request."],
+        ["Token source", "Token came from REST /auth/accessTokenRequest, not from the socket."],
+        ["No environment field", "The token request body has no environment parameter."],
+        ["Host matches token", "Demo token on the demo socket, live token on the live socket, never crossed."],
+        ["deviceId (live)", "A stable deviceId was sent and the device is approved."],
+        ["Token freshness", "The token hasn't expired since you fetched it."],
+        ["Key permissions", "API access is enabled and the key is allowed to read/route on that account."],
+      ],
+    },
+    { type: "paragraph", html: "If it worked and then broke mid-session, jump straight to token lifetime. Access tokens don't last forever, and a socket that's been open for a while will start throwing 401s the moment the token behind it lapses. Renew ahead of expiry instead of waiting for the failures. And if the very first token request is what's failing, back up to getting API access and generating a key before you touch the socket at all." },
+    { type: "heading", text: "Skip the socket plumbing entirely" },
+    { type: "paragraph", html: "Hand-rolling the auth handshake, heartbeats, device approval and token renewal is a lot of moving parts just to route an order. If you're wiring Tradovate to TradingView alerts or a strategy, PickMyTrade handles the whole connection layer for you, authorized sessions, live device handling and token refresh included, so you send a signal and it trades." },
+  ], de: [
+    { type: "paragraph", html: "Sie haben einen WebSocket geöffnet, <code>user/syncrequest</code> abgefeuert, und anstelle eines Streams aus Konto- und Orderdaten erhielten Sie glatt ein <code>401</code> mit <em>&ldquo;Access is denied.&rdquo;</em> An Ihrem Login ist nichts falsch, und am Konto ist nichts kaputt. Der Socket wurde schlicht nie autorisiert, sodass der Server jede Anfrage darauf als anonym behandelt. Die Lösung ist eine bestimmte Reihenfolge der Operationen: Holen Sie sich ein Access-Token vom REST-Auth-Endpunkt, übergeben Sie es dem Socket in einem authorize-Frame, warten Sie auf die Erfolgsantwort, und erst dann senden Sie <code>user/syncrequest</code>. Bekommen Sie diese Reihenfolge richtig hin, verschwindet der 401." },
+    { type: "paragraph", html: "Das hier bringt fast jeden zu Fall, der den Tradovate-Socket zum ersten Mal von Hand verdrahtet, meist weil er versucht, so zu authentifizieren, wie REST funktioniert. WebSockets funktionieren hier nicht so. Gehen wir genau durch, was passiert, und den sauberen Ausweg." },
+    { type: "heading", text: "So sieht der Fehler tatsächlich aus" },
+    { type: "paragraph", html: "In Ihrem Frame-Log sehen Sie den Verbindungsaufbau des Sockets, das Eintreffen des Open-Frames, dann kommt Ihr <code>user/syncrequest</code> direkt mit einer Ablehnung zurück. Es sieht in etwa so aus:" },
+    { type: "quote", html: "<code>&lt;-- o<br>--&gt; user/syncrequest<br>1<br><br>&lt;-- a[{\"i\":1,\"s\":401,\"d\":\"Access is denied\"}]</code>" },
+    { type: "paragraph", html: "Der Verräter ist der Status <code>401</code> gepaart mit <code>Access is denied</code> auf dem <em>Anfrage</em>-Frame. Wenn Sie zuvor nie eine Status-200-Antwort auf einen <code>authorize</code>-Frame gesehen haben, ist das Ihre Antwort: Der Socket ist nicht authentifiziert." },
+    { type: "heading", text: "Warum der Socket einen 401 wirft" },
+    { type: "paragraph", html: "Es gibt eigentlich nur eine Handvoll Grundursachen, und sie stapeln sich in vorhersehbarer Reihenfolge." },
+    { type: "heading", text: "1. Der Socket wurde nie autorisiert" },
+    { type: "paragraph", html: "Das ist der große Fall. Eine rohe WebSocket-Verbindung zu Tradovate ist unauthentifiziert. Sie zu öffnen und sofort <code>user/syncrequest</code> zu senden, ist, als würde man in einen Mitgliederclub gehen und ein Getränk bestellen, ohne den Ausweis zu zeigen. Sie müssen genau einen <code>authorize</code>-Frame pro Verbindung senden, der ein gültiges Access-Token trägt, bevor irgendetwas anderes durchgeht." },
+    { type: "heading", text: "2. Sie haben versucht, das Token über den Socket zu holen" },
+    { type: "paragraph", html: "Ein häufiger Fehltritt ist der Versuch, <code>accessTokenRequest</code> über den WebSocket selbst aufzurufen. Dieser Endpunkt liegt auf der REST-Seite. Das Token wird über HTTPS geprägt und dann dem Socket <em>vorgelegt</em>. Der Socket stellt niemals Token aus." },
+    { type: "heading", text: "3. Ein environment-Parameter in der Token-Anfrage" },
+    { type: "paragraph", html: "Wenn Sie einen Anfrage-Body irgendwoher kopiert haben und er <code>\"environment\": \"demo\"</code> (oder <code>\"live\"</code>) enthält, entfernen Sie es. Dieses Feld wird von <code>accessTokenRequest</code> nicht akzeptiert und kann die gesamte Anfrage aus der Bahn werfen. Die Umgebung wird durch den Host bestimmt, den Sie aufrufen, nicht durch einen Parameter." },
+    { type: "heading", text: "4. Ein Live-Konto ohne deviceId oder ein nicht genehmigtes Gerät" },
+    { type: "paragraph", html: "Demo ist nachsichtig. Live ist es nicht. Bei einem finanzierten/Live-Konto müssen Sie bei der Token-Anfrage eine stabile <code>deviceId</code> senden, und das Gerät muss über den Bestätigungsablauf genehmigt werden, den Tradovate für die Zwei-Faktor-Sicherheit durchführt. Verpassen Sie das, wird das Live-Token, das Sie zurückerhalten, den Live-Socket nicht autorisieren." },
+    { type: "heading", text: "5. Das Token ist abgelaufen" },
+    { type: "paragraph", html: "Wenn zuvor alles funktionierte und dann aus dem Nichts 401 zurückgegeben wurde, ist das Token abgelaufen. Access-Token sind zeitlich begrenzt, sodass ein langlebiger Socket irgendwann einen 401 sieht, als wäre er nie autorisiert worden. Das ist ein Erneuerungsproblem, kein Einrichtungsproblem." },
+    { type: "heading", text: "Die Lösung, Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        {
+          title: "Ein Access-Token von REST holen",
+          html: "Senden Sie Ihre Zugangsdaten per POST an den Auth-Endpunkt über HTTPS. Verwenden Sie den Host, der zu dem gewünschten Konto passt:<br><br><code>POST https://demo.tradovateapi.com/v1/auth/accessTokenRequest &nbsp;&nbsp;(simuliert)<br>POST https://live.tradovateapi.com/v1/auth/accessTokenRequest &nbsp;&nbsp;(finanziert)<br><br>Content-Type: application/json<br>{<br>&nbsp;&nbsp;\"name\": \"your-username\",<br>&nbsp;&nbsp;\"password\": \"your-password\",<br>&nbsp;&nbsp;\"appId\": \"YourAppName\",<br>&nbsp;&nbsp;\"appVersion\": \"1.0\",<br>&nbsp;&nbsp;\"cid\": 0000,<br>&nbsp;&nbsp;\"sec\": \"your-api-secret\",<br>&nbsp;&nbsp;\"deviceId\": \"a-stable-unique-id\"<br>}</code><br><br>Die Antwort übergibt Ihnen eine <code>accessToken</code>-Zeichenkette (plus einen Ablaufzeitstempel). Dieses Token ist es, was der Socket möchte. Beachten Sie, dass in diesem Body <strong class='text-white'>kein</strong> <code>environment</code>-Feld steht, der Demo-Host gibt Ihnen ein Demo-Token, der Live-Host gibt Ihnen ein Live-Token.",
+        },
+        {
+          title: "Den Socket öffnen und auf den Open-Frame warten",
+          html: "Verbinden Sie sich mit der WebSocket-URL, die zur Umgebung Ihres Tokens passt:<br><br><code>wss://demo.tradovateapi.com/v1/websocket &nbsp;&nbsp;(simuliert)<br>wss://live.tradovateapi.com/v1/websocket &nbsp;&nbsp;(finanziert)</code><br><br>Sobald die Verbindung steht, sendet der Server einen einzelnen-Zeichen-Open-Frame: <code>o</code>. Senden Sie nichts, bevor Sie ihn gesehen haben. Ein Demo-Token auf dem Live-Socket (oder umgekehrt) ist eine eigene stille Art, sich einen 401 einzuhandeln, halten Sie also das Paar zusammenpassend.",
+        },
+        {
+          title: "Den authorize-Frame senden",
+          html: "Frames auf diesem Socket sind Klartext: ein Endpunkt, eine Anfrage-ID, eine Leerzeile für den Query-String, dann der Body, jeweils durch einen Zeilenumbruch getrennt. Der authorize-Frame legt das Token in den Body:<br><br><code>authorize<br>0<br><br>YOUR_ACCESS_TOKEN</code><br><br>Als einzelne Zeichenkette geschrieben ist das <code>authorize\\n0\\n\\nYOUR_ACCESS_TOKEN</code>. Der Server antwortet mit einem Datenframe und einem Status, der Sie tatsächlich interessiert:<br><br><code>a[{\"i\":0,\"s\":200}]</code><br><br>Status <code>200</code> bedeutet, dass der Socket nun für die Lebensdauer der Verbindung authentifiziert ist. Erhalten Sie hier etwas anderes als 200, stoppen Sie, das Token ist das Problem, und das Syncing wird sich weiter unten nicht von selbst reparieren.",
+        },
+        {
+          title: "Jetzt user/syncrequest senden",
+          html: "Mit autorisiertem Socket geht derselbe Aufruf, der zuvor fehlschlug, jetzt problemlos durch. Senden Sie ihn mit der nächsten Anfrage-ID und leerem Body, um alles zu synchronisieren, worauf der Nutzer Zugriff hat:<br><br><code>user/syncrequest<br>1<br><br></code><br><br>Das ist <code>user/syncrequest\\n1\\n\\n</code>. Sie erhalten den anfänglichen Snapshot der Konten, Positionen, Orders, Fills und Barguthaben zurück, und von da an streamt der Socket inkrementelle Updates, sobald sie sich ändern. <code>user/syncrequest</code> ist ausschließlich per WebSocket verfügbar, es gibt kein REST-Äquivalent, genau deshalb muss der Socket zuerst autorisiert werden.",
+        },
+        {
+          title: "Die Verbindung am Leben halten",
+          html: "Senden Sie nach der Autorisierung alle paar Sekunden (etwa alle 2,5 Sekunden) einen Heartbeat-Frame, ein leeres JSON-Array, <code>[]</code>, damit der Server Sie nicht trennt. Der Server sendet ebenfalls eigene Heartbeats. Wenn Sie etwa zehn Sekunden lang nichts mehr von ihm hören, behandeln Sie den Socket als tot, verbinden Sie sich neu und führen Sie den Autorisierungsschritt auf der frischen Verbindung erneut aus.",
+        },
+      ],
+    },
+    { type: "heading", text: "Live-Konten: die deviceId- und Berechtigungsprüfung" },
+    { type: "paragraph", html: "Wenn Demo einwandfrei funktioniert und Sie den 401 nur bei Live erhalten, liegt die Ursache fast immer auf der Geräte-Genehmigungsseite und nicht in Ihrem Code. Zwei Dinge sind zu prüfen." },
+    { type: "paragraph", html: "Stellen Sie zunächst sicher, dass der API-Zugriff auf dem Konto tatsächlich aktiviert ist und der Schlüssel die Berechtigung hat, das zu tun, was Sie verlangen. In der Tradovate-Web-App liegt das unter den Kontoeinstellungen, im Bereich, der das API-Access-Add-on und die Schlüsselberechtigungen verwaltet. (Bestätigen Sie die genaue Bezeichnung in Ihrer aktuellen Version, Wortlaut und Ort dieses Add-on-Bildschirms werden im Laufe der Zeit angepasst.)" },
+    { type: "paragraph", html: "Senden Sie zweitens eine <code>deviceId</code>, die über mehrere Durchläufe hinweg gleich bleibt, und genehmigen Sie sie. Live erzwingt gerätebasierte Zwei-Faktor-Sicherheit; eine brandneue oder fehlende <code>deviceId</code> löst einen Genehmigungsschritt aus, der das Token bis zur Klärung außerstande lässt, den Live-Socket zu autorisieren. Erzeugen Sie eine stabile Kennung für Ihre App, verwenden Sie sie jedes Mal wieder und bestätigen Sie sie über die E-Mail, die Tradovate sendet." },
+    { type: "heading", text: "Immer noch 401? Diese Checkliste durchgehen" },
+    {
+      type: "table",
+      headers: ["Prüfung", "Was zu bestätigen ist"],
+      rows: [
+        ["Authorize kam zuerst", "Sie haben einen authorize-Frame gesendet und s:200 gesehen, bevor irgendeine andere Anfrage erfolgte."],
+        ["Token-Quelle", "Das Token stammte von REST /auth/accessTokenRequest, nicht vom Socket."],
+        ["Kein environment-Feld", "Der Body der Token-Anfrage enthält keinen environment-Parameter."],
+        ["Host passt zum Token", "Demo-Token auf dem Demo-Socket, Live-Token auf dem Live-Socket, nie vermischt."],
+        ["deviceId (Live)", "Eine stabile deviceId wurde gesendet und das Gerät ist genehmigt."],
+        ["Token-Aktualität", "Das Token ist seit dem Abruf nicht abgelaufen."],
+        ["Schlüsselberechtigungen", "Der API-Zugriff ist aktiviert und der Schlüssel darf auf diesem Konto lesen/routen."],
+      ],
+    },
+    { type: "paragraph", html: "Wenn es funktionierte und dann mitten in der Sitzung kaputtging, springen Sie direkt zur Token-Lebensdauer. Access-Token halten nicht ewig, und ein Socket, der eine Weile offen war, beginnt 401 zu werfen, sobald das dahinterstehende Token abläuft. Erneuern Sie es vor Ablauf, statt auf die Fehler zu warten. Und wenn schon die allererste Token-Anfrage fehlschlägt, gehen Sie zurück und stellen sicher, dass API-Zugriff besteht und ein Schlüssel erzeugt wurde, bevor Sie den Socket überhaupt anfassen." },
+    { type: "heading", text: "Die Socket-Installationsarbeit ganz überspringen" },
+    { type: "paragraph", html: "Den Auth-Handshake, Heartbeats, die Gerätegenehmigung und die Token-Erneuerung von Hand zu bauen, ist eine Menge beweglicher Teile, nur um eine Order zu routen. Wenn Sie Tradovate mit TradingView-Alerts oder einer Strategie verdrahten, übernimmt PickMyTrade die gesamte Verbindungsebene für Sie, autorisierte Sitzungen, Live-Gerätebehandlung und Token-Erneuerung inklusive, sodass Sie ein Signal senden und es wird gehandelt." },
+  ], es: [
+    { type: "paragraph", html: "Abrió un WebSocket, disparó <code>user/syncrequest</code>, y en lugar de un flujo de datos de cuenta y de órdenes recibió un rotundo <code>401</code> con <em>&ldquo;Access is denied.&rdquo;</em> No hay nada mal en su inicio de sesión y nada roto en la cuenta. El socket simplemente nunca fue autorizado, así que el servidor trata cada solicitud sobre él como anónima. La solución es un orden específico de operaciones: obtenga un token de acceso desde el endpoint de autenticación REST, entrégueselo al socket en un frame authorize, espere la respuesta de éxito, y solo entonces envíe <code>user/syncrequest</code>. Consiga esa secuencia correctamente y el 401 desaparece." },
+    { type: "paragraph", html: "Esto hace tropezar a casi todo el mundo la primera vez que conecta el socket de Tradovate a mano, normalmente porque intenta autenticarse como funciona REST. Los WebSockets no funcionan así aquí. Repasemos exactamente qué está pasando y la vía limpia para salir de esto." },
+    { type: "heading", text: "Cómo se ve realmente el error" },
+    { type: "paragraph", html: "En su registro de frames verá el socket conectarse, llegar el frame open, y luego su <code>user/syncrequest</code> volver directamente con una denegación. Se lee algo así:" },
+    { type: "quote", html: "<code>&lt;-- o<br>--&gt; user/syncrequest<br>1<br><br>&lt;-- a[{\"i\":1,\"s\":401,\"d\":\"Access is denied\"}]</code>" },
+    { type: "paragraph", html: "La pista delatora es el estado <code>401</code> emparejado con <code>Access is denied</code> en el frame de <em>solicitud</em>. Si nunca vio una respuesta de estado 200 a un frame <code>authorize</code> antes de esto, esa es su respuesta: el socket no está autenticado." },
+    { type: "heading", text: "Por qué el socket lanza un 401" },
+    { type: "paragraph", html: "En realidad solo hay un puñado de causas raíz, y se apilan en un orden predecible." },
+    { type: "heading", text: "1. El socket nunca fue autorizado" },
+    { type: "paragraph", html: "Esta es la grande. Una conexión WebSocket sin procesar a Tradovate no está autenticada. Abrirla y enviar inmediatamente <code>user/syncrequest</code> es como entrar en un club de socios y pedir una bebida sin enseñar la tarjeta. Tiene que enviar exactamente un frame <code>authorize</code> por conexión, que lleve un token de acceso válido, antes de que nada más pase." },
+    { type: "heading", text: "2. Intentó obtener el token a través del socket" },
+    { type: "paragraph", html: "Un error común es intentar llamar a <code>accessTokenRequest</code> a través del propio WebSocket. Ese endpoint vive en el lado REST. El token se acuña por HTTPS y luego se <em>presenta</em> al socket. El socket nunca emite tokens." },
+    { type: "heading", text: "3. Un parámetro environment en la solicitud del token" },
+    { type: "paragraph", html: "Si copió un cuerpo de solicitud de algún sitio y este incluye <code>\"environment\": \"demo\"</code> (o <code>\"live\"</code>), elimínelo. Ese campo no lo acepta <code>accessTokenRequest</code> y puede desviar toda la solicitud. El entorno lo decide el host al que llama, no un parámetro." },
+    { type: "heading", text: "4. Una cuenta real sin deviceId o con un dispositivo no aprobado" },
+    { type: "paragraph", html: "Demo es indulgente. Real no lo es. En una cuenta financiada/real debe enviar un <code>deviceId</code> estable al solicitar el token, y el dispositivo debe aprobarse mediante el flujo de confirmación que Tradovate ejecuta por seguridad de dos factores. Si se salta eso, el token real que reciba no autorizará el socket real." },
+    { type: "heading", text: "5. El token caducó" },
+    { type: "paragraph", html: "Si todo funcionaba antes y de repente empezó a devolver 401, el token venció. Los tokens de acceso están limitados en el tiempo, así que un socket de larga duración eventualmente verá un 401 como si nunca hubiera sido autorizado. Eso es un problema de renovación, no de configuración." },
+    { type: "heading", text: "La solución, paso a paso" },
+    {
+      type: "steps",
+      items: [
+        {
+          title: "Obtenga un token de acceso desde REST",
+          html: "Envíe por POST sus credenciales al endpoint de autenticación por HTTPS. Use el host que corresponda a la cuenta que quiere:<br><br><code>POST https://demo.tradovateapi.com/v1/auth/accessTokenRequest &nbsp;&nbsp;(simulada)<br>POST https://live.tradovateapi.com/v1/auth/accessTokenRequest &nbsp;&nbsp;(financiada)<br><br>Content-Type: application/json<br>{<br>&nbsp;&nbsp;\"name\": \"your-username\",<br>&nbsp;&nbsp;\"password\": \"your-password\",<br>&nbsp;&nbsp;\"appId\": \"YourAppName\",<br>&nbsp;&nbsp;\"appVersion\": \"1.0\",<br>&nbsp;&nbsp;\"cid\": 0000,<br>&nbsp;&nbsp;\"sec\": \"your-api-secret\",<br>&nbsp;&nbsp;\"deviceId\": \"a-stable-unique-id\"<br>}</code><br><br>La respuesta le entrega una cadena <code>accessToken</code> (más una marca de tiempo de expiración). Ese token es lo que quiere el socket. Observe que <strong class='text-white'>no</strong> hay ningún campo <code>environment</code> en ese cuerpo, el host demo le da un token demo, el host real le da un token real.",
+        },
+        {
+          title: "Abra el socket y espere el frame open",
+          html: "Conéctese a la URL de WebSocket que corresponda al entorno de su token:<br><br><code>wss://demo.tradovateapi.com/v1/websocket &nbsp;&nbsp;(simulada)<br>wss://live.tradovateapi.com/v1/websocket &nbsp;&nbsp;(financiada)</code><br><br>En el momento en que la conexión está lista, el servidor envía un frame open de un solo carácter: <code>o</code>. No envíe nada hasta haberlo visto. Un token demo en el socket real (o al revés) es su propia forma silenciosa de ganarse un 401, así que mantenga el par correspondido.",
+        },
+        {
+          title: "Envíe el frame authorize",
+          html: "Los frames en este socket son texto plano: un endpoint, un id de solicitud, una línea en blanco para la cadena de consulta, luego el cuerpo, cada uno separado por un salto de línea. El frame authorize pone el token en el cuerpo:<br><br><code>authorize<br>0<br><br>YOUR_ACCESS_TOKEN</code><br><br>Escrito como una sola cadena, eso es <code>authorize\\n0\\n\\nYOUR_ACCESS_TOKEN</code>. El servidor responde con un frame de datos y un estado que realmente le importa:<br><br><code>a[{\"i\":0,\"s\":200}]</code><br><br>El estado <code>200</code> significa que el socket ahora está autenticado durante toda la vida de la conexión. Si obtiene aquí algo distinto de 200, deténgase, el token es el problema, y la sincronización no se arreglará sola más adelante.",
+        },
+        {
+          title: "Ahora envíe user/syncrequest",
+          html: "Con el socket autorizado, la misma llamada que fallaba pasa sin problemas. Envíela con el siguiente id de solicitud y un cuerpo vacío para sincronizar todo a lo que el usuario tiene acceso:<br><br><code>user/syncrequest<br>1<br><br></code><br><br>Eso es <code>user/syncrequest\\n1\\n\\n</code>. Recibirá de vuelta la instantánea inicial de cuentas, posiciones, órdenes, ejecuciones y saldos en efectivo, y a partir de entonces el socket transmite actualizaciones incrementales a medida que cambian. <code>user/syncrequest</code> es exclusivo de WebSocket, no tiene equivalente REST, que es exactamente por qué el socket debe autorizarse primero.",
+        },
+        {
+          title: "Mantenga la conexión viva",
+          html: "Una vez autorizado, envíe un frame de latido, un array JSON vacío, <code>[]</code>, cada pocos segundos (aproximadamente cada 2.5 segundos) para que el servidor no lo desconecte. El servidor también envía sus propios latidos. Si deja de recibir noticias suyas durante unos diez segundos, trate el socket como muerto, reconéctese y vuelva a ejecutar el paso de autorización en la nueva conexión.",
+        },
+      ],
+    },
+    { type: "heading", text: "Cuentas reales: la comprobación de deviceId y permisos" },
+    { type: "paragraph", html: "Si demo funciona sin problemas y real es el único lugar donde recibe el 401, la causa casi siempre está en el lado de la aprobación del dispositivo, no en su código. Hay dos cosas que confirmar." },
+    { type: "paragraph", html: "Primero, asegúrese de que el acceso a la API esté realmente habilitado en la cuenta y de que la clave tenga permiso para hacer lo que está pidiendo. En la aplicación web de Tradovate, esto se encuentra en la configuración de la cuenta, en la sección que gestiona el complemento API Access y los permisos de la clave. (Confirme la etiqueta exacta en su versión actual, la redacción y la ubicación de esta pantalla del complemento se ajustan con el tiempo.)" },
+    { type: "paragraph", html: "Segundo, envíe un <code>deviceId</code> que se mantenga igual entre ejecuciones y apruébelo. Real impone seguridad de dos factores basada en dispositivo; un <code>deviceId</code> nuevo o ausente activa un paso de aprobación que, hasta que lo resuelva, deja al token incapaz de autorizar el socket real. Genere un identificador estable para su aplicación, reutilícelo siempre, y confírmelo mediante el correo que envía Tradovate." },
+    { type: "heading", text: "¿Sigue recibiendo 401? Ejecute esta lista de verificación" },
+    {
+      type: "table",
+      headers: ["Comprobación", "Qué confirmar"],
+      rows: [
+        ["Authorize fue primero", "Envió un frame authorize y vio s:200 antes de cualquier otra solicitud."],
+        ["Origen del token", "El token vino de REST /auth/accessTokenRequest, no del socket."],
+        ["Sin campo environment", "El cuerpo de la solicitud del token no tiene parámetro environment."],
+        ["El host coincide con el token", "Token demo en el socket demo, token real en el socket real, nunca cruzados."],
+        ["deviceId (real)", "Se envió un deviceId estable y el dispositivo está aprobado."],
+        ["Vigencia del token", "El token no ha caducado desde que lo obtuvo."],
+        ["Permisos de la clave", "El acceso a la API está habilitado y la clave puede leer/enrutar en esa cuenta."],
+      ],
+    },
+    { type: "paragraph", html: "Si funcionaba y luego se rompió a mitad de la sesión, vaya directo a la vigencia del token. Los tokens de acceso no duran para siempre, y un socket que ha estado abierto un tiempo empezará a lanzar 401 en el momento en que el token que lo respalda venza. Renueve antes del vencimiento en lugar de esperar los fallos. Y si lo que falla es la primerísima solicitud de token, retroceda a obtener acceso a la API y generar una clave antes de tocar el socket en absoluto." },
+    { type: "heading", text: "Evite por completo el fontanería del socket" },
+    { type: "paragraph", html: "Construir a mano el handshake de autenticación, los latidos, la aprobación del dispositivo y la renovación del token son muchas piezas móviles solo para enrutar una orden. Si está conectando Tradovate a alertas de TradingView o a una estrategia, PickMyTrade gestiona toda la capa de conexión por usted, sesiones autorizadas, manejo de dispositivos reales y renovación de tokens incluidos, así que usted envía una señal y se opera." },
+  ], fr: [
+    { type: "paragraph", html: "Vous avez ouvert un WebSocket, lancé <code>user/syncrequest</code>, et au lieu d'un flux de données de compte et d'ordres, vous avez reçu un net <code>401</code> avec <em>&ldquo;Access is denied.&rdquo;</em> Rien ne cloche avec votre connexion et rien n'est cassé sur le compte. Le socket n'a tout simplement jamais été autorisé, si bien que le serveur traite chaque requête sur celui-ci comme anonyme. La solution est un ordre d'opérations précis : récupérez un jeton d'accès depuis le point de terminaison d'authentification REST, transmettez-le au socket dans un frame authorize, attendez la réponse de succès, et alors seulement envoyez <code>user/syncrequest</code>. Respectez cet ordre et le 401 disparaît." },
+    { type: "paragraph", html: "C'est ce qui fait trébucher presque tout le monde la première fois qu'on câble le socket Tradovate à la main, généralement parce qu'on essaie de s'authentifier comme fonctionne REST. Les WebSockets ne fonctionnent pas ainsi ici. Passons en revue exactement ce qui se passe et la voie propre pour s'en sortir." },
+    { type: "heading", text: "À quoi ressemble réellement l'erreur" },
+    { type: "paragraph", html: "Dans votre journal de frames, vous verrez le socket se connecter, le frame open arriver, puis votre <code>user/syncrequest</code> revenir immédiatement avec un refus. Cela ressemble à ceci :" },
+    { type: "quote", html: "<code>&lt;-- o<br>--&gt; user/syncrequest<br>1<br><br>&lt;-- a[{\"i\":1,\"s\":401,\"d\":\"Access is denied\"}]</code>" },
+    { type: "paragraph", html: "L'indice révélateur est le statut <code>401</code> associé à <code>Access is denied</code> sur le frame de <em>requête</em>. Si vous n'avez jamais vu de réponse de statut 200 à un frame <code>authorize</code> avant cela, voilà votre réponse : le socket n'est pas authentifié." },
+    { type: "heading", text: "Pourquoi le socket renvoie un 401" },
+    { type: "paragraph", html: "Il n'y a en réalité qu'une poignée de causes profondes, et elles s'empilent dans un ordre prévisible." },
+    { type: "heading", text: "1. Le socket n'a jamais été autorisé" },
+    { type: "paragraph", html: "C'est la grande cause. Une connexion WebSocket brute vers Tradovate n'est pas authentifiée. L'ouvrir et envoyer immédiatement <code>user/syncrequest</code> revient à entrer dans un club privé et commander un verre sans montrer sa carte. Vous devez envoyer exactement un frame <code>authorize</code> par connexion, portant un jeton d'accès valide, avant que quoi que ce soit d'autre ne puisse passer." },
+    { type: "heading", text: "2. Vous avez essayé d'obtenir le jeton via le socket" },
+    { type: "paragraph", html: "Une erreur courante consiste à essayer d'appeler <code>accessTokenRequest</code> via le WebSocket lui-même. Ce point de terminaison se trouve du côté REST. Le jeton est émis via HTTPS, puis <em>présenté</em> au socket. Le socket n'émet jamais de jetons." },
+    { type: "heading", text: "3. Un paramètre environment dans la requête de jeton" },
+    { type: "paragraph", html: "Si vous avez copié un corps de requête quelque part et qu'il inclut <code>\"environment\": \"demo\"</code> (ou <code>\"live\"</code>), supprimez-le. Ce champ n'est pas accepté par <code>accessTokenRequest</code> et peut faire dérailler toute la requête. L'environnement est déterminé par l'hôte que vous appelez, pas par un paramètre." },
+    { type: "heading", text: "4. Un compte réel sans deviceId ou avec un appareil non approuvé" },
+    { type: "paragraph", html: "Le démo est indulgent. Le réel ne l'est pas. Sur un compte financé/réel, vous devez envoyer un <code>deviceId</code> stable lorsque vous demandez le jeton, et l'appareil doit être approuvé via le flux de confirmation que Tradovate exécute pour la sécurité à deux facteurs. Manquez cela et le jeton réel que vous obtenez n'autorisera pas le socket réel." },
+    { type: "heading", text: "5. Le jeton a expiré" },
+    { type: "paragraph", html: "Si tout fonctionnait avant et que le 401 a commencé à apparaître de nulle part, c'est que le jeton a vieilli. Les jetons d'accès sont limités dans le temps, si bien qu'un socket de longue durée finira par voir un 401 comme s'il n'avait jamais été autorisé. C'est un problème de renouvellement, pas de configuration." },
+    { type: "heading", text: "La solution, étape par étape" },
+    {
+      type: "steps",
+      items: [
+        {
+          title: "Obtenez un jeton d'accès depuis REST",
+          html: "Envoyez vos identifiants en POST au point de terminaison d'authentification via HTTPS. Utilisez l'hôte correspondant au compte souhaité :<br><br><code>POST https://demo.tradovateapi.com/v1/auth/accessTokenRequest &nbsp;&nbsp;(simulé)<br>POST https://live.tradovateapi.com/v1/auth/accessTokenRequest &nbsp;&nbsp;(financé)<br><br>Content-Type: application/json<br>{<br>&nbsp;&nbsp;\"name\": \"your-username\",<br>&nbsp;&nbsp;\"password\": \"your-password\",<br>&nbsp;&nbsp;\"appId\": \"YourAppName\",<br>&nbsp;&nbsp;\"appVersion\": \"1.0\",<br>&nbsp;&nbsp;\"cid\": 0000,<br>&nbsp;&nbsp;\"sec\": \"your-api-secret\",<br>&nbsp;&nbsp;\"deviceId\": \"a-stable-unique-id\"<br>}</code><br><br>La réponse vous remet une chaîne <code>accessToken</code> (plus un horodatage d'expiration). C'est ce jeton que veut le socket. Remarquez qu'il n'y a <strong class='text-white'>aucun</strong> champ <code>environment</code> dans ce corps, l'hôte démo vous donne un jeton démo, l'hôte réel vous donne un jeton réel.",
+        },
+        {
+          title: "Ouvrez le socket et attendez le frame open",
+          html: "Connectez-vous à l'URL WebSocket correspondant à l'environnement de votre jeton :<br><br><code>wss://demo.tradovateapi.com/v1/websocket &nbsp;&nbsp;(simulé)<br>wss://live.tradovateapi.com/v1/websocket &nbsp;&nbsp;(financé)</code><br><br>Dès que la connexion est établie, le serveur envoie un frame open à un seul caractère : <code>o</code>. N'envoyez rien avant de l'avoir vu. Un jeton démo sur le socket réel (ou l'inverse) est sa propre façon discrète de gagner un 401, alors gardez la paire correspondante.",
+        },
+        {
+          title: "Envoyez le frame authorize",
+          html: "Les frames sur ce socket sont du texte brut : un point de terminaison, un id de requête, une ligne vide pour la chaîne de requête, puis le corps, chacun séparé par un saut de ligne. Le frame authorize place le jeton dans le corps :<br><br><code>authorize<br>0<br><br>YOUR_ACCESS_TOKEN</code><br><br>Écrit sous forme d'une seule chaîne, cela donne <code>authorize\\n0\\n\\nYOUR_ACCESS_TOKEN</code>. Le serveur répond avec un frame de données et un statut qui vous intéresse vraiment :<br><br><code>a[{\"i\":0,\"s\":200}]</code><br><br>Le statut <code>200</code> signifie que le socket est désormais authentifié pour toute la durée de la connexion. Si vous obtenez autre chose que 200 ici, arrêtez-vous, le jeton est le problème, et la synchronisation ne se réparera pas d'elle-même plus loin.",
+        },
+        {
+          title: "Envoyez maintenant user/syncrequest",
+          html: "Le socket étant autorisé, le même appel qui échouait passe désormais sans problème. Envoyez-le avec l'id de requête suivant et un corps vide pour synchroniser tout ce à quoi l'utilisateur a accès :<br><br><code>user/syncrequest<br>1<br><br></code><br><br>Cela donne <code>user/syncrequest\\n1\\n\\n</code>. Vous récupérerez l'instantané initial des comptes, positions, ordres, exécutions et soldes de trésorerie, et dès lors le socket diffuse des mises à jour incrémentielles au fur et à mesure de leurs changements. <code>user/syncrequest</code> est exclusif au WebSocket, il n'a pas d'équivalent REST, ce qui explique précisément pourquoi le socket doit d'abord être autorisé.",
+        },
+        {
+          title: "Maintenez la connexion active",
+          html: "Une fois autorisé, envoyez un frame de battement de cœur, un tableau JSON vide, <code>[]</code>, toutes les quelques secondes (environ toutes les 2,5 secondes) pour que le serveur ne vous déconnecte pas. Le serveur envoie également ses propres battements de cœur. Si vous cessez d'en recevoir pendant environ dix secondes, considérez le socket comme mort, reconnectez-vous, et relancez l'étape d'autorisation sur la nouvelle connexion.",
+        },
+      ],
+    },
+    { type: "heading", text: "Comptes réels : la vérification du deviceId et des permissions" },
+    { type: "paragraph", html: "Si le démo fonctionne parfaitement et que le réel est le seul endroit où vous rencontrez le 401, la cause est presque toujours du côté de l'approbation de l'appareil plutôt que dans votre code. Deux choses à confirmer." },
+    { type: "paragraph", html: "Premièrement, assurez-vous que l'accès API est réellement activé sur le compte et que la clé a la permission de faire ce que vous demandez. Dans l'application web Tradovate, cela se trouve dans les paramètres du compte, dans la section qui gère le complément API Access et les permissions de la clé. (Confirmez le libellé exact dans votre version actuelle, le texte et l'emplacement de cet écran de complément sont ajustés au fil du temps.)" },
+    { type: "paragraph", html: "Deuxièmement, envoyez un <code>deviceId</code> qui reste identique d'une exécution à l'autre et approuvez-le. Le réel impose une sécurité à deux facteurs basée sur l'appareil ; un <code>deviceId</code> flambant neuf ou manquant déclenche une étape d'approbation qui, tant que vous ne l'avez pas réglée, laisse le jeton incapable d'autoriser le socket réel. Générez un identifiant stable pour votre application, réutilisez-le à chaque fois, et confirmez-le via l'e-mail que Tradovate envoie." },
+    { type: "heading", text: "Toujours un 401 ? Parcourez cette liste de contrôle" },
+    {
+      type: "table",
+      headers: ["Vérification", "Ce qu'il faut confirmer"],
+      rows: [
+        ["Authorize est venu en premier", "Vous avez envoyé un frame authorize et vu s:200 avant toute autre requête."],
+        ["Origine du jeton", "Le jeton provenait de REST /auth/accessTokenRequest, pas du socket."],
+        ["Aucun champ environment", "Le corps de la requête de jeton n'a pas de paramètre environment."],
+        ["L'hôte correspond au jeton", "Jeton démo sur le socket démo, jeton réel sur le socket réel, jamais croisés."],
+        ["deviceId (réel)", "Un deviceId stable a été envoyé et l'appareil est approuvé."],
+        ["Fraîcheur du jeton", "Le jeton n'a pas expiré depuis que vous l'avez récupéré."],
+        ["Permissions de la clé", "L'accès API est activé et la clé est autorisée à lire/router sur ce compte."],
+      ],
+    },
+    { type: "paragraph", html: "Si cela fonctionnait puis s'est cassé en cours de session, passez directement à la durée de vie du jeton. Les jetons d'accès ne durent pas éternellement, et un socket resté ouvert un moment commencera à renvoyer des 401 dès que le jeton qui le sous-tend expire. Renouvelez avant l'expiration plutôt que d'attendre les échecs. Et si c'est la toute première requête de jeton qui échoue, revenez en arrière et vérifiez l'accès API et la génération d'une clé avant de toucher le socket." },
+    { type: "heading", text: "Évitez entièrement la plomberie du socket" },
+    { type: "paragraph", html: "Construire à la main le handshake d'authentification, les battements de cœur, l'approbation de l'appareil et le renouvellement du jeton représente beaucoup de pièces mobiles juste pour router un ordre. Si vous reliez Tradovate à des alertes TradingView ou à une stratégie, PickMyTrade gère toute la couche de connexion pour vous, sessions autorisées, gestion des appareils réels et renouvellement des jetons inclus, si bien que vous envoyez un signal et cela trade." },
+  ], it: [
+    { type: "paragraph", html: "Avete aperto un WebSocket, lanciato <code>user/syncrequest</code>, e invece di un flusso di dati su conto e ordini avete ricevuto un secco <code>401</code> con <em>&ldquo;Access is denied.&rdquo;</em> Non c'è nulla che non va nel vostro login e nulla è rotto nel conto. Il socket semplicemente non è mai stato autorizzato, quindi il server tratta ogni richiesta su di esso come anonima. La soluzione è un ordine specifico di operazioni: prendete un token di accesso dall'endpoint di autenticazione REST, consegnatelo al socket in un frame authorize, attendete la risposta di successo, e solo allora inviate <code>user/syncrequest</code>. Rispettate questa sequenza e il 401 sparisce." },
+    { type: "paragraph", html: "Questo inganna quasi tutti la prima volta che collegano il socket di Tradovate a mano, di solito perché cercano di autenticarsi come funziona REST. I WebSocket non funzionano così qui. Ripercorriamo esattamente cosa succede e la via pulita per uscirne." },
+    { type: "heading", text: "Come si presenta davvero l'errore" },
+    { type: "paragraph", html: "Nel vostro log dei frame vedrete il socket connettersi, arrivare il frame open, poi il vostro <code>user/syncrequest</code> tornare immediatamente con un rifiuto. Si presenta più o meno così:" },
+    { type: "quote", html: "<code>&lt;-- o<br>--&gt; user/syncrequest<br>1<br><br>&lt;-- a[{\"i\":1,\"s\":401,\"d\":\"Access is denied\"}]</code>" },
+    { type: "paragraph", html: "L'indizio rivelatore è lo stato <code>401</code> abbinato a <code>Access is denied</code> sul frame di <em>richiesta</em>. Se non avete mai visto una risposta di stato 200 a un frame <code>authorize</code> prima di questo, ecco la vostra risposta: il socket non è autenticato." },
+    { type: "heading", text: "Perché il socket restituisce un 401" },
+    { type: "paragraph", html: "In realtà ci sono solo una manciata di cause radice, e si accumulano in un ordine prevedibile." },
+    { type: "heading", text: "1. Il socket non è mai stato autorizzato" },
+    { type: "paragraph", html: "Questa è la causa principale. Una connessione WebSocket grezza a Tradovate non è autenticata. Aprirla e inviare immediatamente <code>user/syncrequest</code> equivale a entrare in un club per soci e ordinare da bere senza mostrare la tessera. Dovete inviare esattamente un frame <code>authorize</code> per connessione, contenente un token di accesso valido, prima che qualsiasi altra cosa possa passare." },
+    { type: "heading", text: "2. Avete provato a ottenere il token tramite il socket" },
+    { type: "paragraph", html: "Un errore comune è tentare di chiamare <code>accessTokenRequest</code> tramite il WebSocket stesso. Quell'endpoint vive sul lato REST. Il token viene coniato via HTTPS, e poi <em>presentato</em> al socket. Il socket non emette mai token." },
+    { type: "heading", text: "3. Un parametro environment nella richiesta del token" },
+    { type: "paragraph", html: "Se avete copiato un corpo di richiesta da qualche parte e include <code>\"environment\": \"demo\"</code> (o <code>\"live\"</code>), rimuovetelo. Quel campo non è accettato da <code>accessTokenRequest</code> e può mandare fuori strada l'intera richiesta. L'ambiente è deciso dall'host che chiamate, non da un parametro." },
+    { type: "heading", text: "4. Un conto reale senza deviceId o con un dispositivo non approvato" },
+    { type: "paragraph", html: "Il demo è permissivo. Il reale no. Su un conto finanziato/reale dovete inviare un <code>deviceId</code> stabile quando richiedete il token, e il dispositivo deve essere approvato tramite il flusso di conferma che Tradovate esegue per la sicurezza a due fattori. Se saltate questo passaggio, il token reale che ottenete non autorizzerà il socket reale." },
+    { type: "heading", text: "5. Il token è scaduto" },
+    { type: "paragraph", html: "Se prima tutto funzionava e poi ha iniziato a restituire 401 dal nulla, il token è scaduto. I token di accesso sono limitati nel tempo, quindi un socket di lunga durata alla fine vedrà un 401 come se non fosse mai stato autorizzato. Questo è un problema di rinnovo, non di configurazione." },
+    { type: "heading", text: "La soluzione, passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        {
+          title: "Ottenete un token di accesso da REST",
+          html: "Inviate in POST le vostre credenziali all'endpoint di autenticazione via HTTPS. Usate l'host corrispondente al conto desiderato:<br><br><code>POST https://demo.tradovateapi.com/v1/auth/accessTokenRequest &nbsp;&nbsp;(simulato)<br>POST https://live.tradovateapi.com/v1/auth/accessTokenRequest &nbsp;&nbsp;(finanziato)<br><br>Content-Type: application/json<br>{<br>&nbsp;&nbsp;\"name\": \"your-username\",<br>&nbsp;&nbsp;\"password\": \"your-password\",<br>&nbsp;&nbsp;\"appId\": \"YourAppName\",<br>&nbsp;&nbsp;\"appVersion\": \"1.0\",<br>&nbsp;&nbsp;\"cid\": 0000,<br>&nbsp;&nbsp;\"sec\": \"your-api-secret\",<br>&nbsp;&nbsp;\"deviceId\": \"a-stable-unique-id\"<br>}</code><br><br>La risposta vi consegna una stringa <code>accessToken</code> (più un timestamp di scadenza). È quel token che vuole il socket. Notate che in quel corpo <strong class='text-white'>non</strong> c'è alcun campo <code>environment</code>, l'host demo vi dà un token demo, l'host reale vi dà un token reale.",
+        },
+        {
+          title: "Aprite il socket e attendete il frame open",
+          html: "Connettetevi all'URL WebSocket corrispondente all'ambiente del vostro token:<br><br><code>wss://demo.tradovateapi.com/v1/websocket &nbsp;&nbsp;(simulato)<br>wss://live.tradovateapi.com/v1/websocket &nbsp;&nbsp;(finanziato)</code><br><br>Nel momento in cui la connessione è attiva, il server invia un frame open a un solo carattere: <code>o</code>. Non inviate nulla finché non lo avete visto. Un token demo sul socket reale (o viceversa) è un suo modo silenzioso di guadagnarsi un 401, quindi mantenete la coppia corrispondente.",
+        },
+        {
+          title: "Inviate il frame authorize",
+          html: "I frame su questo socket sono testo semplice: un endpoint, un id di richiesta, una riga vuota per la query string, poi il corpo, ciascuno separato da un a-capo. Il frame authorize mette il token nel corpo:<br><br><code>authorize<br>0<br><br>YOUR_ACCESS_TOKEN</code><br><br>Scritto come stringa unica, questo diventa <code>authorize\\n0\\n\\nYOUR_ACCESS_TOKEN</code>. Il server risponde con un frame di dati e uno stato che vi interessa davvero:<br><br><code>a[{\"i\":0,\"s\":200}]</code><br><br>Lo stato <code>200</code> significa che il socket ora è autenticato per tutta la durata della connessione. Se qui ottenete qualcosa di diverso da 200, fermatevi: il token è il problema, e la sincronizzazione non si aggiusterà da sola più avanti.",
+        },
+        {
+          title: "Ora inviate user/syncrequest",
+          html: "Con il socket autorizzato, la stessa chiamata che falliva ora passa senza problemi. Inviatela con il successivo id di richiesta e un corpo vuoto per sincronizzare tutto ciò a cui l'utente ha accesso:<br><br><code>user/syncrequest<br>1<br><br></code><br><br>Questo è <code>user/syncrequest\\n1\\n\\n</code>. Riceverete indietro lo snapshot iniziale di conti, posizioni, ordini, fill e saldi in contanti, e da quel momento il socket trasmette aggiornamenti incrementali man mano che cambiano. <code>user/syncrequest</code> è esclusivo del WebSocket, non ha un equivalente REST, ed è proprio per questo che il socket deve prima essere autorizzato.",
+        },
+        {
+          title: "Mantenete la connessione attiva",
+          html: "Una volta autorizzati, inviate un frame di heartbeat, un array JSON vuoto, <code>[]</code>, ogni pochi secondi (circa ogni 2,5 secondi) affinché il server non vi disconnetta. Anche il server invia i propri heartbeat. Se smettete di ricevere notizie per circa dieci secondi, trattate il socket come morto, riconnettetevi ed eseguite di nuovo il passaggio di autorizzazione sulla nuova connessione.",
+        },
+      ],
+    },
+    { type: "heading", text: "Conti reali: il controllo di deviceId e permessi" },
+    { type: "paragraph", html: "Se il demo funziona perfettamente e il reale è l'unico posto in cui incontrate il 401, la causa è quasi sempre sul lato dell'approvazione del dispositivo piuttosto che nel vostro codice. Due cose da confermare." },
+    { type: "paragraph", html: "Primo, assicuratevi che l'accesso API sia effettivamente abilitato sul conto e che la chiave abbia il permesso di fare ciò che state chiedendo. Nella web app di Tradovate questo si trova nelle impostazioni account, nella sezione che gestisce il componente aggiuntivo API Access e i permessi della chiave. (Confermate l'etichetta esatta nella vostra versione attuale, il testo e la posizione di questa schermata del componente aggiuntivo vengono modificati nel tempo.)" },
+    { type: "paragraph", html: "Secondo, inviate un <code>deviceId</code> che resti lo stesso tra le esecuzioni e approvatelo. Il reale impone una sicurezza a due fattori basata sul dispositivo; un <code>deviceId</code> nuovo di zecca o mancante attiva un passaggio di approvazione che, finché non lo risolvete, lascia il token incapace di autorizzare il socket reale. Generate un identificatore stabile per la vostra app, riutilizzatelo ogni volta, e confermatelo tramite l'email che invia Tradovate." },
+    { type: "heading", text: "Continuate a ricevere 401? Seguite questa checklist" },
+    {
+      type: "table",
+      headers: ["Controllo", "Cosa confermare"],
+      rows: [
+        ["Authorize è arrivato per primo", "Avete inviato un frame authorize e visto s:200 prima di qualsiasi altra richiesta."],
+        ["Origine del token", "Il token proveniva da REST /auth/accessTokenRequest, non dal socket."],
+        ["Nessun campo environment", "Il corpo della richiesta del token non ha il parametro environment."],
+        ["L'host corrisponde al token", "Token demo sul socket demo, token reale sul socket reale, mai incrociati."],
+        ["deviceId (reale)", "È stato inviato un deviceId stabile e il dispositivo è approvato."],
+        ["Freschezza del token", "Il token non è scaduto da quando lo avete ottenuto."],
+        ["Permessi della chiave", "L'accesso API è abilitato e la chiave può leggere/instradare su quel conto."],
+      ],
+    },
+    { type: "paragraph", html: "Se funzionava e poi si è rotto a metà sessione, andate direttamente alla durata del token. I token di accesso non durano per sempre, e un socket rimasto aperto per un po' inizierà a restituire 401 nel momento in cui il token sottostante scade. Rinnovate prima della scadenza invece di aspettare gli errori. E se è la primissima richiesta di token a fallire, tornate indietro per verificare l'accesso API e la generazione di una chiave prima di toccare affatto il socket." },
+    { type: "heading", text: "Saltate del tutto l'idraulica del socket" },
+    { type: "paragraph", html: "Costruire a mano l'handshake di autenticazione, gli heartbeat, l'approvazione del dispositivo e il rinnovo del token sono un sacco di parti mobili solo per instradare un ordine. Se state collegando Tradovate ad alert di TradingView o a una strategia, PickMyTrade gestisce per voi l'intero livello di connessione, sessioni autorizzate, gestione dei dispositivi reali e rinnovo dei token inclusi, così voi inviate un segnale e viene eseguito il trade." },
+  ] },
+  ctaHeading: { en: "Skip the Socket Plumbing", de: "Überspringen Sie die Socket-Installationsarbeit", es: "Evite la fontanería del socket", fr: "Évitez la plomberie du socket", it: "Saltate l'idraulica del socket" },
+  ctaText: { en: "PickMyTrade handles the whole connection layer for you, authorized sessions, live device handling and token refresh included, so you send a signal and it trades.", de: "PickMyTrade übernimmt die gesamte Verbindungsebene für Sie, autorisierte Sitzungen, Live-Gerätebehandlung und Token-Erneuerung inklusive, sodass Sie ein Signal senden und es wird gehandelt.", es: "PickMyTrade gestiona toda la capa de conexión por usted, sesiones autorizadas, manejo de dispositivos reales y renovación de tokens incluidos, así que usted envía una señal y se opera.", fr: "PickMyTrade gère toute la couche de connexion pour vous, sessions autorisées, gestion des appareils réels et renouvellement des jetons inclus, si bien que vous envoyez un signal et cela trade.", it: "PickMyTrade gestisce per voi l'intero livello di connessione, sessioni autorizzate, gestione dei dispositivi reali e rinnovo dei token inclusi, così voi inviate un segnale e viene eseguito il trade." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testphase", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Iniziate la vostra prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does user/syncrequest return 401 \"Access is denied\"?", a: "Because the WebSocket connection was never authorized. user/syncrequest only runs over an authorized socket. Send an authorize frame carrying a valid access token first, wait for the status-200 reply, then send syncrequest." },
+    { q: "Where do I get the access token for the WebSocket?", a: "From the REST endpoint /auth/accessTokenRequest, not from the socket. POST your credentials over HTTPS, read accessToken out of the JSON response, and hand that token to the socket in the authorize frame." },
+    { q: "Do I need the environment parameter in accessTokenRequest?", a: "No. environment isn't a valid field for that request and can cause it to fail. Demo versus live is decided by which host you call, the demo host for the simulated account, the live host for the funded one." },
+    { q: "Why does it work in demo but 401 in live?", a: "Live enforces device approval that demo skips. Send a stable deviceId when you request the live token, approve the device from the confirmation Tradovate emails you, and make sure you're authorizing the live socket with a live token." },
+    { q: "My socket authorized fine, then started returning 401. Why?", a: "The token expired. Tokens are time-limited, so a long-running socket eventually hits a 401 as if it was never authorized. Renew the token before it lapses and re-authorize on a fresh session." },
+  ], de: [
+    { q: "Warum gibt user/syncrequest 401 „Access is denied“ zurück?", a: "Weil die WebSocket-Verbindung nie autorisiert wurde. user/syncrequest läuft nur über einen autorisierten Socket. Senden Sie zuerst einen authorize-Frame mit einem gültigen Access-Token, warten Sie auf die Status-200-Antwort, senden Sie dann syncrequest." },
+    { q: "Wo bekomme ich das Access-Token für den WebSocket?", a: "Vom REST-Endpunkt /auth/accessTokenRequest, nicht vom Socket. Senden Sie Ihre Zugangsdaten per POST über HTTPS, lesen Sie accessToken aus der JSON-Antwort aus und übergeben Sie das Token dem Socket im authorize-Frame." },
+    { q: "Brauche ich den environment-Parameter in accessTokenRequest?", a: "Nein. environment ist kein gültiges Feld für diese Anfrage und kann sie zum Scheitern bringen. Demo versus Live wird durch den aufgerufenen Host bestimmt, den Demo-Host für das simulierte Konto, den Live-Host für das finanzierte." },
+    { q: "Warum funktioniert es in Demo, aber 401 in Live?", a: "Live erzwingt eine Gerätegenehmigung, die Demo überspringt. Senden Sie eine stabile deviceId, wenn Sie das Live-Token anfordern, genehmigen Sie das Gerät über die Bestätigung, die Tradovate Ihnen per E-Mail sendet, und stellen Sie sicher, dass Sie den Live-Socket mit einem Live-Token autorisieren." },
+    { q: "Mein Socket wurde einwandfrei autorisiert und begann dann, 401 zurückzugeben. Warum?", a: "Das Token ist abgelaufen. Token sind zeitlich begrenzt, sodass ein lange laufender Socket irgendwann einen 401 sieht, als wäre er nie autorisiert worden. Erneuern Sie das Token, bevor es abläuft, und autorisieren Sie erneut auf einer frischen Sitzung." },
+  ], es: [
+    { q: "¿Por qué user/syncrequest devuelve 401 «Access is denied»?", a: "Porque la conexión WebSocket nunca fue autorizada. user/syncrequest solo funciona sobre un socket autorizado. Envíe primero un frame authorize con un token de acceso válido, espere la respuesta de estado 200 y luego envíe syncrequest." },
+    { q: "¿Dónde obtengo el token de acceso para el WebSocket?", a: "Del endpoint REST /auth/accessTokenRequest, no del socket. Envíe por POST sus credenciales por HTTPS, lea accessToken de la respuesta JSON, y entregue ese token al socket en el frame authorize." },
+    { q: "¿Necesito el parámetro environment en accessTokenRequest?", a: "No. environment no es un campo válido para esa solicitud y puede hacer que falle. Demo frente a real lo decide el host al que llame, el host demo para la cuenta simulada, el host real para la financiada." },
+    { q: "¿Por qué funciona en demo pero da 401 en real?", a: "Real impone una aprobación de dispositivo que demo se salta. Envíe un deviceId estable al solicitar el token real, apruebe el dispositivo desde la confirmación que le envía Tradovate por correo, y asegúrese de estar autorizando el socket real con un token real." },
+    { q: "Mi socket se autorizó bien y luego empezó a devolver 401. ¿Por qué?", a: "El token caducó. Los tokens están limitados en el tiempo, así que un socket de larga duración eventualmente recibirá un 401 como si nunca hubiera sido autorizado. Renueve el token antes de que venza y vuelva a autorizar en una sesión nueva." },
+  ], fr: [
+    { q: "Pourquoi user/syncrequest renvoie-t-il 401 « Access is denied » ?", a: "Parce que la connexion WebSocket n'a jamais été autorisée. user/syncrequest ne fonctionne que sur un socket autorisé. Envoyez d'abord un frame authorize portant un jeton d'accès valide, attendez la réponse de statut 200, puis envoyez syncrequest." },
+    { q: "Où puis-je obtenir le jeton d'accès pour le WebSocket ?", a: "Depuis le point de terminaison REST /auth/accessTokenRequest, pas depuis le socket. Envoyez vos identifiants en POST via HTTPS, lisez accessToken dans la réponse JSON, et transmettez ce jeton au socket dans le frame authorize." },
+    { q: "Ai-je besoin du paramètre environment dans accessTokenRequest ?", a: "Non. environment n'est pas un champ valide pour cette requête et peut la faire échouer. Le choix entre démo et réel est déterminé par l'hôte que vous appelez, l'hôte démo pour le compte simulé, l'hôte réel pour le compte financé." },
+    { q: "Pourquoi ça fonctionne en démo mais donne 401 en réel ?", a: "Le réel impose une approbation d'appareil que le démo n'exige pas. Envoyez un deviceId stable lorsque vous demandez le jeton réel, approuvez l'appareil depuis la confirmation que Tradovate vous envoie par e-mail, et assurez-vous d'autoriser le socket réel avec un jeton réel." },
+    { q: "Mon socket s'est autorisé correctement, puis a commencé à renvoyer 401. Pourquoi ?", a: "Le jeton a expiré. Les jetons sont limités dans le temps, si bien qu'un socket de longue durée finira par rencontrer un 401 comme s'il n'avait jamais été autorisé. Renouvelez le jeton avant son expiration et réautorisez sur une session neuve." },
+  ], it: [
+    { q: "Perché user/syncrequest restituisce 401 «Access is denied»?", a: "Perché la connessione WebSocket non è mai stata autorizzata. user/syncrequest funziona solo su un socket autorizzato. Inviate prima un frame authorize con un token di accesso valido, attendete la risposta con stato 200, poi inviate syncrequest." },
+    { q: "Dove ottengo il token di accesso per il WebSocket?", a: "Dall'endpoint REST /auth/accessTokenRequest, non dal socket. Inviate in POST le vostre credenziali via HTTPS, leggete accessToken dalla risposta JSON, e consegnate quel token al socket nel frame authorize." },
+    { q: "Mi serve il parametro environment in accessTokenRequest?", a: "No. environment non è un campo valido per quella richiesta e può farla fallire. Demo contro reale è deciso dall'host che chiamate, l'host demo per il conto simulato, l'host reale per quello finanziato." },
+    { q: "Perché funziona in demo ma dà 401 in reale?", a: "Il reale impone un'approvazione del dispositivo che il demo salta. Inviate un deviceId stabile quando richiedete il token reale, approvate il dispositivo dalla conferma che Tradovate vi invia via email, e assicuratevi di autorizzare il socket reale con un token reale." },
+    { q: "Il mio socket si è autorizzato correttamente, poi ha iniziato a restituire 401. Perché?", a: "Il token è scaduto. I token sono limitati nel tempo, quindi un socket di lunga durata alla fine incontrerà un 401 come se non fosse mai stato autorizzato. Rinnovate il token prima che scada e riautorizzate su una sessione nuova." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie den aktuellen Ablauf daher immer in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización de terceros independiente y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni parrainée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione di terze parti indipendente e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verificate sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

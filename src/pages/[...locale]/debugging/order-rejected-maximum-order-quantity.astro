@@ -1,0 +1,569 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "order-rejected-maximum-order-quantity";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate 'Maximum Order Quantity Has Been Met' Fix";
+const META_DESCRIPTION =
+  "'Maximum order quantity has been met' on Tradovate (Rule #555): a contract cap is blocking your order. Cut size or raise Max Position to trade again fast.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate „Maximum Order Quantity Has Been Met“ beheben", es: "Cómo solucionar «Maximum Order Quantity Has Been Met» en Tradovate", fr: "Résoudre « Maximum Order Quantity Has Been Met » sur Tradovate", it: "Come risolvere «Maximum Order Quantity Has Been Met» su Tradovate" },
+  dek: { en: "A clean entry bounces back with \"Your maximum order quantity has been met.\" Almost always it's a prop-firm contract cap, here's how to read the scope and clear it.", de: "Ein sauberer Einstieg kommt mit „Your maximum order quantity has been met.“ zurück. Fast immer ist es ein Kontraktlimit der Prop-Firma, hier erfahren Sie, wie Sie den Geltungsbereich lesen und das Limit beseitigen.", es: "Una entrada limpia rebota con «Your maximum order quantity has been met.» Casi siempre es un límite de contratos de la prop firm; aquí le explicamos cómo leer el alcance y resolverlo.", fr: "Une entrée propre est renvoyée avec « Your maximum order quantity has been met. » Il s'agit presque toujours d'une limite de contrats de la prop firm ; voici comment lire la portée et la lever.", it: "Un ingresso pulito torna indietro con «Your maximum order quantity has been met.» Quasi sempre è un limite di contratti della prop firm; ecco come leggere l'ambito e rimuoverlo." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You line up a clean entry on NQ or CL, click buy, and Tradovate throws it straight back: <strong class='text-white'>&ldquo;Your maximum order quantity has been met. Please change your quantity to place the order.&rdquo;</strong> On a fast tick, that half-second bounce is the difference between a fill and a chased entry. Almost every time, this rejection means one thing, a contract cap on your account got hit, usually a prop-firm limit tagged with a scope like <strong class='text-white'>Rule #555</strong>. The upside: it's one of the most predictable Tradovate rejections to clear, and the easiest to design out of an automated setup entirely." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for a \"Maximum Order Quantity\" Rejection",
+      items: [
+        "<strong class='text-white'>Read the scope line first.</strong> The popup shows something like <code>Limit: 0 Current: 1. Scope: NQ Rule #555</code>. That tells you which symbol is capped and by how much.",
+        "<strong class='text-white'>Cut your order size.</strong> Drop the quantity to the allowed number (often 1) and resend, that clears the block immediately.",
+        "<strong class='text-white'>Count micros AND minis.</strong> On most prop accounts a micro counts the same as a mini toward the cap, so 10 MNQ can breach a &ldquo;10 contract&rdquo; limit.",
+        "<strong class='text-white'>On a personal or funded-cash account, raise your Max Position.</strong> Application Settings &rsaquo; Accounts &rsaquo; Risk Settings &rsaquo; Max Position Size.",
+        "<strong class='text-white'>On a prop or evaluation account, you can't self-raise it.</strong> The limit is locked by the firm, so request an increase through their dashboard or support.",
+        "<strong class='text-white'>Rule out an early market close.</strong> Around holidays Tradovate may auto-flatten and reject new size even when you're below your cap.",
+      ],
+    },
+    { type: "heading", text: "What \"Maximum Order Quantity Has Been Met\" Means" },
+    { type: "paragraph", html: "This rejection is a <strong class='text-white'>risk check</strong>, not a market or connectivity error. Before an order reaches the exchange, Tradovate compares the size you requested against a maximum-quantity or maximum-position rule attached to your account. If the order would push you past that ceiling, it's refused <em>pre-trade</em> and never routes. Your margin, the market session, your internet, none of that caused it. A hard cap did." },
+    { type: "paragraph", html: "The exact wording you'll see is: <em>&ldquo;Your maximum order quantity has been met. Please change your quantity to place the order. If you would like to request an increase, please submit risk...&rdquo;</em> Alongside it, Tradovate prints a scope and a rule number, for example <strong class='text-white'><code>Limit: 0 Current: 1. Scope: NQ Rule #555</code></strong>. Here &ldquo;Scope: NQ&rdquo; means the cap applies to the Nasdaq contract, and <strong class='text-white'>Rule #555</strong> is the identifier of the specific risk rule doing the blocking. That number is a reference for support and for your prop firm; it's not an error code you fix directly." },
+    { type: "paragraph", html: "Here's the distinction worth pinning down: two closely related caps both surface this message. A <strong class='text-white'>Max Order Quantity</strong> limit caps how many contracts you can send in a <em>single</em> order. A <strong class='text-white'>Max Position Size</strong> limit caps how many contracts you can <em>hold open at once</em> across one or more orders. Prop firms usually enforce the position cap, which is why adding a second contract to a position you already hold trips the same wording as an oversized single order." },
+    { type: "heading", text: "Top Causes of the \"Maximum Order Quantity\" Rejection" },
+    { type: "heading", text: "1. A Prop-Firm Contract Cap (Most Common)" },
+    { type: "paragraph", html: "If you trade an evaluation or funded account from Apex, Topstep, FundedNext, Tradeify, Bulenox, or similar, the firm writes a fixed contract limit into your Tradovate account based on account size. These caps scale with account size, often just a few minis or a few dozen micros on smaller accounts, so check your firm's current rules for the exact number. Send more than that and Tradovate rejects it as &ldquo;maximum order quantity has been met.&rdquo; The limit lives on the firm's side, and it's the number-one reason for this error." },
+    { type: "heading", text: "2. Micros and Minis Counting Equally" },
+    { type: "paragraph", html: "Here's the trap that catches new prop traders: on many firm risk profiles a <strong class='text-white'>micro contract counts the same as a mini</strong> toward the cap. If your limit is &ldquo;10 contracts,&rdquo; ten MNQ micros breach it just as ten NQ minis would. You think you're trading tiny size; the risk engine sees ten contracts." },
+    { type: "heading", text: "3. A Max Position Size Set on Your Own Account" },
+    { type: "paragraph", html: "On a personal or direct funded-cash account, you may have set (or inherited) a <strong class='text-white'>Max Position Size</strong> in Risk Settings and forgotten about it. Any order that would exceed that number gets blocked with the same message, the cap is just self-imposed rather than firm-imposed." },
+    { type: "heading", text: "4. Scaling or Phased Limits During a Challenge" },
+    { type: "paragraph", html: "Some firms tighten limits by challenge phase or scale them with your balance. A cap that was fine yesterday can be lower today after a rule change, a reset, or a phase transition, producing a sudden &ldquo;maximum order quantity&rdquo; rejection on size you traded before without a hitch." },
+    { type: "heading", text: "5. An Early Market Close or Holiday Auto-Flatten" },
+    { type: "paragraph", html: "Once in a while the rejection isn't a size cap at all. Around holidays and early closes, Tradovate can auto-close positions and refuse new orders as the session winds down, and that state can surface a quantity-style rejection even when you're within your cap. If the error shows up near a known holiday or early close, check the session schedule before you touch any risk settings." },
+    { type: "heading", text: "How to Fix \"Maximum Order Quantity Has Been Met\": Step-by-Step" },
+    { type: "heading", text: "Fix A: Reduce Your Order Size (Works on Every Account)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Read the scope line", html: "Read the scope line in the rejection (e.g. <code>Scope: NQ</code>, <code>Limit: 1</code>)." },
+        { title: "Lower the order quantity", html: "Lower the order quantity to that allowed number, if the limit is 1, send 1." },
+        { title: "Subtract what you already hold", html: "If you're adding to a position, subtract what you already hold from the cap and only send the remainder." },
+        { title: "Resend", html: "The order clears the risk check and routes." },
+      ],
+    },
+    { type: "paragraph", html: "This is the instant unblock, and it's the only fix available while you're inside a prop challenge." },
+    { type: "heading", text: "Fix B: Raise the Max Position on a Personal / Funded-Cash Account" },
+    { type: "paragraph", html: "If the account is yours to configure (not a locked prop or eval account), raise the cap in Tradovate's risk controls:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Application Settings", html: "Open the gear / settings menu in Tradovate Trader web or desktop." },
+        { title: "Go to Accounts, then Risk Settings", html: "Go to the <strong class='text-white'>Accounts</strong> tab and click <strong class='text-white'>Risk Settings</strong> for the account." },
+        { title: "Raise Max Position Size", html: "Find <strong class='text-white'>Max Position Size</strong>, enable the toggle, and enter a higher value (or clear a too-low value)." },
+        { title: "Save and resend", html: "Save, then resend your order." },
+      ],
+    },
+    { type: "quote", html: "<strong>Heads up:</strong> Tradovate's risk panel lives under <em>Application Settings &rsaquo; Accounts &rsaquo; Risk Settings</em>, and the field you want is <em>Max Position Size</em>. Exact button placement, and whether a separate <em>Max Order Qty</em> field shows up, can vary a little by platform version and by whether your account is prop-managed, so confirm against your own screen before you change any values." },
+    { type: "heading", text: "Fix C: Request an Increase from Your Prop Firm (Locked Accounts)" },
+    { type: "paragraph", html: "On an evaluation or funded prop account, the risk rule belongs to the firm, and <strong class='text-white'>only the firm can raise it</strong>, the Max Position controls in Tradovate will be greyed out or ignored. To lift the cap:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the firm's trader dashboard", html: "Open your prop firm's trader dashboard (not Tradovate) and find the account's risk/rules page." },
+        { title: "Request the increase", html: "Look for a <strong class='text-white'>request limit increase</strong> or <strong class='text-white'>submit risk change</strong> option, or contact the firm's support with your account ID and the rule scope (e.g. &ldquo;NQ, Rule #555&rdquo;)." },
+        { title: "Wait for it to apply", html: "Wait for the firm to apply the change; it takes effect on their side, then flows through to Tradovate." },
+      ],
+    },
+    { type: "paragraph", html: "Trying to override a firm-locked limit inside Tradovate won't work, and on some programs, editing risk settings can itself trip a compliance flag. Go through the firm." },
+    { type: "heading", text: "Fix D: Rule Out a Session Issue" },
+    { type: "paragraph", html: "If you're within your cap and still rejected, check the instrument's trading hours and the market-holiday calendar. If the CME session is closed, on an early-close schedule, or the account was just auto-flattened, wait for the regular session to resume and retry rather than changing any limits." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / message", "What it means", "Fix"],
+      rows: [
+        ["<code>Maximum order quantity has been met. Please change your quantity...</code>", "Order exceeds a max order-qty or max-position cap", "Lower size to the allowed number and resend"],
+        ["<code>Limit: 0 Current: 1. Scope: NQ Rule #555</code>", "A firm risk rule caps NQ; you're over it", "Trade within the cap or ask the firm to raise Rule #555"],
+        ["Micros rejected on a &ldquo;10 contract&rdquo; account", "Micros count the same as minis toward the cap", "Reduce micro count to stay under the contract cap"],
+        ["Max Position field is greyed out", "Account is prop/eval; limit is firm-locked", "Request the increase via the prop firm's dashboard/support"],
+        ["Rejection near a holiday / early close", "Session closing or auto-flatten, not a size cap", "Wait for the regular session and retry"],
+        ["<code>Insufficient margin</code> / <code>Not enough money</code> alongside it", "Free margin can't cover the size, not a cap", "Cut size or add funds"],
+      ],
+    },
+    { type: "heading", text: "Prevent This With PickMyTrade" },
+    { type: "paragraph", html: "If your rejections come from <strong class='text-white'>automated</strong> entries, TradingView alerts, a bot, or a copied strategy firing size your prop account won't accept, PickMyTrade stops the bounce before Tradovate ever sees it. Instead of blasting an oversized order and eating a rejection mid-move, PickMyTrade validates and shapes the order first:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Qty &amp; Symbol Validation</strong>, caps the contracts each alert sends, so a strategy can't request more than your account allows and &ldquo;maximum order quantity&rdquo; rejections get blocked at the source.",
+        "<strong class='text-white'>Prop-Aware Risk Filters</strong>, respect firm contract limits and account state, so alerts stay inside evaluation rules instead of tripping Rule #555.",
+        "<strong class='text-white'>Fixed &amp; Scaled Sizing</strong>, set a hard per-order contract quantity (or scale it per account) so live size always matches the cap you're cleared for.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirror one alert across several Tradovate accounts, sizing each to its own limit rather than sending identical oversized orders everywhere.",
+      ],
+    },
+    { type: "paragraph", html: "The result: the order that would've been rejected is corrected to a compliant size and routed cleanly, so you keep the fill and the momentum." },
+  ], de: [
+    { type: "paragraph",html: "Sie haben einen sauberen Einstieg bei NQ oder CL vorbereitet, klicken auf Kaufen, und Tradovate wirft ihn sofort zurück: <strong class='text-white'>&ldquo;Your maximum order quantity has been met. Please change your quantity to place the order.&rdquo;</strong> Bei einem schnellen Tick ist dieses halbsekündige Abprallen der Unterschied zwischen einer Ausführung und einem hinterhergejagten Einstieg. Fast immer bedeutet diese Ablehnung eins, ein Kontraktlimit Ihres Kontos wurde erreicht, meist ein Limit der Prop-Firma mit einem Geltungsbereich wie <strong class='text-white'>Rule #555</strong>. Das Gute daran: Es ist eine der am besten vorhersehbaren Tradovate-Ablehnungen, die sich leicht beseitigen lässt, und sie lässt sich in einem automatisierten Setup komplett vermeiden." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste bei einer „Maximum Order Quantity“-Ablehnung",
+      items: [
+        "<strong class='text-white'>Lesen Sie zuerst die Scope-Zeile.</strong> Das Popup zeigt etwa <code>Limit: 0 Current: 1. Scope: NQ Rule #555</code>. Daran erkennen Sie, welches Symbol begrenzt ist und um wie viel.",
+        "<strong class='text-white'>Verringern Sie Ihre Ordergröße.</strong> Senken Sie die Menge auf die zulässige Zahl (oft 1) und senden Sie erneut, das beseitigt die Sperre sofort.",
+        "<strong class='text-white'>Zählen Sie Micros UND Minis.</strong> Bei den meisten Prop-Konten zählt ein Micro genauso wie ein Mini zum Limit, sodass 10 MNQ ein &ldquo;10-Kontrakte&rdquo;-Limit überschreiten können.",
+        "<strong class='text-white'>Erhöhen Sie bei einem persönlichen oder mit Eigenkapital finanzierten Konto Ihre Max Position.</strong> Application Settings &rsaquo; Accounts &rsaquo; Risk Settings &rsaquo; Max Position Size.",
+        "<strong class='text-white'>Bei einem Prop- oder Evaluierungskonto können Sie es nicht selbst erhöhen.</strong> Das Limit ist von der Firma gesperrt, beantragen Sie daher eine Erhöhung über deren Dashboard oder Support.",
+        "<strong class='text-white'>Schließen Sie einen vorzeitigen Börsenschluss aus.</strong> Rund um Feiertage kann Tradovate automatisch glattstellen und neue Größe ablehnen, selbst wenn Sie unter Ihrem Limit liegen.",
+      ],
+    },
+    { type: "heading",text: "Was „Maximum Order Quantity Has Been Met“ bedeutet" },
+    { type: "paragraph",html: "Diese Ablehnung ist eine <strong class='text-white'>Risikoprüfung</strong>, kein Markt- oder Verbindungsfehler. Bevor eine Order die Börse erreicht, vergleicht Tradovate die angeforderte Größe mit einer Regel für maximale Menge oder maximale Position, die Ihrem Konto zugeordnet ist. Würde die Order Sie über diese Obergrenze hinausführen, wird sie <em>vor dem Handel</em> abgelehnt und nie geroutet. Ihre Margin, die Marktsitzung, Ihr Internet, nichts davon war die Ursache. Eine harte Obergrenze war es." },
+    { type: "paragraph",html: "Der genaue Wortlaut, den Sie sehen, lautet: <em>&ldquo;Your maximum order quantity has been met. Please change your quantity to place the order. If you would like to request an increase, please submit risk...&rdquo;</em> Dazu gibt Tradovate einen Scope und eine Regelnummer aus, zum Beispiel <strong class='text-white'><code>Limit: 0 Current: 1. Scope: NQ Rule #555</code></strong>. Dabei bedeutet &ldquo;Scope: NQ&rdquo;, dass das Limit für den Nasdaq-Kontrakt gilt, und <strong class='text-white'>Rule #555</strong> ist die Kennung der konkreten Risikoregel, die blockiert. Diese Nummer ist eine Referenz für den Support und für Ihre Prop-Firma, kein Fehlercode, den Sie direkt beheben." },
+    { type: "paragraph",html: "Hier ist die Unterscheidung, die man festhalten sollte: Zwei eng verwandte Limits lösen diese Meldung aus. Ein <strong class='text-white'>Max Order Quantity</strong>-Limit begrenzt, wie viele Kontrakte Sie in einer <em>einzelnen</em> Order senden können. Ein <strong class='text-white'>Max Position Size</strong>-Limit begrenzt, wie viele Kontrakte Sie über eine oder mehrere Orders hinweg <em>gleichzeitig offen halten</em> können. Prop-Firmen setzen meist das Positionslimit durch, weshalb das Hinzufügen eines zweiten Kontrakts zu einer bereits gehaltenen Position denselben Wortlaut auslöst wie eine zu große Einzelorder." },
+    { type: "heading",text: "Häufigste Ursachen der „Maximum Order Quantity“-Ablehnung" },
+    { type: "heading",text: "1. Ein Kontraktlimit der Prop-Firma (am häufigsten)" },
+    { type: "paragraph",html: "Wenn Sie ein Evaluierungs- oder Funded-Konto von Apex, Topstep, FundedNext, Tradeify, Bulenox oder ähnlichen Anbietern handeln, schreibt die Firma je nach Kontogröße ein festes Kontraktlimit in Ihr Tradovate-Konto. Diese Limits skalieren mit der Kontogröße, oft nur wenige Minis oder einige Dutzend Micros bei kleineren Konten, prüfen Sie daher die aktuellen Regeln Ihrer Firma auf die genaue Zahl. Senden Sie mehr, lehnt Tradovate es als &ldquo;maximum order quantity has been met&rdquo; ab. Das Limit liegt auf Seiten der Firma und ist der häufigste Grund für diesen Fehler." },
+    { type: "heading",text: "2. Micros und Minis zählen gleich" },
+    { type: "paragraph",html: "Das ist die Falle, in die neue Prop-Trader tappen: Bei vielen Risikoprofilen der Firmen zählt ein <strong class='text-white'>Micro-Kontrakt genauso wie ein Mini</strong> zum Limit. Lautet Ihr Limit &ldquo;10 Kontrakte&rdquo;, überschreiten zehn MNQ-Micros es genauso wie zehn NQ-Minis. Sie glauben, winzige Größe zu handeln; die Risiko-Engine sieht zehn Kontrakte." },
+    { type: "heading",text: "3. Eine Max Position Size in Ihrem eigenen Konto" },
+    { type: "paragraph",html: "Bei einem persönlichen oder direkt mit Eigenkapital finanzierten Konto haben Sie möglicherweise eine <strong class='text-white'>Max Position Size</strong> in den Risk Settings gesetzt (oder geerbt) und vergessen. Jede Order, die diese Zahl überschreiten würde, wird mit derselben Meldung blockiert, das Limit ist nur selbst auferlegt statt von der Firma." },
+    { type: "heading",text: "4. Skalierende oder phasenbezogene Limits während einer Challenge" },
+    { type: "paragraph",html: "Manche Firmen verschärfen Limits je nach Challenge-Phase oder skalieren sie mit Ihrem Kontostand. Ein Limit, das gestern in Ordnung war, kann nach einer Regeländerung, einem Reset oder einem Phasenwechsel niedriger sein und eine plötzliche &ldquo;maximum order quantity&rdquo;-Ablehnung bei einer Größe auslösen, die Sie zuvor problemlos gehandelt haben." },
+    { type: "heading",text: "5. Ein vorzeitiger Börsenschluss oder eine Feiertags-Auto-Flatten" },
+    { type: "paragraph",html: "Gelegentlich ist die Ablehnung gar kein Größenlimit. Rund um Feiertage und vorzeitige Schließungen kann Tradovate Positionen automatisch schließen und neue Orders ablehnen, während die Sitzung ausläuft, und dieser Zustand kann eine mengenartige Ablehnung auslösen, selbst wenn Sie innerhalb Ihres Limits liegen. Tritt der Fehler in der Nähe eines bekannten Feiertags oder vorzeitigen Schlusses auf, prüfen Sie den Sitzungsplan, bevor Sie Risikoeinstellungen anfassen." },
+    { type: "heading",text: "„Maximum Order Quantity Has Been Met“ beheben: Schritt für Schritt" },
+    { type: "heading",text: "Lösung A: Ordergröße verringern (funktioniert bei jedem Konto)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Scope-Zeile lesen", html: "Lesen Sie die Scope-Zeile in der Ablehnung (z. B. <code>Scope: NQ</code>, <code>Limit: 1</code>)." },
+        { title: "Ordermenge senken", html: "Senken Sie die Ordermenge auf die zulässige Zahl, bei einem Limit von 1 senden Sie 1." },
+        { title: "Bereits gehaltene Menge abziehen", html: "Wenn Sie zu einer Position hinzufügen, ziehen Sie das bereits Gehaltene vom Limit ab und senden Sie nur den Rest." },
+        { title: "Erneut senden", html: "Die Order besteht die Risikoprüfung und wird geroutet." },
+      ],
+    },
+    { type: "paragraph",html: "Das ist die sofortige Entsperrung und die einzige verfügbare Lösung, solange Sie in einer Prop-Challenge sind." },
+    { type: "heading",text: "Lösung B: Max Position bei einem persönlichen / mit Eigenkapital finanzierten Konto erhöhen" },
+    { type: "paragraph",html: "Wenn Sie das Konto selbst konfigurieren können (kein gesperrtes Prop- oder Evaluierungskonto), erhöhen Sie das Limit in den Risikokontrollen von Tradovate:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Application Settings öffnen", html: "Öffnen Sie das Zahnrad- bzw. Einstellungsmenü in Tradovate Trader (Web oder Desktop)." },
+        { title: "Zu Accounts, dann Risk Settings", html: "Wechseln Sie zum Tab <strong class='text-white'>Accounts</strong> und klicken Sie für das Konto auf <strong class='text-white'>Risk Settings</strong>." },
+        { title: "Max Position Size erhöhen", html: "Suchen Sie <strong class='text-white'>Max Position Size</strong>, aktivieren Sie den Schalter und geben Sie einen höheren Wert ein (oder entfernen Sie einen zu niedrigen Wert)." },
+        { title: "Speichern und erneut senden", html: "Speichern Sie und senden Sie Ihre Order erneut." },
+      ],
+    },
+    { type: "quote",html: "<strong>Hinweis:</strong> Das Risikopanel von Tradovate befindet sich unter <em>Application Settings &rsaquo; Accounts &rsaquo; Risk Settings</em>, und das gesuchte Feld ist <em>Max Position Size</em>. Die genaue Platzierung der Schaltflächen und ob ein separates Feld <em>Max Order Qty</em> erscheint, kann je nach Plattformversion und danach, ob Ihr Konto von einer Prop-Firma verwaltet wird, leicht variieren. Gleichen Sie daher mit Ihrem eigenen Bildschirm ab, bevor Sie Werte ändern." },
+    { type: "heading",text: "Lösung C: Erhöhung bei Ihrer Prop-Firma beantragen (gesperrte Konten)" },
+    { type: "paragraph",html: "Bei einem Evaluierungs- oder Funded-Prop-Konto gehört die Risikoregel der Firma, und <strong class='text-white'>nur die Firma kann sie erhöhen</strong>, die Max-Position-Steuerelemente in Tradovate sind ausgegraut oder werden ignoriert. So heben Sie das Limit an:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Trader-Dashboard der Firma öffnen", html: "Öffnen Sie das Trader-Dashboard Ihrer Prop-Firma (nicht Tradovate) und suchen Sie die Risiko-/Regelseite des Kontos." },
+        { title: "Erhöhung beantragen", html: "Suchen Sie die Option <strong class='text-white'>request limit increase</strong> oder <strong class='text-white'>submit risk change</strong>, oder kontaktieren Sie den Support der Firma mit Ihrer Konto-ID und dem Regel-Scope (z. B. &ldquo;NQ, Rule #555&rdquo;)." },
+        { title: "Auf die Anwendung warten", html: "Warten Sie, bis die Firma die Änderung anwendet; sie wird auf deren Seite wirksam und gelangt dann zu Tradovate." },
+      ],
+    },
+    { type: "paragraph",html: "Der Versuch, ein von der Firma gesperrtes Limit in Tradovate zu überschreiben, funktioniert nicht, und bei manchen Programmen kann schon das Bearbeiten der Risikoeinstellungen eine Compliance-Markierung auslösen. Gehen Sie über die Firma." },
+    { type: "heading",text: "Lösung D: Ein Sitzungsproblem ausschließen" },
+    { type: "paragraph",html: "Wenn Sie innerhalb Ihres Limits liegen und trotzdem abgelehnt werden, prüfen Sie die Handelszeiten des Instruments und den Börsenfeiertagskalender. Wenn die CME-Sitzung geschlossen ist, nach einem vorzeitigen Schlussplan läuft oder das Konto gerade automatisch glattgestellt wurde, warten Sie auf die reguläre Sitzung und versuchen Sie es erneut, statt Limits zu ändern." },
+    { type: "heading",text: "Fehlerbehebungstabelle" },
+    { type: "table", headers: ["Fehler / Meldung","Bedeutung","Lösung"], rows: [
+      ["<code>Maximum order quantity has been met. Please change your quantity...</code>","Order überschreitet ein Limit für maximale Ordermenge oder maximale Position","Größe auf die zulässige Zahl senken und erneut senden"],
+      ["<code>Limit: 0 Current: 1. Scope: NQ Rule #555</code>","Eine Risikoregel der Firma begrenzt NQ; Sie liegen darüber","Innerhalb des Limits handeln oder die Firma bitten, Rule #555 anzuheben"],
+      ["Micros abgelehnt bei einem &ldquo;10-Kontrakte&rdquo;-Konto","Micros zählen genauso wie Minis zum Limit","Micro-Anzahl verringern, um unter dem Kontraktlimit zu bleiben"],
+      ["Max-Position-Feld ist ausgegraut","Konto ist Prop/Evaluierung; das Limit ist von der Firma gesperrt","Erhöhung über das Dashboard/den Support der Prop-Firma beantragen"],
+      ["Ablehnung in der Nähe eines Feiertags / vorzeitigen Schlusses","Sitzung schließt oder Auto-Flatten, kein Größenlimit","Auf die reguläre Sitzung warten und erneut versuchen"],
+      ["<code>Insufficient margin</code> / <code>Not enough money</code> zusätzlich","Freie Margin deckt die Größe nicht, kein Limit","Größe verringern oder Guthaben aufstocken"],
+    ] },
+    { type: "heading",text: "Vermeiden Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Wenn Ihre Ablehnungen von <strong class='text-white'>automatisierten</strong> Einstiegen stammen, TradingView-Alerts, einem Bot oder einer kopierten Strategie, die eine Größe feuert, die Ihr Prop-Konto nicht akzeptiert, stoppt PickMyTrade das Abprallen, bevor Tradovate es überhaupt sieht. Statt mitten in der Bewegung eine zu große Order abzufeuern und eine Ablehnung einzustecken, validiert und formt PickMyTrade die Order zuerst:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validierung von Menge &amp; Symbol</strong>, begrenzt die Kontrakte, die jeder Alert sendet, sodass eine Strategie nicht mehr anfordern kann, als Ihr Konto erlaubt, und &ldquo;maximum order quantity&rdquo;-Ablehnungen an der Quelle blockiert werden.",
+        "<strong class='text-white'>Prop-bewusste Risikofilter</strong>, respektieren Kontraktlimits der Firma und den Kontostatus, damit Alerts innerhalb der Evaluierungsregeln bleiben, statt Rule #555 auszulösen.",
+        "<strong class='text-white'>Feste &amp; skalierte Positionsgröße</strong>, legen Sie eine feste Kontraktmenge pro Order fest (oder skalieren Sie sie pro Konto), damit die Live-Größe immer dem Limit entspricht, für das Sie freigegeben sind.",
+        "<strong class='text-white'>Multi-Account-Sync</strong>, spiegeln Sie einen Alert über mehrere Tradovate-Konten und bemessen Sie jedes nach seinem eigenen Limit, statt überall identische, zu große Orders zu senden.",
+      ],
+    },
+    { type: "paragraph",html: "Das Ergebnis: Die Order, die abgelehnt worden wäre, wird auf eine regelkonforme Größe korrigiert und sauber geroutet, sodass Sie die Ausführung und den Schwung behalten." },
+  ], es: [
+    { type: "paragraph",html: "Prepara una entrada limpia en NQ o CL, pulsa comprar, y Tradovate se la devuelve de inmediato: <strong class='text-white'>&ldquo;Your maximum order quantity has been met. Please change your quantity to place the order.&rdquo;</strong> En un tick rápido, ese rebote de medio segundo es la diferencia entre una ejecución y una entrada perseguida. Casi siempre, este rechazo significa una sola cosa, se alcanzó un límite de contratos de su cuenta, normalmente un límite de la prop firm con un alcance como <strong class='text-white'>Rule #555</strong>. Lo bueno: es uno de los rechazos de Tradovate más predecibles de resolver y el más fácil de eliminar por diseño en una configuración automatizada." },
+    {
+      type: "checklist",
+      heading: "Lista de comprobación rápida para un rechazo «Maximum Order Quantity»",
+      items: [
+        "<strong class='text-white'>Lea primero la línea de alcance.</strong> La ventana emergente muestra algo como <code>Limit: 0 Current: 1. Scope: NQ Rule #555</code>. Eso le indica qué símbolo está limitado y en qué medida.",
+        "<strong class='text-white'>Reduzca el tamaño de su orden.</strong> Baje la cantidad al número permitido (a menudo 1) y vuelva a enviar, eso elimina el bloqueo de inmediato.",
+        "<strong class='text-white'>Cuente micros Y minis.</strong> En la mayoría de las cuentas prop un micro cuenta igual que un mini para el límite, así que 10 MNQ pueden superar un límite de &ldquo;10 contratos&rdquo;.",
+        "<strong class='text-white'>En una cuenta personal o de efectivo financiada, aumente su Max Position.</strong> Application Settings &rsaquo; Accounts &rsaquo; Risk Settings &rsaquo; Max Position Size.",
+        "<strong class='text-white'>En una cuenta prop o de evaluación, no puede aumentarlo usted mismo.</strong> El límite lo bloquea la firma, así que solicite un aumento a través de su panel o de su soporte.",
+        "<strong class='text-white'>Descarte un cierre anticipado del mercado.</strong> Alrededor de los festivos, Tradovate puede hacer auto-flatten y rechazar tamaño nuevo aunque esté por debajo de su límite.",
+      ],
+    },
+    { type: "heading",text: "Qué significa «Maximum Order Quantity Has Been Met»" },
+    { type: "paragraph",html: "Este rechazo es una <strong class='text-white'>comprobación de riesgo</strong>, no un error de mercado ni de conectividad. Antes de que una orden llegue al mercado, Tradovate compara el tamaño solicitado con una regla de cantidad máxima o posición máxima asociada a su cuenta. Si la orden le haría superar ese techo, se rechaza <em>antes de operar</em> y nunca se enruta. Su margen, la sesión del mercado, su conexión a internet, nada de eso lo causó. Lo causó un límite estricto." },
+    { type: "paragraph",html: "El texto exacto que verá es: <em>&ldquo;Your maximum order quantity has been met. Please change your quantity to place the order. If you would like to request an increase, please submit risk...&rdquo;</em> Junto a él, Tradovate imprime un alcance y un número de regla, por ejemplo <strong class='text-white'><code>Limit: 0 Current: 1. Scope: NQ Rule #555</code></strong>. Aquí &ldquo;Scope: NQ&rdquo; significa que el límite se aplica al contrato del Nasdaq, y <strong class='text-white'>Rule #555</strong> es el identificador de la regla de riesgo concreta que bloquea. Ese número es una referencia para el soporte y para su prop firm; no es un código de error que usted corrija directamente." },
+    { type: "paragraph",html: "Esta es la distinción que conviene fijar: dos límites muy relacionados muestran este mensaje. Un límite de <strong class='text-white'>Max Order Quantity</strong> restringe cuántos contratos puede enviar en una <em>única</em> orden. Un límite de <strong class='text-white'>Max Position Size</strong> restringe cuántos contratos puede <em>mantener abiertos a la vez</em> entre una o más órdenes. Las prop firms suelen aplicar el límite de posición, por eso añadir un segundo contrato a una posición que ya tiene activa genera el mismo mensaje que una orden única demasiado grande." },
+    { type: "heading",text: "Principales causas del rechazo «Maximum Order Quantity»" },
+    { type: "heading",text: "1. Un límite de contratos de la prop firm (el más común)" },
+    { type: "paragraph",html: "Si opera una cuenta de evaluación o fondeada de Apex, Topstep, FundedNext, Tradeify, Bulenox o similares, la firma escribe un límite fijo de contratos en su cuenta de Tradovate según el tamaño de la cuenta. Estos límites escalan con el tamaño de la cuenta, a menudo solo unos pocos minis o unas pocas docenas de micros en cuentas pequeñas, así que consulte las reglas vigentes de su firma para saber el número exacto. Si envía más, Tradovate lo rechaza como &ldquo;maximum order quantity has been met.&rdquo; El límite reside del lado de la firma y es la razón número uno de este error." },
+    { type: "heading",text: "2. Micros y minis cuentan por igual" },
+    { type: "paragraph",html: "Esta es la trampa que atrapa a los nuevos traders prop: en muchos perfiles de riesgo de las firmas, un <strong class='text-white'>contrato micro cuenta igual que un mini</strong> para el límite. Si su límite es &ldquo;10 contratos&rdquo;, diez micros MNQ lo superan igual que diez minis NQ. Usted cree que opera un tamaño minúsculo; el motor de riesgo ve diez contratos." },
+    { type: "heading",text: "3. Un Max Position Size configurado en su propia cuenta" },
+    { type: "paragraph",html: "En una cuenta personal o de efectivo financiada directamente, puede haber configurado (o heredado) un <strong class='text-white'>Max Position Size</strong> en Risk Settings y haberlo olvidado. Cualquier orden que superaría ese número se bloquea con el mismo mensaje, solo que el límite es autoimpuesto y no impuesto por la firma." },
+    { type: "heading",text: "4. Límites escalonados o por fases durante un desafío" },
+    { type: "paragraph",html: "Algunas firmas endurecen los límites según la fase del desafío o los escalan con su saldo. Un límite que ayer estaba bien puede ser menor hoy tras un cambio de reglas, un reinicio o una transición de fase, lo que produce un rechazo repentino de &ldquo;maximum order quantity&rdquo; con un tamaño que operaba antes sin problemas." },
+    { type: "heading",text: "5. Un cierre anticipado del mercado o un auto-flatten por festivo" },
+    { type: "paragraph",html: "De vez en cuando el rechazo no es un límite de tamaño. Alrededor de festivos y cierres anticipados, Tradovate puede cerrar posiciones automáticamente y rechazar órdenes nuevas a medida que termina la sesión, y ese estado puede mostrar un rechazo de tipo cantidad aunque esté dentro de su límite. Si el error aparece cerca de un festivo o cierre anticipado conocido, consulte el horario de la sesión antes de tocar ningún ajuste de riesgo." },
+    { type: "heading",text: "Cómo solucionar «Maximum Order Quantity Has Been Met»: paso a paso" },
+    { type: "heading",text: "Solución A: Reduzca el tamaño de su orden (funciona en cualquier cuenta)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Lea la línea de alcance", html: "Lea la línea de alcance del rechazo (p. ej., <code>Scope: NQ</code>, <code>Limit: 1</code>)." },
+        { title: "Reduzca la cantidad de la orden", html: "Reduzca la cantidad de la orden al número permitido, si el límite es 1, envíe 1." },
+        { title: "Reste lo que ya mantiene", html: "Si va a añadir a una posición, reste del límite lo que ya mantiene y envíe solo el resto." },
+        { title: "Vuelva a enviar", html: "La orden supera la comprobación de riesgo y se enruta." },
+      ],
+    },
+    { type: "paragraph",html: "Es el desbloqueo instantáneo y la única solución disponible mientras está dentro de un desafío prop." },
+    { type: "heading",text: "Solución B: Aumente el Max Position en una cuenta personal / de efectivo financiada" },
+    { type: "paragraph",html: "Si la cuenta es suya para configurar (no una cuenta prop o de evaluación bloqueada), aumente el límite en los controles de riesgo de Tradovate:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra Application Settings", html: "Abra el menú del engranaje / de ajustes en Tradovate Trader web o de escritorio." },
+        { title: "Vaya a Accounts y luego a Risk Settings", html: "Vaya a la pestaña <strong class='text-white'>Accounts</strong> y haga clic en <strong class='text-white'>Risk Settings</strong> de la cuenta." },
+        { title: "Aumente Max Position Size", html: "Busque <strong class='text-white'>Max Position Size</strong>, active el interruptor e introduzca un valor mayor (o borre un valor demasiado bajo)." },
+        { title: "Guarde y vuelva a enviar", html: "Guarde y luego vuelva a enviar su orden." },
+      ],
+    },
+    { type: "quote",html: "<strong>Aviso:</strong> el panel de riesgo de Tradovate se encuentra en <em>Application Settings &rsaquo; Accounts &rsaquo; Risk Settings</em>, y el campo que necesita es <em>Max Position Size</em>. La ubicación exacta de los botones, y si aparece un campo independiente <em>Max Order Qty</em>, puede variar ligeramente según la versión de la plataforma y según si su cuenta la gestiona una prop firm, así que compruebe con su propia pantalla antes de cambiar valores." },
+    { type: "heading",text: "Solución C: Solicite un aumento a su prop firm (cuentas bloqueadas)" },
+    { type: "paragraph",html: "En una cuenta prop de evaluación o fondeada, la regla de riesgo pertenece a la firma y <strong class='text-white'>solo la firma puede aumentarla</strong>, los controles de Max Position en Tradovate aparecerán en gris o se ignorarán. Para levantar el límite:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra el panel de trader de la firma", html: "Abra el panel de trader de su prop firm (no Tradovate) y busque la página de riesgo/reglas de la cuenta." },
+        { title: "Solicite el aumento", html: "Busque una opción de <strong class='text-white'>request limit increase</strong> o <strong class='text-white'>submit risk change</strong>, o contacte con el soporte de la firma con el ID de su cuenta y el alcance de la regla (p. ej., &ldquo;NQ, Rule #555&rdquo;)." },
+        { title: "Espere a que se aplique", html: "Espere a que la firma aplique el cambio; surte efecto de su lado y luego llega a Tradovate." },
+      ],
+    },
+    { type: "paragraph",html: "Intentar anular dentro de Tradovate un límite bloqueado por la firma no funcionará, y en algunos programas, editar los ajustes de riesgo puede activar por sí mismo una marca de cumplimiento. Pase por la firma." },
+    { type: "heading",text: "Solución D: Descarte un problema de sesión" },
+    { type: "paragraph",html: "Si está dentro de su límite y aun así le rechazan, compruebe el horario de negociación del instrumento y el calendario de festivos del mercado. Si la sesión de CME está cerrada, con horario de cierre anticipado, o la cuenta acaba de pasar por auto-flatten, espere a que se reanude la sesión regular y reintente en lugar de cambiar ningún límite." },
+    { type: "heading",text: "Tabla de resolución de problemas" },
+    { type: "table", headers: ["Error / mensaje","Qué significa","Solución"], rows: [
+      ["<code>Maximum order quantity has been met. Please change your quantity...</code>","La orden supera un límite de cantidad máxima de orden o de posición máxima","Reduzca el tamaño al número permitido y vuelva a enviar"],
+      ["<code>Limit: 0 Current: 1. Scope: NQ Rule #555</code>","Una regla de riesgo de la firma limita NQ; usted la supera","Opere dentro del límite o pida a la firma que aumente la Rule #555"],
+      ["Micros rechazados en una cuenta de &ldquo;10 contratos&rdquo;","Los micros cuentan igual que los minis para el límite","Reduzca el número de micros para mantenerse bajo el límite de contratos"],
+      ["El campo Max Position aparece en gris","La cuenta es prop/evaluación; el límite está bloqueado por la firma","Solicite el aumento mediante el panel/soporte de la prop firm"],
+      ["Rechazo cerca de un festivo / cierre anticipado","Sesión cerrándose o auto-flatten, no un límite de tamaño","Espere a la sesión regular y reintente"],
+      ["<code>Insufficient margin</code> / <code>Not enough money</code> junto con él","El margen libre no cubre el tamaño, no es un límite","Reduzca el tamaño o añada fondos"],
+    ] },
+    { type: "heading",text: "Evítelo con PickMyTrade" },
+    { type: "paragraph",html: "Si sus rechazos proceden de entradas <strong class='text-white'>automatizadas</strong>, alertas de TradingView, un bot o una estrategia copiada que dispara un tamaño que su cuenta prop no acepta, PickMyTrade detiene el rebote antes de que Tradovate lo vea. En lugar de lanzar una orden demasiado grande y sufrir un rechazo en pleno movimiento, PickMyTrade valida y da forma a la orden primero:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validación de cantidad y símbolo</strong>, limita los contratos que envía cada alerta, de modo que una estrategia no pueda solicitar más de lo que permite su cuenta y los rechazos de &ldquo;maximum order quantity&rdquo; se bloqueen en origen.",
+        "<strong class='text-white'>Filtros de riesgo adaptados a prop</strong>, respetan los límites de contratos de la firma y el estado de la cuenta, para que las alertas se mantengan dentro de las reglas de evaluación en lugar de activar la Rule #555.",
+        "<strong class='text-white'>Tamaño fijo y escalado</strong>, establezca una cantidad fija de contratos por orden (o escálela por cuenta) para que el tamaño real coincida siempre con el límite para el que está autorizado.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replique una alerta en varias cuentas de Tradovate, ajustando cada una a su propio límite en lugar de enviar órdenes idénticas y demasiado grandes a todas partes.",
+      ],
+    },
+    { type: "paragraph",html: "El resultado: la orden que habría sido rechazada se corrige a un tamaño conforme y se enruta sin problemas, de modo que conserva la ejecución y el impulso." },
+  ], fr: [
+    { type: "paragraph",html: "Vous préparez une entrée propre sur NQ ou CL, vous cliquez sur acheter, et Tradovate vous la renvoie aussitôt : <strong class='text-white'>&ldquo;Your maximum order quantity has been met. Please change your quantity to place the order.&rdquo;</strong> Sur un tick rapide, ce rebond d'une demi-seconde fait la différence entre une exécution et une entrée poursuivie. Presque à chaque fois, ce rejet signifie une seule chose, une limite de contrats de votre compte a été atteinte, généralement une limite de la prop firm assortie d'une portée comme <strong class='text-white'>Rule #555</strong>. Le bon côté : c'est l'un des rejets Tradovate les plus prévisibles à lever, et le plus facile à éliminer d'emblée d'une configuration automatisée." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour un rejet « Maximum Order Quantity »",
+      items: [
+        "<strong class='text-white'>Lisez d'abord la ligne de portée.</strong> La fenêtre affiche quelque chose comme <code>Limit: 0 Current: 1. Scope: NQ Rule #555</code>. Cela vous indique quel symbole est plafonné et de combien.",
+        "<strong class='text-white'>Réduisez la taille de votre ordre.</strong> Ramenez la quantité au nombre autorisé (souvent 1) et renvoyez, le blocage disparaît immédiatement.",
+        "<strong class='text-white'>Comptez les micros ET les minis.</strong> Sur la plupart des comptes prop, un micro compte comme un mini pour la limite, donc 10 MNQ peuvent dépasser une limite de &ldquo;10 contrats&rdquo;.",
+        "<strong class='text-white'>Sur un compte personnel ou financé en liquidités, augmentez votre Max Position.</strong> Application Settings &rsaquo; Accounts &rsaquo; Risk Settings &rsaquo; Max Position Size.",
+        "<strong class='text-white'>Sur un compte prop ou d'évaluation, vous ne pouvez pas l'augmenter vous-même.</strong> La limite est verrouillée par la firme ; demandez une augmentation via son tableau de bord ou son support.",
+        "<strong class='text-white'>Écartez une fermeture anticipée du marché.</strong> Autour des jours fériés, Tradovate peut aplatir automatiquement et rejeter une nouvelle taille même si vous êtes sous votre limite.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « Maximum Order Quantity Has Been Met »" },
+    { type: "paragraph",html: "Ce rejet est un <strong class='text-white'>contrôle de risque</strong>, pas une erreur de marché ou de connectivité. Avant qu'un ordre n'atteigne la bourse, Tradovate compare la taille demandée à une règle de quantité maximale ou de position maximale rattachée à votre compte. Si l'ordre vous faisait dépasser ce plafond, il est refusé <em>avant la transaction</em> et n'est jamais routé. Votre marge, la session de marché, votre connexion internet, rien de tout cela n'en est la cause. Un plafond strict l'a causé." },
+    { type: "paragraph",html: "Le libellé exact que vous verrez est : <em>&ldquo;Your maximum order quantity has been met. Please change your quantity to place the order. If you would like to request an increase, please submit risk...&rdquo;</em> Tradovate y adjoint une portée et un numéro de règle, par exemple <strong class='text-white'><code>Limit: 0 Current: 1. Scope: NQ Rule #555</code></strong>. Ici &ldquo;Scope: NQ&rdquo; signifie que le plafond s'applique au contrat Nasdaq, et <strong class='text-white'>Rule #555</strong> est l'identifiant de la règle de risque précise qui bloque. Ce numéro est une référence pour le support et pour votre prop firm ; ce n'est pas un code d'erreur que vous corrigez directement." },
+    { type: "paragraph",html: "Voici la distinction à bien retenir : deux plafonds très proches affichent ce message. Une limite <strong class='text-white'>Max Order Quantity</strong> plafonne le nombre de contrats que vous pouvez envoyer dans un <em>seul</em> ordre. Une limite <strong class='text-white'>Max Position Size</strong> plafonne le nombre de contrats que vous pouvez <em>détenir ouverts simultanément</em> sur un ou plusieurs ordres. Les prop firms appliquent généralement le plafond de position, c'est pourquoi ajouter un deuxième contrat à une position déjà détenue déclenche le même message qu'un ordre unique trop gros." },
+    { type: "heading",text: "Principales causes du rejet « Maximum Order Quantity »" },
+    { type: "heading",text: "1. Une limite de contrats de la prop firm (la plus courante)" },
+    { type: "paragraph",html: "Si vous tradez un compte d'évaluation ou financé chez Apex, Topstep, FundedNext, Tradeify, Bulenox ou similaire, la firme inscrit une limite de contrats fixe dans votre compte Tradovate selon la taille du compte. Ces plafonds évoluent avec la taille du compte, souvent seulement quelques minis ou quelques dizaines de micros sur les petits comptes ; consultez donc les règles actuelles de votre firme pour le chiffre exact. Si vous envoyez davantage, Tradovate le rejette avec &ldquo;maximum order quantity has been met.&rdquo; La limite se situe du côté de la firme et c'est la cause numéro un de cette erreur." },
+    { type: "heading",text: "2. Micros et minis comptés de la même manière" },
+    { type: "paragraph",html: "Voici le piège dans lequel tombent les nouveaux traders prop : sur de nombreux profils de risque de firmes, un <strong class='text-white'>contrat micro compte comme un mini</strong> pour la limite. Si votre limite est de &ldquo;10 contrats&rdquo;, dix micros MNQ la dépassent exactement comme dix minis NQ. Vous pensez trader une taille minuscule ; le moteur de risque voit dix contrats." },
+    { type: "heading",text: "3. Un Max Position Size défini sur votre propre compte" },
+    { type: "paragraph",html: "Sur un compte personnel ou financé directement en liquidités, vous avez peut-être défini (ou hérité) un <strong class='text-white'>Max Position Size</strong> dans Risk Settings et l'avez oublié. Tout ordre qui dépasserait ce nombre est bloqué avec le même message, le plafond est simplement auto-imposé plutôt qu'imposé par la firme." },
+    { type: "heading",text: "4. Limites progressives ou par phase pendant un challenge" },
+    { type: "paragraph",html: "Certaines firmes resserrent les limites selon la phase du challenge ou les font évoluer avec votre solde. Un plafond qui convenait hier peut être plus bas aujourd'hui après un changement de règles, une réinitialisation ou un changement de phase, ce qui produit un rejet soudain « maximum order quantity » sur une taille que vous tradiez auparavant sans problème." },
+    { type: "heading",text: "5. Une fermeture anticipée du marché ou un auto-flatten de jour férié" },
+    { type: "paragraph",html: "De temps en temps, le rejet n'est pas du tout un plafond de taille. Autour des jours fériés et des fermetures anticipées, Tradovate peut clôturer automatiquement des positions et refuser de nouveaux ordres à l'approche de la fin de session, et cet état peut faire apparaître un rejet de type quantité même si vous êtes dans votre limite. Si l'erreur apparaît près d'un jour férié ou d'une fermeture anticipée connus, vérifiez le calendrier de session avant de toucher aux paramètres de risque." },
+    { type: "heading",text: "Résoudre « Maximum Order Quantity Has Been Met » : pas à pas" },
+    { type: "heading",text: "Solution A : Réduire la taille de votre ordre (fonctionne sur tout compte)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Lisez la ligne de portée", html: "Lisez la ligne de portée dans le rejet (p. ex. <code>Scope: NQ</code>, <code>Limit: 1</code>)." },
+        { title: "Réduisez la quantité de l'ordre", html: "Ramenez la quantité de l'ordre au nombre autorisé, si la limite est 1, envoyez 1." },
+        { title: "Soustrayez ce que vous détenez déjà", html: "Si vous ajoutez à une position, soustrayez de la limite ce que vous détenez déjà et n'envoyez que le reste." },
+        { title: "Renvoyez", html: "L'ordre passe le contrôle de risque et est routé." },
+      ],
+    },
+    { type: "paragraph",html: "C'est le déblocage instantané, et la seule solution disponible tant que vous êtes dans un challenge prop." },
+    { type: "heading",text: "Solution B : Augmenter la Max Position sur un compte personnel / financé en liquidités" },
+    { type: "paragraph",html: "Si le compte est à vous de configurer (et non un compte prop ou d'évaluation verrouillé), augmentez le plafond dans les contrôles de risque de Tradovate :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez Application Settings", html: "Ouvrez le menu d'engrenage / des paramètres dans Tradovate Trader web ou bureau." },
+        { title: "Allez dans Accounts, puis Risk Settings", html: "Allez dans l'onglet <strong class='text-white'>Accounts</strong> et cliquez sur <strong class='text-white'>Risk Settings</strong> pour le compte." },
+        { title: "Augmentez Max Position Size", html: "Trouvez <strong class='text-white'>Max Position Size</strong>, activez l'interrupteur et saisissez une valeur plus élevée (ou effacez une valeur trop basse)." },
+        { title: "Enregistrez et renvoyez", html: "Enregistrez, puis renvoyez votre ordre." },
+      ],
+    },
+    { type: "quote",html: "<strong>À noter :</strong> le panneau de risque de Tradovate se trouve sous <em>Application Settings &rsaquo; Accounts &rsaquo; Risk Settings</em>, et le champ à utiliser est <em>Max Position Size</em>. L'emplacement exact des boutons, et l'apparition éventuelle d'un champ distinct <em>Max Order Qty</em>, peuvent varier légèrement selon la version de la plateforme et selon que votre compte est géré par une prop firm ; vérifiez donc sur votre propre écran avant de modifier des valeurs." },
+    { type: "heading",text: "Solution C : Demander une augmentation à votre prop firm (comptes verrouillés)" },
+    { type: "paragraph",html: "Sur un compte prop d'évaluation ou financé, la règle de risque appartient à la firme et <strong class='text-white'>seule la firme peut la relever</strong>, les contrôles Max Position de Tradovate seront grisés ou ignorés. Pour lever le plafond :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez le tableau de bord trader de la firme", html: "Ouvrez le tableau de bord trader de votre prop firm (pas Tradovate) et trouvez la page de risque/règles du compte." },
+        { title: "Demandez l'augmentation", html: "Cherchez une option <strong class='text-white'>request limit increase</strong> ou <strong class='text-white'>submit risk change</strong>, ou contactez le support de la firme avec l'ID de votre compte et la portée de la règle (p. ex. &ldquo;NQ, Rule #555&rdquo;)." },
+        { title: "Attendez l'application", html: "Attendez que la firme applique le changement ; il prend effet de son côté, puis se répercute sur Tradovate." },
+      ],
+    },
+    { type: "paragraph",html: "Tenter de contourner dans Tradovate une limite verrouillée par la firme ne fonctionnera pas, et sur certains programmes, modifier les paramètres de risque peut lui-même déclencher un signalement de conformité. Passez par la firme." },
+    { type: "heading",text: "Solution D : Écarter un problème de session" },
+    { type: "paragraph",html: "Si vous êtes dans votre limite et rejeté malgré tout, vérifiez les horaires de trading de l'instrument et le calendrier des jours fériés du marché. Si la session CME est fermée, en horaire de fermeture anticipée, ou si le compte vient d'être aplati automatiquement, attendez la reprise de la session régulière et réessayez plutôt que de modifier des limites." },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Erreur / message","Signification","Solution"], rows: [
+      ["<code>Maximum order quantity has been met. Please change your quantity...</code>","L'ordre dépasse un plafond de quantité maximale d'ordre ou de position maximale","Réduisez la taille au nombre autorisé et renvoyez"],
+      ["<code>Limit: 0 Current: 1. Scope: NQ Rule #555</code>","Une règle de risque de la firme plafonne NQ ; vous la dépassez","Tradez dans la limite ou demandez à la firme de relever la Rule #555"],
+      ["Micros rejetés sur un compte de &ldquo;10 contrats&rdquo;","Les micros comptent comme les minis pour la limite","Réduisez le nombre de micros pour rester sous le plafond de contrats"],
+      ["Le champ Max Position est grisé","Le compte est prop/évaluation ; la limite est verrouillée par la firme","Demandez l'augmentation via le tableau de bord/support de la prop firm"],
+      ["Rejet près d'un jour férié / d'une fermeture anticipée","Session en cours de fermeture ou auto-flatten, pas un plafond de taille","Attendez la session régulière et réessayez"],
+      ["<code>Insufficient margin</code> / <code>Not enough money</code> en parallèle","La marge libre ne couvre pas la taille, pas un plafond","Réduisez la taille ou ajoutez des fonds"],
+    ] },
+    { type: "heading",text: "Évitez-le avec PickMyTrade" },
+    { type: "paragraph",html: "Si vos rejets proviennent d'entrées <strong class='text-white'>automatisées</strong>, alertes TradingView, bot ou stratégie copiée qui tire une taille que votre compte prop n'accepte pas, PickMyTrade arrête le rebond avant même que Tradovate ne le voie. Au lieu d'envoyer un ordre trop gros et d'encaisser un rejet en plein mouvement, PickMyTrade valide et façonne d'abord l'ordre :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validation de la quantité &amp; du symbole</strong>, plafonne les contrats envoyés par chaque alerte, de sorte qu'une stratégie ne peut pas demander plus que ne le permet votre compte et que les rejets &ldquo;maximum order quantity&rdquo; sont bloqués à la source.",
+        "<strong class='text-white'>Filtres de risque adaptés aux prop</strong>, respectent les limites de contrats de la firme et l'état du compte, afin que les alertes restent dans les règles d'évaluation au lieu de déclencher la Rule #555.",
+        "<strong class='text-white'>Dimensionnement fixe &amp; progressif</strong>, définissez une quantité de contrats fixe par ordre (ou faites-la évoluer par compte) pour que la taille réelle corresponde toujours au plafond pour lequel vous êtes autorisé.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, reproduisez une alerte sur plusieurs comptes Tradovate en dimensionnant chacun selon sa propre limite plutôt que d'envoyer partout des ordres identiques et trop gros.",
+      ],
+    },
+    { type: "paragraph",html: "Le résultat : l'ordre qui aurait été rejeté est corrigé à une taille conforme et routé proprement, vous gardez donc l'exécution et l'élan." },
+  ], it: [
+    { type: "paragraph",html: "Prepara un ingresso pulito su NQ o CL, clicca su acquista, e Tradovate lo rimanda subito indietro: <strong class='text-white'>&ldquo;Your maximum order quantity has been met. Please change your quantity to place the order.&rdquo;</strong> Su un tick veloce, quel rimbalzo di mezzo secondo fa la differenza tra un'esecuzione e un ingresso inseguito. Quasi sempre questo rifiuto significa una cosa sola, è stato raggiunto un limite di contratti del Suo conto, di solito un limite della prop firm con un ambito come <strong class='text-white'>Rule #555</strong>. Il lato positivo: è uno dei rifiuti Tradovate più prevedibili da risolvere e il più facile da eliminare del tutto in una configurazione automatizzata." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per un rifiuto «Maximum Order Quantity»",
+      items: [
+        "<strong class='text-white'>Legga prima la riga dell'ambito.</strong> Il popup mostra qualcosa come <code>Limit: 0 Current: 1. Scope: NQ Rule #555</code>. Questo Le dice quale simbolo è limitato e di quanto.",
+        "<strong class='text-white'>Riduca la dimensione dell'ordine.</strong> Abbassi la quantità al numero consentito (spesso 1) e reinvii, il blocco si risolve subito.",
+        "<strong class='text-white'>Conti micro E mini.</strong> Nella maggior parte dei conti prop un micro conta come un mini ai fini del limite, quindi 10 MNQ possono superare un limite di &ldquo;10 contratti&rdquo;.",
+        "<strong class='text-white'>Su un conto personale o finanziato in contanti, aumenti la Max Position.</strong> Application Settings &rsaquo; Accounts &rsaquo; Risk Settings &rsaquo; Max Position Size.",
+        "<strong class='text-white'>Su un conto prop o di valutazione non può aumentarla da solo.</strong> Il limite è bloccato dalla società, quindi richieda un aumento tramite la sua dashboard o il suo supporto.",
+        "<strong class='text-white'>Escluda una chiusura anticipata del mercato.</strong> Intorno ai giorni festivi Tradovate può fare auto-flatten e rifiutare nuova dimensione anche se è sotto il Suo limite.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significa «Maximum Order Quantity Has Been Met»" },
+    { type: "paragraph",html: "Questo rifiuto è un <strong class='text-white'>controllo di rischio</strong>, non un errore di mercato o di connettività. Prima che un ordine raggiunga la borsa, Tradovate confronta la dimensione richiesta con una regola di quantità massima o di posizione massima associata al Suo conto. Se l'ordine La porterebbe oltre quel tetto, viene rifiutato <em>pre-trade</em> e non viene mai instradato. Il Suo margine, la sessione di mercato, la Sua connessione internet, nulla di tutto ciò lo ha causato. Lo ha causato un limite rigido." },
+    { type: "paragraph",html: "La formulazione esatta che vedrà è: <em>&ldquo;Your maximum order quantity has been met. Please change your quantity to place the order. If you would like to request an increase, please submit risk...&rdquo;</em> Insieme, Tradovate stampa un ambito e un numero di regola, per esempio <strong class='text-white'><code>Limit: 0 Current: 1. Scope: NQ Rule #555</code></strong>. Qui &ldquo;Scope: NQ&rdquo; significa che il limite si applica al contratto Nasdaq, e <strong class='text-white'>Rule #555</strong> è l'identificativo della specifica regola di rischio che blocca. Quel numero è un riferimento per il supporto e per la Sua prop firm; non è un codice di errore che si corregge direttamente." },
+    { type: "paragraph",html: "Ecco la distinzione da fissare: due limiti strettamente correlati mostrano questo messaggio. Un limite <strong class='text-white'>Max Order Quantity</strong> limita quanti contratti può inviare in un <em>singolo</em> ordine. Un limite <strong class='text-white'>Max Position Size</strong> limita quanti contratti può <em>tenere aperti contemporaneamente</em> su uno o più ordini. Le prop firm di solito applicano il limite di posizione, ed è per questo che aggiungere un secondo contratto a una posizione già detenuta attiva la stessa formulazione di un singolo ordine troppo grande." },
+    { type: "heading",text: "Cause principali del rifiuto «Maximum Order Quantity»" },
+    { type: "heading",text: "1. Un limite di contratti della prop firm (il più comune)" },
+    { type: "paragraph",html: "Se opera con un conto di valutazione o finanziato di Apex, Topstep, FundedNext, Tradeify, Bulenox o simili, la società scrive un limite fisso di contratti nel Suo conto Tradovate in base alla dimensione del conto. Questi limiti scalano con la dimensione del conto, spesso solo pochi mini o alcune decine di micro sui conti più piccoli, quindi consulti le regole attuali della Sua società per il numero esatto. Se ne invia di più, Tradovate lo rifiuta come &ldquo;maximum order quantity has been met.&rdquo; Il limite risiede lato società ed è la causa numero uno di questo errore." },
+    { type: "heading",text: "2. Micro e mini contati allo stesso modo" },
+    { type: "paragraph",html: "Ecco la trappola in cui cadono i nuovi trader prop: in molti profili di rischio delle società un <strong class='text-white'>contratto micro conta come un mini</strong> ai fini del limite. Se il Suo limite è &ldquo;10 contratti&rdquo;, dieci micro MNQ lo superano esattamente come dieci mini NQ. Lei pensa di operare con una dimensione minuscola; il motore di rischio vede dieci contratti." },
+    { type: "heading",text: "3. Un Max Position Size impostato sul Suo conto" },
+    { type: "paragraph",html: "Su un conto personale o finanziato direttamente in contanti, potrebbe aver impostato (o ereditato) un <strong class='text-white'>Max Position Size</strong> in Risk Settings e averlo dimenticato. Qualsiasi ordine che supererebbe quel numero viene bloccato con lo stesso messaggio, solo che il limite è autoimposto anziché imposto dalla società." },
+    { type: "heading",text: "4. Limiti scalari o per fasi durante una sfida" },
+    { type: "paragraph",html: "Alcune società restringono i limiti in base alla fase della sfida o li scalano con il Suo saldo. Un limite che ieri andava bene può essere più basso oggi dopo una modifica delle regole, un reset o un passaggio di fase, producendo un improvviso rifiuto &ldquo;maximum order quantity&rdquo; su una dimensione che prima negoziava senza problemi." },
+    { type: "heading",text: "5. Una chiusura anticipata del mercato o un auto-flatten per giorno festivo" },
+    { type: "paragraph",html: "Di tanto in tanto il rifiuto non è affatto un limite di dimensione. Intorno ai giorni festivi e alle chiusure anticipate, Tradovate può chiudere automaticamente le posizioni e rifiutare nuovi ordini mentre la sessione volge al termine, e questo stato può far comparire un rifiuto di tipo quantità anche se è entro il Suo limite. Se l'errore compare vicino a un giorno festivo o a una chiusura anticipata noti, controlli il calendario di sessione prima di toccare le impostazioni di rischio." },
+    { type: "heading",text: "Come risolvere «Maximum Order Quantity Has Been Met»: passo dopo passo" },
+    { type: "heading",text: "Soluzione A: ridurre la dimensione dell'ordine (funziona su ogni conto)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Legga la riga dell'ambito", html: "Legga la riga dell'ambito nel rifiuto (ad es. <code>Scope: NQ</code>, <code>Limit: 1</code>)." },
+        { title: "Riduca la quantità dell'ordine", html: "Riduca la quantità dell'ordine al numero consentito, se il limite è 1, invii 1." },
+        { title: "Sottragga ciò che già detiene", html: "Se sta aggiungendo a una posizione, sottragga dal limite ciò che già detiene e invii solo il resto." },
+        { title: "Reinvii", html: "L'ordine supera il controllo di rischio e viene instradato." },
+      ],
+    },
+    { type: "paragraph",html: "È lo sblocco immediato, ed è l'unica soluzione disponibile mentre è all'interno di una sfida prop." },
+    { type: "heading",text: "Soluzione B: aumentare la Max Position su un conto personale / finanziato in contanti" },
+    { type: "paragraph",html: "Se il conto è Suo da configurare (non un conto prop o di valutazione bloccato), aumenti il limite nei controlli di rischio di Tradovate:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra Application Settings", html: "Apra il menu a ingranaggio / impostazioni in Tradovate Trader web o desktop." },
+        { title: "Vada su Accounts, poi su Risk Settings", html: "Vada alla scheda <strong class='text-white'>Accounts</strong> e clicchi su <strong class='text-white'>Risk Settings</strong> per il conto." },
+        { title: "Aumenti Max Position Size", html: "Trovi <strong class='text-white'>Max Position Size</strong>, attivi l'interruttore e inserisca un valore più alto (oppure cancelli un valore troppo basso)." },
+        { title: "Salvi e reinvii", html: "Salvi, poi reinvii il Suo ordine." },
+      ],
+    },
+    { type: "quote",html: "<strong>Attenzione:</strong> il pannello di rischio di Tradovate si trova in <em>Application Settings &rsaquo; Accounts &rsaquo; Risk Settings</em>, e il campo che Le serve è <em>Max Position Size</em>. L'esatta posizione dei pulsanti, e la comparsa o meno di un campo separato <em>Max Order Qty</em>, possono variare leggermente in base alla versione della piattaforma e al fatto che il Suo conto sia gestito da una prop firm, quindi verifichi sul Suo schermo prima di modificare qualsiasi valore." },
+    { type: "heading",text: "Soluzione C: richiedere un aumento alla Sua prop firm (conti bloccati)" },
+    { type: "paragraph",html: "Su un conto prop di valutazione o finanziato, la regola di rischio appartiene alla società e <strong class='text-white'>solo la società può aumentarla</strong>, i controlli Max Position in Tradovate saranno disattivati o ignorati. Per rimuovere il limite:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra la dashboard trader della società", html: "Apra la dashboard trader della Sua prop firm (non Tradovate) e trovi la pagina di rischio/regole del conto." },
+        { title: "Richieda l'aumento", html: "Cerchi un'opzione <strong class='text-white'>request limit increase</strong> o <strong class='text-white'>submit risk change</strong>, oppure contatti il supporto della società con l'ID del Suo conto e l'ambito della regola (ad es. &ldquo;NQ, Rule #555&rdquo;)." },
+        { title: "Attenda l'applicazione", html: "Attenda che la società applichi la modifica; ha effetto dal loro lato, poi si propaga a Tradovate." },
+      ],
+    },
+    { type: "paragraph",html: "Provare a sovrascrivere in Tradovate un limite bloccato dalla società non funziona, e in alcuni programmi modificare le impostazioni di rischio può di per sé far scattare una segnalazione di conformità. Passi dalla società." },
+    { type: "heading",text: "Soluzione D: escludere un problema di sessione" },
+    { type: "paragraph",html: "Se è entro il Suo limite e viene comunque rifiutato, controlli gli orari di negoziazione dello strumento e il calendario dei giorni festivi di mercato. Se la sessione CME è chiusa, con orario di chiusura anticipata, o il conto è stato appena appiattito automaticamente, attenda la ripresa della sessione regolare e riprovi invece di modificare i limiti." },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Errore / messaggio","Significato","Soluzione"], rows: [
+      ["<code>Maximum order quantity has been met. Please change your quantity...</code>","L'ordine supera un limite di quantità massima d'ordine o di posizione massima","Riduca la dimensione al numero consentito e reinvii"],
+      ["<code>Limit: 0 Current: 1. Scope: NQ Rule #555</code>","Una regola di rischio della società limita NQ; Lei la supera","Operi entro il limite o chieda alla società di aumentare la Rule #555"],
+      ["Micro rifiutati su un conto da &ldquo;10 contratti&rdquo;","I micro contano come i mini ai fini del limite","Riduca il numero di micro per restare sotto il limite di contratti"],
+      ["Il campo Max Position è disattivato","Il conto è prop/valutazione; il limite è bloccato dalla società","Richieda l'aumento tramite la dashboard/supporto della prop firm"],
+      ["Rifiuto vicino a un giorno festivo / chiusura anticipata","Sessione in chiusura o auto-flatten, non un limite di dimensione","Attenda la sessione regolare e riprovi"],
+      ["<code>Insufficient margin</code> / <code>Not enough money</code> insieme ad esso","Il margine libero non copre la dimensione, non è un limite","Riduca la dimensione o aggiunga fondi"],
+    ] },
+    { type: "heading",text: "Lo eviti con PickMyTrade" },
+    { type: "paragraph",html: "Se i Suoi rifiuti derivano da ingressi <strong class='text-white'>automatizzati</strong>, alert di TradingView, un bot o una strategia copiata che spara una dimensione che il Suo conto prop non accetta, PickMyTrade ferma il rimbalzo prima che Tradovate lo veda. Invece di lanciare un ordine troppo grande e subire un rifiuto nel mezzo del movimento, PickMyTrade convalida e modella prima l'ordine:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validazione di quantità &amp; simbolo</strong>, limita i contratti inviati da ogni alert, così una strategia non può richiedere più di quanto il Suo conto consenta e i rifiuti &ldquo;maximum order quantity&rdquo; vengono bloccati alla fonte.",
+        "<strong class='text-white'>Filtri di rischio consapevoli delle prop</strong>, rispettano i limiti di contratti della società e lo stato del conto, in modo che gli alert restino entro le regole di valutazione invece di far scattare la Rule #555.",
+        "<strong class='text-white'>Dimensionamento fisso &amp; scalare</strong>, imposti una quantità fissa di contratti per ordine (o la scali per conto) in modo che la dimensione live corrisponda sempre al limite per cui è autorizzato.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replichi un alert su più conti Tradovate, dimensionando ciascuno sul proprio limite invece di inviare ovunque ordini identici e troppo grandi.",
+      ],
+    },
+    { type: "paragraph",html: "Il risultato: l'ordine che sarebbe stato rifiutato viene corretto a una dimensione conforme e instradato in modo pulito, così mantiene l'esecuzione e lo slancio." },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Handeln Sie ohne Ablehnungen", es: "Opere sin rechazos", fr: "Tradez sans rejets", it: "Operi senza rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and let PickMyTrade size every order to your cap.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, verknüpfen Sie noch heute Ihre Alerts und lassen Sie PickMyTrade jede Order auf Ihr Limit abstimmen.", es: "Comience su prueba gratuita de 7 días, vincule sus alertas hoy mismo y deje que PickMyTrade ajuste cada orden a su límite.", fr: "Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et laissez PickMyTrade dimensionner chaque ordre selon votre limite.", it: "Inizi la prova gratuita di 7 giorni, colleghi i Suoi alert oggi stesso e lasci che PickMyTrade dimensioni ogni ordine sul Suo limite." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does \"maximum order quantity has been met\" mean in Tradovate?", a: "It's a pre-trade risk rejection. Your order would push you past a maximum order-quantity or maximum-position cap on the account, so Tradovate refuses it before it reaches the exchange. Lower the quantity to the allowed number and it routes." },
+    { q: "What is Rule #555 in the rejection?", a: "Rule #555 is the identifier of the specific risk rule blocking the order, typically a prop-firm contract cap scoped to a symbol like NQ. It's a reference for support and your firm, not an error code you edit directly." },
+    { q: "How do I increase my maximum order quantity?", a: "On a personal or funded-cash account, raise Max Position Size under Application Settings > Accounts > Risk Settings. On a prop or evaluation account the limit is locked by the firm, so request an increase through the firm's dashboard or support." },
+    { q: "Why is my Max Position setting greyed out or ignored?", a: "Because the account is managed by a prop firm. The firm owns the risk rule, so the in-platform control is disabled or overridden. Only the firm can change that cap." },
+    { q: "Do micro contracts count toward my contract limit?", a: "On most prop risk profiles, yes. A micro often counts the same as a mini toward the cap, so ten micros can breach a \"10 contract\" limit. Size your micros with the cap in mind." },
+    { q: "I'm well under my limit and still getting rejected. Why?", a: "Check for an early market close or holiday auto-flatten, an unsigned market-data agreement, or an insufficient-margin condition. Those produce their own rejections that can look similar, so confirm the session is open and your account is in good standing." },
+    { q: "Does reducing my order size hurt my prop challenge?", a: "No. Trading within your allowed contract count is exactly what the firm expects. The rejection is the firm's risk engine keeping you compliant, and sizing to the cap keeps your account in good standing." },
+    { q: "Can PickMyTrade stop these rejections on automated orders?", a: "Yes. PickMyTrade validates and caps the contract quantity of each incoming alert before it hits Tradovate, so a strategy can't request more size than your account permits. The order is shaped to a compliant quantity and routed instead of rejected." },
+  ], de: [
+    { q: "Was bedeutet „maximum order quantity has been met“ in Tradovate?", a: "Es ist eine Pre-Trade-Risikoablehnung. Ihre Order würde Sie über ein Limit für die maximale Ordermenge oder die maximale Position des Kontos hinausbringen, daher lehnt Tradovate sie ab, bevor sie die Börse erreicht. Verringern Sie die Menge auf die zulässige Zahl, dann wird sie geroutet." },
+    { q: "Was ist Rule #555 in der Ablehnung?", a: "Rule #555 ist die Kennung der konkreten Risikoregel, die die Order blockiert, in der Regel ein Kontraktlimit der Prop-Firma, das auf ein Symbol wie NQ begrenzt ist. Sie dient als Referenz für den Support und Ihre Firma, ist aber kein Fehlercode, den Sie selbst ändern können." },
+    { q: "Wie erhöhe ich meine maximale Ordermenge?", a: "Bei einem persönlichen oder mit Eigenkapital finanzierten Konto erhöhen Sie Max Position Size unter Application Settings > Accounts > Risk Settings. Bei einem Prop- oder Evaluierungskonto ist das Limit von der Firma gesperrt, beantragen Sie daher eine Erhöhung über das Dashboard oder den Support der Firma." },
+    { q: "Warum ist meine Max-Position-Einstellung ausgegraut oder wird ignoriert?", a: "Weil das Konto von einer Prop-Firma verwaltet wird. Die Firma besitzt die Risikoregel, daher ist das Steuerelement in der Plattform deaktiviert oder wird überschrieben. Nur die Firma kann dieses Limit ändern." },
+    { q: "Zählen Micro-Kontrakte zu meinem Kontraktlimit?", a: "Bei den meisten Prop-Risikoprofilen ja. Ein Micro zählt oft genauso wie ein Mini zum Limit, sodass zehn Micros ein Limit von „10 Kontrakten“ überschreiten können. Bemessen Sie Ihre Micros mit Blick auf das Limit." },
+    { q: "Ich liege deutlich unter meinem Limit und werde trotzdem abgelehnt. Warum?", a: "Prüfen Sie auf einen vorzeitigen Börsenschluss oder eine Feiertags-Auto-Flatten, eine nicht unterzeichnete Marktdatenvereinbarung oder eine Situation mit unzureichender Margin. Diese erzeugen eigene Ablehnungen, die ähnlich aussehen können. Bestätigen Sie daher, dass die Sitzung geöffnet ist und Ihr Konto in gutem Zustand ist." },
+    { q: "Schadet die Verringerung meiner Ordergröße meiner Prop-Challenge?", a: "Nein. Das Handeln innerhalb Ihrer zulässigen Kontraktanzahl ist genau das, was die Firma erwartet. Die Ablehnung ist die Risiko-Engine der Firma, die Sie regelkonform hält, und die Anpassung an das Limit hält Ihr Konto in gutem Zustand." },
+    { q: "Kann PickMyTrade diese Ablehnungen bei automatisierten Orders verhindern?", a: "Ja. PickMyTrade validiert und begrenzt die Kontraktmenge jedes eingehenden Alerts, bevor er Tradovate erreicht, sodass eine Strategie nicht mehr Größe anfordern kann, als Ihr Konto zulässt. Die Order wird auf eine regelkonforme Menge zugeschnitten und geroutet, statt abgelehnt zu werden." },
+  ], es: [
+    { q: "¿Qué significa «maximum order quantity has been met» en Tradovate?", a: "Es un rechazo de riesgo previo a la operación. Su orden le haría superar un límite de cantidad máxima de orden o de posición máxima de la cuenta, por lo que Tradovate la rechaza antes de que llegue al mercado. Reduzca la cantidad al número permitido y se enrutará." },
+    { q: "¿Qué es la Rule #555 del rechazo?", a: "La Rule #555 es el identificador de la regla de riesgo concreta que bloquea la orden, normalmente un límite de contratos de la prop firm aplicado a un símbolo como NQ. Es una referencia para el soporte y para su firma, no un código de error que usted pueda editar directamente." },
+    { q: "¿Cómo aumento mi cantidad máxima de orden?", a: "En una cuenta personal o de efectivo financiada, aumente Max Position Size en Application Settings > Accounts > Risk Settings. En una cuenta prop o de evaluación, el límite lo bloquea la firma, por lo que debe solicitar un aumento a través del panel o del soporte de la firma." },
+    { q: "¿Por qué mi ajuste Max Position aparece en gris o se ignora?", a: "Porque la cuenta la gestiona una prop firm. La firma es dueña de la regla de riesgo, así que el control dentro de la plataforma está deshabilitado o anulado. Solo la firma puede cambiar ese límite." },
+    { q: "¿Los contratos micro cuentan para mi límite de contratos?", a: "En la mayoría de los perfiles de riesgo prop, sí. Un micro suele contar igual que un mini para el límite, por lo que diez micros pueden superar un límite de «10 contratos». Dimensione sus micros teniendo en cuenta el límite." },
+    { q: "Estoy muy por debajo de mi límite y aun así me rechazan. ¿Por qué?", a: "Compruebe si hay un cierre anticipado del mercado o un auto-flatten por festivo, un acuerdo de datos de mercado sin firmar o una condición de margen insuficiente. Producen sus propios rechazos, que pueden parecerse, así que confirme que la sesión está abierta y que su cuenta está en buen estado." },
+    { q: "¿Reducir el tamaño de mi orden perjudica mi desafío prop?", a: "No. Operar dentro de su número de contratos permitido es exactamente lo que espera la firma. El rechazo es el motor de riesgo de la firma manteniéndolo en cumplimiento, y ajustar el tamaño al límite mantiene su cuenta en buen estado." },
+    { q: "¿Puede PickMyTrade evitar estos rechazos en las órdenes automatizadas?", a: "Sí. PickMyTrade valida y limita la cantidad de contratos de cada alerta entrante antes de que llegue a Tradovate, de modo que una estrategia no puede solicitar más tamaño del que permite su cuenta. La orden se ajusta a una cantidad conforme y se enruta en lugar de rechazarse." },
+  ], fr: [
+    { q: "Que signifie « maximum order quantity has been met » dans Tradovate ?", a: "C'est un rejet de risque pré-trade. Votre ordre vous ferait dépasser une limite de quantité maximale d'ordre ou de position maximale du compte ; Tradovate le refuse donc avant qu'il n'atteigne la bourse. Réduisez la quantité au nombre autorisé et il sera routé." },
+    { q: "Qu'est-ce que la Rule #555 dans le rejet ?", a: "La Rule #555 est l'identifiant de la règle de risque précise qui bloque l'ordre, généralement une limite de contrats de la prop firm portant sur un symbole comme NQ. C'est une référence pour le support et votre firme, pas un code d'erreur que vous pouvez modifier directement." },
+    { q: "Comment augmenter ma quantité maximale d'ordre ?", a: "Sur un compte personnel ou financé en liquidités, augmentez Max Position Size sous Application Settings > Accounts > Risk Settings. Sur un compte prop ou d'évaluation, la limite est verrouillée par la firme ; demandez donc une augmentation via le tableau de bord ou le support de la firme." },
+    { q: "Pourquoi mon paramètre Max Position est-il grisé ou ignoré ?", a: "Parce que le compte est géré par une prop firm. La firme détient la règle de risque, si bien que le contrôle dans la plateforme est désactivé ou remplacé. Seule la firme peut modifier cette limite." },
+    { q: "Les contrats micro comptent-ils dans ma limite de contrats ?", a: "Sur la plupart des profils de risque prop, oui. Un micro compte souvent comme un mini pour la limite, de sorte que dix micros peuvent dépasser une limite de « 10 contrats ». Dimensionnez vos micros en tenant compte de la limite." },
+    { q: "Je suis bien en dessous de ma limite et je suis quand même rejeté. Pourquoi ?", a: "Vérifiez s'il y a une fermeture anticipée du marché ou un auto-flatten de jour férié, un accord de données de marché non signé ou une situation de marge insuffisante. Ceux-ci produisent leurs propres rejets, qui peuvent se ressembler ; confirmez donc que la session est ouverte et que votre compte est en règle." },
+    { q: "Réduire la taille de mon ordre nuit-il à mon challenge prop ?", a: "Non. Trader dans la limite du nombre de contrats autorisé est exactement ce que la firme attend. Le rejet, c'est le moteur de risque de la firme qui vous maintient en conformité, et dimensionner selon la limite garde votre compte en règle." },
+    { q: "PickMyTrade peut-il empêcher ces rejets sur les ordres automatisés ?", a: "Oui. PickMyTrade valide et plafonne la quantité de contrats de chaque alerte entrante avant qu'elle n'atteigne Tradovate, de sorte qu'une stratégie ne peut pas demander plus de taille que ne le permet votre compte. L'ordre est ajusté à une quantité conforme et routé au lieu d'être rejeté." },
+  ], it: [
+    { q: "Che cosa significa «maximum order quantity has been met» in Tradovate?", a: "È un rifiuto di rischio pre-trade. Il Suo ordine La porterebbe oltre un limite di quantità massima d'ordine o di posizione massima del conto, quindi Tradovate lo rifiuta prima che raggiunga la borsa. Riduca la quantità al numero consentito e verrà instradato." },
+    { q: "Che cos'è la Rule #555 nel rifiuto?", a: "La Rule #555 è l'identificativo della specifica regola di rischio che blocca l'ordine, tipicamente un limite di contratti della prop firm riferito a un simbolo come NQ. È un riferimento per il supporto e per la Sua società, non un codice di errore che può modificare direttamente." },
+    { q: "Come aumento la mia quantità massima d'ordine?", a: "Su un conto personale o finanziato in contanti, aumenti Max Position Size in Application Settings > Accounts > Risk Settings. Su un conto prop o di valutazione il limite è bloccato dalla società, quindi richieda un aumento tramite la dashboard o il supporto della società." },
+    { q: "Perché l'impostazione Max Position è disattivata o ignorata?", a: "Perché il conto è gestito da una prop firm. La società detiene la regola di rischio, quindi il controllo nella piattaforma è disabilitato o sovrascritto. Solo la società può modificare quel limite." },
+    { q: "I contratti micro contano ai fini del mio limite di contratti?", a: "Nella maggior parte dei profili di rischio prop, sì. Un micro spesso conta come un mini ai fini del limite, quindi dieci micro possono superare un limite di «10 contratti». Dimensioni i Suoi micro tenendo conto del limite." },
+    { q: "Sono ben al di sotto del mio limite e vengo comunque rifiutato. Perché?", a: "Verifichi la presenza di una chiusura anticipata del mercato o di un auto-flatten per giorno festivo, di un accordo sui dati di mercato non firmato o di una condizione di margine insufficiente. Questi producono rifiuti propri che possono sembrare simili, quindi confermi che la sessione sia aperta e che il Suo conto sia in regola." },
+    { q: "Ridurre la dimensione del mio ordine danneggia la mia sfida prop?", a: "No. Operare entro il numero di contratti consentito è esattamente ciò che la società si aspetta. Il rifiuto è il motore di rischio della società che La mantiene conforme, e dimensionare sul limite mantiene il Suo conto in regola." },
+    { q: "PickMyTrade può evitare questi rifiuti sugli ordini automatizzati?", a: "Sì. PickMyTrade convalida e limita la quantità di contratti di ogni alert in arrivo prima che raggiunga Tradovate, così una strategia non può richiedere più dimensione di quanta il Suo conto consenta. L'ordine viene modellato su una quantità conforme e instradato invece di essere rifiutato." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Ähnliche Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von Tradovate, Inc. unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit, bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, pertanto confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

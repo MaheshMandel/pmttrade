@@ -1,0 +1,540 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "flatten-fails-position-not-in-frontend";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Flatten All Not Working in NinjaTrader";
+const META_DESCRIPTION =
+  "Flatten All doing nothing in NinjaTrader while a Tradovate position stays open? Reconnect the broker connection to resync, then flatten the position again.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate Flatten All funktioniert nicht in NinjaTrader", es: "Flatten All de Tradovate no funciona en NinjaTrader", fr: "Flatten All de Tradovate ne fonctionne pas dans NinjaTrader", it: "Flatten All di Tradovate non funziona in NinjaTrader" },
+  dek: { en: "You slam Flatten in NinjaTrader and nothing happens, but Tradovate still shows the position open. Here's why the button goes dead and how to resync it fast.", de: "Sie drücken in NinjaTrader auf Flatten, und nichts passiert, aber Tradovate zeigt die Position weiterhin als offen an. Hier erfahren Sie, warum die Schaltfläche den Dienst verweigert und wie Sie sie schnell wieder synchronisieren.", es: "Presiona Flatten en NinjaTrader y no ocurre nada, pero Tradovate sigue mostrando la posición abierta. Esto es lo que hace que el botón deje de responder y cómo resincronizarlo rápidamente.", fr: "Vous appuyez sur Flatten dans NinjaTrader et rien ne se passe, mais Tradovate affiche toujours la position comme ouverte. Voici pourquoi le bouton reste inactif et comment le resynchroniser rapidement.", it: "Lei preme Flatten in NinjaTrader e non succede nulla, ma Tradovate continua a mostrare la posizione aperta. Ecco perché il pulsante smette di rispondere e come risincronizzarlo velocemente." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You're in a trade, price is moving against you, and you slam the Flatten button in NinjaTrader to bail out, and nothing happens. The position just sits there. You can see it's still open on the Tradovate web platform, but NinjaTrader acts like there's nothing to close. It's one of the more stomach-dropping moments in futures trading, and the cause is almost always the same: NinjaTrader and Tradovate have fallen out of sync. NinjaTrader flattens by firing a market order to offset the position it <em>thinks</em> you hold. If its record is stale, the contract is live at Tradovate but never got reported into NinjaTrader, the button has nothing to act on. The fix is to disconnect and reconnect your Tradovate connection so NinjaTrader re-pulls the real account state, then flatten again. And if money is on the line right now, close the position straight from the Tradovate web platform first, because that's the actual broker record." },
+    {
+      type: "checklist",
+      heading: "Quick Fix: Resync, Then Flatten",
+      items: [
+        "<strong class='text-white'>If a position is exposed right now, flatten in Tradovate first.</strong> Open the Tradovate web platform, find the position, and close it there. Tradovate is the broker of record, that click always works even when NinjaTrader is confused.",
+        "<strong class='text-white'>Reconnect the broker connection.</strong> In the NinjaTrader Control Center, open the Connections menu, disconnect from your Tradovate connection, wait a few seconds, then reconnect. This pulls the latest account state back into NinjaTrader.",
+        "<strong class='text-white'>Confirm the position reappears.</strong> Check the Positions tab after reconnecting. Once NinjaTrader shows the live contract, the Flatten button has something real to act on.",
+        "<strong class='text-white'>Flatten again.</strong> With the position visible and the connection healthy, press Flatten and the offsetting market order goes through.",
+        "<strong class='text-white'>Check you're in the right window.</strong> Close Position only touches the instrument and account tied to the window you press it in, make sure it's pointed at the account that actually holds the position.",
+      ],
+    },
+    { type: "heading", text: "What the Flatten Button Actually Does" },
+    { type: "paragraph", html: "To understand why it fails, you have to know what &ldquo;flatten&rdquo; means under the hood. When you hit Flatten in NinjaTrader, it doesn't wave a magic wand over your broker account. It runs a two-step routine: first it cancels any working orders on that position, waits for the broker to confirm those cancellations, and then it sends a market order in the opposite direction to bring your net position to zero." },
+    { type: "paragraph", html: "The key word there is <em>opposite direction to what NinjaTrader believes you hold</em>. The whole operation is built on NinjaTrader's internal record of your account position. If that record says you're flat, zero contracts, there's nothing to offset, so pressing Flatten produces exactly nothing. No order, no error, no movement. The button isn't broken. It's doing precisely what it was told: close a position it doesn't think exists." },
+    { type: "paragraph", html: "There's also a distinction worth pinning down, because it trips people up. <strong class='text-white'>Close Position</strong> acts only on the single instrument and account tied to the window you clicked it in. <strong class='text-white'>Flatten Everything</strong> is the bigger hammer, it closes all open positions and cancels all working orders across every connected account and instrument in the NinjaTrader Desktop app. If you're jabbing Close Position in a chart or DOM that's pointed at a different account, it'll look dead even though it's working correctly on the wrong target." },
+    { type: "heading", text: "The Real Culprit: Your Position Is Out of Sync" },
+    { type: "paragraph", html: "NinjaTrader keeps its own picture of your account and updates it from the broker's live feed. Tradovate holds the truth, the actual contracts sitting in your account, and NinjaTrader mirrors that over the connection. When the mirror gets out of date, you get the classic split: a position open in Tradovate that NinjaTrader simply doesn't see." },
+    { type: "paragraph", html: "How does the record go stale? A few common ways:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>The connection dropped and came back.</strong> If a fill landed during the gap, or the feed hiccupped while a contract was live, NinjaTrader can miss the update and never register the position.",
+        "<strong class='text-white'>The order was placed somewhere else.</strong> An entry sent from the Tradovate web app, the mobile app, or another tool won't necessarily flow into NinjaTrader's position record if the sync isn't clean.",
+        "<strong class='text-white'>A communication break swallowed the close request.</strong> Sometimes the position <em>is</em> in NinjaTrader, but when you press Flatten the request never reaches Tradovate. The link is degraded enough that the order dies on the way out.",
+      ],
+    },
+    { type: "paragraph", html: "In all of these, the answer is the same: NinjaTrader needs to re-read your account from Tradovate. It can't offset a position it hasn't been told about, and it can't route an order down a broken pipe." },
+    { type: "heading", text: "Step-by-Step: Fix the Stuck Flatten" },
+    { type: "heading", text: "Step 1: Protect the Position First" },
+    { type: "paragraph", html: "Before you troubleshoot anything, deal with your risk. If you've got a live contract exposed to the market, don't sit there fighting a frozen button, open the Tradovate web platform in a browser, go to the Positions module, and flatten the position there. Tradovate is the broker; that close request originates at the source and doesn't depend on NinjaTrader's health. Get flat, breathe, then fix the tooling." },
+    { type: "heading", text: "Step 2: Disconnect the Tradovate Connection" },
+    { type: "paragraph", html: "In the NinjaTrader Control Center, open the <em>Connections</em> menu. You'll see your configured Tradovate connection (it may be named after your prop firm). Select it to disconnect. The little status light for that connection drops from green, telling you NinjaTrader has released the link to Tradovate." },
+    { type: "heading", text: "Step 3: Reconnect and Let It Resync" },
+    { type: "paragraph", html: "Give it a few seconds, then open the <em>Connections</em> menu again and pick the same connection to reconnect. When the status light goes green again, NinjaTrader re-pulls the current account values from Tradovate, balances, working orders, and crucially your open positions. This single move clears the majority of stuck-flatten cases, because it repopulates the exact record the Flatten button relies on." },
+    { type: "heading", text: "Step 4: Confirm the Position, Then Flatten" },
+    { type: "paragraph", html: "Check the Positions tab. The contract that was invisible a moment ago should now be listed with the right quantity and side. Now the Flatten button has a real position to work with, press it, and the offsetting market order goes out. If you already closed the trade in Tradovate during Step 1, you'll instead see NinjaTrader catch up and show you flat." },
+    { type: "heading", text: "If Reconnecting Doesn't Fix It" },
+    { type: "paragraph", html: "A reconnect solves most of these, but not every one. Work through the rest in order:" },
+    { type: "heading", text: "You Got a Timeout Message" },
+    { type: "paragraph", html: "If pressing Close Position throws something like &ldquo;Close operation failed. Operation timed out. Manually close your position,&rdquo; that's a specific signal. NinjaTrader waits roughly five seconds for the broker to confirm the order cancellations; if that confirmation never lands, it gives up and tells you to close by hand. That timeout points squarely at a connection loss between your computer and the broker's servers, your ISP, the broker side, or the network in between. Close the position manually in Tradovate, then sort out the connection before you trade again." },
+    { type: "heading", text: "Check You're Acting in the Right Window" },
+    { type: "paragraph", html: "Run through the obvious one: is the window you're clicking in actually pointed at the account with the position? Close Position is window-scoped. A DOM, chart, or order ticket set to a different account will report success on nothing while your real position sits untouched elsewhere. Match the account selector to the position before you decide the button is broken." },
+    { type: "heading", text: "Restart NinjaTrader" },
+    { type: "paragraph", html: "If disconnect/reconnect didn't clear the mismatch, close NinjaTrader completely and relaunch it. A full restart rebuilds the connection and the position cache from scratch, which shakes loose sync problems a simple reconnect can't. Confirm your positions match Tradovate the moment it reconnects." },
+    { type: "heading", text: "Contact Your Broker or Prop Firm to Flatten Server-Side" },
+    { type: "paragraph", html: "If a position is genuinely stuck, you can't close it in NinjaTrader <em>or</em> the Tradovate web platform, that's beyond a client-side sync issue and you need help at the source. Contact Tradovate support or your prop firm and ask them to flatten the account from their side. Have your account details ready and describe exactly what you're seeing. This is the last resort, but during a real outage it's the safest way to get flat." },
+    { type: "heading", text: "Symptom-to-Fix Cheat Sheet" },
+    {
+      type: "table",
+      headers: ["What you see", "Likely cause", "Fix"],
+      rows: [
+        ["Flatten does nothing; Tradovate shows the position open", "NinjaTrader's position record is stale, it thinks you're flat", "Disconnect and reconnect the Tradovate connection to resync, then flatten"],
+        ["Close Position &ldquo;succeeds&rdquo; but position stays open", "Window is pointed at the wrong account/instrument", "Point the window at the account holding the position, then retry"],
+        ["&ldquo;Operation timed out. Manually close your position&rdquo;", "No broker confirmation within ~5 seconds, connection loss", "Close in Tradovate web, fix your connection, then reconnect NinjaTrader"],
+        ["Position visible in NinjaTrader but Flatten still fails", "Close request isn't reaching Tradovate over a degraded link", "Reconnect or fully restart NinjaTrader; flatten in Tradovate meanwhile"],
+        ["Can't close anywhere, in either platform", "Broker-side outage or a truly frozen order", "Contact Tradovate/your prop firm to flatten the account server-side"],
+      ],
+    },
+    { type: "heading", text: "Keep It From Happening Again" },
+    { type: "paragraph", html: "A flatten button you can't trust in a fast market is a real hazard, so it's worth building a few habits that keep the sync solid:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Trade on a stable connection.</strong> Most sync breaks trace back to a flaky link. A wired connection beats Wi-Fi, and a trading VPS beats a home network that shares bandwidth with everything else in the house.",
+        "<strong class='text-white'>Turn on auto-reconnect.</strong> NinjaTrader can re-establish a dropped connection on its own. With it enabled, a brief network blip is more likely to heal before it leaves your positions stranded.",
+        "<strong class='text-white'>Keep the Tradovate web platform open as a backup.</strong> One browser tab logged into Tradovate is a free emergency kill switch. If NinjaTrader ever freezes on you, you flatten there in two clicks.",
+        "<strong class='text-white'>Don't run two order sources against one account.</strong> Firing entries from NinjaTrader and another tool into the same account is a reliable way to desync the position record. Pick one primary router per account.",
+        "<strong class='text-white'>Test your recovery before you need it.</strong> Deliberately disconnect and reconnect on a demo or simulated account and watch how fast the positions repopulate. Knowing the routine cold means you won't fumble it mid-trade.",
+      ],
+    },
+    { type: "heading", text: "Route Your Trades Through a Managed Bridge" },
+    { type: "paragraph", html: "A lot of these sync headaches come from wiring a desktop platform straight into a broker and then babysitting the connection yourself. If your goal is to automate entries and exits from TradingView, you can skip the fragile middle layer entirely. PickMyTrade sits between TradingView and Tradovate and manages one clean connection to the broker for you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>A single managed connection</strong> to Tradovate, so you're not juggling a desktop platform's sync state against the account.",
+        "<strong class='text-white'>Alerts routed straight to the broker</strong>, your entry, stop, and exit logic fire from TradingView to Tradovate without a third app holding a stale position record.",
+        "<strong class='text-white'>Built-in exit handling</strong> so closing logic runs through the same reliable pipe your entries do.",
+        "<strong class='text-white'>No connection plumbing to babysit</strong>, the platform handles the connect and reconnect cycle you'd otherwise be watching in the Control Center.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie befinden sich in einem Trade, der Kurs läuft gegen Sie, und Sie drücken in NinjaTrader verzweifelt auf die Flatten-Schaltfläche, um auszusteigen, aber nichts passiert. Die Position bleibt einfach bestehen. Sie sehen, dass sie auf der Tradovate-Webplattform noch offen ist, aber NinjaTrader verhält sich, als gäbe es nichts zu schließen. Das ist einer der nervenaufreibendsten Momente im Futures-Handel, und die Ursache ist fast immer dieselbe: NinjaTrader und Tradovate sind nicht mehr synchron. NinjaTrader gleicht die Position aus, indem es eine Market-Order sendet, um die Position auszugleichen, die es <em>zu halten glaubt</em>. Wenn sein Datensatz veraltet ist, der Kontrakt bei Tradovate live ist, aber nie an NinjaTrader gemeldet wurde, hat die Schaltfläche nichts, worauf sie reagieren kann. Die Lösung besteht darin, Ihre Tradovate-Verbindung zu trennen und wieder herzustellen, damit NinjaTrader den tatsächlichen Kontostatus erneut abruft, und dann erneut zu flatten. Und wenn gerade Geld auf dem Spiel steht, schließen Sie die Position zuerst direkt über die Tradovate-Webplattform, denn das ist der tatsächliche Broker-Datensatz." },
+    {
+      type: "checklist",
+      heading: "Schnelllösung: Erst neu synchronisieren, dann flatten",
+      items: [
+        "<strong class='text-white'>Wenn gerade eine Position offen ist, flatten Sie zuerst in Tradovate.</strong> Öffnen Sie die Tradovate-Webplattform, suchen Sie die Position und schließen Sie sie dort. Tradovate ist der maßgebliche Broker, dieser Klick funktioniert immer, selbst wenn NinjaTrader verwirrt ist.",
+        "<strong class='text-white'>Stellen Sie die Broker-Verbindung neu her.</strong> Öffnen Sie im NinjaTrader Control Center das Menü Connections, trennen Sie Ihre Tradovate-Verbindung, warten Sie ein paar Sekunden und stellen Sie sie dann wieder her. Dadurch wird der aktuelle Kontostatus wieder in NinjaTrader geladen.",
+        "<strong class='text-white'>Bestätigen Sie, dass die Position wieder erscheint.</strong> Prüfen Sie nach dem Wiederherstellen der Verbindung den Tab Positions. Sobald NinjaTrader den aktiven Kontrakt anzeigt, hat die Flatten-Schaltfläche etwas Reales, worauf sie reagieren kann.",
+        "<strong class='text-white'>Flatten Sie erneut.</strong> Sobald die Position sichtbar und die Verbindung stabil ist, drücken Sie Flatten, und die ausgleichende Market-Order wird ausgeführt.",
+        "<strong class='text-white'>Prüfen Sie, ob Sie im richtigen Fenster sind.</strong> Close Position wirkt sich nur auf das Instrument und das Konto aus, die mit dem Fenster verknüpft sind, in dem Sie es drücken. Stellen Sie sicher, dass es auf das Konto ausgerichtet ist, das die Position tatsächlich hält.",
+      ],
+    },
+    { type: "heading", text: "Was die Flatten-Schaltfläche tatsächlich tut" },
+    { type: "paragraph", html: "Um zu verstehen, warum das scheitert, müssen Sie wissen, was &ldquo;flatten&rdquo; im Hintergrund tatsächlich bedeutet. Wenn Sie in NinjaTrader auf Flatten klicken, schwingt kein Zauberstab über Ihrem Broker-Konto. Es läuft eine zweistufige Routine ab: Zunächst werden alle offenen Orders zu dieser Position storniert, dann wird auf die Bestätigung dieser Stornierungen durch den Broker gewartet, und anschließend wird eine Market-Order in die entgegengesetzte Richtung gesendet, um die Nettoposition auf null zu bringen." },
+    { type: "paragraph", html: "Das Schlüsselwort dabei ist <em>entgegengesetzte Richtung zu dem, was NinjaTrader zu halten glaubt</em>. Der gesamte Vorgang basiert auf NinjaTraders internem Datensatz Ihrer Kontoposition. Wenn dieser Datensatz besagt, dass Sie flach sind, null Kontrakte, gibt es nichts auszugleichen, sodass ein Klick auf Flatten genau gar nichts bewirkt. Keine Order, kein Fehler, keine Bewegung. Die Schaltfläche ist nicht defekt. Sie tut genau das, was ihr aufgetragen wurde: eine Position zu schließen, von der sie glaubt, dass sie nicht existiert." },
+    { type: "paragraph", html: "Es gibt außerdem eine Unterscheidung, die man sich merken sollte, weil sie oft zu Verwirrung führt. <strong class='text-white'>Close Position</strong> wirkt sich nur auf das einzelne Instrument und Konto aus, das mit dem Fenster verknüpft ist, in dem Sie geklickt haben. <strong class='text-white'>Flatten Everything</strong> ist der größere Hammer, es schließt alle offenen Positionen und storniert alle offenen Orders über sämtliche verbundenen Konten und Instrumente in der NinjaTrader-Desktop-App hinweg. Wenn Sie in einem Chart oder DOM auf Close Position klicken, das auf ein anderes Konto ausgerichtet ist, sieht es tot aus, obwohl es korrekt funktioniert, nur eben am falschen Ziel." },
+    { type: "heading", text: "Der wahre Übeltäter: Ihre Position ist nicht synchron" },
+    { type: "paragraph", html: "NinjaTrader führt ein eigenes Abbild Ihres Kontos und aktualisiert es über den Live-Feed des Brokers. Tradovate hält die Wahrheit, die tatsächlichen Kontrakte in Ihrem Konto, und NinjaTrader spiegelt dies über die Verbindung. Wenn dieses Spiegelbild veraltet, entsteht die klassische Diskrepanz: eine bei Tradovate offene Position, die NinjaTrader schlicht nicht sieht." },
+    { type: "paragraph", html: "Wie wird der Datensatz veraltet? Ein paar häufige Wege:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Die Verbindung wurde unterbrochen und kam zurück.</strong> Wenn während der Unterbrechung eine Ausführung erfolgte oder der Feed stockte, während ein Kontrakt aktiv war, kann NinjaTrader das Update verpassen und die Position nie registrieren.",
+        "<strong class='text-white'>Die Order wurde an anderer Stelle platziert.</strong> Ein Einstieg, der über die Tradovate-Web-App, die mobile App oder ein anderes Tool gesendet wurde, fließt nicht zwangsläufig in NinjaTraders Positionsdatensatz ein, wenn die Synchronisierung nicht sauber ist.",
+        "<strong class='text-white'>Ein Kommunikationsabbruch hat die Schließungsanfrage verschluckt.</strong> Manchmal <em>ist</em> die Position in NinjaTrader vorhanden, aber wenn Sie Flatten drücken, erreicht die Anfrage Tradovate nie. Die Verbindung ist so beeinträchtigt, dass die Order auf dem Weg verloren geht.",
+      ],
+    },
+    { type: "paragraph", html: "In all diesen Fällen ist die Antwort dieselbe: NinjaTrader muss Ihr Konto erneut von Tradovate einlesen. Es kann keine Position ausgleichen, von der es nichts weiß, und es kann keine Order über eine defekte Leitung senden." },
+    { type: "heading", text: "Schritt für Schritt: Das feststeckende Flatten beheben" },
+    { type: "heading", text: "Schritt 1: Zuerst die Position absichern" },
+    { type: "paragraph", html: "Bevor Sie mit der Fehlersuche beginnen, kümmern Sie sich um Ihr Risiko. Wenn Sie einen aktiven Kontrakt am Markt exponiert haben, kämpfen Sie nicht gegen eine eingefrorene Schaltfläche, öffnen Sie die Tradovate-Webplattform in einem Browser, gehen Sie zum Modul Positions und flatten Sie die Position dort. Tradovate ist der Broker; diese Schließungsanfrage entsteht direkt an der Quelle und hängt nicht vom Zustand von NinjaTrader ab. Werden Sie flach, atmen Sie durch, und beheben Sie danach das Tooling." },
+    { type: "heading", text: "Schritt 2: Die Tradovate-Verbindung trennen" },
+    { type: "paragraph", html: "Öffnen Sie im NinjaTrader Control Center das Menü <em>Connections</em>. Sie sehen Ihre konfigurierte Tradovate-Verbindung (sie kann nach Ihrer Prop-Firma benannt sein). Wählen Sie sie aus, um die Verbindung zu trennen. Die kleine Statusanzeige für diese Verbindung wechselt von Grün weg und zeigt Ihnen, dass NinjaTrader die Verbindung zu Tradovate freigegeben hat." },
+    { type: "heading", text: "Schritt 3: Wiederverbinden und neu synchronisieren lassen" },
+    { type: "paragraph", html: "Warten Sie ein paar Sekunden, öffnen Sie dann erneut das Menü <em>Connections</em> und wählen Sie dieselbe Verbindung, um sie wiederherzustellen. Wenn die Statusanzeige wieder grün wird, ruft NinjaTrader die aktuellen Kontowerte von Tradovate erneut ab, Salden, offene Orders und vor allem Ihre offenen Positionen. Dieser einzelne Schritt behebt die meisten Fälle eines feststeckenden Flatten, da er genau den Datensatz neu befüllt, auf den sich die Flatten-Schaltfläche stützt." },
+    { type: "heading", text: "Schritt 4: Die Position bestätigen, dann flatten" },
+    { type: "paragraph", html: "Prüfen Sie den Tab Positions. Der Kontrakt, der eben noch unsichtbar war, sollte jetzt mit der richtigen Menge und Seite aufgeführt sein. Jetzt hat die Flatten-Schaltfläche eine reale Position, mit der sie arbeiten kann, drücken Sie sie, und die ausgleichende Market-Order wird gesendet. Wenn Sie den Trade bereits in Schritt 1 in Tradovate geschlossen haben, werden Sie stattdessen sehen, wie NinjaTrader aufholt und Ihnen eine flache Position anzeigt." },
+    { type: "heading", text: "Wenn das Wiederverbinden das Problem nicht behebt" },
+    { type: "paragraph", html: "Ein Wiederverbinden löst die meisten dieser Fälle, aber nicht alle. Arbeiten Sie den Rest der Reihe nach durch:" },
+    { type: "heading", text: "Sie haben eine Timeout-Meldung erhalten" },
+    { type: "paragraph", html: "Wenn Close Position eine Meldung wie &ldquo;Close operation failed. Operation timed out. Manually close your position&rdquo; ausgibt, ist das ein spezifisches Signal. NinjaTrader wartet etwa fünf Sekunden auf die Bestätigung der Order-Stornierungen durch den Broker; kommt diese Bestätigung nicht an, gibt es auf und fordert Sie auf, manuell zu schließen. Dieser Timeout deutet klar auf einen Verbindungsverlust zwischen Ihrem Computer und den Servern des Brokers hin, Ihren Internetanbieter, die Broker-Seite oder das Netzwerk dazwischen. Schließen Sie die Position manuell in Tradovate und beheben Sie dann die Verbindung, bevor Sie weiterhandeln." },
+    { type: "heading", text: "Prüfen Sie, ob Sie im richtigen Fenster handeln" },
+    { type: "paragraph", html: "Gehen Sie zunächst das Offensichtliche durch: Ist das Fenster, in dem Sie klicken, tatsächlich auf das Konto mit der Position ausgerichtet? Close Position ist fensterbezogen. Ein DOM, Chart oder Order-Ticket, das auf ein anderes Konto eingestellt ist, meldet Erfolg, obwohl nichts passiert, während Ihre eigentliche Position anderswo unberührt bleibt. Gleichen Sie die Kontoauswahl mit der Position ab, bevor Sie entscheiden, dass die Schaltfläche defekt ist." },
+    { type: "heading", text: "NinjaTrader neu starten" },
+    { type: "paragraph", html: "Wenn Trennen/Wiederverbinden die Diskrepanz nicht behoben hat, schließen Sie NinjaTrader vollständig und starten Sie es neu. Ein vollständiger Neustart baut die Verbindung und den Positions-Cache komplett neu auf, was Synchronisierungsprobleme löst, die ein einfaches Wiederverbinden nicht beheben kann. Prüfen Sie, sobald die Verbindung wiederhergestellt ist, ob Ihre Positionen mit Tradovate übereinstimmen." },
+    { type: "heading", text: "Kontaktieren Sie Ihren Broker oder Ihre Prop-Firma, um serverseitig zu flatten" },
+    { type: "paragraph", html: "Wenn eine Position wirklich feststeckt, Sie sie weder in NinjaTrader <em>noch</em> auf der Tradovate-Webplattform schließen können, geht das über ein clientseitiges Synchronisierungsproblem hinaus, und Sie brauchen Hilfe an der Quelle. Kontaktieren Sie den Tradovate-Support oder Ihre Prop-Firma und bitten Sie darum, das Konto von deren Seite aus zu flatten. Halten Sie Ihre Kontodetails bereit und beschreiben Sie genau, was Sie sehen. Das ist die letzte Option, aber bei einem echten Ausfall der sicherste Weg, flach zu werden." },
+    { type: "heading", text: "Spickzettel: Symptom zu Lösung" },
+    {
+      type: "table",
+      headers: ["Was Sie sehen", "Wahrscheinliche Ursache", "Lösung"],
+      rows: [
+        ["Flatten bewirkt nichts; Tradovate zeigt die Position offen an", "NinjaTraders Positionsdatensatz ist veraltet, es glaubt, Sie seien flach", "Tradovate-Verbindung trennen und wiederherstellen, um neu zu synchronisieren, dann flatten"],
+        ["Close Position &ldquo;gelingt&rdquo;, aber Position bleibt offen", "Fenster ist auf das falsche Konto/Instrument ausgerichtet", "Fenster auf das Konto ausrichten, das die Position hält, dann erneut versuchen"],
+        ["&ldquo;Operation timed out. Manually close your position&rdquo;", "Keine Broker-Bestätigung innerhalb von ~5 Sekunden, Verbindungsverlust", "In Tradovate Web schließen, Verbindung beheben, dann NinjaTrader neu verbinden"],
+        ["Position in NinjaTrader sichtbar, aber Flatten schlägt weiterhin fehl", "Schließungsanfrage erreicht Tradovate über eine gestörte Verbindung nicht", "NinjaTrader neu verbinden oder vollständig neu starten; in der Zwischenzeit in Tradovate flatten"],
+        ["Kann nirgendwo schließen, in keiner der beiden Plattformen", "Ausfall auf Broker-Seite oder eine wirklich eingefrorene Order", "Tradovate/Ihre Prop-Firma kontaktieren, um das Konto serverseitig zu flatten"],
+      ],
+    },
+    { type: "heading", text: "So verhindern Sie, dass es wieder passiert" },
+    { type: "paragraph", html: "Eine Flatten-Schaltfläche, der man in einem schnellen Markt nicht vertrauen kann, ist eine echte Gefahr, daher lohnt es sich, ein paar Gewohnheiten aufzubauen, die die Synchronisierung stabil halten:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Handeln Sie über eine stabile Verbindung.</strong> Die meisten Synchronisierungsabbrüche gehen auf eine wacklige Verbindung zurück. Eine kabelgebundene Verbindung schlägt WLAN, und ein Trading-VPS schlägt ein Heimnetzwerk, das sich die Bandbreite mit allem anderen im Haus teilt.",
+        "<strong class='text-white'>Aktivieren Sie das automatische Wiederverbinden.</strong> NinjaTrader kann eine unterbrochene Verbindung selbstständig wiederherstellen. Mit aktivierter Funktion heilt eine kurze Netzwerkstörung eher aus, bevor Ihre Positionen im Ungewissen bleiben.",
+        "<strong class='text-white'>Halten Sie die Tradovate-Webplattform als Backup geöffnet.</strong> Ein Browser-Tab, in dem Sie bei Tradovate angemeldet sind, ist ein kostenloser Notausschalter. Sollte NinjaTrader jemals einfrieren, flatten Sie dort mit zwei Klicks.",
+        "<strong class='text-white'>Verwenden Sie nicht zwei Order-Quellen für ein Konto.</strong> Einstiege aus NinjaTrader und einem anderen Tool in dasselbe Konto zu senden, ist ein zuverlässiger Weg, den Positionsdatensatz zu desynchronisieren. Wählen Sie einen primären Router pro Konto.",
+        "<strong class='text-white'>Testen Sie Ihre Wiederherstellung, bevor Sie sie brauchen.</strong> Trennen und verbinden Sie bewusst auf einem Demo- oder simulierten Konto und beobachten Sie, wie schnell die Positionen wieder erscheinen. Wenn Sie den Ablauf im Schlaf beherrschen, patzen Sie mitten im Trade nicht.",
+      ],
+    },
+    { type: "heading", text: "Leiten Sie Ihre Trades über eine verwaltete Bridge" },
+    { type: "paragraph", html: "Viele dieser Synchronisierungsprobleme entstehen dadurch, dass eine Desktop-Plattform direkt mit einem Broker verkabelt wird und man die Verbindung dann selbst im Auge behalten muss. Wenn Ihr Ziel ist, Einstiege und Ausstiege aus TradingView zu automatisieren, können Sie diese fragile Zwischenschicht komplett überspringen. PickMyTrade sitzt zwischen TradingView und Tradovate und verwaltet für Sie eine saubere Verbindung zum Broker:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Eine einzige verwaltete Verbindung</strong> zu Tradovate, sodass Sie nicht mit dem Synchronisierungsstatus einer Desktop-Plattform gegenüber dem Konto jonglieren müssen.",
+        "<strong class='text-white'>Alerts werden direkt zum Broker geleitet</strong>, Ihre Einstiegs-, Stop- und Ausstiegslogik feuert von TradingView zu Tradovate, ohne dass eine dritte App einen veralteten Positionsdatensatz hält.",
+        "<strong class='text-white'>Integrierte Ausstiegsverwaltung</strong>, sodass die Schließungslogik über dieselbe zuverlässige Leitung läuft wie Ihre Einstiege.",
+        "<strong class='text-white'>Keine Verbindungslogik, die Sie überwachen müssen</strong>, die Plattform übernimmt den Verbindungs- und Wiederverbindungszyklus, den Sie sonst im Control Center im Auge behalten müssten.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Está en una operación, el precio se mueve en su contra, y presiona el botón Flatten en NinjaTrader para salir, y no ocurre nada. La posición simplemente permanece ahí. Puede ver que sigue abierta en la plataforma web de Tradovate, pero NinjaTrader actúa como si no hubiera nada que cerrar. Es uno de los momentos más angustiantes en el trading de futuros, y la causa casi siempre es la misma: NinjaTrader y Tradovate se han desincronizado. NinjaTrader cierra la posición enviando una orden de mercado para compensar la posición que <em>cree</em> que usted mantiene. Si su registro está desactualizado, el contrato está activo en Tradovate pero nunca se reportó a NinjaTrader, el botón no tiene nada sobre lo que actuar. La solución es desconectar y reconectar su conexión con Tradovate para que NinjaTrader vuelva a obtener el estado real de la cuenta, y luego cerrar la posición de nuevo. Y si hay dinero en juego en este momento, cierre la posición directamente desde la plataforma web de Tradovate primero, porque ese es el registro real del bróker." },
+    {
+      type: "checklist",
+      heading: "Solución rápida: resincronizar y luego cerrar la posición",
+      items: [
+        "<strong class='text-white'>Si tiene una posición expuesta ahora mismo, ciérrela primero en Tradovate.</strong> Abra la plataforma web de Tradovate, localice la posición y ciérrela ahí. Tradovate es el bróker de registro, ese clic siempre funciona incluso cuando NinjaTrader está confundido.",
+        "<strong class='text-white'>Reconecte la conexión con el bróker.</strong> En el Control Center de NinjaTrader, abra el menú Connections, desconecte su conexión de Tradovate, espere unos segundos y luego reconéctela. Esto trae de vuelta el estado más reciente de la cuenta a NinjaTrader.",
+        "<strong class='text-white'>Confirme que la posición reaparece.</strong> Revise la pestaña Positions después de reconectar. Cuando NinjaTrader muestre el contrato activo, el botón Flatten tendrá algo real sobre lo que actuar.",
+        "<strong class='text-white'>Cierre la posición de nuevo.</strong> Con la posición visible y la conexión estable, pulse Flatten y la orden de mercado compensatoria se ejecutará.",
+        "<strong class='text-white'>Verifique que está en la ventana correcta.</strong> Close Position solo afecta al instrumento y a la cuenta vinculados a la ventana en la que lo pulsa, asegúrese de que apunte a la cuenta que realmente tiene la posición.",
+      ],
+    },
+    { type: "heading", text: "Qué hace realmente el botón Flatten" },
+    { type: "paragraph", html: "Para entender por qué falla, hay que saber qué significa realmente &ldquo;flatten&rdquo; por dentro. Cuando pulsa Flatten en NinjaTrader, no agita una varita mágica sobre su cuenta de bróker. Ejecuta una rutina de dos pasos: primero cancela las órdenes pendientes de esa posición, espera a que el bróker confirme esas cancelaciones, y luego envía una orden de mercado en sentido contrario para llevar su posición neta a cero." },
+    { type: "paragraph", html: "La palabra clave ahí es <em>sentido contrario a lo que NinjaTrader cree que usted mantiene</em>. Toda la operación se basa en el registro interno que NinjaTrader tiene de la posición de su cuenta. Si ese registro dice que está plano, cero contratos, no hay nada que compensar, así que pulsar Flatten no produce absolutamente nada. Sin orden, sin error, sin movimiento. El botón no está roto. Está haciendo exactamente lo que se le indicó: cerrar una posición que cree que no existe." },
+    { type: "paragraph", html: "También hay una distinción que vale la pena precisar, porque suele confundir. <strong class='text-white'>Close Position</strong> actúa solo sobre el instrumento y la cuenta únicos vinculados a la ventana en la que hizo clic. <strong class='text-white'>Flatten Everything</strong> es el martillo más grande, cierra todas las posiciones abiertas y cancela todas las órdenes pendientes en todas las cuentas e instrumentos conectados en la aplicación de escritorio de NinjaTrader. Si está pulsando Close Position en un gráfico o DOM que apunta a una cuenta diferente, parecerá que no funciona aunque en realidad esté actuando correctamente sobre el objetivo equivocado." },
+    { type: "heading", text: "El verdadero culpable: su posición está desincronizada" },
+    { type: "paragraph", html: "NinjaTrader mantiene su propia imagen de su cuenta y la actualiza a partir del feed en vivo del bróker. Tradovate tiene la verdad, los contratos reales que hay en su cuenta, y NinjaTrader la refleja a través de la conexión. Cuando ese reflejo se desactualiza, se produce la división clásica: una posición abierta en Tradovate que NinjaTrader simplemente no ve." },
+    { type: "paragraph", html: "¿Cómo se desactualiza el registro? Algunas formas comunes:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>La conexión se cayó y volvió.</strong> Si una ejecución llegó durante ese lapso, o el feed tuvo un fallo mientras un contrato estaba activo, NinjaTrader puede perder la actualización y nunca registrar la posición.",
+        "<strong class='text-white'>La orden se colocó en otro lugar.</strong> Una entrada enviada desde la app web de Tradovate, la app móvil u otra herramienta no necesariamente se reflejará en el registro de posiciones de NinjaTrader si la sincronización no es limpia.",
+        "<strong class='text-white'>Un corte de comunicación se tragó la solicitud de cierre.</strong> A veces la posición <em>sí está</em> en NinjaTrader, pero al pulsar Flatten la solicitud nunca llega a Tradovate. El enlace está tan degradado que la orden muere en el camino.",
+      ],
+    },
+    { type: "paragraph", html: "En todos estos casos, la respuesta es la misma: NinjaTrader necesita volver a leer su cuenta desde Tradovate. No puede compensar una posición de la que no se le ha informado, y no puede enrutar una orden por una vía rota." },
+    { type: "heading", text: "Paso a paso: solucionar el Flatten atascado" },
+    { type: "heading", text: "Paso 1: proteja primero la posición" },
+    { type: "paragraph", html: "Antes de resolver cualquier problema, ocúpese de su riesgo. Si tiene un contrato activo expuesto al mercado, no se quede luchando con un botón congelado, abra la plataforma web de Tradovate en un navegador, vaya al módulo Positions y cierre la posición ahí. Tradovate es el bróker; esa solicitud de cierre se origina en la fuente y no depende del estado de NinjaTrader. Quédese plano, respire, y luego arregle la herramienta." },
+    { type: "heading", text: "Paso 2: desconecte la conexión con Tradovate" },
+    { type: "paragraph", html: "En el Control Center de NinjaTrader, abra el menú <em>Connections</em>. Verá su conexión configurada de Tradovate (puede estar nombrada según su prop firm). Selecciónela para desconectarla. La pequeña luz de estado de esa conexión deja de estar en verde, indicándole que NinjaTrader ha liberado el enlace con Tradovate." },
+    { type: "heading", text: "Paso 3: reconecte y deje que se resincronice" },
+    { type: "paragraph", html: "Espere unos segundos, luego abra de nuevo el menú <em>Connections</em> y seleccione la misma conexión para reconectarla. Cuando la luz de estado vuelva a ponerse verde, NinjaTrader vuelve a obtener los valores actuales de la cuenta desde Tradovate, saldos, órdenes pendientes y, sobre todo, sus posiciones abiertas. Este único paso resuelve la mayoría de los casos de Flatten atascado, porque repuebla exactamente el registro del que depende el botón Flatten." },
+    { type: "heading", text: "Paso 4: confirme la posición y luego cierre" },
+    { type: "paragraph", html: "Revise la pestaña Positions. El contrato que hace un momento era invisible ahora debería aparecer con la cantidad y el lado correctos. Ahora el botón Flatten tiene una posición real con la que trabajar, púlselo, y la orden de mercado compensatoria saldrá. Si ya cerró la operación en Tradovate durante el paso 1, verá en cambio que NinjaTrader se pone al día y le muestra la posición plana." },
+    { type: "heading", text: "Si reconectar no resuelve el problema" },
+    { type: "paragraph", html: "Reconectar resuelve la mayoría de estos casos, pero no todos. Recorra el resto en orden:" },
+    { type: "heading", text: "Recibió un mensaje de tiempo de espera agotado" },
+    { type: "paragraph", html: "Si al pulsar Close Position aparece algo como &ldquo;Close operation failed. Operation timed out. Manually close your position,&rdquo; eso es una señal específica. NinjaTrader espera aproximadamente cinco segundos a que el bróker confirme las cancelaciones de órdenes; si esa confirmación nunca llega, se da por vencido y le indica que cierre manualmente. Ese tiempo de espera agotado apunta directamente a una pérdida de conexión entre su computadora y los servidores del bróker, su proveedor de internet, el lado del bróker, o la red intermedia. Cierre la posición manualmente en Tradovate y luego resuelva la conexión antes de volver a operar." },
+    { type: "heading", text: "Verifique que está actuando en la ventana correcta" },
+    { type: "paragraph", html: "Revise lo obvio: ¿la ventana en la que está haciendo clic realmente apunta a la cuenta con la posición? Close Position está limitado a la ventana. Un DOM, gráfico o ticket de orden configurado en una cuenta diferente reportará éxito sin que pase nada, mientras su posición real permanece intacta en otro lugar. Haga coincidir el selector de cuenta con la posición antes de decidir que el botón está roto." },
+    { type: "heading", text: "Reinicie NinjaTrader" },
+    { type: "paragraph", html: "Si desconectar/reconectar no eliminó la discrepancia, cierre NinjaTrader por completo y vuelva a abrirlo. Un reinicio completo reconstruye la conexión y la caché de posiciones desde cero, lo cual resuelve problemas de sincronización que una simple reconexión no puede solucionar. Confirme que sus posiciones coinciden con Tradovate en el momento en que se reconecte." },
+    { type: "heading", text: "Contacte a su bróker o prop firm para cerrar la posición del lado del servidor" },
+    { type: "paragraph", html: "Si una posición está realmente atascada, y no puede cerrarla ni en NinjaTrader <em>ni</em> en la plataforma web de Tradovate, eso va más allá de un problema de sincronización del lado del cliente y necesita ayuda en la fuente. Contacte al soporte de Tradovate o a su prop firm y pídales que cierren la cuenta desde su lado. Tenga listos los detalles de su cuenta y describa exactamente lo que está viendo. Este es el último recurso, pero durante una interrupción real es la forma más segura de quedar plano." },
+    { type: "heading", text: "Guía rápida: síntoma y solución" },
+    {
+      type: "table",
+      headers: ["Lo que ve", "Causa probable", "Solución"],
+      rows: [
+        ["Flatten no hace nada; Tradovate muestra la posición abierta", "El registro de posición de NinjaTrader está desactualizado, cree que usted está plano", "Desconecte y reconecte la conexión de Tradovate para resincronizar, luego cierre la posición"],
+        ["Close Position &ldquo;tiene éxito&rdquo; pero la posición sigue abierta", "La ventana apunta a la cuenta o instrumento equivocado", "Apunte la ventana a la cuenta que tiene la posición y vuelva a intentarlo"],
+        ["&ldquo;Operation timed out. Manually close your position&rdquo;", "Sin confirmación del bróker en ~5 segundos, pérdida de conexión", "Cierre en la web de Tradovate, arregle su conexión y luego reconecte NinjaTrader"],
+        ["Posición visible en NinjaTrader pero Flatten sigue fallando", "La solicitud de cierre no llega a Tradovate por un enlace degradado", "Reconecte o reinicie por completo NinjaTrader; mientras tanto cierre la posición en Tradovate"],
+        ["No se puede cerrar en ninguna plataforma", "Interrupción del lado del bróker o una orden realmente congelada", "Contacte a Tradovate o a su prop firm para cerrar la cuenta del lado del servidor"],
+      ],
+    },
+    { type: "heading", text: "Evite que vuelva a pasar" },
+    { type: "paragraph", html: "Un botón Flatten en el que no se puede confiar en un mercado rápido es un riesgo real, así que vale la pena crear algunos hábitos que mantengan la sincronización sólida:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Opere con una conexión estable.</strong> La mayoría de los cortes de sincronización se deben a un enlace inestable. Una conexión por cable supera al Wi-Fi, y un VPS de trading supera a una red doméstica que comparte ancho de banda con todo lo demás en la casa.",
+        "<strong class='text-white'>Active la reconexión automática.</strong> NinjaTrader puede restablecer por sí solo una conexión caída. Con esta función activada, es más probable que una breve interrupción de red se resuelva antes de dejar sus posiciones varadas.",
+        "<strong class='text-white'>Mantenga abierta la plataforma web de Tradovate como respaldo.</strong> Una pestaña del navegador con la sesión iniciada en Tradovate es un interruptor de emergencia gratuito. Si NinjaTrader alguna vez se congela, ahí puede cerrar la posición en dos clics.",
+        "<strong class='text-white'>No use dos fuentes de órdenes contra una misma cuenta.</strong> Enviar entradas desde NinjaTrader y otra herramienta a la misma cuenta es una manera confiable de desincronizar el registro de posiciones. Elija un enrutador principal por cuenta.",
+        "<strong class='text-white'>Pruebe su recuperación antes de necesitarla.</strong> Desconecte y reconecte deliberadamente en una cuenta demo o simulada y observe qué tan rápido se repueblan las posiciones. Conocer el procedimiento a la perfección significa que no se equivocará en medio de una operación.",
+      ],
+    },
+    { type: "heading", text: "Enrute sus operaciones a través de un puente gestionado" },
+    { type: "paragraph", html: "Muchos de estos dolores de cabeza de sincronización provienen de conectar una plataforma de escritorio directamente a un bróker y luego vigilar usted mismo la conexión. Si su objetivo es automatizar entradas y salidas desde TradingView, puede saltarse por completo esa frágil capa intermedia. PickMyTrade se sitúa entre TradingView y Tradovate y gestiona por usted una conexión limpia con el bróker:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Una única conexión gestionada</strong> con Tradovate, para que no tenga que hacer malabares con el estado de sincronización de una plataforma de escritorio frente a la cuenta.",
+        "<strong class='text-white'>Alertas enrutadas directamente al bróker</strong>, su lógica de entrada, stop y salida se dispara desde TradingView hacia Tradovate sin que una tercera app mantenga un registro de posición desactualizado.",
+        "<strong class='text-white'>Gestión de salidas incorporada</strong> para que la lógica de cierre pase por el mismo canal confiable que sus entradas.",
+        "<strong class='text-white'>Sin conexiones que vigilar</strong>, la plataforma gestiona el ciclo de conexión y reconexión que de otro modo estaría vigilando en el Control Center.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous êtes en position, le prix évolue contre vous, et vous appuyez sur le bouton Flatten dans NinjaTrader pour sortir, et rien ne se passe. La position reste simplement là. Vous voyez qu'elle est toujours ouverte sur la plateforme web Tradovate, mais NinjaTrader se comporte comme s'il n'y avait rien à fermer. C'est l'un des moments les plus angoissants du trading de futures, et la cause est presque toujours la même : NinjaTrader et Tradovate ne sont plus synchronisés. NinjaTrader clôture en envoyant un ordre au marché pour compenser la position qu'il <em>pense</em> que vous détenez. Si son enregistrement est obsolète, le contrat est actif chez Tradovate mais n'a jamais été signalé à NinjaTrader, le bouton n'a rien sur quoi agir. La solution consiste à déconnecter puis reconnecter votre connexion Tradovate afin que NinjaTrader récupère l'état réel du compte, puis à clôturer à nouveau. Et si de l'argent est en jeu en ce moment, fermez d'abord la position directement depuis la plateforme web Tradovate, car c'est l'enregistrement réel du courtier." },
+    {
+      type: "checklist",
+      heading: "Solution rapide : resynchroniser, puis clôturer",
+      items: [
+        "<strong class='text-white'>Si une position est exposée en ce moment, clôturez-la d'abord dans Tradovate.</strong> Ouvrez la plateforme web Tradovate, trouvez la position et fermez-la là-bas. Tradovate est le courtier de référence, ce clic fonctionne toujours, même quand NinjaTrader est perdu.",
+        "<strong class='text-white'>Reconnectez la connexion au courtier.</strong> Dans le Control Center de NinjaTrader, ouvrez le menu Connections, déconnectez votre connexion Tradovate, attendez quelques secondes, puis reconnectez-la. Cela ramène l'état de compte le plus récent dans NinjaTrader.",
+        "<strong class='text-white'>Confirmez que la position réapparaît.</strong> Vérifiez l'onglet Positions après la reconnexion. Une fois que NinjaTrader affiche le contrat actif, le bouton Flatten a quelque chose de réel sur quoi agir.",
+        "<strong class='text-white'>Clôturez à nouveau.</strong> Une fois la position visible et la connexion saine, appuyez sur Flatten et l'ordre au marché compensatoire passe.",
+        "<strong class='text-white'>Vérifiez que vous êtes dans la bonne fenêtre.</strong> Close Position n'agit que sur l'instrument et le compte liés à la fenêtre dans laquelle vous l'actionnez, assurez-vous qu'elle pointe vers le compte qui détient réellement la position.",
+      ],
+    },
+    { type: "heading", text: "Ce que fait réellement le bouton Flatten" },
+    { type: "paragraph", html: "Pour comprendre pourquoi cela échoue, il faut savoir ce que signifie réellement &ldquo;flatten&rdquo; en coulisses. Lorsque vous appuyez sur Flatten dans NinjaTrader, il n'agite pas une baguette magique sur votre compte de courtage. Il exécute une routine en deux étapes : il annule d'abord les ordres en attente sur cette position, attend que le courtier confirme ces annulations, puis envoie un ordre au marché dans la direction opposée pour ramener votre position nette à zéro." },
+    { type: "paragraph", html: "Le mot clé ici est <em>direction opposée à ce que NinjaTrader pense que vous détenez</em>. Toute l'opération repose sur l'enregistrement interne que NinjaTrader a de la position de votre compte. Si cet enregistrement indique que vous êtes plat, zéro contrat, il n'y a rien à compenser, donc appuyer sur Flatten ne produit exactement rien. Aucun ordre, aucune erreur, aucun mouvement. Le bouton n'est pas cassé. Il fait précisément ce qu'on lui a demandé : fermer une position qu'il ne pense pas exister." },
+    { type: "paragraph", html: "Il existe également une distinction qu'il vaut la peine de préciser, car elle prête souvent à confusion. <strong class='text-white'>Close Position</strong> n'agit que sur l'instrument et le compte uniques liés à la fenêtre dans laquelle vous avez cliqué. <strong class='text-white'>Flatten Everything</strong> est le marteau le plus lourd, il ferme toutes les positions ouvertes et annule tous les ordres en attente sur tous les comptes et instruments connectés dans l'application de bureau NinjaTrader. Si vous cliquez sur Close Position dans un graphique ou un DOM pointant vers un compte différent, cela semblera inactif alors qu'en réalité il fonctionne correctement, mais sur la mauvaise cible." },
+    { type: "heading", text: "Le vrai coupable : votre position n'est pas synchronisée" },
+    { type: "paragraph", html: "NinjaTrader conserve sa propre image de votre compte et la met à jour à partir du flux en direct du courtier. Tradovate détient la vérité, les contrats réels présents sur votre compte, et NinjaTrader la reflète via la connexion. Lorsque ce reflet devient obsolète, on obtient le décalage classique : une position ouverte chez Tradovate que NinjaTrader ne voit tout simplement pas." },
+    { type: "paragraph", html: "Comment l'enregistrement devient-il obsolète ? Quelques causes fréquentes :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>La connexion a été coupée puis rétablie.</strong> Si une exécution est survenue pendant cette coupure, ou si le flux a bégayé alors qu'un contrat était actif, NinjaTrader peut manquer la mise à jour et ne jamais enregistrer la position.",
+        "<strong class='text-white'>L'ordre a été passé ailleurs.</strong> Une entrée envoyée depuis l'application web Tradovate, l'application mobile, ou un autre outil ne se répercute pas forcément dans l'enregistrement de position de NinjaTrader si la synchronisation n'est pas propre.",
+        "<strong class='text-white'>Une coupure de communication a englouti la demande de fermeture.</strong> Parfois, la position <em>est bien</em> présente dans NinjaTrader, mais lorsque vous appuyez sur Flatten, la demande n'atteint jamais Tradovate. La liaison est suffisamment dégradée pour que l'ordre meure en chemin.",
+      ],
+    },
+    { type: "paragraph", html: "Dans tous ces cas, la réponse est la même : NinjaTrader doit relire votre compte depuis Tradovate. Il ne peut pas compenser une position dont il n'a pas été informé, et il ne peut pas acheminer un ordre par une liaison rompue." },
+    { type: "heading", text: "Étape par étape : résoudre le Flatten bloqué" },
+    { type: "heading", text: "Étape 1 : protégez d'abord la position" },
+    { type: "paragraph", html: "Avant de résoudre quoi que ce soit, occupez-vous de votre risque. Si vous avez un contrat actif exposé au marché, ne restez pas là à lutter contre un bouton figé, ouvrez la plateforme web Tradovate dans un navigateur, allez dans le module Positions et clôturez la position à cet endroit. Tradovate est le courtier ; cette demande de fermeture provient directement de la source et ne dépend pas de l'état de NinjaTrader. Redevenez plat, respirez, puis réparez l'outillage." },
+    { type: "heading", text: "Étape 2 : déconnectez la connexion Tradovate" },
+    { type: "paragraph", html: "Dans le Control Center de NinjaTrader, ouvrez le menu <em>Connections</em>. Vous verrez votre connexion Tradovate configurée (elle peut porter le nom de votre prop firm). Sélectionnez-la pour la déconnecter. Le petit voyant d'état de cette connexion cesse d'être vert, indiquant que NinjaTrader a libéré la liaison avec Tradovate." },
+    { type: "heading", text: "Étape 3 : reconnectez et laissez la resynchronisation s'opérer" },
+    { type: "paragraph", html: "Attendez quelques secondes, puis rouvrez le menu <em>Connections</em> et sélectionnez la même connexion pour la reconnecter. Lorsque le voyant d'état redevient vert, NinjaTrader récupère à nouveau les valeurs actuelles du compte depuis Tradovate, soldes, ordres en attente, et surtout vos positions ouvertes. Cette seule action résout la majorité des cas de Flatten bloqué, car elle repeuple exactement l'enregistrement sur lequel repose le bouton Flatten." },
+    { type: "heading", text: "Étape 4 : confirmez la position, puis clôturez" },
+    { type: "paragraph", html: "Vérifiez l'onglet Positions. Le contrat qui était invisible un instant plus tôt devrait maintenant apparaître avec la bonne quantité et le bon sens. Le bouton Flatten a maintenant une position réelle avec laquelle travailler, appuyez dessus, et l'ordre au marché compensatoire est envoyé. Si vous avez déjà fermé la transaction dans Tradovate lors de l'étape 1, vous verrez plutôt NinjaTrader se mettre à jour et vous afficher une position plate." },
+    { type: "heading", text: "Si la reconnexion ne résout pas le problème" },
+    { type: "paragraph", html: "Une reconnexion résout la plupart de ces cas, mais pas tous. Parcourez le reste dans l'ordre :" },
+    { type: "heading", text: "Vous avez reçu un message de délai d'attente dépassé" },
+    { type: "paragraph", html: "Si appuyer sur Close Position affiche quelque chose comme &ldquo;Close operation failed. Operation timed out. Manually close your position,&rdquo; c'est un signal précis. NinjaTrader attend environ cinq secondes que le courtier confirme les annulations d'ordres ; si cette confirmation n'arrive jamais, il abandonne et vous demande de fermer manuellement. Ce délai dépassé pointe directement vers une perte de connexion entre votre ordinateur et les serveurs du courtier, votre fournisseur d'accès, le côté courtier, ou le réseau entre les deux. Fermez la position manuellement dans Tradovate, puis réglez la connexion avant de retrader." },
+    { type: "heading", text: "Vérifiez que vous agissez dans la bonne fenêtre" },
+    { type: "paragraph", html: "Passez en revue l'évidence : la fenêtre dans laquelle vous cliquez pointe-t-elle réellement vers le compte qui détient la position ? Close Position est limité à la fenêtre. Un DOM, un graphique ou un ticket d'ordre réglé sur un compte différent signalera un succès alors que rien ne se passe, tandis que votre position réelle reste intacte ailleurs. Faites correspondre le sélecteur de compte avec la position avant de décider que le bouton est cassé." },
+    { type: "heading", text: "Redémarrez NinjaTrader" },
+    { type: "paragraph", html: "Si le fait de déconnecter/reconnecter n'a pas résolu la discordance, fermez complètement NinjaTrader et relancez-le. Un redémarrage complet reconstruit la connexion et le cache des positions à partir de zéro, ce qui résout des problèmes de synchronisation qu'une simple reconnexion ne peut pas régler. Confirmez que vos positions correspondent à Tradovate dès la reconnexion." },
+    { type: "heading", text: "Contactez votre courtier ou votre prop firm pour clôturer côté serveur" },
+    { type: "paragraph", html: "Si une position est véritablement bloquée, que vous ne pouvez la fermer ni dans NinjaTrader <em>ni</em> sur la plateforme web Tradovate, cela dépasse un simple problème de synchronisation côté client et vous avez besoin d'aide à la source. Contactez le support Tradovate ou votre prop firm et demandez-leur de clôturer le compte de leur côté. Tenez vos informations de compte à portée de main et décrivez précisément ce que vous constatez. C'est le dernier recours, mais lors d'une véritable panne, c'est le moyen le plus sûr de redevenir plat." },
+    { type: "heading", text: "Aide-mémoire symptôme-solution" },
+    {
+      type: "table",
+      headers: ["Ce que vous voyez", "Cause probable", "Solution"],
+      rows: [
+        ["Flatten ne fait rien ; Tradovate affiche la position ouverte", "L'enregistrement de position de NinjaTrader est obsolète, il pense que vous êtes plat", "Déconnectez et reconnectez la connexion Tradovate pour resynchroniser, puis clôturez"],
+        ["Close Position &ldquo;réussit&rdquo; mais la position reste ouverte", "La fenêtre pointe vers le mauvais compte/instrument", "Pointez la fenêtre vers le compte détenant la position, puis réessayez"],
+        ["&ldquo;Operation timed out. Manually close your position&rdquo;", "Aucune confirmation du courtier en ~5 secondes, perte de connexion", "Fermez sur le web Tradovate, réparez votre connexion, puis reconnectez NinjaTrader"],
+        ["Position visible dans NinjaTrader mais Flatten échoue toujours", "La demande de fermeture n'atteint pas Tradovate à cause d'une liaison dégradée", "Reconnectez ou redémarrez complètement NinjaTrader ; clôturez dans Tradovate entre-temps"],
+        ["Impossible de fermer nulle part, sur aucune des deux plateformes", "Panne côté courtier ou ordre véritablement figé", "Contactez Tradovate/votre prop firm pour clôturer le compte côté serveur"],
+      ],
+    },
+    { type: "heading", text: "Évitez que cela se reproduise" },
+    { type: "paragraph", html: "Un bouton Flatten auquel on ne peut pas se fier dans un marché rapide est un vrai danger, il vaut donc la peine d'adopter quelques habitudes qui maintiennent une synchronisation solide :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Tradez sur une connexion stable.</strong> La plupart des ruptures de synchronisation proviennent d'une liaison instable. Une connexion filaire l'emporte sur le Wi-Fi, et un VPS de trading l'emporte sur un réseau domestique qui partage la bande passante avec tout le reste de la maison.",
+        "<strong class='text-white'>Activez la reconnexion automatique.</strong> NinjaTrader peut rétablir une connexion coupée par lui-même. Avec cette option activée, une brève interruption réseau a plus de chances de se résorber avant de laisser vos positions en suspens.",
+        "<strong class='text-white'>Gardez la plateforme web Tradovate ouverte en secours.</strong> Un onglet de navigateur connecté à Tradovate est un interrupteur d'urgence gratuit. Si NinjaTrader se fige un jour, vous pouvez y clôturer en deux clics.",
+        "<strong class='text-white'>N'exécutez pas deux sources d'ordres sur un même compte.</strong> Envoyer des entrées depuis NinjaTrader et un autre outil vers le même compte est un moyen fiable de désynchroniser l'enregistrement de position. Choisissez un routeur principal par compte.",
+        "<strong class='text-white'>Testez votre récupération avant d'en avoir besoin.</strong> Déconnectez et reconnectez délibérément sur un compte démo ou simulé, et observez la vitesse à laquelle les positions se repeuplent. Connaître la procédure par cœur signifie que vous ne la raterez pas en pleine transaction.",
+      ],
+    },
+    { type: "heading", text: "Acheminez vos trades via un pont géré" },
+    { type: "paragraph", html: "Beaucoup de ces maux de tête de synchronisation viennent du câblage direct d'une plateforme de bureau vers un courtier, puis de la surveillance de la connexion par vous-même. Si votre objectif est d'automatiser les entrées et sorties depuis TradingView, vous pouvez complètement contourner cette couche intermédiaire fragile. PickMyTrade se place entre TradingView et Tradovate et gère pour vous une connexion propre au courtier :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Une connexion unique et gérée</strong> vers Tradovate, afin de ne pas jongler avec l'état de synchronisation d'une plateforme de bureau face au compte.",
+        "<strong class='text-white'>Des alertes acheminées directement au courtier</strong>, votre logique d'entrée, de stop et de sortie part de TradingView vers Tradovate sans qu'une troisième application ne conserve un enregistrement de position obsolète.",
+        "<strong class='text-white'>Une gestion des sorties intégrée</strong> afin que la logique de fermeture passe par le même canal fiable que vos entrées.",
+        "<strong class='text-white'>Aucune plomberie de connexion à surveiller</strong>, la plateforme gère le cycle de connexion et de reconnexion que vous devriez sinon surveiller vous-même dans le Control Center.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Lei è in un'operazione, il prezzo si muove contro di Lei, e preme il pulsante Flatten in NinjaTrader per uscire, e non succede nulla. La posizione resta semplicemente lì. Può vedere che è ancora aperta sulla piattaforma web di Tradovate, ma NinjaTrader si comporta come se non ci fosse nulla da chiudere. È uno dei momenti più angoscianti nel trading di futures, e la causa è quasi sempre la stessa: NinjaTrader e Tradovate si sono desincronizzati. NinjaTrader chiude la posizione inviando un ordine a mercato per compensare la posizione che <em>ritiene</em> Lei detenga. Se il suo registro è obsoleto, il contratto è attivo su Tradovate ma non è mai stato segnalato a NinjaTrader, il pulsante non ha nulla su cui agire. La soluzione è disconnettere e riconnettere la connessione a Tradovate in modo che NinjaTrader recuperi lo stato reale del conto, e poi chiudere di nuovo la posizione. E se in questo momento c'è denaro in gioco, chiuda prima la posizione direttamente dalla piattaforma web di Tradovate, perché quello è il registro reale del broker." },
+    {
+      type: "checklist",
+      heading: "Soluzione rapida: risincronizzare, poi chiudere la posizione",
+      items: [
+        "<strong class='text-white'>Se una posizione è esposta in questo momento, la chiuda prima in Tradovate.</strong> Apra la piattaforma web di Tradovate, trovi la posizione e la chiuda lì. Tradovate è il broker di riferimento, quel clic funziona sempre, anche quando NinjaTrader è confuso.",
+        "<strong class='text-white'>Riconnetta la connessione al broker.</strong> Nel Control Center di NinjaTrader, apra il menu Connections, disconnetta la sua connessione a Tradovate, attenda qualche secondo, poi la riconnetta. Questo riporta lo stato più recente del conto in NinjaTrader.",
+        "<strong class='text-white'>Confermi che la posizione riappare.</strong> Controlli la scheda Positions dopo la riconnessione. Una volta che NinjaTrader mostra il contratto attivo, il pulsante Flatten ha qualcosa di reale su cui agire.",
+        "<strong class='text-white'>Chiuda di nuovo la posizione.</strong> Con la posizione visibile e la connessione stabile, prema Flatten e l'ordine a mercato compensativo viene eseguito.",
+        "<strong class='text-white'>Verifichi di essere nella finestra giusta.</strong> Close Position agisce solo sullo strumento e sul conto collegati alla finestra in cui lo preme, si assicuri che sia puntata sul conto che detiene effettivamente la posizione.",
+      ],
+    },
+    { type: "heading", text: "Cosa fa realmente il pulsante Flatten" },
+    { type: "paragraph", html: "Per capire perché fallisce, bisogna sapere cosa significa realmente &ldquo;flatten&rdquo; dietro le quinte. Quando preme Flatten in NinjaTrader, non agita una bacchetta magica sul suo conto broker. Esegue una procedura in due fasi: prima annulla tutti gli ordini pendenti su quella posizione, attende che il broker confermi tali annullamenti, e poi invia un ordine a mercato nella direzione opposta per portare la posizione netta a zero." },
+    { type: "paragraph", html: "La parola chiave qui è <em>direzione opposta a ciò che NinjaTrader ritiene Lei detenga</em>. L'intera operazione si basa sul registro interno che NinjaTrader ha della posizione del suo conto. Se quel registro indica che è flat, zero contratti, non c'è nulla da compensare, quindi premere Flatten non produce esattamente nulla. Nessun ordine, nessun errore, nessun movimento. Il pulsante non è rotto. Sta facendo esattamente ciò che gli è stato detto: chiudere una posizione che ritiene non esista." },
+    { type: "paragraph", html: "C'è anche una distinzione che vale la pena chiarire, perché spesso trae in inganno. <strong class='text-white'>Close Position</strong> agisce solo sul singolo strumento e conto collegati alla finestra in cui ha cliccato. <strong class='text-white'>Flatten Everything</strong> è il martello più grande, chiude tutte le posizioni aperte e annulla tutti gli ordini pendenti su tutti i conti e strumenti connessi nell'app desktop di NinjaTrader. Se preme Close Position in un grafico o DOM puntato su un conto diverso, sembrerà non funzionare anche se in realtà sta funzionando correttamente, solo sull'obiettivo sbagliato." },
+    { type: "heading", text: "Il vero colpevole: la sua posizione non è sincronizzata" },
+    { type: "paragraph", html: "NinjaTrader mantiene una propria immagine del suo conto e la aggiorna dal feed live del broker. Tradovate detiene la verità, i contratti effettivi presenti sul suo conto, e NinjaTrader la rispecchia tramite la connessione. Quando questo rispecchiamento diventa obsoleto, si ottiene la classica discrepanza: una posizione aperta su Tradovate che NinjaTrader semplicemente non vede." },
+    { type: "paragraph", html: "Come diventa obsoleto il registro? Alcuni modi comuni:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>La connessione è caduta ed è tornata.</strong> Se un'esecuzione è arrivata durante l'interruzione, o il feed ha avuto un intoppo mentre un contratto era attivo, NinjaTrader può perdere l'aggiornamento e non registrare mai la posizione.",
+        "<strong class='text-white'>L'ordine è stato inserito altrove.</strong> Un ingresso inviato dall'app web di Tradovate, dall'app mobile o da un altro strumento non necessariamente confluisce nel registro delle posizioni di NinjaTrader se la sincronizzazione non è pulita.",
+        "<strong class='text-white'>Un'interruzione di comunicazione ha inghiottito la richiesta di chiusura.</strong> A volte la posizione <em>è</em> presente in NinjaTrader, ma quando preme Flatten la richiesta non raggiunge mai Tradovate. Il collegamento è abbastanza degradato da far morire l'ordine lungo il percorso.",
+      ],
+    },
+    { type: "paragraph", html: "In tutti questi casi, la risposta è la stessa: NinjaTrader deve rileggere il suo conto da Tradovate. Non può compensare una posizione di cui non è stato informato, e non può instradare un ordine attraverso un collegamento rotto." },
+    { type: "heading", text: "Passo dopo passo: risolvere il Flatten bloccato" },
+    { type: "heading", text: "Passo 1: proteggere prima la posizione" },
+    { type: "paragraph", html: "Prima di risolvere qualsiasi problema, si occupi del rischio. Se ha un contratto attivo esposto al mercato, non resti a lottare con un pulsante bloccato, apra la piattaforma web di Tradovate in un browser, vada al modulo Positions e chiuda lì la posizione. Tradovate è il broker; quella richiesta di chiusura ha origine direttamente alla fonte e non dipende dallo stato di NinjaTrader. Torni flat, respiri, poi risolva lo strumento." },
+    { type: "heading", text: "Passo 2: disconnetta la connessione a Tradovate" },
+    { type: "paragraph", html: "Nel Control Center di NinjaTrader, apra il menu <em>Connections</em>. Vedrà la sua connessione Tradovate configurata (potrebbe avere il nome della sua prop firm). La selezioni per disconnetterla. La piccola spia di stato di quella connessione smette di essere verde, indicando che NinjaTrader ha rilasciato il collegamento con Tradovate." },
+    { type: "heading", text: "Passo 3: riconnettersi e lasciare che si risincronizzi" },
+    { type: "paragraph", html: "Attenda qualche secondo, poi riapra il menu <em>Connections</em> e selezioni la stessa connessione per riconnetterla. Quando la spia di stato torna verde, NinjaTrader recupera nuovamente i valori attuali del conto da Tradovate, saldi, ordini pendenti e, soprattutto, le sue posizioni aperte. Questa singola azione risolve la maggior parte dei casi di Flatten bloccato, perché ripopola esattamente il registro da cui dipende il pulsante Flatten." },
+    { type: "heading", text: "Passo 4: confermare la posizione, poi chiudere" },
+    { type: "paragraph", html: "Controlli la scheda Positions. Il contratto che un momento fa era invisibile dovrebbe ora essere elencato con la quantità e il lato corretti. Ora il pulsante Flatten ha una posizione reale con cui lavorare, lo prema, e l'ordine a mercato compensativo viene inviato. Se ha già chiuso l'operazione in Tradovate durante il passo 1, vedrà invece NinjaTrader aggiornarsi e mostrarLe la posizione flat." },
+    { type: "heading", text: "Se la riconnessione non risolve il problema" },
+    { type: "paragraph", html: "Una riconnessione risolve la maggior parte di questi casi, ma non tutti. Proceda con il resto in ordine:" },
+    { type: "heading", text: "Ha ricevuto un messaggio di timeout" },
+    { type: "paragraph", html: "Se premendo Close Position compare qualcosa come &ldquo;Close operation failed. Operation timed out. Manually close your position,&rdquo; è un segnale specifico. NinjaTrader attende circa cinque secondi che il broker confermi gli annullamenti degli ordini; se quella conferma non arriva mai, rinuncia e Le chiede di chiudere manualmente. Quel timeout indica chiaramente una perdita di connessione tra il suo computer e i server del broker, il suo provider internet, il lato broker, o la rete intermedia. Chiuda la posizione manualmente in Tradovate, poi risolva la connessione prima di tornare a operare." },
+    { type: "heading", text: "Verifichi di stare agendo nella finestra giusta" },
+    { type: "paragraph", html: "Controlli l'ovvio: la finestra in cui sta cliccando punta effettivamente al conto con la posizione? Close Position è limitato alla finestra. Un DOM, un grafico o un ticket d'ordine impostato su un conto diverso segnalerà successo pur non accadendo nulla, mentre la sua posizione reale resta intatta altrove. Faccia corrispondere il selettore del conto con la posizione prima di decidere che il pulsante è rotto." },
+    { type: "heading", text: "Riavviare NinjaTrader" },
+    { type: "paragraph", html: "Se disconnettere/riconnettere non ha risolto la discrepanza, chiuda completamente NinjaTrader e lo riavvii. Un riavvio completo ricostruisce da zero la connessione e la cache delle posizioni, il che risolve problemi di sincronizzazione che una semplice riconnessione non può correggere. Al momento della riconnessione, confermi che le sue posizioni corrispondano a Tradovate." },
+    { type: "heading", text: "Contatti il broker o la prop firm per chiudere lato server" },
+    { type: "paragraph", html: "Se una posizione è realmente bloccata, e non può chiuderla né in NinjaTrader <em>né</em> sulla piattaforma web di Tradovate, il problema va oltre una questione di sincronizzazione lato client e ha bisogno di aiuto alla fonte. Contatti il supporto Tradovate o la sua prop firm e chieda loro di chiudere il conto dal loro lato. Tenga pronti i dettagli del conto e descriva esattamente cosa sta vedendo. Questa è l'ultima risorsa, ma durante un'interruzione reale è il modo più sicuro per tornare flat." },
+    { type: "heading", text: "Guida rapida: sintomo e soluzione" },
+    {
+      type: "table",
+      headers: ["Cosa vede", "Causa probabile", "Soluzione"],
+      rows: [
+        ["Flatten non fa nulla; Tradovate mostra la posizione aperta", "Il registro delle posizioni di NinjaTrader è obsoleto, ritiene che Lei sia flat", "Disconnetta e riconnetta la connessione a Tradovate per risincronizzare, poi chiuda"],
+        ["Close Position &ldquo;riesce&rdquo; ma la posizione resta aperta", "La finestra è puntata sul conto/strumento sbagliato", "Punti la finestra sul conto che detiene la posizione, poi riprovi"],
+        ["&ldquo;Operation timed out. Manually close your position&rdquo;", "Nessuna conferma dal broker entro ~5 secondi, perdita di connessione", "Chiuda sul web di Tradovate, risolva la connessione, poi riconnetta NinjaTrader"],
+        ["Posizione visibile in NinjaTrader ma Flatten continua a fallire", "La richiesta di chiusura non raggiunge Tradovate a causa di un collegamento degradato", "Riconnetta o riavvii completamente NinjaTrader; nel frattempo chiuda in Tradovate"],
+        ["Impossibile chiudere ovunque, su nessuna delle due piattaforme", "Interruzione lato broker o un ordine davvero bloccato", "Contatti Tradovate/la sua prop firm per chiudere il conto lato server"],
+      ],
+    },
+    { type: "heading", text: "Come evitare che accada di nuovo" },
+    { type: "paragraph", html: "Un pulsante Flatten di cui non ci si può fidare in un mercato veloce è un rischio reale, quindi vale la pena costruire alcune abitudini che mantengano solida la sincronizzazione:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Operi su una connessione stabile.</strong> La maggior parte delle interruzioni di sincronizzazione risale a un collegamento instabile. Una connessione cablata batte il Wi-Fi, e un VPS per il trading batte una rete domestica che condivide la banda con tutto il resto della casa.",
+        "<strong class='text-white'>Attivi la riconnessione automatica.</strong> NinjaTrader può ristabilire da solo una connessione caduta. Con questa funzione attiva, un breve intoppo di rete ha più probabilità di risolversi prima di lasciare le sue posizioni in sospeso.",
+        "<strong class='text-white'>Tenga aperta la piattaforma web di Tradovate come backup.</strong> Una scheda del browser con la sessione attiva su Tradovate è un interruttore di emergenza gratuito. Se NinjaTrader dovesse mai bloccarsi, lì può chiudere la posizione in due clic.",
+        "<strong class='text-white'>Non usi due fonti di ordini sullo stesso conto.</strong> Inviare ingressi da NinjaTrader e da un altro strumento verso lo stesso conto è un modo affidabile per desincronizzare il registro delle posizioni. Scelga un router principale per conto.",
+        "<strong class='text-white'>Testi il suo ripristino prima di averne bisogno.</strong> Disconnetta e riconnetta deliberatamente su un conto demo o simulato e osservi quanto velocemente le posizioni si ripopolano. Conoscere la procedura a memoria significa che non sbaglierà nel mezzo di un'operazione.",
+      ],
+    },
+    { type: "heading", text: "Instradi le sue operazioni attraverso un ponte gestito" },
+    { type: "paragraph", html: "Molti di questi grattacapi di sincronizzazione derivano dal collegare direttamente una piattaforma desktop a un broker e poi sorvegliare da soli la connessione. Se il suo obiettivo è automatizzare ingressi e uscite da TradingView, può saltare completamente questo fragile livello intermedio. PickMyTrade si colloca tra TradingView e Tradovate e gestisce per Lei una connessione pulita con il broker:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Un'unica connessione gestita</strong> con Tradovate, così non deve destreggiarsi con lo stato di sincronizzazione di una piattaforma desktop rispetto al conto.",
+        "<strong class='text-white'>Alert instradati direttamente al broker</strong>, la sua logica di ingresso, stop e uscita parte da TradingView verso Tradovate senza che una terza app mantenga un registro di posizione obsoleto.",
+        "<strong class='text-white'>Gestione delle uscite integrata</strong> in modo che la logica di chiusura passi attraverso lo stesso canale affidabile dei suoi ingressi.",
+        "<strong class='text-white'>Nessuna gestione della connessione da sorvegliare</strong>, la piattaforma gestisce il ciclo di connessione e riconnessione che altrimenti dovrebbe sorvegliare Lei stesso nel Control Center.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Wrangling Broker Connections", de: "Schluss mit dem Kampf um Broker-Verbindungen", es: "Deje de pelear con las conexiones al bróker", fr: "Cessez de vous battre avec les connexions au courtier", it: "Basta lottare con le connessioni al broker" },
+  ctaText: { en: "PickMyTrade manages a single clean connection to Tradovate so a stale position record never leaves you fighting a frozen Flatten button.", de: "PickMyTrade verwaltet eine einzige saubere Verbindung zu Tradovate, sodass ein veralteter Positionsdatensatz Sie nie mit einer eingefrorenen Flatten-Schaltfläche kämpfen lässt.", es: "PickMyTrade gestiona una única conexión limpia con Tradovate, de modo que un registro de posición desactualizado nunca lo deje luchando con un botón Flatten congelado.", fr: "PickMyTrade gère une connexion unique et propre vers Tradovate, afin qu'un enregistrement de position obsolète ne vous laisse jamais lutter contre un bouton Flatten figé.", it: "PickMyTrade gestisce un'unica connessione pulita con Tradovate, così un registro di posizione obsoleto non La lascia mai a lottare con un pulsante Flatten bloccato." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Inizi la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why won't the Flatten All button work in NinjaTrader with Tradovate?", a: "Almost always because NinjaTrader and Tradovate are out of sync. NinjaTrader flattens by sending a market order to offset the position it currently believes you hold. If the position is live at Tradovate but hasn't been reported into NinjaTrader, the button has nothing to act on and does nothing. A communication break where the close request never reaches the broker produces the same dead button. Disconnecting and reconnecting the broker connection re-pulls the true account state and the flatten works." },
+    { q: "What is the fastest fix for a stuck Flatten in NinjaTrader?", a: "In the NinjaTrader Control Center, open the Connections menu, disconnect from your Tradovate connection, wait a few seconds, then reconnect. That forces the latest account values to be pulled from Tradovate, so the real open position reappears in NinjaTrader and the Flatten button can act on it. If the position is exposed to the market right now, flatten it straight from the Tradovate web platform first, since that is the actual broker record." },
+    { q: "What's the difference between Close Position and Flatten Everything in NinjaTrader?", a: "Close Position acts only on the single instrument and account tied to the window you press it in. Flatten Everything closes all open positions and cancels all working orders across every connected account and instrument in the NinjaTrader Desktop app. If you press Close Position in a window that isn't pointed at the account holding your position, nothing happens, which is easy to mistake for a broken button." },
+    { q: "Why does NinjaTrader show no position when Tradovate shows one open?", a: "NinjaTrader keeps its own record of your account position and updates it from the broker feed. A dropped or stalled connection, a fill that arrived while NinjaTrader was reconnecting, or an order placed outside NinjaTrader can leave its record blank while Tradovate still holds a live contract. Tradovate is the source of truth. Reconnect the broker connection so NinjaTrader repopulates from the account, and the position shows up again." },
+    { q: "What does 'Close operation failed. Operation timed out' mean?", a: "When you press Close Position, NinjaTrader waits about five seconds for the broker to confirm the order cancellations before it sends the offsetting market order. If no confirmation arrives in that window it reports that the operation timed out and tells you to close manually. That points at a connection loss between your machine and the broker's servers. Check your internet, reconnect, and if a position is still open, flatten it from the Tradovate web platform." },
+    { q: "Will disconnecting and reconnecting close my open position?", a: "No. Reconnecting doesn't submit any order, it only resyncs NinjaTrader with your live Tradovate account so the platform sees the real position again. Your contracts stay open through the reconnect. Once the position reappears in NinjaTrader you press Flatten to actually close it, or you close it directly in the Tradovate web platform." },
+    { q: "How do I stop the Flatten button from failing again?", a: "Trade on a stable, ideally wired connection, keep the Tradovate web platform open in a tab as a backup kill switch, and don't run two separate order sources against the same account at once. Turning on NinjaTrader's auto-reconnect helps it recover a dropped feed on its own. If you rely on flatten as an emergency exit, test that your connection recovers cleanly before you need it in a live trade." },
+  ], de: [
+    { q: "Warum funktioniert die Schaltfläche Flatten All in NinjaTrader nicht mit Tradovate?", a: "Fast immer, weil NinjaTrader und Tradovate nicht synchron sind. NinjaTrader gleicht aus, indem es eine Market-Order sendet, um die Position auszugleichen, die es aktuell zu halten glaubt. Wenn die Position bei Tradovate aktiv ist, aber nicht an NinjaTrader gemeldet wurde, hat die Schaltfläche nichts, worauf sie reagieren kann, und tut nichts. Ein Kommunikationsabbruch, bei dem die Schließungsanfrage den Broker nie erreicht, führt zur gleichen toten Schaltfläche. Das Trennen und Wiederherstellen der Broker-Verbindung ruft den tatsächlichen Kontostatus erneut ab, und das Flatten funktioniert." },
+    { q: "Was ist die schnellste Lösung für ein feststeckendes Flatten in NinjaTrader?", a: "Öffnen Sie im NinjaTrader Control Center das Menü Connections, trennen Sie Ihre Tradovate-Verbindung, warten Sie ein paar Sekunden und stellen Sie sie dann wieder her. Dadurch werden die aktuellen Kontowerte zwangsweise von Tradovate abgerufen, sodass die tatsächlich offene Position wieder in NinjaTrader erscheint und die Flatten-Schaltfläche darauf reagieren kann. Wenn die Position gerade am Markt exponiert ist, flatten Sie sie zunächst direkt über die Tradovate-Webplattform, da dies der tatsächliche Broker-Datensatz ist." },
+    { q: "Was ist der Unterschied zwischen Close Position und Flatten Everything in NinjaTrader?", a: "Close Position wirkt sich nur auf das einzelne Instrument und Konto aus, die mit dem Fenster verknüpft sind, in dem Sie es drücken. Flatten Everything schließt alle offenen Positionen und storniert alle offenen Orders über sämtliche verbundenen Konten und Instrumente in der NinjaTrader-Desktop-App hinweg. Wenn Sie Close Position in einem Fenster drücken, das nicht auf das Konto mit Ihrer Position ausgerichtet ist, passiert nichts, was man leicht mit einer defekten Schaltfläche verwechseln kann." },
+    { q: "Warum zeigt NinjaTrader keine Position an, obwohl Tradovate eine offene anzeigt?", a: "NinjaTrader führt einen eigenen Datensatz Ihrer Kontoposition und aktualisiert ihn über den Broker-Feed. Eine unterbrochene oder stockende Verbindung, eine Ausführung, die während des Wiederverbindens von NinjaTrader eintraf, oder eine außerhalb von NinjaTrader platzierte Order können dazu führen, dass sein Datensatz leer bleibt, während Tradovate weiterhin einen aktiven Kontrakt hält. Tradovate ist die maßgebliche Quelle. Stellen Sie die Broker-Verbindung wieder her, damit NinjaTrader sich erneut aus dem Konto befüllt, und die Position erscheint wieder." },
+    { q: "Was bedeutet 'Close operation failed. Operation timed out'?", a: "Wenn Sie Close Position drücken, wartet NinjaTrader etwa fünf Sekunden auf die Bestätigung der Order-Stornierungen durch den Broker, bevor es die ausgleichende Market-Order sendet. Wenn in diesem Zeitfenster keine Bestätigung eintrifft, meldet es, dass die Operation abgelaufen ist, und fordert Sie auf, manuell zu schließen. Das deutet auf einen Verbindungsverlust zwischen Ihrem Rechner und den Servern des Brokers hin. Prüfen Sie Ihr Internet, verbinden Sie sich erneut, und wenn eine Position noch offen ist, flatten Sie sie über die Tradovate-Webplattform." },
+    { q: "Schließt das Trennen und Wiederverbinden meine offene Position?", a: "Nein. Das Wiederverbinden sendet keine Order, es synchronisiert NinjaTrader lediglich erneut mit Ihrem aktiven Tradovate-Konto, sodass die Plattform die tatsächliche Position wieder sieht. Ihre Kontrakte bleiben während des Wiederverbindens offen. Sobald die Position in NinjaTrader wieder erscheint, drücken Sie Flatten, um sie tatsächlich zu schließen, oder schließen Sie sie direkt in der Tradovate-Webplattform." },
+    { q: "Wie verhindere ich, dass die Flatten-Schaltfläche erneut fehlschlägt?", a: "Handeln Sie über eine stabile, idealerweise kabelgebundene Verbindung, halten Sie die Tradovate-Webplattform als Backup-Notausschalter in einem Tab geöffnet, und lassen Sie nicht zwei separate Order-Quellen gleichzeitig gegen dasselbe Konto laufen. Das Aktivieren des automatischen Wiederverbindens von NinjaTrader hilft, einen unterbrochenen Feed selbstständig wiederherzustellen. Wenn Sie sich auf Flatten als Notausstieg verlassen, testen Sie, dass sich Ihre Verbindung sauber wiederherstellt, bevor Sie es in einem Live-Trade benötigen." },
+  ], es: [
+    { q: "¿Por qué no funciona el botón Flatten All en NinjaTrader con Tradovate?", a: "Casi siempre porque NinjaTrader y Tradovate están desincronizados. NinjaTrader cierra la posición enviando una orden de mercado para compensar la posición que actualmente cree que usted mantiene. Si la posición está activa en Tradovate pero no se ha reportado a NinjaTrader, el botón no tiene nada sobre lo que actuar y no hace nada. Un corte de comunicación en el que la solicitud de cierre nunca llega al bróker produce el mismo botón inactivo. Desconectar y reconectar la conexión con el bróker vuelve a obtener el estado real de la cuenta y el cierre funciona." },
+    { q: "¿Cuál es la solución más rápida para un Flatten atascado en NinjaTrader?", a: "En el Control Center de NinjaTrader, abra el menú Connections, desconecte su conexión con Tradovate, espere unos segundos y luego reconéctela. Eso obliga a obtener los valores más recientes de la cuenta desde Tradovate, de modo que la posición abierta real reaparece en NinjaTrader y el botón Flatten puede actuar sobre ella. Si la posición está expuesta al mercado en este momento, ciérrela primero directamente desde la plataforma web de Tradovate, ya que ese es el registro real del bróker." },
+    { q: "¿Cuál es la diferencia entre Close Position y Flatten Everything en NinjaTrader?", a: "Close Position solo actúa sobre el instrumento y la cuenta únicos vinculados a la ventana en la que lo pulsa. Flatten Everything cierra todas las posiciones abiertas y cancela todas las órdenes pendientes en todas las cuentas e instrumentos conectados en la aplicación de escritorio de NinjaTrader. Si pulsa Close Position en una ventana que no apunta a la cuenta que tiene su posición, no ocurre nada, lo cual es fácil de confundir con un botón roto." },
+    { q: "¿Por qué NinjaTrader no muestra ninguna posición cuando Tradovate muestra una abierta?", a: "NinjaTrader mantiene su propio registro de la posición de su cuenta y lo actualiza a partir del feed del bróker. Una conexión caída o estancada, una ejecución que llegó mientras NinjaTrader se estaba reconectando, o una orden colocada fuera de NinjaTrader pueden dejar su registro vacío mientras Tradovate sigue manteniendo un contrato activo. Tradovate es la fuente de la verdad. Reconecte la conexión con el bróker para que NinjaTrader se vuelva a poblar desde la cuenta, y la posición vuelve a aparecer." },
+    { q: "¿Qué significa 'Close operation failed. Operation timed out'?", a: "Al pulsar Close Position, NinjaTrader espera unos cinco segundos a que el bróker confirme las cancelaciones de órdenes antes de enviar la orden de mercado compensatoria. Si no llega ninguna confirmación en ese lapso, informa que la operación agotó el tiempo de espera y le indica que cierre manualmente. Eso apunta a una pérdida de conexión entre su equipo y los servidores del bróker. Revise su internet, reconéctese, y si una posición sigue abierta, ciérrela desde la plataforma web de Tradovate." },
+    { q: "¿Desconectar y reconectar cerrará mi posición abierta?", a: "No. Reconectar no envía ninguna orden, solo resincroniza NinjaTrader con su cuenta activa de Tradovate para que la plataforma vuelva a ver la posición real. Sus contratos permanecen abiertos durante la reconexión. Una vez que la posición reaparece en NinjaTrader, pulsa Flatten para cerrarla realmente, o la cierra directamente en la plataforma web de Tradovate." },
+    { q: "¿Cómo evito que el botón Flatten vuelva a fallar?", a: "Opere con una conexión estable, idealmente por cable, mantenga la plataforma web de Tradovate abierta en una pestaña como interruptor de emergencia de respaldo, y no ejecute dos fuentes de órdenes separadas contra la misma cuenta a la vez. Activar la reconexión automática de NinjaTrader le ayuda a recuperar por sí solo un feed caído. Si depende de Flatten como salida de emergencia, pruebe que su conexión se recupere limpiamente antes de necesitarlo en una operación real." },
+  ], fr: [
+    { q: "Pourquoi le bouton Flatten All ne fonctionne-t-il pas dans NinjaTrader avec Tradovate ?", a: "Presque toujours parce que NinjaTrader et Tradovate ne sont plus synchronisés. NinjaTrader clôture en envoyant un ordre au marché pour compenser la position qu'il pense actuellement que vous détenez. Si la position est active chez Tradovate mais n'a pas été signalée à NinjaTrader, le bouton n'a rien sur quoi agir et ne fait rien. Une coupure de communication où la demande de fermeture n'atteint jamais le courtier produit le même bouton inactif. Déconnecter puis reconnecter la connexion au courtier récupère à nouveau l'état réel du compte et la clôture fonctionne." },
+    { q: "Quelle est la solution la plus rapide pour un Flatten bloqué dans NinjaTrader ?", a: "Dans le Control Center de NinjaTrader, ouvrez le menu Connections, déconnectez votre connexion Tradovate, attendez quelques secondes, puis reconnectez-la. Cela force la récupération des valeurs de compte les plus récentes depuis Tradovate, de sorte que la position réellement ouverte réapparaît dans NinjaTrader et que le bouton Flatten peut agir dessus. Si la position est exposée au marché en ce moment, clôturez-la d'abord directement depuis la plateforme web Tradovate, car c'est l'enregistrement réel du courtier." },
+    { q: "Quelle est la différence entre Close Position et Flatten Everything dans NinjaTrader ?", a: "Close Position n'agit que sur l'instrument et le compte uniques liés à la fenêtre dans laquelle vous l'actionnez. Flatten Everything ferme toutes les positions ouvertes et annule tous les ordres en attente sur tous les comptes et instruments connectés dans l'application de bureau NinjaTrader. Si vous appuyez sur Close Position dans une fenêtre qui ne pointe pas vers le compte détenant votre position, rien ne se passe, ce qui est facile à confondre avec un bouton cassé." },
+    { q: "Pourquoi NinjaTrader n'affiche-t-il aucune position alors que Tradovate en affiche une ouverte ?", a: "NinjaTrader conserve son propre enregistrement de la position de votre compte et le met à jour à partir du flux du courtier. Une connexion coupée ou bloquée, une exécution arrivée pendant que NinjaTrader se reconnectait, ou un ordre passé en dehors de NinjaTrader peuvent laisser son enregistrement vide alors que Tradovate détient toujours un contrat actif. Tradovate est la source de vérité. Reconnectez la connexion au courtier pour que NinjaTrader se repeuple à partir du compte, et la position réapparaît." },
+    { q: "Que signifie 'Close operation failed. Operation timed out' ?", a: "Lorsque vous appuyez sur Close Position, NinjaTrader attend environ cinq secondes que le courtier confirme les annulations d'ordres avant d'envoyer l'ordre au marché compensatoire. Si aucune confirmation n'arrive dans ce délai, il signale que l'opération a expiré et vous demande de fermer manuellement. Cela pointe vers une perte de connexion entre votre machine et les serveurs du courtier. Vérifiez votre connexion internet, reconnectez-vous, et si une position est toujours ouverte, clôturez-la depuis la plateforme web Tradovate." },
+    { q: "La déconnexion et la reconnexion vont-elles fermer ma position ouverte ?", a: "Non. La reconnexion ne soumet aucun ordre, elle resynchronise seulement NinjaTrader avec votre compte Tradovate actif afin que la plateforme voie à nouveau la position réelle. Vos contrats restent ouverts pendant la reconnexion. Une fois que la position réapparaît dans NinjaTrader, vous appuyez sur Flatten pour la fermer réellement, ou vous la fermez directement dans la plateforme web Tradovate." },
+    { q: "Comment éviter que le bouton Flatten échoue à nouveau ?", a: "Tradez sur une connexion stable, idéalement filaire, gardez la plateforme web Tradovate ouverte dans un onglet comme interrupteur d'urgence de secours, et n'exécutez pas deux sources d'ordres distinctes sur le même compte à la fois. Activer la reconnexion automatique de NinjaTrader l'aide à récupérer un flux coupé par lui-même. Si vous comptez sur Flatten comme sortie d'urgence, testez que votre connexion se rétablit proprement avant d'en avoir besoin lors d'une transaction réelle." },
+  ], it: [
+    { q: "Perché il pulsante Flatten All non funziona in NinjaTrader con Tradovate?", a: "Quasi sempre perché NinjaTrader e Tradovate sono desincronizzati. NinjaTrader chiude la posizione inviando un ordine a mercato per compensare la posizione che al momento ritiene Lei detenga. Se la posizione è attiva su Tradovate ma non è stata segnalata a NinjaTrader, il pulsante non ha nulla su cui agire e non fa nulla. Un'interruzione di comunicazione in cui la richiesta di chiusura non raggiunge mai il broker produce lo stesso pulsante inattivo. Disconnettere e riconnettere la connessione al broker recupera nuovamente lo stato reale del conto e il flatten funziona." },
+    { q: "Qual è la soluzione più rapida per un Flatten bloccato in NinjaTrader?", a: "Nel Control Center di NinjaTrader, apra il menu Connections, disconnetta la sua connessione a Tradovate, attenda qualche secondo, poi la riconnetta. Questo forza il recupero dei valori più recenti del conto da Tradovate, così la posizione realmente aperta riappare in NinjaTrader e il pulsante Flatten può agire su di essa. Se la posizione è esposta al mercato in questo momento, la chiuda prima direttamente dalla piattaforma web di Tradovate, poiché quello è il registro reale del broker." },
+    { q: "Qual è la differenza tra Close Position e Flatten Everything in NinjaTrader?", a: "Close Position agisce solo sul singolo strumento e conto collegati alla finestra in cui lo preme. Flatten Everything chiude tutte le posizioni aperte e annulla tutti gli ordini pendenti su tutti i conti e strumenti connessi nell'app desktop di NinjaTrader. Se preme Close Position in una finestra che non punta al conto che detiene la sua posizione, non succede nulla, il che è facile da scambiare per un pulsante rotto." },
+    { q: "Perché NinjaTrader non mostra alcuna posizione quando Tradovate ne mostra una aperta?", a: "NinjaTrader mantiene un proprio registro della posizione del suo conto e lo aggiorna dal feed del broker. Una connessione caduta o bloccata, un'esecuzione arrivata mentre NinjaTrader si stava riconnettendo, o un ordine inserito al di fuori di NinjaTrader possono lasciare il suo registro vuoto mentre Tradovate detiene ancora un contratto attivo. Tradovate è la fonte di verità. Riconnetta la connessione al broker in modo che NinjaTrader si ripopoli dal conto, e la posizione riappare." },
+    { q: "Cosa significa 'Close operation failed. Operation timed out'?", a: "Quando preme Close Position, NinjaTrader attende circa cinque secondi che il broker confermi gli annullamenti degli ordini prima di inviare l'ordine a mercato compensativo. Se nessuna conferma arriva in quel lasso di tempo, segnala che l'operazione è andata in timeout e Le chiede di chiudere manualmente. Questo indica una perdita di connessione tra il suo computer e i server del broker. Controlli la sua connessione internet, si riconnetta, e se una posizione è ancora aperta, la chiuda dalla piattaforma web di Tradovate." },
+    { q: "Disconnettere e riconnettere chiuderà la mia posizione aperta?", a: "No. La riconnessione non invia alcun ordine, risincronizza solo NinjaTrader con il suo conto Tradovate attivo in modo che la piattaforma veda di nuovo la posizione reale. I suoi contratti restano aperti durante la riconnessione. Una volta che la posizione riappare in NinjaTrader, prema Flatten per chiuderla effettivamente, oppure la chiuda direttamente nella piattaforma web di Tradovate." },
+    { q: "Come posso evitare che il pulsante Flatten fallisca di nuovo?", a: "Operi su una connessione stabile, idealmente cablata, tenga la piattaforma web di Tradovate aperta in una scheda come interruttore di emergenza di riserva, e non usi due fonti di ordini separate sullo stesso conto contemporaneamente. Attivare la riconnessione automatica di NinjaTrader la aiuta a recuperare da sola un feed interrotto. Se fa affidamento su Flatten come uscita di emergenza, verifichi che la sua connessione si ripristini correttamente prima di averne bisogno in un'operazione reale." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión o de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada a, respaldada por, ni patrocinada por Tradovate, Inc. o Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de futures et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent avec le temps, veuillez donc toujours vérifier la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida è fornita esclusivamente a scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, pertanto verifichi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

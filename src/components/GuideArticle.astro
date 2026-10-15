@@ -1,0 +1,316 @@
+---
+/**
+ * Shared layout for long-form Tradovate troubleshooting/how-to guides under
+ * /resources/. Content-only: pages pass structured data, this owns the visual
+ * design-system treatment (matches PartnerPage.astro's palette/typography).
+ */
+import FaqItem from "./FaqItem.astro";
+import { localizedPath } from "../i18n/utils";
+import type { Locale } from "../i18n/config";
+import type { GuideArticleData } from "../types/guide";
+import { publicAssetExists } from "../lib/media";
+
+interface Props {
+  locale: Locale;
+  data: GuideArticleData;
+  sectionPath: string;
+}
+
+const { locale, data, sectionPath } = Astro.props;
+
+// Build an "on this page" index from the h2 headings, deriving a stable
+// slug id for each so the sidebar/mobile nav can deep-link and scrollspy.
+const slugify = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+const seenIds = new Map<string, number>();
+const toc = data.blocks
+  .filter((block): block is Extract<typeof block, { type: "heading" }> => block.type === "heading")
+  .map((block) => {
+    let id = block.id || slugify(block.text);
+    const count = seenIds.get(id) ?? 0;
+    seenIds.set(id, count + 1);
+    if (count > 0) id = `${id}-${count}`;
+    return { text: block.text, id };
+  });
+
+let tocIndex = 0;
+---
+
+<div class="bg-[#001429]">
+  <!-- Hero -->
+  <section class="py-16 lg:py-24 border-b border-blue-900/30 bg-gradient-to-b from-[#001429] to-[#002040]">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <a
+        href={localizedPath(locale, sectionPath)}
+        class="inline-block px-4 py-2 bg-blue-600/20 text-blue-400 rounded-full text-sm font-semibold mb-6 border border-blue-500/30 uppercase electrolize hover:bg-blue-600/30 transition-colors"
+      >
+        {data.badge}
+      </a>
+      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 tracking-tight leading-tight">
+        {data.h1}
+      </h1>
+      <p class="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto leading-relaxed mb-6">
+        {data.dek}
+      </p>
+    </div>
+  </section>
+
+  <!-- Body -->
+  <section class="py-16 border-b border-gray-800">
+    <div class="max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8">
+      <div class:list={["lg:grid lg:gap-12", toc.length > 0 && "lg:grid-cols-[220px_minmax(0,1fr)]"]}>
+        {toc.length > 0 && (
+          <aside class="hidden lg:block">
+            <nav aria-label="On this page" class="sticky top-[calc(var(--navbar-height)+1rem)] max-h-[calc(100vh-var(--navbar-height)-2rem)] overflow-y-auto pr-2">
+              <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">On This Page</p>
+              <ul class="space-y-1 border-l border-white/10">
+                {toc.map((item) => (
+                  <li>
+                    <a
+                      href={`#${item.id}`}
+                      data-toc-link={item.id}
+                      class="toc-link block pl-4 -ml-px border-l-2 border-transparent py-1.5 text-sm text-gray-400 hover:text-white hover:border-blue-400/60 transition-colors"
+                    >
+                      {item.text}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </aside>
+        )}
+        <div class="min-w-0">
+          {toc.length > 0 && (
+            <details class="lg:hidden mb-8 bg-white/5 border border-white/10 rounded-xl">
+              <summary class="cursor-pointer select-none px-4 py-3 text-white font-semibold text-sm flex items-center justify-between">
+                <span>On This Page</span>
+                <i class="fa-solid fa-chevron-down text-xs text-gray-400" aria-hidden="true" />
+              </summary>
+              <ul class="px-4 pb-4 space-y-2 border-t border-white/10 pt-3">
+                {toc.map((item) => (
+                  <li>
+                    <a href={`#${item.id}`} class="text-sm text-gray-300 hover:text-blue-400 transition-colors">
+                      {item.text}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+      <div>
+        {data.heroImage && publicAssetExists(data.heroImage.src) && (
+          <img
+            src={data.heroImage.src}
+            alt={data.heroImage.alt}
+            class="block mx-auto w-auto max-w-full max-h-[420px] object-contain mb-6 rounded-xl border border-white/10"
+            loading="lazy"
+          />
+        )}
+        {data.blocks.map((block) => {
+          if (block.type === "heading") {
+            const id = toc[tocIndex]?.id;
+            tocIndex++;
+            return (
+              <h2 id={id} class="clear-both text-2xl md:text-3xl font-bold text-white mt-12 mb-2 scroll-mt-[calc(var(--navbar-height)+1rem)]">
+                {block.text}
+              </h2>
+            );
+          }
+          if (block.type === "paragraph") {
+            return <p class="text-gray-300 leading-relaxed mb-6" set:html={block.html} />;
+          }
+          if (block.type === "list") {
+            return (
+              <ul class="space-y-2 mb-6">
+                {block.items.map((item) => (
+                  <li class="flex items-start gap-3 text-gray-300">
+                    <i class="fa-solid fa-circle-check text-blue-400 mt-1.5 text-xs flex-shrink-0" aria-hidden="true" />
+                    <span set:html={item} />
+                  </li>
+                ))}
+              </ul>
+            );
+          }
+          if (block.type === "steps") {
+            return (
+              <div class="clear-both space-y-4 mb-6">
+                {block.items.map((step, i) => (
+                  <div class="flex items-start gap-4 bg-white/5 border border-white/10 rounded-xl p-5">
+                    <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">
+                      {i + 1}
+                    </div>
+                    <div>
+                      <h3 class="text-white font-bold mb-1">{step.title}</h3>
+                      <p class="text-gray-300 text-sm leading-relaxed" set:html={step.html} />
+                      {step.image && publicAssetExists(step.image.src) && (
+                        <img
+                          src={step.image.src}
+                          alt={step.image.alt}
+                          class="block mx-auto w-auto max-w-full max-h-[420px] object-contain mt-4 rounded-xl border border-white/10"
+                          loading="lazy"
+                        />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          }
+          if (block.type === "image") {
+            if (!publicAssetExists(block.src)) return null;
+            return (
+              <img
+                src={block.src}
+                alt={block.alt}
+                class="block mx-auto w-auto max-w-full max-h-[420px] object-contain mb-6 rounded-xl border border-white/10"
+                loading="lazy"
+              />
+            );
+          }
+          if (block.type === "table") {
+            return (
+              <div class="clear-both overflow-x-auto rounded-xl border border-white/10 mb-6">
+                <table class="w-full text-sm border-collapse">
+                  <thead>
+                    <tr>
+                      {block.headers.map((h) => (
+                        <th class="bg-blue-900/30 text-white font-semibold text-left px-4 py-3 border-b border-white/10">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {block.rows.map((row) => (
+                      <tr class="border-b border-white/5 last:border-0">
+                        {row.map((cell) => (
+                          <td class="px-4 py-3 text-gray-300 align-top" set:html={cell} />
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          }
+          if (block.type === "quote") {
+            return (
+              <blockquote class="clear-both bg-blue-900/20 border border-blue-500/30 border-l-4 border-l-blue-500 rounded-xl p-6 mb-6">
+                <p class="text-gray-200 leading-relaxed" set:html={block.html} />
+              </blockquote>
+            );
+          }
+          if (block.type === "checklist") {
+            return (
+              <div class="clear-both bg-gradient-to-br from-blue-900/20 to-blue-900/5 border border-blue-500/30 rounded-xl p-6 md:p-8 mb-6">
+                <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                  <i class="fa-solid fa-list-check text-blue-400" aria-hidden="true" />
+                  {block.heading}
+                </h3>
+                <ul class="space-y-2">
+                  {block.items.map((item) => (
+                    <li class="flex items-start gap-3 text-gray-300 text-sm">
+                      <i class="fa-solid fa-circle-check text-blue-400 mt-1 text-xs flex-shrink-0" aria-hidden="true" />
+                      <span set:html={item} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          }
+          return null;
+        })}
+      </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="py-16 md:py-20 border-b border-blue-900/30 bg-gradient-to-b from-[#002040] to-[#001429]">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="bg-gradient-to-br from-blue-900/30 to-[#0F3EC3]/20 border border-blue-500/30 rounded-2xl p-8 md:p-10 text-center">
+        <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">{data.ctaHeading}</h2>
+        <p class="text-gray-300 leading-relaxed mb-8 max-w-xl mx-auto">{data.ctaText}</p>
+        <a
+          href={data.ctaUrl}
+          class="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-bold transition-all transform hover:scale-105 shadow-xl"
+        >
+          <i class="fas fa-rocket" /> {data.ctaButtonText}
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  {data.faqs.length > 0 && (
+    <section class="py-16 border-b border-gray-800">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 class="text-2xl md:text-3xl font-bold text-white mb-8 text-center tracking-tight">{data.faqHeading}</h2>
+        <div class="space-y-4">
+          {data.faqs.map((f) => (
+            <FaqItem question={f.q}>
+              <p>{f.a}</p>
+            </FaqItem>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Related -->
+  {data.related.length > 0 && (
+    <section class="py-16 border-b border-blue-900/30 bg-[#002040]">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h3 class="text-xl font-bold text-white mb-6">{data.relatedHeading}</h3>
+        <div class="grid sm:grid-cols-3 gap-4">
+          {data.related.map((r) => (
+            <a href={r.href} class="bg-[#12121a] rounded-lg p-4 border border-gray-800 hover:border-gray-600 transition">
+              <span class="text-white font-medium">{r.title}</span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Disclosure -->
+  <section class="py-10 px-4" aria-label="Disclosure">
+    <div class="max-w-3xl mx-auto">
+      <p class="text-xs text-white/40 leading-relaxed italic">{data.disclosureText}</p>
+    </div>
+  </section>
+</div>
+
+<script>
+  const tocLinks = document.querySelectorAll<HTMLAnchorElement>('.toc-link');
+
+  if (tocLinks.length > 0) {
+    const headings = Array.from(tocLinks)
+      .map((link) => document.getElementById(link.dataset.tocLink ?? ''))
+      .filter((el): el is HTMLElement => el !== null);
+
+    const setActive = (id: string | null) => {
+      tocLinks.forEach((link) => {
+        const isActive = id !== null && link.dataset.tocLink === id;
+        link.classList.toggle('text-white', isActive);
+        link.classList.toggle('border-blue-400/60', isActive);
+        link.classList.toggle('text-gray-400', !isActive);
+      });
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.find((entry) => entry.isIntersecting);
+        if (visible) setActive(visible.target.id);
+      },
+      { rootMargin: '-96px 0px -70% 0px', threshold: 0 },
+    );
+
+    headings.forEach((heading) => observer.observe(heading));
+  }
+</script>

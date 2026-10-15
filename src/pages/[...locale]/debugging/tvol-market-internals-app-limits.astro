@@ -1,0 +1,378 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tvol-market-internals-app-limits";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate TVOL Not Available on Every App";
+const META_DESCRIPTION =
+  "TVOL and breadth market internals load on web but not the NinjaTrader desktop or mobile app. See where they work and how to enable them.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate TVOL nicht in jeder App verfügbar", es: "TVOL de Tradovate no está disponible en todas las aplicaciones", fr: "Le TVOL de Tradovate n'est pas disponible sur toutes les applications", it: "Il TVOL di Tradovate non è disponibile su ogni app" },
+  dek: { en: "TICK, TVOL, and the rest of the breadth set load fine on Tradovate Web and come back empty on NinjaTrader Desktop or mobile. Here's which app carries which internal and how to get them loading in about a minute.", de: "TICK, TVOL und die übrigen Breadth-Symbole laden in Tradovate Web einwandfrei, erscheinen aber in NinjaTrader Desktop oder auf dem Smartphone leer. Hier erfahren Sie, welche App welche Internals führt und wie Sie sie in etwa einer Minute zum Laufen bringen.", es: "TICK, TVOL y el resto del conjunto de amplitud cargan sin problema en Tradovate Web y aparecen vacíos en NinjaTrader Desktop o en el móvil. Qué aplicación incluye cada indicador interno y cómo hacer que carguen en aproximadamente un minuto.", fr: "TICK, TVOL et le reste de l'ensemble d'amplitude se chargent sans problème sur Tradovate Web et apparaissent vides sur NinjaTrader Desktop ou sur mobile. Quelle application propose quel indicateur interne et comment les faire charger en une minute environ.", it: "TICK, TVOL e il resto del set di breadth si caricano senza problemi su Tradovate Web e risultano vuoti su NinjaTrader Desktop o su mobile. Ecco quale app include quale indicatore interno e come farli caricare in circa un minuto." },
+  readTime: { en: "6 min read", de: "6 Min. Lesezeit", es: "Lectura de 6 min", fr: "Lecture : 6 min", it: "Lettura di 6 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You loaded up your breadth setup, typed <code>^TVOL</code> into the symbol box, and nothing came back. No chart, no quote, maybe a flat &ldquo;symbol not found.&rdquo; If you're doing this inside NinjaTrader Desktop connected to your Tradovate account, or on the Tradovate phone app, that blank result isn't a bug on your end. That particular symbol just isn't carried on the app you're using." },
+    { type: "paragraph", html: "Market internals are one of the few places where Tradovate's platforms don't all show the same thing. A symbol that charts perfectly on Tradovate Web can come back empty on the desktop or mobile side, and the reverse is also true for a couple of Dow-scoped internals. Once you know which app carries what, the fix takes about a minute. Let's walk through it." },
+    { type: "quote", html: "<strong class='text-white'>Short answer:</strong> Breadth internals like <code>^TVOL</code> load on <strong class='text-white'>Tradovate Web</strong>, not on NinjaTrader Desktop or the mobile app. Open the web platform, make sure the <em>Dow Jones &amp; Key Indices</em> market data subscription is active, then add the symbol. If it still won't quote, you're either on the wrong app or missing that subscription." },
+    { type: "heading", text: "What TVOL and the Other Internals Actually Are" },
+    { type: "paragraph", html: "Market internals aren't tradable contracts. They're breadth readings pulled from the cash equity exchanges (mostly the NYSE), and traders lean on them to gauge whether a move has the whole market behind it or just a handful of names. They update in real time and often turn before price does, which is why futures scalpers keep them on a side panel." },
+    { type: "paragraph", html: "The ones you'll run into on Tradovate:" },
+    {
+      type: "table",
+      headers: ["Symbol", "What it reads"],
+      rows: [
+        ["^TVOL", "Total volume across every issue on the exchange for the day"],
+        ["^TICK", "NYSE stocks on an uptick minus those on a downtick, right now"],
+        ["^ADD", "Advance-decline line: advancing NYSE issues minus declining ones"],
+        ["^TRIN", "Arms Index, comparing the advance/decline ratio to the up/down volume ratio"],
+        ["^UVOL / ^DVOL", "Up volume and down volume, charted as two separate feeds"],
+        ["^TICKDJ", "Same idea as TICK but scoped to the Dow Jones 30 components"],
+      ],
+    },
+    { type: "paragraph", html: "All of them ride on one data package, and none of them show up until that package is switched on. That's the first thing to rule out." },
+    { type: "heading", text: "Why the Symbol Is Missing on Your App" },
+    { type: "paragraph", html: "There are two separate reasons a market internal comes back blank, and it helps to know which one you're hitting." },
+    { type: "paragraph", html: "<strong class='text-white'>Reason one: you're on the wrong app for that symbol.</strong> Tradovate's web platform and its NinjaTrader Desktop feed don't carry an identical internals list. The total-volume symbol is a web-side reading. Point NinjaTrader Desktop at your Tradovate account and ask for <code>^TVOL</code> and you'll get nothing, because that feed doesn't serve it. A couple of internals go the other way, too: the Dow-scoped tick and a desktop volume symbol are things you'll find on NinjaTrader Desktop but not on Tradovate Web. Mobile is the thinnest of the three and generally won't carry the breadth set at all." },
+    { type: "paragraph", html: "<strong class='text-white'>Reason two: the data subscription isn't active.</strong> Even on the right app, internals stay dark until you've turned on the <em>Dow Jones &amp; Key Indices</em> market data subscription. No subscription, no quote, no chart, regardless of which platform you're on." },
+    { type: "heading", text: "Which App Carries Which Internal" },
+    { type: "paragraph", html: "Here's the split that matters. Treat the exact per-symbol list as something to confirm in your own platform, since Tradovate adjusts its data offerings over time, but the shape of it holds: the everyday NYSE breadth set lives on the web platform, and a small Dow-scoped group lives on NinjaTrader Desktop." },
+    {
+      type: "table",
+      headers: ["You want…", "Open this app", "Not here"],
+      rows: [
+        ["^TVOL, ^TICK, ^ADD, ^TRIN, ^UVOL, ^DVOL", "Tradovate Web", "NinjaTrader Desktop, mobile"],
+        ["^TICKDJ and the desktop-only volume feed", "NinjaTrader Desktop", "Tradovate Web, mobile"],
+        ["Any breadth internal on a phone", "—", "Not supported on mobile"],
+      ],
+    },
+    { type: "paragraph", html: "So the practical rule of thumb: if you're chasing the total-volume reading or the standard NYSE breadth group, do it on Tradovate Web. If you specifically need the Dow-30 tick, that's a NinjaTrader Desktop thing. Don't expect either app to be a full superset of the other, and don't count on your phone for any of it." },
+    { type: "heading", text: "Step-by-Step: Get TVOL Loading on Tradovate Web" },
+    { type: "heading", text: "1. Open the Web Platform" },
+    { type: "paragraph", html: "Sign in at the Tradovate web trader rather than the desktop build or the app. This is the platform that serves the total-volume symbol and the rest of the NYSE breadth set. If you normally live in NinjaTrader Desktop, keep it open for order routing and just run a second Tradovate Web tab for internals." },
+    { type: "heading", text: "2. Turn on the Dow Jones & Key Indices Subscription" },
+    { type: "paragraph", html: "Open Application Settings and go to the Subscriptions area. Under the Market Data heading you'll find the list of feeds you can add. Scroll to <em>Dow Jones &amp; Key Indices</em> and confirm the subscription. This is the package that unlocks the internals, and it's separate from your regular CME futures data. Costs and availability vary by account and by exchange agreement, so check the current price and terms before you confirm." },
+    { type: "paragraph", html: "On a prop or evaluation account this step often isn't yours to make. The firm owns the data entitlements on those accounts, so if the subscription list is greyed out or the internals still won't quote, that's a message to your firm, not to Tradovate. Rules and included data vary by firm and account size, so check your firm's current setup." },
+    { type: "heading", text: "3. Add the Symbol" },
+    { type: "paragraph", html: "With the subscription active, add <code>^TVOL</code> the same way you'd add any other symbol: through the symbol search on a chart or in a watchlist. Type it with the leading caret and pick it from the results. If you want the standard breadth trio, add <code>^TICK</code> and <code>^ADD</code> the same way. Give it a moment to pull the first quote." },
+    { type: "heading", text: "4. Sanity-Check the Quote Is Live" },
+    { type: "paragraph", html: "If the internal loads but the numbers look frozen or the symbol name shows in a delayed-data color, you're looking at delayed rather than live data. That's a data-entitlement issue, not an app issue." },
+    { type: "heading", text: "The VOLD Gotcha" },
+    { type: "paragraph", html: "One thing that trips people up: you can't chart <code>VOLD</code> as a single combined symbol on Tradovate, the way some other platforms let you plot up-volume minus down-volume as one line. Tradovate serves <code>^UVOL</code> and <code>^DVOL</code> as two independent feeds. Add both and read them side by side, or drop them on the same pane, but there's no built-in calculated difference symbol. If your strategy leans on a single net-volume line, you'll be doing that math yourself or reading the two feeds together." },
+    { type: "heading", text: "Still Nothing After All That?" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Right app?</strong> Total-volume and NYSE breadth on Tradovate Web, Dow-30 tick on NinjaTrader Desktop, neither on mobile.",
+        "<strong class='text-white'>Subscription active?</strong> Dow Jones &amp; Key Indices has to be switched on, and on prop accounts that's the firm's job.",
+        "<strong class='text-white'>Caret in the symbol?</strong> These are entered with a leading <code>^</code>, not as plain tickers.",
+        "<strong class='text-white'>Live vs delayed?</strong> A frozen or off-color quote points at a data entitlement, not the platform.",
+      ],
+    },
+    { type: "heading", text: "Where PickMyTrade Fits" },
+    { type: "paragraph", html: "Market internals are read-only, and platform quirks like this are a reminder of how much manual watching goes into an internals-driven setup. If the reason you're staring at TVOL all session is to time entries by hand, you can move that trigger logic upstream. PickMyTrade takes an alert from TradingView (where you can build breadth logic freely) and fires the order into Tradovate for you, so you're not glued to a web tab waiting to click." },
+  ], de: [
+    { type: "paragraph",html: "Sie haben Ihr Breadth-Setup geladen, <code>^TVOL</code> in das Symbolfeld eingegeben, und es kam nichts zurück. Kein Chart, keine Kursstellung, vielleicht nur ein nüchternes &ldquo;Symbol nicht gefunden&rdquo;. Wenn Sie das in NinjaTrader Desktop tun, das mit Ihrem Tradovate-Konto verbunden ist, oder in der Tradovate-Smartphone-App, ist dieses leere Ergebnis kein Fehler auf Ihrer Seite. Dieses Symbol wird in der von Ihnen verwendeten App schlicht nicht geführt." },
+    { type: "paragraph",html: "Market Internals sind einer der wenigen Bereiche, in denen die Plattformen von Tradovate nicht alle dasselbe zeigen. Ein Symbol, das in Tradovate Web einwandfrei charted, kann auf der Desktop- oder Mobilseite leer zurückkommen, und bei ein paar Dow-bezogenen Internals gilt auch das Umgekehrte. Sobald Sie wissen, welche App was führt, ist die Lösung in etwa einer Minute erledigt. Gehen wir es durch." },
+    { type: "quote",html: "<strong class='text-white'>Kurze Antwort:</strong> Breadth-Internals wie <code>^TVOL</code> laden in <strong class='text-white'>Tradovate Web</strong>, nicht in NinjaTrader Desktop oder der mobilen App. Öffnen Sie die Web-Plattform, stellen Sie sicher, dass das Marktdaten-Abonnement <em>Dow Jones &amp; Key Indices</em> aktiv ist, und fügen Sie dann das Symbol hinzu. Wenn es immer noch nicht quotiert, sind Sie entweder in der falschen App oder Ihnen fehlt dieses Abonnement." },
+    { type: "heading",text: "Was TVOL und die anderen Internals tatsächlich sind" },
+    { type: "paragraph",html: "Market Internals sind keine handelbaren Kontrakte. Es sind Breadth-Messwerte aus den Kassa-Aktienbörsen (hauptsächlich der NYSE), und Trader nutzen sie, um einzuschätzen, ob eine Bewegung den gesamten Markt hinter sich hat oder nur eine Handvoll Titel. Sie aktualisieren sich in Echtzeit und drehen oft vor dem Kurs, weshalb Futures-Scalper sie in einem Seitenpanel laufen lassen." },
+    { type: "paragraph",html: "Die, denen Sie in Tradovate begegnen werden:" },
+    { type: "table", headers: ["Symbol","Was es misst"], rows: [
+      ["^TVOL","Gesamtvolumen über alle Titel der Börse für den Tag"],
+      ["^TICK","NYSE-Aktien auf einem Uptick minus jene auf einem Downtick, aktuell"],
+      ["^ADD","Advance-Decline-Linie: steigende NYSE-Titel minus fallende"],
+      ["^TRIN","Arms Index, der das Verhältnis von Gewinnern zu Verlierern mit dem Verhältnis von Aufwärts- zu Abwärtsvolumen vergleicht"],
+      ["^UVOL / ^DVOL","Aufwärtsvolumen und Abwärtsvolumen, als zwei getrennte Feeds dargestellt"],
+      ["^TICKDJ","Dieselbe Idee wie TICK, aber auf die 30 Werte des Dow Jones beschränkt"],
+    ] },
+    { type: "paragraph",html: "Alle basieren auf einem Datenpaket, und keines davon erscheint, bevor dieses Paket eingeschaltet ist. Das ist das Erste, was Sie ausschließen sollten." },
+    { type: "heading",text: "Warum das Symbol in Ihrer App fehlt" },
+    { type: "paragraph",html: "Es gibt zwei getrennte Gründe, warum ein Market Internal leer zurückkommt, und es hilft zu wissen, welcher davon Sie betrifft." },
+    { type: "paragraph",html: "<strong class='text-white'>Grund eins: Sie sind in der falschen App für dieses Symbol.</strong> Die Web-Plattform von Tradovate und der NinjaTrader-Desktop-Feed führen keine identische Liste von Internals. Das Gesamtvolumen-Symbol ist ein Messwert der Web-Seite. Richten Sie NinjaTrader Desktop auf Ihr Tradovate-Konto und fragen Sie <code>^TVOL</code> an, bekommen Sie nichts, weil dieser Feed es nicht bereitstellt. Ein paar Internals funktionieren auch umgekehrt: Der Dow-bezogene Tick und ein Desktop-Volumensymbol finden Sie in NinjaTrader Desktop, aber nicht in Tradovate Web. Mobil ist die dünnste der drei Varianten und führt die Breadth-Gruppe in der Regel überhaupt nicht." },
+    { type: "paragraph",html: "<strong class='text-white'>Grund zwei: Das Datenabonnement ist nicht aktiv.</strong> Selbst in der richtigen App bleiben Internals dunkel, bis Sie das Marktdaten-Abonnement <em>Dow Jones &amp; Key Indices</em> eingeschaltet haben. Kein Abonnement, keine Kursstellung, kein Chart, unabhängig von der Plattform." },
+    { type: "heading",text: "Welche App führt welches Internal" },
+    { type: "paragraph",html: "Das ist die Aufteilung, auf die es ankommt. Bestätigen Sie die genaue Liste je Symbol in Ihrer eigenen Plattform, da Tradovate sein Datenangebot im Laufe der Zeit anpasst, aber die Grundform bleibt: Die alltägliche NYSE-Breadth-Gruppe liegt auf der Web-Plattform, und eine kleine Dow-bezogene Gruppe liegt in NinjaTrader Desktop." },
+    { type: "table", headers: ["Sie möchten…","Diese App öffnen","Nicht hier"], rows: [
+      ["^TVOL, ^TICK, ^ADD, ^TRIN, ^UVOL, ^DVOL","Tradovate Web","NinjaTrader Desktop, mobil"],
+      ["^TICKDJ und den Volumen-Feed nur für Desktop","NinjaTrader Desktop","Tradovate Web, mobil"],
+      ["Ein beliebiges Breadth-Internal auf dem Smartphone","—","Mobil nicht unterstützt"],
+    ] },
+    { type: "paragraph",html: "Die praktische Faustregel lautet daher: Wenn Sie den Gesamtvolumen-Wert oder die Standard-NYSE-Breadth-Gruppe suchen, tun Sie das in Tradovate Web. Wenn Sie speziell den Dow-30-Tick benötigen, ist das eine Sache von NinjaTrader Desktop. Erwarten Sie nicht, dass eine der beiden Apps eine vollständige Obermenge der anderen ist, und verlassen Sie sich für nichts davon auf Ihr Smartphone." },
+    { type: "heading",text: "Schritt für Schritt: TVOL in Tradovate Web zum Laufen bringen" },
+    { type: "heading",text: "1. Die Web-Plattform öffnen" },
+    { type: "paragraph",html: "Melden Sie sich beim Tradovate Web Trader an, nicht in der Desktop-Version oder der App. Das ist die Plattform, die das Gesamtvolumen-Symbol und den Rest der NYSE-Breadth-Gruppe bereitstellt. Wenn Sie normalerweise in NinjaTrader Desktop arbeiten, lassen Sie es für das Order-Routing geöffnet und betreiben Sie einfach einen zweiten Tradovate-Web-Tab für die Internals." },
+    { type: "heading",text: "2. Das Abonnement Dow Jones & Key Indices einschalten" },
+    { type: "paragraph",html: "Öffnen Sie Application Settings und gehen Sie zum Bereich Subscriptions. Unter der Überschrift Market Data finden Sie die Liste der Feeds, die Sie hinzufügen können. Scrollen Sie zu <em>Dow Jones &amp; Key Indices</em> und bestätigen Sie das Abonnement. Das ist das Paket, das die Internals freischaltet, und es ist getrennt von Ihren regulären CME-Futures-Daten. Kosten und Verfügbarkeit variieren je nach Konto und Börsenvereinbarung, prüfen Sie daher den aktuellen Preis und die Bedingungen, bevor Sie bestätigen." },
+    { type: "paragraph",html: "Bei einem Prop- oder Evaluierungskonto liegt dieser Schritt oft nicht in Ihrer Hand. Die Firma besitzt die Datenberechtigungen für diese Konten. Wenn die Abonnementliste ausgegraut ist oder die Internals weiterhin nicht quotieren, ist das also eine Nachricht an Ihre Firma, nicht an Tradovate. Regeln und enthaltene Daten variieren je nach Firma und Kontogröße, prüfen Sie daher die aktuelle Einrichtung Ihrer Firma." },
+    { type: "heading",text: "3. Das Symbol hinzufügen" },
+    { type: "paragraph",html: "Fügen Sie bei aktivem Abonnement <code>^TVOL</code> genauso hinzu wie jedes andere Symbol: über die Symbolsuche in einem Chart oder in einer Watchlist. Geben Sie es mit dem führenden Zirkumflex ein und wählen Sie es aus den Ergebnissen aus. Wenn Sie das Standard-Breadth-Trio möchten, fügen Sie <code>^TICK</code> und <code>^ADD</code> auf dieselbe Weise hinzu. Geben Sie ihm einen Moment, um die erste Kursstellung zu laden." },
+    { type: "heading",text: "4. Prüfen, ob die Kursstellung live ist" },
+    { type: "paragraph",html: "Wenn das Internal lädt, die Zahlen aber eingefroren wirken oder der Symbolname in der Farbe für verzögerte Daten angezeigt wird, sehen Sie verzögerte statt Live-Daten. Das ist ein Problem der Datenberechtigung, kein Problem der App." },
+    { type: "heading",text: "Die VOLD-Falle" },
+    { type: "paragraph",html: "Eine Sache, über die Leute stolpern: Sie können <code>VOLD</code> in Tradovate nicht als einzelnes kombiniertes Symbol charten, so wie manche andere Plattformen es erlauben, Aufwärtsvolumen minus Abwärtsvolumen als eine Linie darzustellen. Tradovate stellt <code>^UVOL</code> und <code>^DVOL</code> als zwei unabhängige Feeds bereit. Fügen Sie beide hinzu und lesen Sie sie nebeneinander ab oder legen Sie sie in dasselbe Panel, aber es gibt kein integriertes Symbol für die berechnete Differenz. Wenn Ihre Strategie auf eine einzelne Netto-Volumen-Linie angewiesen ist, rechnen Sie das selbst oder lesen die beiden Feeds gemeinsam." },
+    { type: "heading",text: "Nach alldem immer noch nichts?" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Richtige App?</strong> Gesamtvolumen und NYSE-Breadth in Tradovate Web, Dow-30-Tick in NinjaTrader Desktop, keines von beiden mobil.",
+        "<strong class='text-white'>Abonnement aktiv?</strong> Dow Jones &amp; Key Indices muss eingeschaltet sein, und bei Prop-Konten ist das Sache der Firma.",
+        "<strong class='text-white'>Zirkumflex im Symbol?</strong> Diese werden mit einem führenden <code>^</code> eingegeben, nicht als einfache Ticker.",
+        "<strong class='text-white'>Live oder verzögert?</strong> Eine eingefrorene oder falschfarbige Kursstellung deutet auf eine Datenberechtigung hin, nicht auf die Plattform.",
+      ],
+    },
+    { type: "heading",text: "Wo PickMyTrade ins Spiel kommt" },
+    { type: "paragraph",html: "Market Internals sind schreibgeschützt, und Plattform-Eigenheiten wie diese erinnern daran, wie viel manuelles Beobachten in einem internals-gesteuerten Setup steckt. Wenn Sie den ganzen Tag auf TVOL starren, um Einstiege von Hand zu timen, können Sie diese Auslöselogik nach vorn verlagern. PickMyTrade nimmt einen Alert aus TradingView (wo Sie Breadth-Logik frei aufbauen können) und löst die Order für Sie in Tradovate aus, sodass Sie nicht an einen Web-Tab gefesselt sind und aufs Klicken warten." },
+  ], es: [
+    { type: "paragraph",html: "Cargó su configuración de amplitud, escribió <code>^TVOL</code> en el cuadro de símbolo y no apareció nada. Ni gráfico, ni cotización, quizá un seco &ldquo;símbolo no encontrado&rdquo;. Si lo está haciendo dentro de NinjaTrader Desktop conectado a su cuenta de Tradovate, o en la aplicación de Tradovate del teléfono, ese resultado en blanco no es un error suyo. Ese símbolo en particular simplemente no está disponible en la aplicación que está utilizando." },
+    { type: "paragraph",html: "Los market internals son uno de los pocos lugares donde las plataformas de Tradovate no muestran todas lo mismo. Un símbolo que se grafica perfectamente en Tradovate Web puede aparecer vacío en el escritorio o en el móvil, y lo contrario también ocurre con un par de internals del Dow. Una vez que sabe qué aplicación incluye cada uno, la solución lleva aproximadamente un minuto. Vamos a repasarlo." },
+    { type: "quote",html: "<strong class='text-white'>Respuesta corta:</strong> los internals de amplitud como <code>^TVOL</code> cargan en <strong class='text-white'>Tradovate Web</strong>, no en NinjaTrader Desktop ni en la aplicación móvil. Abra la plataforma web, asegúrese de que la suscripción de datos de mercado <em>Dow Jones &amp; Key Indices</em> esté activa y luego añada el símbolo. Si sigue sin cotizar, o está en la aplicación equivocada o le falta esa suscripción." },
+    { type: "heading",text: "Qué son realmente TVOL y los demás internals" },
+    { type: "paragraph",html: "Los market internals no son contratos negociables. Son lecturas de amplitud tomadas de las bolsas de renta variable al contado (sobre todo la NYSE), y los traders se apoyan en ellas para calibrar si un movimiento tiene detrás a todo el mercado o solo a un puñado de valores. Se actualizan en tiempo real y a menudo giran antes que el precio, por lo que los scalpers de futuros los mantienen en un panel lateral." },
+    { type: "paragraph",html: "Los que se encontrará en Tradovate:" },
+    { type: "table", headers: ["Símbolo","Qué mide"], rows: [
+      ["^TVOL","Volumen total de todos los valores de la bolsa durante el día"],
+      ["^TICK","Acciones de la NYSE en un uptick menos las que están en un downtick, ahora mismo"],
+      ["^ADD","Línea de avance-descenso: valores de la NYSE al alza menos los que bajan"],
+      ["^TRIN","Índice Arms, que compara la relación avance/descenso con la relación de volumen alcista/bajista"],
+      ["^UVOL / ^DVOL","Volumen alcista y volumen bajista, graficados como dos feeds separados"],
+      ["^TICKDJ","La misma idea que TICK pero limitada a los 30 componentes del Dow Jones"],
+    ] },
+    { type: "paragraph",html: "Todos funcionan con un único paquete de datos, y ninguno aparece hasta que ese paquete está activado. Eso es lo primero que debe descartar." },
+    { type: "heading",text: "Por qué falta el símbolo en su aplicación" },
+    { type: "paragraph",html: "Hay dos razones distintas por las que un market internal aparece en blanco, y conviene saber con cuál se está encontrando." },
+    { type: "paragraph",html: "<strong class='text-white'>Primera razón: está en la aplicación equivocada para ese símbolo.</strong> La plataforma web de Tradovate y su feed de NinjaTrader Desktop no incluyen una lista idéntica de internals. El símbolo de volumen total es una lectura del lado web. Si apunta NinjaTrader Desktop a su cuenta de Tradovate y solicita <code>^TVOL</code>, no obtendrá nada, porque ese feed no lo sirve. Un par de internals funcionan en sentido contrario: el tick del Dow y un símbolo de volumen de escritorio los encontrará en NinjaTrader Desktop pero no en Tradovate Web. El móvil es el más limitado de los tres y, por lo general, no incluye en absoluto el conjunto de amplitud." },
+    { type: "paragraph",html: "<strong class='text-white'>Segunda razón: la suscripción de datos no está activa.</strong> Incluso en la aplicación correcta, los internals permanecen apagados hasta que active la suscripción de datos de mercado <em>Dow Jones &amp; Key Indices</em>. Sin suscripción, no hay cotización ni gráfico, sea cual sea la plataforma." },
+    { type: "heading",text: "Qué aplicación incluye cada internal" },
+    { type: "paragraph",html: "Esta es la división que importa. Trate la lista exacta por símbolo como algo que debe confirmar en su propia plataforma, ya que Tradovate ajusta su oferta de datos con el tiempo, pero la forma general se mantiene: el conjunto de amplitud habitual de la NYSE vive en la plataforma web y un pequeño grupo asociado al Dow vive en NinjaTrader Desktop." },
+    { type: "table", headers: ["Usted quiere…","Abra esta aplicación","No aquí"], rows: [
+      ["^TVOL, ^TICK, ^ADD, ^TRIN, ^UVOL, ^DVOL","Tradovate Web","NinjaTrader Desktop, móvil"],
+      ["^TICKDJ y el feed de volumen solo de escritorio","NinjaTrader Desktop","Tradovate Web, móvil"],
+      ["Cualquier internal de amplitud en un teléfono","—","No compatible en móvil"],
+    ] },
+    { type: "paragraph",html: "Así que la regla práctica es: si busca la lectura del volumen total o el grupo estándar de amplitud de la NYSE, hágalo en Tradovate Web. Si necesita específicamente el tick del Dow 30, eso es cosa de NinjaTrader Desktop. No espere que ninguna de las dos aplicaciones sea un superconjunto completo de la otra y no cuente con su teléfono para nada de esto." },
+    { type: "heading",text: "Paso a paso: haga que TVOL cargue en Tradovate Web" },
+    { type: "heading",text: "1. Abra la plataforma web" },
+    { type: "paragraph",html: "Inicie sesión en el trader web de Tradovate en lugar de la versión de escritorio o la aplicación. Esta es la plataforma que sirve el símbolo de volumen total y el resto del conjunto de amplitud de la NYSE. Si normalmente trabaja en NinjaTrader Desktop, manténgalo abierto para el enrutamiento de órdenes y limítese a abrir una segunda pestaña de Tradovate Web para los internals." },
+    { type: "heading",text: "2. Active la suscripción Dow Jones & Key Indices" },
+    { type: "paragraph",html: "Abra Application Settings y vaya al área Subscriptions. Bajo el encabezado Market Data encontrará la lista de feeds que puede añadir. Desplácese hasta <em>Dow Jones &amp; Key Indices</em> y confirme la suscripción. Este es el paquete que desbloquea los internals, y es independiente de sus datos habituales de futuros del CME. Los costes y la disponibilidad varían según la cuenta y el acuerdo con la bolsa, así que consulte el precio y las condiciones vigentes antes de confirmar." },
+    { type: "paragraph",html: "En una cuenta prop o de evaluación, este paso a menudo no le corresponde a usted. La firma es la titular de los derechos de datos de esas cuentas, así que si la lista de suscripciones aparece atenuada o los internals siguen sin cotizar, es un mensaje para su firma, no para Tradovate. Las reglas y los datos incluidos varían según la firma y el tamaño de la cuenta, así que consulte la configuración vigente de su firma." },
+    { type: "heading",text: "3. Añada el símbolo" },
+    { type: "paragraph",html: "Con la suscripción activa, añada <code>^TVOL</code> igual que añadiría cualquier otro símbolo: mediante la búsqueda de símbolos en un gráfico o en una lista de seguimiento. Escríbalo con el acento circunflejo inicial y selecciónelo de los resultados. Si quiere el trío estándar de amplitud, añada <code>^TICK</code> y <code>^ADD</code> del mismo modo. Concédale un momento para obtener la primera cotización." },
+    { type: "heading",text: "4. Compruebe que la cotización está en directo" },
+    { type: "paragraph",html: "Si el internal carga pero las cifras parecen congeladas o el nombre del símbolo aparece en el color de datos retrasados, está viendo datos retrasados en lugar de en directo. Es un problema de derechos de datos, no de la aplicación." },
+    { type: "heading",text: "La trampa de VOLD" },
+    { type: "paragraph",html: "Una cosa que confunde a la gente: no puede graficar <code>VOLD</code> como un único símbolo combinado en Tradovate, como permiten otras plataformas al trazar el volumen alcista menos el bajista como una sola línea. Tradovate sirve <code>^UVOL</code> y <code>^DVOL</code> como dos feeds independientes. Añada ambos y léalos uno junto al otro, o colóquelos en el mismo panel, pero no hay un símbolo de diferencia calculada integrado. Si su estrategia depende de una única línea de volumen neto, tendrá que hacer ese cálculo usted mismo o leer los dos feeds juntos." },
+    { type: "heading",text: "¿Sigue sin aparecer nada después de todo eso?" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>¿Aplicación correcta?</strong> Volumen total y amplitud de la NYSE en Tradovate Web, tick del Dow 30 en NinjaTrader Desktop, ninguno en el móvil.",
+        "<strong class='text-white'>¿Suscripción activa?</strong> Dow Jones &amp; Key Indices debe estar activado y, en las cuentas prop, eso es tarea de la firma.",
+        "<strong class='text-white'>¿Acento circunflejo en el símbolo?</strong> Se introducen con un <code>^</code> inicial, no como tickers simples.",
+        "<strong class='text-white'>¿En directo o retrasado?</strong> Una cotización congelada o de otro color apunta a un derecho de datos, no a la plataforma.",
+      ],
+    },
+    { type: "heading",text: "Dónde encaja PickMyTrade" },
+    { type: "paragraph",html: "Los market internals son de solo lectura, y peculiaridades de plataforma como esta son un recordatorio de cuánta vigilancia manual implica una configuración basada en internals. Si la razón por la que mira TVOL toda la sesión es cronometrar las entradas a mano, puede trasladar esa lógica de disparo a una fase anterior. PickMyTrade toma una alerta de TradingView (donde puede construir libremente lógica de amplitud) y lanza la orden en Tradovate por usted, de modo que no está pegado a una pestaña web esperando para hacer clic." },
+  ], fr: [
+    { type: "paragraph",html: "Vous avez chargé votre configuration d'amplitude, saisi <code>^TVOL</code> dans la zone de symbole, et rien n'est revenu. Pas de graphique, pas de cotation, peut-être un sec &ldquo;symbole introuvable&rdquo;. Si vous le faites dans NinjaTrader Desktop connecté à votre compte Tradovate, ou sur l'application Tradovate du téléphone, ce résultat vide n'est pas une erreur de votre part. Ce symbole précis n'est simplement pas proposé sur l'application que vous utilisez." },
+    { type: "paragraph",html: "Les market internals sont l'un des rares endroits où les plateformes de Tradovate n'affichent pas toutes la même chose. Un symbole qui s'affiche parfaitement sur Tradovate Web peut revenir vide côté bureau ou mobile, et l'inverse est vrai aussi pour quelques internals liés au Dow. Une fois que vous savez quelle application propose quoi, la solution prend environ une minute. Voyons cela." },
+    { type: "quote",html: "<strong class='text-white'>Réponse courte :</strong> les internals d'amplitude comme <code>^TVOL</code> se chargent sur <strong class='text-white'>Tradovate Web</strong>, pas sur NinjaTrader Desktop ni sur l'application mobile. Ouvrez la plateforme web, assurez-vous que l'abonnement aux données de marché <em>Dow Jones &amp; Key Indices</em> est actif, puis ajoutez le symbole. S'il ne cote toujours pas, vous êtes soit sur la mauvaise application, soit il vous manque cet abonnement." },
+    { type: "heading",text: "Ce que sont réellement TVOL et les autres internals" },
+    { type: "paragraph",html: "Les market internals ne sont pas des contrats négociables. Ce sont des mesures d'amplitude tirées des bourses d'actions au comptant (principalement le NYSE), et les traders s'en servent pour juger si un mouvement a tout le marché derrière lui ou seulement une poignée de valeurs. Elles se mettent à jour en temps réel et se retournent souvent avant le prix, c'est pourquoi les scalpers de contrats à terme les gardent dans un panneau latéral." },
+    { type: "paragraph",html: "Ceux que vous rencontrerez sur Tradovate :" },
+    { type: "table", headers: ["Symbole","Ce qu'il mesure"], rows: [
+      ["^TVOL","Volume total sur tous les titres de la bourse pour la journée"],
+      ["^TICK","Actions du NYSE en uptick moins celles en downtick, à l'instant"],
+      ["^ADD","Ligne avance-déclin : titres du NYSE en hausse moins ceux en baisse"],
+      ["^TRIN","Indice Arms, comparant le ratio hausses/baisses au ratio volume haussier/baissier"],
+      ["^UVOL / ^DVOL","Volume haussier et volume baissier, affichés comme deux flux séparés"],
+      ["^TICKDJ","Même principe que TICK, mais limité aux 30 composantes du Dow Jones"],
+    ] },
+    { type: "paragraph",html: "Tous reposent sur un seul package de données, et aucun n'apparaît tant que ce package n'est pas activé. C'est la première chose à écarter." },
+    { type: "heading",text: "Pourquoi le symbole est absent de votre application" },
+    { type: "paragraph",html: "Il y a deux raisons distinctes pour lesquelles un market internal revient vide, et il est utile de savoir laquelle vous concerne." },
+    { type: "paragraph",html: "<strong class='text-white'>Première raison : vous êtes sur la mauvaise application pour ce symbole.</strong> La plateforme web de Tradovate et son flux NinjaTrader Desktop ne proposent pas une liste d'internals identique. Le symbole du volume total est une mesure côté web. Pointez NinjaTrader Desktop vers votre compte Tradovate et demandez <code>^TVOL</code>, vous n'obtiendrez rien, car ce flux ne le sert pas. Quelques internals fonctionnent aussi dans l'autre sens : le tick lié au Dow et un symbole de volume de bureau se trouvent sur NinjaTrader Desktop mais pas sur Tradovate Web. Le mobile est le plus limité des trois et ne propose généralement pas du tout l'ensemble d'amplitude." },
+    { type: "paragraph",html: "<strong class='text-white'>Seconde raison : l'abonnement aux données n'est pas actif.</strong> Même sur la bonne application, les internals restent éteints tant que vous n'avez pas activé l'abonnement aux données de marché <em>Dow Jones &amp; Key Indices</em>. Sans abonnement, ni cotation ni graphique, quelle que soit la plateforme." },
+    { type: "heading",text: "Quelle application propose quel internal" },
+    { type: "paragraph",html: "Voici la répartition qui compte. Considérez la liste exacte par symbole comme un point à confirmer dans votre propre plateforme, car Tradovate ajuste son offre de données au fil du temps, mais la forme générale tient : l'ensemble d'amplitude courant du NYSE se trouve sur la plateforme web, et un petit groupe lié au Dow se trouve sur NinjaTrader Desktop." },
+    { type: "table", headers: ["Vous voulez…","Ouvrez cette application","Pas ici"], rows: [
+      ["^TVOL, ^TICK, ^ADD, ^TRIN, ^UVOL, ^DVOL","Tradovate Web","NinjaTrader Desktop, mobile"],
+      ["^TICKDJ et le flux de volume réservé au bureau","NinjaTrader Desktop","Tradovate Web, mobile"],
+      ["Tout internal d'amplitude sur un téléphone","—","Non pris en charge sur mobile"],
+    ] },
+    { type: "paragraph",html: "La règle pratique est donc la suivante : si vous cherchez la mesure du volume total ou le groupe d'amplitude standard du NYSE, faites-le sur Tradovate Web. Si vous avez précisément besoin du tick du Dow 30, c'est une affaire de NinjaTrader Desktop. Ne comptez pas sur l'une ou l'autre application pour être un sur-ensemble complet de l'autre, et ne comptez sur votre téléphone pour rien de tout cela." },
+    { type: "heading",text: "Pas à pas : faire charger TVOL sur Tradovate Web" },
+    { type: "heading",text: "1. Ouvrir la plateforme web" },
+    { type: "paragraph",html: "Connectez-vous au trader web de Tradovate plutôt qu'à la version de bureau ou à l'application. C'est la plateforme qui sert le symbole du volume total et le reste de l'ensemble d'amplitude du NYSE. Si vous vivez normalement dans NinjaTrader Desktop, gardez-le ouvert pour l'acheminement des ordres et ouvrez simplement un second onglet Tradovate Web pour les internals." },
+    { type: "heading",text: "2. Activer l'abonnement Dow Jones & Key Indices" },
+    { type: "paragraph",html: "Ouvrez Application Settings et allez dans la zone Subscriptions. Sous la rubrique Market Data, vous trouverez la liste des flux que vous pouvez ajouter. Faites défiler jusqu'à <em>Dow Jones &amp; Key Indices</em> et confirmez l'abonnement. C'est le package qui débloque les internals, et il est distinct de vos données habituelles sur les contrats à terme du CME. Les coûts et la disponibilité varient selon le compte et l'accord avec la bourse ; vérifiez donc le prix et les conditions en vigueur avant de confirmer." },
+    { type: "paragraph",html: "Sur un compte prop ou d'évaluation, cette étape ne vous revient souvent pas. La société détient les droits d'accès aux données sur ces comptes ; si la liste d'abonnements est grisée ou si les internals ne cotent toujours pas, c'est donc un message à adresser à votre société, pas à Tradovate. Les règles et les données incluses varient selon la société et la taille du compte ; vérifiez donc la configuration en vigueur de votre société." },
+    { type: "heading",text: "3. Ajouter le symbole" },
+    { type: "paragraph",html: "Une fois l'abonnement actif, ajoutez <code>^TVOL</code> comme vous ajouteriez n'importe quel autre symbole : via la recherche de symbole sur un graphique ou dans une watchlist. Saisissez-le avec l'accent circonflexe initial et sélectionnez-le dans les résultats. Si vous voulez le trio d'amplitude standard, ajoutez <code>^TICK</code> et <code>^ADD</code> de la même manière. Laissez-lui un instant pour récupérer la première cotation." },
+    { type: "heading",text: "4. Vérifier que la cotation est en direct" },
+    { type: "paragraph",html: "Si l'internal se charge mais que les chiffres semblent figés ou que le nom du symbole s'affiche dans la couleur des données différées, vous regardez des données différées et non en direct. C'est un problème de droits d'accès aux données, pas un problème d'application." },
+    { type: "heading",text: "Le piège de VOLD" },
+    { type: "paragraph",html: "Une chose qui piège les gens : vous ne pouvez pas afficher <code>VOLD</code> comme un symbole combiné unique sur Tradovate, comme le permettent d'autres plateformes en traçant le volume haussier moins le volume baissier sur une seule ligne. Tradovate sert <code>^UVOL</code> et <code>^DVOL</code> comme deux flux indépendants. Ajoutez les deux et lisez-les côte à côte, ou placez-les dans le même panneau, mais il n'existe pas de symbole de différence calculée intégré. Si votre stratégie repose sur une seule ligne de volume net, vous ferez ce calcul vous-même ou lirez les deux flux ensemble." },
+    { type: "heading",text: "Toujours rien après tout cela ?" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Bonne application ?</strong> Volume total et amplitude du NYSE sur Tradovate Web, tick du Dow 30 sur NinjaTrader Desktop, aucun des deux sur mobile.",
+        "<strong class='text-white'>Abonnement actif ?</strong> Dow Jones &amp; Key Indices doit être activé, et sur les comptes prop, c'est le travail de la société.",
+        "<strong class='text-white'>Accent circonflexe dans le symbole ?</strong> Ils se saisissent avec un <code>^</code> initial, et non comme de simples tickers.",
+        "<strong class='text-white'>Direct ou différé ?</strong> Une cotation figée ou d'une autre couleur pointe vers un droit d'accès aux données, pas vers la plateforme.",
+      ],
+    },
+    { type: "heading",text: "Où PickMyTrade intervient" },
+    { type: "paragraph",html: "Les market internals sont en lecture seule, et des particularités de plateforme comme celle-ci rappellent la quantité de surveillance manuelle qu'implique une configuration pilotée par les internals. Si vous fixez TVOL toute la séance pour chronométrer vos entrées à la main, vous pouvez déplacer cette logique de déclenchement en amont. PickMyTrade prend une alerte de TradingView (où vous pouvez construire librement une logique d'amplitude) et déclenche l'ordre dans Tradovate à votre place, de sorte que vous n'êtes pas collé à un onglet web à attendre de cliquer." },
+  ], it: [
+    { type: "paragraph",html: "Ha caricato la Sua configurazione di breadth, ha digitato <code>^TVOL</code> nella casella del simbolo e non è tornato nulla. Nessun grafico, nessuna quotazione, magari un secco &ldquo;simbolo non trovato&rdquo;. Se lo sta facendo all'interno di NinjaTrader Desktop connesso al Suo account Tradovate, o sull'app Tradovate del telefono, quel risultato vuoto non è un errore da parte Sua. Quel particolare simbolo semplicemente non è presente sull'app che sta usando." },
+    { type: "paragraph",html: "I market internals sono uno dei pochi ambiti in cui le piattaforme di Tradovate non mostrano tutte la stessa cosa. Un simbolo che si visualizza perfettamente su Tradovate Web può risultare vuoto sul lato desktop o mobile, e vale anche il contrario per un paio di internals legati al Dow. Una volta che sa quale app include cosa, la soluzione richiede circa un minuto. Vediamola passo per passo." },
+    { type: "quote",html: "<strong class='text-white'>Risposta breve:</strong> gli internals di breadth come <code>^TVOL</code> si caricano su <strong class='text-white'>Tradovate Web</strong>, non su NinjaTrader Desktop né sull'app mobile. Apra la piattaforma web, si assicuri che l'abbonamento ai dati di mercato <em>Dow Jones &amp; Key Indices</em> sia attivo e poi aggiunga il simbolo. Se ancora non quota, o è sull'app sbagliata o Le manca quell'abbonamento." },
+    { type: "heading",text: "Cosa sono in realtà TVOL e gli altri internals" },
+    { type: "paragraph",html: "I market internals non sono contratti negoziabili. Sono letture di breadth tratte dalle borse azionarie cash (soprattutto il NYSE), e i trader vi fanno affidamento per valutare se un movimento ha dietro l'intero mercato o solo una manciata di titoli. Si aggiornano in tempo reale e spesso girano prima del prezzo, ed è per questo che gli scalper di futures li tengono in un pannello laterale." },
+    { type: "paragraph",html: "Quelli che incontrerà su Tradovate:" },
+    { type: "table", headers: ["Simbolo","Cosa misura"], rows: [
+      ["^TVOL","Volume totale su tutti i titoli della borsa per la giornata"],
+      ["^TICK","Azioni NYSE in uptick meno quelle in downtick, in questo momento"],
+      ["^ADD","Linea advance-decline: titoli NYSE in rialzo meno quelli in ribasso"],
+      ["^TRIN","Indice Arms, che confronta il rapporto rialzi/ribassi con il rapporto tra volume in salita e in discesa"],
+      ["^UVOL / ^DVOL","Volume in salita e volume in discesa, mostrati come due feed separati"],
+      ["^TICKDJ","Stessa idea del TICK ma limitata alle 30 componenti del Dow Jones"],
+    ] },
+    { type: "paragraph",html: "Tutti si basano su un unico pacchetto di dati, e nessuno compare finché quel pacchetto non viene attivato. È la prima cosa da escludere." },
+    { type: "heading",text: "Perché il simbolo manca sulla Sua app" },
+    { type: "paragraph",html: "Ci sono due motivi distinti per cui un market internal risulta vuoto, ed è utile sapere quale dei due La riguarda." },
+    { type: "paragraph",html: "<strong class='text-white'>Primo motivo: è sull'app sbagliata per quel simbolo.</strong> La piattaforma web di Tradovate e il suo feed per NinjaTrader Desktop non includono un elenco identico di internals. Il simbolo del volume totale è una lettura lato web. Se punta NinjaTrader Desktop al Suo account Tradovate e richiede <code>^TVOL</code>, non otterrà nulla, perché quel feed non lo serve. Un paio di internals funzionano anche al contrario: il tick legato al Dow e un simbolo di volume per desktop si trovano su NinjaTrader Desktop ma non su Tradovate Web. Il mobile è il più limitato dei tre e in genere non include affatto il set di breadth." },
+    { type: "paragraph",html: "<strong class='text-white'>Secondo motivo: l'abbonamento ai dati non è attivo.</strong> Anche sull'app giusta, gli internals restano spenti finché non attiva l'abbonamento ai dati di mercato <em>Dow Jones &amp; Key Indices</em>. Senza abbonamento, niente quotazione e niente grafico, indipendentemente dalla piattaforma." },
+    { type: "heading",text: "Quale app include quale internal" },
+    { type: "paragraph",html: "Ecco la suddivisione che conta. Consideri l'elenco esatto per simbolo come qualcosa da confermare nella Sua piattaforma, dato che Tradovate modifica la propria offerta di dati nel tempo, ma la forma generale resta: il set di breadth NYSE di uso quotidiano vive sulla piattaforma web, e un piccolo gruppo legato al Dow vive su NinjaTrader Desktop." },
+    { type: "table", headers: ["Vuole…","Apra questa app","Non qui"], rows: [
+      ["^TVOL, ^TICK, ^ADD, ^TRIN, ^UVOL, ^DVOL","Tradovate Web","NinjaTrader Desktop, mobile"],
+      ["^TICKDJ e il feed di volume solo per desktop","NinjaTrader Desktop","Tradovate Web, mobile"],
+      ["Qualsiasi internal di breadth su un telefono","—","Non supportato su mobile"],
+    ] },
+    { type: "paragraph",html: "La regola pratica è dunque questa: se cerca la lettura del volume totale o il gruppo di breadth NYSE standard, lo faccia su Tradovate Web. Se Le serve specificamente il tick del Dow 30, è una questione di NinjaTrader Desktop. Non si aspetti che una delle due app sia un sovrainsieme completo dell'altra e non faccia affidamento sul telefono per nulla di tutto ciò." },
+    { type: "heading",text: "Passo dopo passo: far caricare TVOL su Tradovate Web" },
+    { type: "heading",text: "1. Apra la piattaforma web" },
+    { type: "paragraph",html: "Acceda al trader web di Tradovate invece che alla versione desktop o all'app. È la piattaforma che serve il simbolo del volume totale e il resto del set di breadth NYSE. Se di solito lavora in NinjaTrader Desktop, lo tenga aperto per l'instradamento degli ordini ed esegua semplicemente una seconda scheda di Tradovate Web per gli internals." },
+    { type: "heading",text: "2. Attivi l'abbonamento Dow Jones & Key Indices" },
+    { type: "paragraph",html: "Apra Application Settings e vada nell'area Subscriptions. Sotto l'intestazione Market Data troverà l'elenco dei feed che può aggiungere. Scorra fino a <em>Dow Jones &amp; Key Indices</em> e confermi l'abbonamento. È il pacchetto che sblocca gli internals, ed è separato dai Suoi normali dati sui futures CME. Costi e disponibilità variano in base all'account e all'accordo con la borsa, quindi controlli il prezzo e le condizioni attuali prima di confermare." },
+    { type: "paragraph",html: "Su un account prop o di valutazione questo passaggio spesso non spetta a Lei. La società detiene i diritti sui dati di quegli account, quindi se l'elenco degli abbonamenti è disattivato o gli internals continuano a non quotare, è un messaggio per la Sua società, non per Tradovate. Regole e dati inclusi variano in base alla società e alla dimensione dell'account, quindi verifichi la configurazione attuale della Sua società." },
+    { type: "heading",text: "3. Aggiunga il simbolo" },
+    { type: "paragraph",html: "Con l'abbonamento attivo, aggiunga <code>^TVOL</code> come aggiungerebbe qualsiasi altro simbolo: tramite la ricerca simboli su un grafico o in una watchlist. Lo digiti con l'accento circonflesso iniziale e lo selezioni dai risultati. Se vuole il trio di breadth standard, aggiunga <code>^TICK</code> e <code>^ADD</code> allo stesso modo. Gli dia un momento per ricevere la prima quotazione." },
+    { type: "heading",text: "4. Verifichi che la quotazione sia in tempo reale" },
+    { type: "paragraph",html: "Se l'internal si carica ma i numeri sembrano congelati o il nome del simbolo compare nel colore dei dati ritardati, sta guardando dati ritardati e non in tempo reale. È un problema di diritti sui dati, non un problema dell'app." },
+    { type: "heading",text: "L'insidia di VOLD" },
+    { type: "paragraph",html: "Una cosa che mette in difficoltà: non può mostrare <code>VOLD</code> come singolo simbolo combinato su Tradovate, come permettono altre piattaforme tracciando il volume in salita meno quello in discesa come un'unica linea. Tradovate serve <code>^UVOL</code> e <code>^DVOL</code> come due feed indipendenti. Aggiunga entrambi e li legga affiancati, oppure li metta nello stesso pannello, ma non esiste un simbolo di differenza calcolata integrato. Se la Sua strategia si basa su un'unica linea di volume netto, dovrà fare quel calcolo da sé o leggere i due feed insieme." },
+    { type: "heading",text: "Ancora nulla dopo tutto questo?" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>App giusta?</strong> Volume totale e breadth NYSE su Tradovate Web, tick del Dow 30 su NinjaTrader Desktop, nessuno dei due su mobile.",
+        "<strong class='text-white'>Abbonamento attivo?</strong> Dow Jones &amp; Key Indices deve essere attivato e, sugli account prop, è compito della società.",
+        "<strong class='text-white'>Accento circonflesso nel simbolo?</strong> Si inseriscono con un <code>^</code> iniziale, non come semplici ticker.",
+        "<strong class='text-white'>Live o ritardato?</strong> Una quotazione congelata o di un colore anomalo indica un problema di diritti sui dati, non della piattaforma.",
+      ],
+    },
+    { type: "heading",text: "Dove si inserisce PickMyTrade" },
+    { type: "paragraph",html: "I market internals sono di sola lettura e particolarità di piattaforma come questa ricordano quanta sorveglianza manuale richieda una configurazione guidata dagli internals. Se il motivo per cui fissa TVOL per tutta la sessione è cronometrare a mano gli ingressi, può spostare quella logica di trigger a monte. PickMyTrade prende un alert da TradingView (dove può costruire liberamente logiche di breadth) e invia l'ordine in Tradovate al Suo posto, così non è incollato a una scheda web in attesa di fare clic." },
+  ] },
+  ctaHeading: { en: "Stop Babysitting Internals", de: "Schluss mit dem Babysitten von Internals", es: "Deje de vigilar los internals", fr: "Cessez de surveiller les internals", it: "Smetta di accudire gli internals" },
+  ctaText: { en: "Tired of babysitting internals to time every entry? Let PickMyTrade automate your Tradovate orders from TradingView alerts so your strategy pulls the trigger.", de: "Haben Sie es satt, Internals zu überwachen, um jeden Einstieg zu timen? Lassen Sie PickMyTrade Ihre Tradovate-Orders aus TradingView-Alerts automatisieren, damit Ihre Strategie den Abzug betätigt.", es: "¿Cansado de vigilar los internals para cronometrar cada entrada? Deje que PickMyTrade automatice sus órdenes de Tradovate a partir de alertas de TradingView para que su estrategia apriete el gatillo.", fr: "Fatigué de surveiller les internals pour chronométrer chaque entrée ? Laissez PickMyTrade automatiser vos ordres Tradovate à partir des alertes TradingView pour que votre stratégie appuie sur la détente.", it: "Stanco di sorvegliare gli internals per cronometrare ogni ingresso? Lasci che PickMyTrade automatizzi i Suoi ordini Tradovate a partire dagli alert di TradingView, così la Sua strategia preme il grilletto." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why can't I see TVOL on NinjaTrader Desktop with my Tradovate account?", a: "The total-volume breadth symbol is served to Tradovate's own web platform. NinjaTrader Desktop and the Tradovate mobile app don't carry that particular internal, so it shows as missing or not found. Load it on Tradovate Web instead." },
+    { q: "Do I need a market data subscription for Tradovate market internals?", a: "Yes. Breadth internals ride on the Dow Jones & Key Indices market data subscription, which you enable under Application Settings. Pricing and availability vary by account type, and on prop or evaluation accounts the firm controls your data entitlements, so check your firm's current rules." },
+    { q: "Can I chart VOLD (UVOL minus DVOL) on Tradovate?", a: "Not as a single combined symbol. Tradovate charts UVOL and DVOL as separate feeds, so you add each one on its own rather than a calculated VOLD difference." },
+    { q: "Are market internals available on the Tradovate mobile app?", a: "Breadth internals like the total-volume symbol aren't supported on the mobile app. Use Tradovate Web for TICK, TVOL, UVOL, DVOL and the rest of the breadth set." },
+  ], de: [
+    { q: "Warum sehe ich TVOL in NinjaTrader Desktop mit meinem Tradovate-Konto nicht?", a: "Das Breadth-Symbol für das Gesamtvolumen wird nur auf der eigenen Web-Plattform von Tradovate bereitgestellt. NinjaTrader Desktop und die mobile Tradovate-App führen dieses spezielle Internal nicht, sodass es als fehlend oder nicht gefunden erscheint. Laden Sie es stattdessen in Tradovate Web." },
+    { q: "Benötige ich ein Marktdaten-Abonnement für Tradovate-Market-Internals?", a: "Ja. Breadth-Internals basieren auf dem Marktdaten-Abonnement Dow Jones & Key Indices, das Sie unter Application Settings aktivieren. Preise und Verfügbarkeit variieren je nach Kontotyp, und bei Prop- oder Evaluierungskonten kontrolliert die Firma Ihre Datenberechtigungen. Prüfen Sie daher die aktuellen Regeln Ihrer Firma." },
+    { q: "Kann ich VOLD (UVOL minus DVOL) in Tradovate charten?", a: "Nicht als einzelnes kombiniertes Symbol. Tradovate stellt UVOL und DVOL als getrennte Feeds dar, sodass Sie jedes für sich hinzufügen, statt eine berechnete VOLD-Differenz zu erhalten." },
+    { q: "Sind Market Internals in der mobilen Tradovate-App verfügbar?", a: "Breadth-Internals wie das Gesamtvolumen-Symbol werden in der mobilen App nicht unterstützt. Nutzen Sie Tradovate Web für TICK, TVOL, UVOL, DVOL und den Rest der Breadth-Gruppe." },
+  ], es: [
+    { q: "¿Por qué no puedo ver TVOL en NinjaTrader Desktop con mi cuenta de Tradovate?", a: "El símbolo de amplitud de volumen total se sirve en la propia plataforma web de Tradovate. NinjaTrader Desktop y la aplicación móvil de Tradovate no incluyen ese indicador interno concreto, por lo que aparece como ausente o no encontrado. Cárguelo en Tradovate Web." },
+    { q: "¿Necesito una suscripción de datos de mercado para los market internals de Tradovate?", a: "Sí. Los internals de amplitud funcionan con la suscripción de datos de mercado Dow Jones & Key Indices, que se activa en Application Settings. Los precios y la disponibilidad varían según el tipo de cuenta y, en las cuentas prop o de evaluación, la firma controla sus derechos de datos, así que consulte las reglas vigentes de su firma." },
+    { q: "¿Puedo graficar VOLD (UVOL menos DVOL) en Tradovate?", a: "No como un único símbolo combinado. Tradovate grafica UVOL y DVOL como feeds separados, por lo que añade cada uno por su cuenta en lugar de obtener una diferencia VOLD calculada." },
+    { q: "¿Están disponibles los market internals en la aplicación móvil de Tradovate?", a: "Los internals de amplitud, como el símbolo de volumen total, no son compatibles con la aplicación móvil. Utilice Tradovate Web para TICK, TVOL, UVOL, DVOL y el resto del conjunto de amplitud." },
+  ], fr: [
+    { q: "Pourquoi ne puis-je pas voir TVOL sur NinjaTrader Desktop avec mon compte Tradovate ?", a: "Le symbole d'amplitude du volume total est servi sur la plateforme web propre à Tradovate. NinjaTrader Desktop et l'application mobile Tradovate ne proposent pas cet indicateur interne précis ; il apparaît donc comme absent ou introuvable. Chargez-le plutôt sur Tradovate Web." },
+    { q: "Ai-je besoin d'un abonnement aux données de marché pour les market internals de Tradovate ?", a: "Oui. Les internals d'amplitude reposent sur l'abonnement aux données de marché Dow Jones & Key Indices, que vous activez dans Application Settings. Les tarifs et la disponibilité varient selon le type de compte et, sur les comptes prop ou d'évaluation, la société contrôle vos droits d'accès aux données ; vérifiez donc les règles en vigueur de votre société." },
+    { q: "Puis-je afficher VOLD (UVOL moins DVOL) sur Tradovate ?", a: "Pas sous forme d'un symbole combiné unique. Tradovate affiche UVOL et DVOL comme des flux séparés ; vous ajoutez donc chacun individuellement plutôt que d'obtenir une différence VOLD calculée." },
+    { q: "Les market internals sont-ils disponibles sur l'application mobile Tradovate ?", a: "Les internals d'amplitude comme le symbole du volume total ne sont pas pris en charge sur l'application mobile. Utilisez Tradovate Web pour TICK, TVOL, UVOL, DVOL et le reste de l'ensemble d'amplitude." },
+  ], it: [
+    { q: "Perché non riesco a vedere TVOL su NinjaTrader Desktop con il mio account Tradovate?", a: "Il simbolo di breadth del volume totale viene servito sulla piattaforma web di Tradovate. NinjaTrader Desktop e l'app mobile di Tradovate non includono quel particolare indicatore interno, quindi risulta mancante o non trovato. Lo carichi invece su Tradovate Web." },
+    { q: "Ho bisogno di un abbonamento ai dati di mercato per i market internals di Tradovate?", a: "Sì. Gli internals di breadth si basano sull'abbonamento ai dati di mercato Dow Jones & Key Indices, che si abilita in Application Settings. Prezzi e disponibilità variano in base al tipo di account e, sugli account prop o di valutazione, è la società a controllare i Suoi diritti sui dati, quindi verifichi le regole attuali della Sua società." },
+    { q: "Posso mostrare VOLD (UVOL meno DVOL) su Tradovate?", a: "Non come singolo simbolo combinato. Tradovate mostra UVOL e DVOL come feed separati, quindi aggiunge ciascuno per conto suo invece di ottenere una differenza VOLD calcolata." },
+    { q: "I market internals sono disponibili sull'app mobile di Tradovate?", a: "Gli internals di breadth come il simbolo del volume totale non sono supportati sull'app mobile. Usi Tradovate Web per TICK, TVOL, UVOL, DVOL e il resto del set di breadth." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Weiterführende Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. \"Tradovate\" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc. und wird weder von dieser unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und Schritte ändern sich im Laufe der Zeit. Prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins strictement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette société. « Tradovate » et tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. «Tradovate» e tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, perciò confermi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

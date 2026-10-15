@@ -1,0 +1,528 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "oauth-invalid-client";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate OAuth 'invalid_client' Token Error";
+const META_DESCRIPTION =
+  "Fix the Tradovate OAuth invalid_client token error by matching client_id, client_secret and redirect_uri exactly to your registered app.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate: error de token OAuth “invalid_client”", fr: "Tradovate : erreur de jeton OAuth « invalid_client »", it: "Tradovate: errore token OAuth “invalid_client”" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate OAuth-Token-Fehler 'invalid_client'", es: "Error de token OAuth &ldquo;invalid_client&rdquo; en Tradovate", fr: "Erreur de jeton OAuth &ldquo;invalid_client&rdquo; sur Tradovate", it: "Errore del token OAuth &ldquo;invalid_client&rdquo; in Tradovate" },
+  dek: { en: "Your token exchange returns invalid_client instead of an access token. Here's why the three app-identity fields don't line up, and how to fix each one.", de: "Ihr Token-Austausch liefert invalid_client statt eines Access Tokens. Hier erfahren Sie, warum die drei App-Identitätsfelder nicht übereinstimmen und wie Sie jedes einzelne beheben.", es: "Su intercambio de token devuelve invalid_client en lugar de un access token. Esto explica por qué los tres campos de identidad de la app no coinciden, y cómo corregir cada uno.", fr: "Votre échange de jeton renvoie invalid_client au lieu d'un jeton d'accès. Voici pourquoi les trois champs d'identité de l'application ne correspondent pas, et comment corriger chacun d'eux.", it: "Il tuo scambio del token restituisce invalid_client invece di un access token. Ecco perché i tre campi di identità dell'app non coincidono, e come correggere ciascuno." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You've got a fresh authorization code in hand, you fire off the token exchange, and instead of an access token you get slapped with <code>[invalid_client] client_id, redirect_uri and client_secret do not match existing setup</code>. It shows up as <code>invalid_client</code>, sometimes wrapped in a 400 or 401, and it stops your Tradovate integration cold before a single order can go out." },
+    { type: "paragraph", html: "Here's the reassuring part: this error almost never means something is broken on Tradovate's end. It means the three values that identify your app during the token exchange don't line up with what you registered. Fix the mismatch and the same request that's failing right now goes straight through." },
+    { type: "paragraph", html: "Below is every reason that mismatch happens, in the order you're most likely to hit it, with the exact spots to check in your OAuth app and your code." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for the invalid_client Error",
+      items: [
+        "<strong class='text-white'>Wrong client_id</strong>, copy it again from your registered OAuth app; watch for a leading space or a trailing newline.",
+        "<strong class='text-white'>Wrong client_secret</strong>, if you ever regenerated it, the old value is dead; paste the current one everywhere.",
+        "<strong class='text-white'>redirect_uri not identical</strong>, it must match the registered value byte for byte in both the authorize step and the token exchange.",
+        "<strong class='text-white'>Live vs demo mix-up</strong>, send the token request to the same environment your app was registered in.",
+        "<strong class='text-white'>Stale example code</strong>, old sample repos ship outdated endpoint URLs; verify yours against the current official docs.",
+        "<strong class='text-white'>Credentials in the wrong place</strong>, make sure all of grant_type, code, client_id, client_secret and redirect_uri are actually in the request body.",
+      ],
+    },
+    { type: "heading", text: "What \"[invalid_client] client_id, redirect_uri and client_secret do not match existing setup\" Means" },
+    { type: "paragraph", html: "OAuth splits your integration into two separate identities. One is <em>you</em>, the account holder, proven by your username and password. The other is <em>your app</em>, proven by a <code>client_id</code> and a <code>client_secret</code>. The <code>invalid_client</code> error is entirely about the second one. It's the standard OAuth 2.0 response for &ldquo;client authentication failed,&rdquo; and Tradovate spells out exactly which fields it checked: <code>client_id</code>, <code>redirect_uri</code>, and <code>client_secret</code>." },
+    { type: "paragraph", html: "So when you see this, the authorization code you just received is usually fine. The server got to the point of confirming who your app is, compared the three values you sent against the record it saved when you registered, found a difference, and refused to go further. It won't tell you <em>which</em> of the three is off. That's the annoying part, and it's why the fix is a process of elimination." },
+    { type: "paragraph", html: "The request that throws it is your token exchange: a POST to the OAuth token endpoint on your environment's host (<code>live.tradovateapi.com</code> for live, <code>demo.tradovateapi.com</code> for demo) carrying <code>grant_type=authorization_code</code>, the <code>code</code>, and the three identity fields. A success hands back an <code>access_token</code> and an <code>expires_in</code>. A failure hands back <code>error</code> and <code>error_description</code>, and here, that error is <code>invalid_client</code>." },
+    { type: "heading", text: "Top Causes of the invalid_client Error" },
+    { type: "heading", text: "1. The client_id doesn't match your registered app" },
+    { type: "paragraph", html: "This is the simplest cause and the easiest to overlook. The <code>client_id</code> in your token request has to be the one Tradovate assigned when you registered the OAuth app. People trip on it in small ways: pasting the app's <em>name</em> instead of its id, grabbing an id from a different app, or dragging along an invisible space or newline when copying. Whitespace is the sneakiest, because the value <em>looks</em> right in your editor. Re-copy the id straight from the registration screen and trim it." },
+    { type: "heading", text: "2. The client_secret is wrong or was regenerated" },
+    { type: "paragraph", html: "The <code>client_secret</code> is the password half of your app's identity, and it has to match exactly. The classic trap is regeneration: you hit &ldquo;regenerate secret&rdquo; at some point to rotate it, the platform issued a new one, and the old value is now permanently invalid. If your code, your <code>.env</code> file, or your deployment config still holds the previous secret, every single exchange returns <code>invalid_client</code>. The same thing happens if you never actually generated a secret and are sending an empty or placeholder value." },
+    { type: "heading", text: "3. The redirect_uri isn't a byte-for-byte match" },
+    { type: "paragraph", html: "This is the cause that burns the most hours, because the URIs <em>look</em> the same at a glance. The <code>redirect_uri</code> has to be identical in three places: the value saved on your registered app, the value in your authorize request, and the value in your token exchange. Identical means character for character. These all count as different:" },
+    {
+      type: "list",
+      items: [
+        "A trailing slash on one but not the other (<code>/callback</code> vs <code>/callback/</code>).",
+        "<code>http</code> in one place, <code>https</code> in another.",
+        "A port number present here, missing there (<code>localhost:3030</code> vs <code>localhost</code>).",
+        "Different capitalization anywhere in the path.",
+        "<code>localhost</code> in one spot and <code>127.0.0.1</code> in another.",
+      ],
+    },
+    { type: "paragraph", html: "Any one of those makes Tradovate treat it as an unregistered redirect and fold it into the <code>invalid_client</code> response." },
+    { type: "heading", text: "4. You registered on one environment and are calling the other" },
+    { type: "paragraph", html: "An OAuth app is tied to a single environment. Register it on demo and its <code>client_id</code> and <code>client_secret</code> only exist on the demo side. If your authorize URL or your token exchange points at the live host while the app lives on demo, or the reverse, the credentials simply aren't found there, and you get <code>invalid_client</code>. Confirm which environment you registered in, then make sure both the authorization step and the token endpoint target that same environment." },
+    { type: "heading", text: "5. You're running stale example code" },
+    { type: "paragraph", html: "OAuth samples drift. An older sample project can carry endpoint URLs, a hard-coded <code>redirect_uri</code>, or a request shape that no longer lines up with a freshly registered app. If you cloned a tutorial and it &ldquo;just doesn't work,&rdquo; don't assume your credentials are wrong, check that the endpoints and the request body in that code still match the current official Tradovate documentation before you spend an hour debugging your secret." },
+    { type: "heading", text: "6. The credentials are missing or in the wrong part of the request" },
+    { type: "paragraph", html: "Every field the server checks has to actually arrive, in the right place, in the right format. Your token POST needs <code>grant_type=authorization_code</code>, the <code>code</code>, <code>client_id</code>, <code>client_secret</code> and <code>redirect_uri</code>, sent in the body the way the current docs specify. Drop one of the three identity fields, or send the body in a format the endpoint doesn't expect, and the app can't be authenticated, which surfaces as <code>invalid_client</code>." },
+    { type: "heading", text: "How to Fix the invalid_client Error: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Re-copy the client_id and client_secret", html: "Open your OAuth app's registration screen (under the API Access area of your settings). Copy the <code>client_id</code> fresh and paste it into your config, then delete any stray leading or trailing whitespace. Do the same for the <code>client_secret</code>; if you're not certain the current one matches your code, regenerate it, update every place that stores it, and redeploy." },
+        { title: "Note the registered redirect_uri", html: "Record the exact <code>redirect_uri</code> saved on the app so you can compare it against your code next." },
+        { title: "Lock the redirect_uri to a single constant", html: "Define one <code>REDIRECT_URI</code> constant per environment in your code. Use that exact constant to build the authorize URL <em>and</em> the token exchange body, never retype it. Diff it against the registered value, watching for slashes, scheme, port, and case, and update whichever side is wrong so all three copies are identical." },
+        { title: "Confirm the environment and endpoints", html: "Decide which environment the app is registered in, live or demo. Point the authorize request at <code>https://trader.tradovate.com/oauth</code> with <code>response_type=code</code>, your <code>client_id</code>, and the matching <code>redirect_uri</code>. Send the token exchange to the OAuth token endpoint on the <em>same</em> environment's host, <code>live.tradovateapi.com</code> or <code>demo.tradovateapi.com</code>, using the exact path in the current API reference." },
+        { title: "Re-run the flow end to end", html: "Request a brand-new authorization code, then exchange it immediately. Codes are single-use, so don't reuse the one that already failed." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error", "Meaning", "Fix"],
+      rows: [
+        ["<code>[invalid_client] client_id, redirect_uri and client_secret do not match existing setup</code>", "One or more of the three app-identity fields don't match the registered OAuth app.", "Re-copy client_id and client_secret; make redirect_uri identical in all three places."],
+        ["<code>invalid_client</code> (no detail)", "Client authentication failed, the app couldn't be identified.", "Confirm client_id/secret are correct and sent in the request body, not left blank."],
+        ["<code>invalid_grant</code>", "The authorization code is expired, already used, or tied to a different redirect_uri.", "Request a fresh code and exchange it immediately with the matching redirect_uri."],
+        ["<code>redirect_uri_mismatch</code>", "The redirect_uri doesn't match the one on the app.", "Align scheme, host, port, path and trailing slash byte for byte."],
+        ["<code>unsupported_grant_type</code>", "The grant_type value is missing or misspelled.", "Send <code>grant_type=authorization_code</code> exactly."],
+        ["Credentials valid on demo, failing on live", "App registered in one environment, request sent to the other.", "Target the authorize URL and token endpoint at the app's own environment."],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "The whole OAuth handshake exists so software can trade your account for you. If that software is PickMyTrade, you never touch a <code>client_secret</code> or debug a <code>redirect_uri</code> at all, you connect your Tradovate account once and route your TradingView alerts to live orders from there." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Guided account connection</strong>, link Tradovate through a walked-through flow instead of hand-rolling a token exchange.",
+        "<strong class='text-white'>Managed sessions</strong>, the token lifecycle and renewals run behind the scenes, so there's no auth code for you to keep alive.",
+        "<strong class='text-white'>Environment-aware routing</strong>, demo and live stay separated so credentials never cross wires.",
+        "<strong class='text-white'>Multi-account sync</strong>, mirror the same alert across several accounts without wiring up OAuth for each one.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie haben einen frischen Autorisierungscode in der Hand, senden den Token-Austausch ab, und statt eines Access Tokens bekommen Sie <code>[invalid_client] client_id, redirect_uri and client_secret do not match existing setup</code> um die Ohren gehauen. Er erscheint als <code>invalid_client</code>, manchmal verpackt in einen 400- oder 401-Statuscode, und stoppt Ihre Tradovate-Integration eiskalt, bevor auch nur eine einzige Order rausgehen kann." },
+    { type: "paragraph", html: "Das Beruhigende daran: Dieser Fehler bedeutet fast nie, dass bei Tradovate etwas kaputt ist. Er bedeutet, dass die drei Werte, die Ihre App beim Token-Austausch identifizieren, nicht mit dem übereinstimmen, was Sie registriert haben. Beheben Sie die Abweichung, und genau dieselbe Anfrage, die gerade fehlschlägt, geht sofort durch." },
+    { type: "paragraph", html: "Im Folgenden finden Sie jeden Grund, warum diese Abweichung auftritt, in der Reihenfolge, in der Sie am wahrscheinlichsten darauf stoßen, mit den genauen Stellen, die Sie in Ihrer OAuth-App und Ihrem Code prüfen sollten." },
+    {
+      type: "checklist",
+      heading: "Schnelle Checkliste für den invalid_client-Fehler",
+      items: [
+        "<strong class='text-white'>Falsche client_id</strong>, kopieren Sie sie erneut aus Ihrer registrierten OAuth-App; achten Sie auf ein führendes Leerzeichen oder einen abschließenden Zeilenumbruch.",
+        "<strong class='text-white'>Falsches client_secret</strong>, wenn Sie es jemals neu generiert haben, ist der alte Wert tot; fügen Sie überall den aktuellen Wert ein.",
+        "<strong class='text-white'>redirect_uri nicht identisch</strong>, sie muss byte-genau mit dem registrierten Wert übereinstimmen, sowohl im Autorisierungsschritt als auch beim Token-Austausch.",
+        "<strong class='text-white'>Live-/Demo-Verwechslung</strong>, senden Sie die Token-Anfrage an dieselbe Umgebung, in der Ihre App registriert wurde.",
+        "<strong class='text-white'>Veralteter Beispielcode</strong>, alte Beispiel-Repos enthalten überholte Endpunkt-URLs; gleichen Sie Ihre mit der aktuellen offiziellen Dokumentation ab.",
+        "<strong class='text-white'>Zugangsdaten an der falschen Stelle</strong>, stellen Sie sicher, dass grant_type, code, client_id, client_secret und redirect_uri tatsächlich alle im Request-Body enthalten sind.",
+      ],
+    },
+    { type: "heading", text: "Was \"[invalid_client] client_id, redirect_uri and client_secret do not match existing setup\" bedeutet" },
+    { type: "paragraph", html: "OAuth unterteilt Ihre Integration in zwei getrennte Identitäten. Die eine sind <em>Sie</em>, der Kontoinhaber, nachgewiesen durch Ihren Benutzernamen und Ihr Passwort. Die andere ist <em>Ihre App</em>, nachgewiesen durch eine <code>client_id</code> und ein <code>client_secret</code>. Der <code>invalid_client</code>-Fehler betrifft ausschließlich Letztere. Es ist die Standardantwort von OAuth 2.0 für &ldquo;client authentication failed,&rdquo; und Tradovate gibt genau an, welche Felder geprüft wurden: <code>client_id</code>, <code>redirect_uri</code> und <code>client_secret</code>." },
+    { type: "paragraph", html: "Wenn Sie das sehen, ist der Autorisierungscode, den Sie gerade erhalten haben, in der Regel in Ordnung. Der Server ist so weit gekommen, die Identität Ihrer App zu prüfen, hat die drei gesendeten Werte mit dem bei der Registrierung gespeicherten Datensatz verglichen, einen Unterschied festgestellt und die Weiterverarbeitung verweigert. Er verrät Ihnen nicht, <em>welcher</em> der drei Werte falsch ist. Das ist der lästige Teil, und deshalb ist die Behebung ein Ausschlussverfahren." },
+    { type: "paragraph", html: "Die Anfrage, die ihn auslöst, ist Ihr Token-Austausch: ein POST an den OAuth-Token-Endpunkt auf dem Host Ihrer Umgebung (<code>live.tradovateapi.com</code> für live, <code>demo.tradovateapi.com</code> für demo) mit <code>grant_type=authorization_code</code>, dem <code>code</code> und den drei Identitätsfeldern. Bei Erfolg werden ein <code>access_token</code> und ein <code>expires_in</code> zurückgegeben. Bei einem Fehler werden <code>error</code> und <code>error_description</code> zurückgegeben, und hier lautet dieser Fehler <code>invalid_client</code>." },
+    { type: "heading", text: "Häufigste Ursachen für den invalid_client-Fehler" },
+    { type: "heading", text: "1. Die client_id stimmt nicht mit Ihrer registrierten App überein" },
+    { type: "paragraph", html: "Das ist die einfachste Ursache und die am leichtesten zu übersehende. Die <code>client_id</code> in Ihrer Token-Anfrage muss diejenige sein, die Tradovate bei der Registrierung Ihrer OAuth-App vergeben hat. Kleine Stolperfallen dabei: den <em>Namen</em> der App statt ihrer ID einfügen, eine ID aus einer anderen App verwenden oder beim Kopieren ein unsichtbares Leerzeichen oder einen Zeilenumbruch mitschleppen. Whitespace ist am tückischsten, weil der Wert in Ihrem Editor <em>richtig aussieht</em>. Kopieren Sie die ID erneut direkt vom Registrierungsbildschirm und entfernen Sie überflüssige Leerzeichen." },
+    { type: "heading", text: "2. Das client_secret ist falsch oder wurde neu generiert" },
+    { type: "paragraph", html: "Das <code>client_secret</code> ist die Passwort-Hälfte der Identität Ihrer App und muss exakt übereinstimmen. Die klassische Falle ist die Neugenerierung: Sie klicken irgendwann auf &ldquo;regenerate secret&rdquo; um es zu rotieren, die Plattform stellt ein neues aus, und der alte Wert ist nun dauerhaft ungültig. Wenn Ihr Code, Ihre <code>.env</code>-Datei oder Ihre Deployment-Konfiguration noch das vorherige Secret enthält, liefert jeder einzelne Austausch <code>invalid_client</code>. Dasselbe passiert, wenn Sie nie wirklich ein Secret generiert haben und einen leeren Wert oder einen Platzhalter senden." },
+    { type: "heading", text: "3. Die redirect_uri stimmt nicht byte-genau überein" },
+    { type: "paragraph", html: "Das ist die Ursache, die am meisten Zeit frisst, weil die URIs auf den ersten Blick <em>gleich aussehen</em>. Die <code>redirect_uri</code> muss an drei Stellen identisch sein: dem Wert, der auf Ihrer registrierten App gespeichert ist, dem Wert in Ihrer Autorisierungsanfrage und dem Wert in Ihrem Token-Austausch. Identisch bedeutet Zeichen für Zeichen. All Folgendes zählt als unterschiedlich:" },
+    {
+      type: "list",
+      items: [
+        "Ein abschließender Schrägstrich bei der einen, aber nicht bei der anderen (<code>/callback</code> vs. <code>/callback/</code>).",
+        "<code>http</code> an einer Stelle, <code>https</code> an einer anderen.",
+        "Eine Portnummer hier vorhanden, dort fehlend (<code>localhost:3030</code> vs. <code>localhost</code>).",
+        "Unterschiedliche Groß-/Kleinschreibung an einer beliebigen Stelle im Pfad.",
+        "<code>localhost</code> an einer Stelle und <code>127.0.0.1</code> an einer anderen.",
+      ],
+    },
+    { type: "paragraph", html: "Jede einzelne dieser Abweichungen führt dazu, dass Tradovate sie als nicht registrierten Redirect behandelt und in die <code>invalid_client</code>-Antwort einfließen lässt." },
+    { type: "heading", text: "4. Sie haben in einer Umgebung registriert und rufen die andere auf" },
+    { type: "paragraph", html: "Eine OAuth-App ist an eine einzige Umgebung gebunden. Registrieren Sie sie auf demo, existieren ihre <code>client_id</code> und ihr <code>client_secret</code> nur auf der Demo-Seite. Wenn Ihre Autorisierungs-URL oder Ihr Token-Austausch auf den Live-Host zeigt, während die App auf demo liegt, oder umgekehrt, werden die Zugangsdaten dort schlicht nicht gefunden, und Sie erhalten <code>invalid_client</code>. Stellen Sie fest, in welcher Umgebung Sie registriert haben, und sorgen Sie dann dafür, dass sowohl der Autorisierungsschritt als auch der Token-Endpunkt dieselbe Umgebung ansteuern." },
+    { type: "heading", text: "5. Sie verwenden veralteten Beispielcode" },
+    { type: "paragraph", html: "OAuth-Beispiele veralten mit der Zeit. Ein älteres Beispielprojekt kann Endpunkt-URLs, eine fest codierte <code>redirect_uri</code> oder eine Request-Struktur enthalten, die nicht mehr zu einer frisch registrierten App passt. Wenn Sie ein Tutorial geklont haben und es &ldquo;just doesn't work,&rdquo; gehen Sie nicht gleich davon aus, dass Ihre Zugangsdaten falsch sind. Prüfen Sie zuerst, ob die Endpunkte und der Request-Body in diesem Code noch mit der aktuellen offiziellen Tradovate-Dokumentation übereinstimmen, bevor Sie eine Stunde mit der Fehlersuche an Ihrem Secret verbringen." },
+    { type: "heading", text: "6. Die Zugangsdaten fehlen oder befinden sich im falschen Teil der Anfrage" },
+    { type: "paragraph", html: "Jedes Feld, das der Server prüft, muss tatsächlich ankommen, an der richtigen Stelle, im richtigen Format. Ihr Token-POST benötigt <code>grant_type=authorization_code</code>, den <code>code</code>, <code>client_id</code>, <code>client_secret</code> und <code>redirect_uri</code>, gesendet im Body so, wie es die aktuelle Dokumentation vorgibt. Lassen Sie eines der drei Identitätsfelder weg oder senden Sie den Body in einem Format, das der Endpunkt nicht erwartet, kann die App nicht authentifiziert werden, was sich als <code>invalid_client</code> zeigt." },
+    { type: "heading", text: "So beheben Sie den invalid_client-Fehler: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Kopieren Sie client_id und client_secret erneut", html: "Öffnen Sie den Registrierungsbildschirm Ihrer OAuth-App (im Bereich API Access Ihrer Einstellungen). Kopieren Sie die <code>client_id</code> frisch und fügen Sie sie in Ihre Konfiguration ein, löschen Sie dann alle überflüssigen führenden oder abschließenden Leerzeichen. Machen Sie dasselbe mit dem <code>client_secret</code>; wenn Sie nicht sicher sind, ob das aktuelle mit Ihrem Code übereinstimmt, generieren Sie es neu, aktualisieren Sie jede Stelle, an der es gespeichert ist, und deployen Sie erneut." },
+        { title: "Notieren Sie die registrierte redirect_uri", html: "Halten Sie die exakte <code>redirect_uri</code> fest, die auf der App gespeichert ist, damit Sie sie im nächsten Schritt mit Ihrem Code vergleichen können." },
+        { title: "Legen Sie die redirect_uri als eine einzige Konstante fest", html: "Definieren Sie in Ihrem Code eine <code>REDIRECT_URI</code>-Konstante pro Umgebung. Verwenden Sie genau diese Konstante, um sowohl die Autorisierungs-URL <em>als auch</em> den Token-Austausch-Body zu erstellen, tippen Sie sie nie erneut ab. Vergleichen Sie sie mit dem registrierten Wert, achten Sie dabei auf Schrägstriche, Schema, Port und Groß-/Kleinschreibung, und aktualisieren Sie die jeweils falsche Seite, sodass alle drei Kopien identisch sind." },
+        { title: "Bestätigen Sie Umgebung und Endpunkte", html: "Bestimmen Sie, in welcher Umgebung die App registriert ist, live oder demo. Richten Sie die Autorisierungsanfrage an <code>https://trader.tradovate.com/oauth</code> mit <code>response_type=code</code>, Ihrer <code>client_id</code> und der passenden <code>redirect_uri</code>. Senden Sie den Token-Austausch an den OAuth-Token-Endpunkt auf dem Host <em>derselben</em> Umgebung, <code>live.tradovateapi.com</code> oder <code>demo.tradovateapi.com</code>, unter Verwendung des exakten Pfads aus der aktuellen API-Referenz." },
+        { title: "Führen Sie den Ablauf komplett erneut aus", html: "Fordern Sie einen brandneuen Autorisierungscode an und tauschen Sie ihn sofort aus. Codes sind nur einmal verwendbar, verwenden Sie also nicht denjenigen erneut, der bereits fehlgeschlagen ist." },
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Fehler", "Bedeutung", "Lösung"],
+      rows: [
+        ["<code>[invalid_client] client_id, redirect_uri and client_secret do not match existing setup</code>", "Ein oder mehrere der drei App-Identitätsfelder stimmen nicht mit der registrierten OAuth-App überein.", "Kopieren Sie client_id und client_secret erneut; sorgen Sie dafür, dass redirect_uri an allen drei Stellen identisch ist."],
+        ["<code>invalid_client</code> (ohne Details)", "Client-Authentifizierung fehlgeschlagen, die App konnte nicht identifiziert werden.", "Stellen Sie sicher, dass client_id/secret korrekt und im Request-Body enthalten sind, nicht leer gelassen."],
+        ["<code>invalid_grant</code>", "Der Autorisierungscode ist abgelaufen, bereits verwendet oder an eine andere redirect_uri gebunden.", "Fordern Sie einen neuen Code an und tauschen Sie ihn sofort mit der passenden redirect_uri aus."],
+        ["<code>redirect_uri_mismatch</code>", "Die redirect_uri stimmt nicht mit der auf der App hinterlegten überein.", "Gleichen Sie Schema, Host, Port, Pfad und abschließenden Schrägstrich byte-genau ab."],
+        ["<code>unsupported_grant_type</code>", "Der Wert von grant_type fehlt oder ist falsch geschrieben.", "Senden Sie exakt <code>grant_type=authorization_code</code>."],
+        ["Zugangsdaten auf demo gültig, auf live fehlgeschlagen", "App in einer Umgebung registriert, Anfrage an die andere gesendet.", "Richten Sie Autorisierungs-URL und Token-Endpunkt auf die eigene Umgebung der App aus."],
+      ],
+    },
+    { type: "heading", text: "So vermeiden Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "Der gesamte OAuth-Handshake existiert, damit Software für Sie mit Ihrem Konto handeln kann. Wenn diese Software PickMyTrade ist, fassen Sie nie ein <code>client_secret</code> an oder debuggen eine <code>redirect_uri</code> überhaupt, Sie verbinden Ihr Tradovate-Konto einmal und leiten Ihre TradingView-Alerts von dort aus zu Live-Orders weiter." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Geführte Kontoverbindung</strong>, verknüpfen Sie Tradovate über einen geführten Ablauf, statt einen Token-Austausch von Hand zu bauen.",
+        "<strong class='text-white'>Verwaltete Sessions</strong>, der Token-Lebenszyklus und Erneuerungen laufen im Hintergrund, sodass Sie keinen Auth-Code am Leben erhalten müssen.",
+        "<strong class='text-white'>Umgebungsbewusstes Routing</strong>, demo und live bleiben getrennt, sodass Zugangsdaten sich nie in die Quere kommen.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong>, spiegeln Sie denselben Alert auf mehrere Konten, ohne für jedes einzelne OAuth einzurichten.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Tiene un código de autorización recién emitido, envía el intercambio de token y, en lugar de un access token, recibe <code>[invalid_client] client_id, redirect_uri and client_secret do not match existing setup</code>. Aparece como <code>invalid_client</code>, a veces envuelto en un 400 o 401, y detiene por completo su integración con Tradovate antes de que pueda salir una sola orden." },
+    { type: "paragraph", html: "La parte tranquilizadora es esta: este error casi nunca significa que algo esté roto del lado de Tradovate. Significa que los tres valores que identifican su app durante el intercambio de token no coinciden con lo que registró. Corrija la discrepancia y la misma solicitud que está fallando ahora mismo pasará sin problemas." },
+    { type: "paragraph", html: "A continuación se detallan todas las razones por las que ocurre esa discrepancia, en el orden en que es más probable que las encuentre, con los puntos exactos que debe revisar en su app OAuth y en su código." },
+    {
+      type: "checklist",
+      heading: "Lista rápida de verificación para el error invalid_client",
+      items: [
+        "<strong class='text-white'>client_id incorrecto</strong>, cópielo de nuevo desde su app OAuth registrada; preste atención a un espacio inicial o un salto de línea final.",
+        "<strong class='text-white'>client_secret incorrecto</strong>, si alguna vez lo regeneró, el valor anterior queda inutilizado; pegue el actual en todas partes.",
+        "<strong class='text-white'>redirect_uri no idéntico</strong>, debe coincidir con el valor registrado byte por byte tanto en el paso de autorización como en el intercambio de token.",
+        "<strong class='text-white'>Confusión entre live y demo</strong>, envíe la solicitud de token al mismo entorno en el que registró su app.",
+        "<strong class='text-white'>Código de ejemplo desactualizado</strong>, los repositorios de ejemplo antiguos incluyen URLs de endpoint obsoletas; verifique las suyas contra la documentación oficial actual.",
+        "<strong class='text-white'>Credenciales en el lugar equivocado</strong>, asegúrese de que grant_type, code, client_id, client_secret y redirect_uri estén realmente en el cuerpo de la solicitud.",
+      ],
+    },
+    { type: "heading", text: "Qué significa \"[invalid_client] client_id, redirect_uri and client_secret do not match existing setup\"" },
+    { type: "paragraph", html: "OAuth divide su integración en dos identidades separadas. Una es <em>usted</em>, el titular de la cuenta, comprobado mediante su nombre de usuario y contraseña. La otra es <em>su app</em>, comprobada mediante un <code>client_id</code> y un <code>client_secret</code>. El error <code>invalid_client</code> tiene que ver por completo con la segunda. Es la respuesta estándar de OAuth 2.0 para &ldquo;client authentication failed,&rdquo; y Tradovate detalla exactamente qué campos verificó: <code>client_id</code>, <code>redirect_uri</code> y <code>client_secret</code>." },
+    { type: "paragraph", html: "Entonces, cuando ve esto, el código de autorización que acaba de recibir suele estar bien. El servidor llegó al punto de confirmar quién es su app, comparó los tres valores que envió con el registro que guardó cuando se registró, encontró una diferencia y se negó a continuar. No le dirá <em>cuál</em> de los tres está mal. Esa es la parte molesta, y por eso la solución es un proceso de eliminación." },
+    { type: "paragraph", html: "La solicitud que lo genera es su intercambio de token: un POST al endpoint de token OAuth en el host de su entorno (<code>live.tradovateapi.com</code> para live, <code>demo.tradovateapi.com</code> para demo) que lleva <code>grant_type=authorization_code</code>, el <code>code</code> y los tres campos de identidad. Un éxito devuelve un <code>access_token</code> y un <code>expires_in</code>. Un fallo devuelve <code>error</code> y <code>error_description</code>, y en este caso, ese error es <code>invalid_client</code>." },
+    { type: "heading", text: "Principales causas del error invalid_client" },
+    { type: "heading", text: "1. El client_id no coincide con su app registrada" },
+    { type: "paragraph", html: "Esta es la causa más simple y la más fácil de pasar por alto. El <code>client_id</code> en su solicitud de token debe ser el que Tradovate asignó cuando registró la app OAuth. La gente se equivoca de formas pequeñas: pegar el <em>nombre</em> de la app en lugar de su id, tomar un id de otra app, o arrastrar un espacio invisible o un salto de línea al copiar. Los espacios en blanco son lo más engañoso, porque el valor <em>parece</em> correcto en su editor. Vuelva a copiar el id directamente desde la pantalla de registro y elimine los espacios sobrantes." },
+    { type: "heading", text: "2. El client_secret es incorrecto o fue regenerado" },
+    { type: "paragraph", html: "El <code>client_secret</code> es la mitad de contraseña de la identidad de su app, y debe coincidir exactamente. La trampa clásica es la regeneración: en algún momento presionó &ldquo;regenerate secret&rdquo; para rotarlo, la plataforma emitió uno nuevo, y el valor anterior ahora es permanentemente inválido. Si su código, su archivo <code>.env</code> o su configuración de despliegue todavía conservan el secreto anterior, cada intercambio devuelve <code>invalid_client</code>. Lo mismo ocurre si en realidad nunca generó un secreto y está enviando un valor vacío o de marcador de posición." },
+    { type: "heading", text: "3. El redirect_uri no coincide byte por byte" },
+    { type: "paragraph", html: "Esta es la causa que consume más horas, porque las URI <em>parecen</em> iguales a simple vista. El <code>redirect_uri</code> debe ser idéntico en tres lugares: el valor guardado en su app registrada, el valor en su solicitud de autorización y el valor en su intercambio de token. Idéntico significa carácter por carácter. Todo lo siguiente cuenta como diferente:" },
+    {
+      type: "list",
+      items: [
+        "Una barra final en uno pero no en el otro (<code>/callback</code> frente a <code>/callback/</code>).",
+        "<code>http</code> en un lugar, <code>https</code> en otro.",
+        "Un número de puerto presente aquí, ausente allá (<code>localhost:3030</code> frente a <code>localhost</code>).",
+        "Uso diferente de mayúsculas y minúsculas en cualquier parte de la ruta.",
+        "<code>localhost</code> en un lugar y <code>127.0.0.1</code> en otro.",
+      ],
+    },
+    { type: "paragraph", html: "Cualquiera de esos casos hace que Tradovate lo trate como un redirect no registrado y lo incluya en la respuesta <code>invalid_client</code>." },
+    { type: "heading", text: "4. Se registró en un entorno y está llamando al otro" },
+    { type: "paragraph", html: "Una app OAuth está vinculada a un único entorno. Regístrela en demo y su <code>client_id</code> y <code>client_secret</code> solo existen del lado de demo. Si su URL de autorización o su intercambio de token apunta al host de live mientras la app vive en demo, o al revés, las credenciales simplemente no se encuentran allí, y obtiene <code>invalid_client</code>. Confirme en qué entorno se registró, luego asegúrese de que tanto el paso de autorización como el endpoint de token apunten a ese mismo entorno." },
+    { type: "heading", text: "5. Está ejecutando código de ejemplo desactualizado" },
+    { type: "paragraph", html: "Los ejemplos de OAuth quedan desactualizados con el tiempo. Un proyecto de ejemplo antiguo puede contener URLs de endpoint, un <code>redirect_uri</code> codificado directamente, o una forma de solicitud que ya no coincide con una app recién registrada. Si clonó un tutorial y &ldquo;simplemente no funciona,&rdquo; no asuma que sus credenciales están mal; verifique que los endpoints y el cuerpo de la solicitud en ese código todavía coincidan con la documentación oficial actual de Tradovate antes de pasar una hora depurando su secreto." },
+    { type: "heading", text: "6. Las credenciales faltan o están en la parte equivocada de la solicitud" },
+    { type: "paragraph", html: "Cada campo que el servidor verifica debe llegar realmente, en el lugar correcto, en el formato correcto. Su POST de token necesita <code>grant_type=authorization_code</code>, el <code>code</code>, <code>client_id</code>, <code>client_secret</code> y <code>redirect_uri</code>, enviados en el cuerpo tal como especifica la documentación actual. Omita uno de los tres campos de identidad, o envíe el cuerpo en un formato que el endpoint no espera, y la app no podrá autenticarse, lo que se manifiesta como <code>invalid_client</code>." },
+    { type: "heading", text: "Cómo corregir el error invalid_client: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Vuelva a copiar el client_id y el client_secret", html: "Abra la pantalla de registro de su app OAuth (en el área API Access de su configuración). Copie el <code>client_id</code> nuevamente y péguelo en su configuración, luego elimine cualquier espacio en blanco inicial o final sobrante. Haga lo mismo con el <code>client_secret</code>; si no está seguro de que el actual coincida con su código, regenérelo, actualice cada lugar donde se almacena y vuelva a desplegar." },
+        { title: "Anote el redirect_uri registrado", html: "Registre el <code>redirect_uri</code> exacto guardado en la app para poder compararlo con su código a continuación." },
+        { title: "Fije el redirect_uri en una única constante", html: "Defina una constante <code>REDIRECT_URI</code> por entorno en su código. Use esa constante exacta para construir la URL de autorización <em>y</em> el cuerpo del intercambio de token, sin volver a escribirla nunca. Compárela con el valor registrado, prestando atención a las barras, el esquema, el puerto y las mayúsculas/minúsculas, y actualice el lado que esté mal para que las tres copias sean idénticas." },
+        { title: "Confirme el entorno y los endpoints", html: "Decida en qué entorno está registrada la app, live o demo. Dirija la solicitud de autorización a <code>https://trader.tradovate.com/oauth</code> con <code>response_type=code</code>, su <code>client_id</code> y el <code>redirect_uri</code> correspondiente. Envíe el intercambio de token al endpoint de token OAuth en el host del <em>mismo</em> entorno, <code>live.tradovateapi.com</code> o <code>demo.tradovateapi.com</code>, usando la ruta exacta indicada en la referencia de API actual." },
+        { title: "Vuelva a ejecutar el flujo de principio a fin", html: "Solicite un código de autorización completamente nuevo y luego intercámbielo de inmediato. Los códigos son de un solo uso, así que no reutilice el que ya falló." },
+      ],
+    },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Error", "Significado", "Solución"],
+      rows: [
+        ["<code>[invalid_client] client_id, redirect_uri and client_secret do not match existing setup</code>", "Uno o más de los tres campos de identidad de la app no coinciden con la app OAuth registrada.", "Vuelva a copiar client_id y client_secret; haga que redirect_uri sea idéntico en los tres lugares."],
+        ["<code>invalid_client</code> (sin detalle)", "Falló la autenticación del cliente, no se pudo identificar la app.", "Confirme que client_id/secret sean correctos y se envíen en el cuerpo de la solicitud, sin dejarlos en blanco."],
+        ["<code>invalid_grant</code>", "El código de autorización expiró, ya fue usado, o está vinculado a un redirect_uri diferente.", "Solicite un código nuevo e intercámbielo de inmediato con el redirect_uri correspondiente."],
+        ["<code>redirect_uri_mismatch</code>", "El redirect_uri no coincide con el de la app.", "Alinee el esquema, el host, el puerto, la ruta y la barra final byte por byte."],
+        ["<code>unsupported_grant_type</code>", "El valor de grant_type falta o está mal escrito.", "Envíe <code>grant_type=authorization_code</code> exactamente."],
+        ["Credenciales válidas en demo, fallando en live", "App registrada en un entorno, solicitud enviada al otro.", "Dirija la URL de autorización y el endpoint de token al entorno propio de la app."],
+      ],
+    },
+    { type: "heading", text: "Evite esto con PickMyTrade" },
+    { type: "paragraph", html: "Todo el proceso de negociación OAuth existe para que un software pueda operar su cuenta por usted. Si ese software es PickMyTrade, nunca toca un <code>client_secret</code> ni depura un <code>redirect_uri</code>; conecta su cuenta de Tradovate una sola vez y desde ahí enruta sus alertas de TradingView a órdenes en vivo." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Conexión de cuenta guiada</strong>, vincule Tradovate mediante un flujo guiado paso a paso en lugar de construir manualmente un intercambio de token.",
+        "<strong class='text-white'>Sesiones administradas</strong>, el ciclo de vida del token y las renovaciones se ejecutan en segundo plano, por lo que no hay ningún código de autorización que usted deba mantener vivo.",
+        "<strong class='text-white'>Enrutamiento consciente del entorno</strong>, demo y live permanecen separados para que las credenciales nunca se mezclen.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replique la misma alerta en varias cuentas sin tener que configurar OAuth para cada una.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous avez un code d'autorisation tout frais en main, vous lancez l'échange de jeton, et au lieu d'un jeton d'accès, vous recevez <code>[invalid_client] client_id, redirect_uri and client_secret do not match existing setup</code>. L'erreur apparaît sous la forme <code>invalid_client</code>, parfois enveloppée dans un code 400 ou 401, et elle bloque net votre intégration Tradovate avant même qu'un seul ordre puisse partir." },
+    { type: "paragraph", html: "Voici la partie rassurante : cette erreur ne signifie presque jamais qu'il y a un problème du côté de Tradovate. Elle signifie que les trois valeurs qui identifient votre application pendant l'échange de jeton ne correspondent pas à ce que vous avez enregistré. Corrigez la divergence et la même requête qui échoue actuellement passera sans problème." },
+    { type: "paragraph", html: "Voici toutes les raisons pour lesquelles cette divergence se produit, dans l'ordre où vous êtes le plus susceptible de les rencontrer, avec les endroits exacts à vérifier dans votre application OAuth et votre code." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide pour l'erreur invalid_client",
+      items: [
+        "<strong class='text-white'>Mauvais client_id</strong>, recopiez-le depuis votre application OAuth enregistrée ; attention à un espace en début ou un retour à la ligne en fin.",
+        "<strong class='text-white'>Mauvais client_secret</strong>, si vous l'avez déjà régénéré, l'ancienne valeur est morte ; collez la valeur actuelle partout.",
+        "<strong class='text-white'>redirect_uri non identique</strong>, il doit correspondre exactement, octet pour octet, à la valeur enregistrée, aussi bien dans l'étape d'autorisation que dans l'échange de jeton.",
+        "<strong class='text-white'>Confusion entre live et demo</strong>, envoyez la requête de jeton vers le même environnement que celui où votre application a été enregistrée.",
+        "<strong class='text-white'>Code d'exemple obsolète</strong>, les anciens dépôts d'exemples contiennent des URL de points de terminaison dépassées ; vérifiez les vôtres par rapport à la documentation officielle actuelle.",
+        "<strong class='text-white'>Identifiants au mauvais endroit</strong>, assurez-vous que grant_type, code, client_id, client_secret et redirect_uri se trouvent bien tous dans le corps de la requête.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie « [invalid_client] client_id, redirect_uri and client_secret do not match existing setup »" },
+    { type: "paragraph", html: "OAuth divise votre intégration en deux identités distinctes. La première, c'est <em>vous</em>, le titulaire du compte, prouvé par votre nom d'utilisateur et votre mot de passe. La seconde, c'est <em>votre application</em>, prouvée par un <code>client_id</code> et un <code>client_secret</code>. L'erreur <code>invalid_client</code> concerne entièrement la seconde. C'est la réponse standard OAuth 2.0 pour &laquo;l'échec de l'authentification du client&raquo;, et Tradovate précise exactement quels champs elle a vérifiés : <code>client_id</code>, <code>redirect_uri</code>, et <code>client_secret</code>." },
+    { type: "paragraph", html: "Donc quand vous voyez cette erreur, le code d'autorisation que vous venez de recevoir est généralement valide. Le serveur est arrivé au stade de confirmer l'identité de votre application, a comparé les trois valeurs que vous avez envoyées avec l'enregistrement sauvegardé lors de votre inscription, a trouvé une différence, et a refusé d'aller plus loin. Il ne vous dira pas <em>lequel</em> des trois est en cause. C'est la partie agaçante, et c'est pourquoi la correction se fait par élimination." },
+    { type: "paragraph", html: "La requête qui déclenche cette erreur est votre échange de jeton : un POST vers le point de terminaison de jeton OAuth sur l'hôte de votre environnement (<code>live.tradovateapi.com</code> pour le live, <code>demo.tradovateapi.com</code> pour le demo) portant <code>grant_type=authorization_code</code>, le <code>code</code>, et les trois champs d'identité. Un succès renvoie un <code>access_token</code> et un <code>expires_in</code>. Un échec renvoie <code>error</code> et <code>error_description</code>, et ici, cette erreur est <code>invalid_client</code>." },
+    { type: "heading", text: "Principales causes de l'erreur invalid_client" },
+    { type: "heading", text: "1. Le client_id ne correspond pas à votre application enregistrée" },
+    { type: "paragraph", html: "C'est la cause la plus simple et la plus facile à négliger. Le <code>client_id</code> dans votre requête de jeton doit être celui que Tradovate a attribué lors de l'enregistrement de votre application OAuth. Les gens se trompent souvent sur de petits détails : coller le <em>nom</em> de l'application au lieu de son identifiant, récupérer un identifiant d'une autre application, ou traîner un espace invisible ou un retour à la ligne en copiant. Les espaces superflus sont les plus sournois, car la valeur <em>a l'air</em> correcte dans votre éditeur. Recopiez l'identifiant directement depuis l'écran d'enregistrement et supprimez les espaces superflus." },
+    { type: "heading", text: "2. Le client_secret est incorrect ou a été régénéré" },
+    { type: "paragraph", html: "Le <code>client_secret</code> est la partie « mot de passe » de l'identité de votre application, et il doit correspondre exactement. Le piège classique, c'est la régénération : vous avez cliqué sur &laquo;régénérer le secret&raquo; à un moment donné pour le renouveler, la plateforme en a émis un nouveau, et l'ancienne valeur est désormais définitivement invalide. Si votre code, votre fichier <code>.env</code>, ou votre configuration de déploiement contient encore l'ancien secret, chaque échange renvoie <code>invalid_client</code>. La même chose se produit si vous n'avez en réalité jamais généré de secret et que vous envoyez une valeur vide ou un espace réservé." },
+    { type: "heading", text: "3. Le redirect_uri ne correspond pas octet pour octet" },
+    { type: "paragraph", html: "C'est la cause qui fait perdre le plus de temps, car les URI <em>semblent</em> identiques au premier coup d'œil. Le <code>redirect_uri</code> doit être identique à trois endroits : la valeur enregistrée sur votre application, la valeur dans votre requête d'autorisation, et la valeur dans votre échange de jeton. Identique signifie caractère pour caractère. Tout ceci compte comme différent :" },
+    {
+      type: "list",
+      items: [
+        "Une barre oblique finale sur l'un mais pas sur l'autre (<code>/callback</code> vs <code>/callback/</code>).",
+        "<code>http</code> à un endroit, <code>https</code> à un autre.",
+        "Un numéro de port présent ici, absent là (<code>localhost:3030</code> vs <code>localhost</code>).",
+        "Une casse différente n'importe où dans le chemin.",
+        "<code>localhost</code> à un endroit et <code>127.0.0.1</code> à un autre.",
+      ],
+    },
+    { type: "paragraph", html: "N'importe laquelle de ces différences pousse Tradovate à traiter la redirection comme non enregistrée et à l'intégrer dans la réponse <code>invalid_client</code>." },
+    { type: "heading", text: "4. Vous avez enregistré votre application sur un environnement et vous appelez l'autre" },
+    { type: "paragraph", html: "Une application OAuth est liée à un seul environnement. Enregistrez-la sur demo et son <code>client_id</code> et son <code>client_secret</code> n'existent que côté demo. Si votre URL d'autorisation ou votre échange de jeton pointe vers l'hôte live alors que l'application vit sur demo, ou l'inverse, les identifiants n'y sont tout simplement pas trouvés, et vous obtenez <code>invalid_client</code>. Confirmez dans quel environnement vous avez enregistré l'application, puis assurez-vous que l'étape d'autorisation et le point de terminaison de jeton ciblent tous deux ce même environnement." },
+    { type: "heading", text: "5. Vous exécutez du code d'exemple obsolète" },
+    { type: "paragraph", html: "Les exemples OAuth vieillissent. Un ancien projet d'exemple peut contenir des URL de points de terminaison, un <code>redirect_uri</code> codé en dur, ou une structure de requête qui ne correspond plus à une application fraîchement enregistrée. Si vous avez cloné un tutoriel et qu'il &laquo;ne fonctionne tout simplement pas&raquo;, ne présumez pas que vos identifiants sont faux ; vérifiez que les points de terminaison et le corps de la requête dans ce code correspondent toujours à la documentation officielle Tradovate actuelle avant de passer une heure à déboguer votre secret." },
+    { type: "heading", text: "6. Les identifiants sont absents ou mal placés dans la requête" },
+    { type: "paragraph", html: "Chaque champ vérifié par le serveur doit effectivement arriver, au bon endroit, dans le bon format. Votre POST de jeton a besoin de <code>grant_type=authorization_code</code>, du <code>code</code>, de <code>client_id</code>, <code>client_secret</code> et <code>redirect_uri</code>, envoyés dans le corps de la requête tel que le spécifie la documentation actuelle. Omettez l'un des trois champs d'identité, ou envoyez le corps dans un format que le point de terminaison n'attend pas, et l'application ne peut pas être authentifiée, ce qui se traduit par <code>invalid_client</code>." },
+    { type: "heading", text: "Comment corriger l'erreur invalid_client : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Recopiez le client_id et le client_secret", html: "Ouvrez l'écran d'enregistrement de votre application OAuth (dans la section API Access de vos paramètres). Copiez le <code>client_id</code> à nouveau et collez-le dans votre configuration, puis supprimez tout espace superflu en début ou en fin. Faites de même pour le <code>client_secret</code> ; si vous n'êtes pas certain que celui en cours correspond à votre code, régénérez-le, mettez à jour tous les endroits où il est stocké, puis redéployez." },
+        { title: "Notez le redirect_uri enregistré", html: "Notez le <code>redirect_uri</code> exact enregistré sur l'application afin de pouvoir le comparer ensuite à votre code." },
+        { title: "Fixez le redirect_uri dans une seule constante", html: "Définissez une seule constante <code>REDIRECT_URI</code> par environnement dans votre code. Utilisez cette constante exacte pour construire l'URL d'autorisation <em>et</em> le corps de l'échange de jeton, sans jamais la retaper. Comparez-la à la valeur enregistrée, en surveillant les barres obliques, le schéma, le port et la casse, et corrigez le côté erroné pour que les trois copies soient identiques." },
+        { title: "Confirmez l'environnement et les points de terminaison", html: "Déterminez dans quel environnement l'application est enregistrée, live ou demo. Pointez la requête d'autorisation vers <code>https://trader.tradovate.com/oauth</code> avec <code>response_type=code</code>, votre <code>client_id</code>, et le <code>redirect_uri</code> correspondant. Envoyez l'échange de jeton vers le point de terminaison OAuth sur l'hôte du <em>même</em> environnement, <code>live.tradovateapi.com</code> ou <code>demo.tradovateapi.com</code>, en utilisant le chemin exact indiqué dans la référence API actuelle." },
+        { title: "Relancez le flux de bout en bout", html: "Demandez un tout nouveau code d'autorisation, puis échangez-le immédiatement. Les codes sont à usage unique, donc ne réutilisez pas celui qui a déjà échoué." },
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Erreur", "Signification", "Correction"],
+      rows: [
+        ["<code>[invalid_client] client_id, redirect_uri and client_secret do not match existing setup</code>", "Un ou plusieurs des trois champs d'identité de l'application ne correspondent pas à l'application OAuth enregistrée.", "Recopiez client_id et client_secret ; rendez redirect_uri identique aux trois endroits."],
+        ["<code>invalid_client</code> (sans détail)", "Échec de l'authentification du client, l'application n'a pas pu être identifiée.", "Vérifiez que client_id/secret sont corrects et envoyés dans le corps de la requête, et non laissés vides."],
+        ["<code>invalid_grant</code>", "Le code d'autorisation est expiré, déjà utilisé, ou lié à un redirect_uri différent.", "Demandez un nouveau code et échangez-le immédiatement avec le redirect_uri correspondant."],
+        ["<code>redirect_uri_mismatch</code>", "Le redirect_uri ne correspond pas à celui de l'application.", "Alignez le schéma, l'hôte, le port, le chemin et la barre oblique finale, octet pour octet."],
+        ["<code>unsupported_grant_type</code>", "La valeur grant_type est absente ou mal orthographiée.", "Envoyez exactement <code>grant_type=authorization_code</code>."],
+        ["Identifiants valides sur demo, en échec sur live", "Application enregistrée dans un environnement, requête envoyée vers l'autre.", "Ciblez l'URL d'autorisation et le point de terminaison de jeton vers l'environnement propre à l'application."],
+      ],
+    },
+    { type: "heading", text: "Évitez ce problème avec PickMyTrade" },
+    { type: "paragraph", html: "Toute la poignée de main OAuth existe pour permettre à un logiciel de trader votre compte à votre place. Si ce logiciel est PickMyTrade, vous ne touchez jamais à un <code>client_secret</code> ni ne déboguez un <code>redirect_uri</code>, vous connectez votre compte Tradovate une seule fois et acheminez vos alertes TradingView vers des ordres réels à partir de là." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connexion de compte guidée</strong>, liez Tradovate via un parcours guidé au lieu de coder manuellement un échange de jeton.",
+        "<strong class='text-white'>Sessions gérées</strong>, le cycle de vie du jeton et son renouvellement s'exécutent en coulisses, donc vous n'avez aucun code d'authentification à maintenir en vie.",
+        "<strong class='text-white'>Routage sensible à l'environnement</strong>, demo et live restent séparés afin que les identifiants ne se mélangent jamais.",
+        "<strong class='text-white'>Synchronisation multi-compte</strong>, reproduisez la même alerte sur plusieurs comptes sans configurer OAuth pour chacun.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Hai appena ricevuto un authorization code, avvii lo scambio del token e, invece di un access token, ricevi l'errore <code>[invalid_client] client_id, redirect_uri and client_secret do not match existing setup</code>. Compare come <code>invalid_client</code>, a volte incapsulato in un 400 o 401, e blocca sul nascere la tua integrazione con Tradovate prima che un solo ordine possa essere inviato." },
+    { type: "paragraph", html: "Ecco la parte rassicurante: questo errore quasi mai significa che qualcosa sia rotto lato Tradovate. Significa che i tre valori che identificano la tua app durante lo scambio del token non coincidono con quelli registrati. Correggi la discrepanza e la stessa richiesta che sta fallendo ora andrà a buon fine." },
+    { type: "paragraph", html: "Di seguito trovi ogni motivo per cui si verifica questa discrepanza, nell'ordine in cui è più probabile incontrarli, con i punti esatti da controllare nella tua app OAuth e nel tuo codice." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per l'errore invalid_client",
+      items: [
+        "<strong class='text-white'>client_id errato</strong>, copialo di nuovo dalla tua app OAuth registrata; presta attenzione a uno spazio iniziale o un a capo finale.",
+        "<strong class='text-white'>client_secret errato</strong>, se lo hai rigenerato in passato, il vecchio valore non è più valido; incolla quello attuale ovunque.",
+        "<strong class='text-white'>redirect_uri non identico</strong>, deve corrispondere byte per byte al valore registrato sia nella fase di autorizzazione sia nello scambio del token.",
+        "<strong class='text-white'>Confusione tra live e demo</strong>, invia la richiesta del token allo stesso ambiente in cui è stata registrata la tua app.",
+        "<strong class='text-white'>Codice di esempio obsoleto</strong>, i vecchi repository di esempio contengono URL degli endpoint non aggiornati; verifica i tuoi confrontandoli con la documentazione ufficiale attuale.",
+        "<strong class='text-white'>Credenziali nel posto sbagliato</strong>, assicurati che grant_type, code, client_id, client_secret e redirect_uri siano effettivamente presenti nel corpo della richiesta.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa \"[invalid_client] client_id, redirect_uri and client_secret do not match existing setup\"" },
+    { type: "paragraph", html: "OAuth suddivide la tua integrazione in due identità distinte. Una sei <em>tu</em>, il titolare dell'account, dimostrato tramite nome utente e password. L'altra è <em>la tua app</em>, dimostrata tramite un <code>client_id</code> e un <code>client_secret</code>. L'errore <code>invalid_client</code> riguarda interamente la seconda. È la risposta standard OAuth 2.0 per &ldquo;client authentication failed,&rdquo; e Tradovate specifica esattamente quali campi ha controllato: <code>client_id</code>, <code>redirect_uri</code> e <code>client_secret</code>." },
+    { type: "paragraph", html: "Quindi, quando vedi questo errore, l'authorization code appena ricevuto è generalmente valido. Il server è arrivato al punto di confermare l'identità della tua app, ha confrontato i tre valori inviati con il record salvato al momento della registrazione, ha riscontrato una differenza e ha rifiutato di proseguire. Non ti dirà <em>quale</em> dei tre valori non è corretto. Questa è la parte fastidiosa, ed è per questo che la soluzione è un processo per esclusione." },
+    { type: "paragraph", html: "La richiesta che genera l'errore è il tuo scambio del token: un POST verso l'endpoint del token OAuth sull'host del tuo ambiente (<code>live.tradovateapi.com</code> per live, <code>demo.tradovateapi.com</code> per demo) contenente <code>grant_type=authorization_code</code>, il <code>code</code> e i tre campi di identità. In caso di successo, la risposta include un <code>access_token</code> e un <code>expires_in</code>. In caso di errore, la risposta include <code>error</code> e <code>error_description</code>, e in questo caso l'errore è <code>invalid_client</code>." },
+    { type: "heading", text: "Le cause principali dell'errore invalid_client" },
+    { type: "heading", text: "1. Il client_id non corrisponde alla tua app registrata" },
+    { type: "paragraph", html: "Questa è la causa più semplice e la più facile da trascurare. Il <code>client_id</code> nella tua richiesta del token deve essere quello assegnato da Tradovate quando hai registrato l'app OAuth. Gli errori più comuni sono piccoli: incollare il <em>nome</em> dell'app invece del suo id, prendere un id da un'app diversa, oppure trascinare uno spazio o un a capo invisibile durante la copia. Gli spazi bianchi sono i più subdoli, perché il valore <em>sembra</em> corretto nel tuo editor. Copia di nuovo l'id direttamente dalla schermata di registrazione e rimuovi eventuali spazi in eccesso." },
+    { type: "heading", text: "2. Il client_secret è errato o è stato rigenerato" },
+    { type: "paragraph", html: "Il <code>client_secret</code> è la componente segreta, equivalente a una password, dell'identità della tua app, e deve corrispondere esattamente. La trappola classica è la rigenerazione: a un certo punto hai premuto &ldquo;regenerate secret&rdquo; per ruotarlo, la piattaforma ne ha emesso uno nuovo e il vecchio valore è ora permanentemente non valido. Se il tuo codice, il file <code>.env</code> o la configurazione di deployment contengono ancora il secret precedente, ogni scambio restituisce <code>invalid_client</code>. Lo stesso accade se non hai mai generato un secret e stai inviando un valore vuoto o segnaposto." },
+    { type: "heading", text: "3. Il redirect_uri non corrisponde byte per byte" },
+    { type: "paragraph", html: "Questa è la causa che fa perdere più ore, perché gli URI <em>sembrano</em> uguali a colpo d'occhio. Il <code>redirect_uri</code> deve essere identico in tre punti: il valore salvato sulla tua app registrata, il valore nella richiesta di autorizzazione e il valore nello scambio del token. Identico significa carattere per carattere. Tutti questi casi contano come differenti:" },
+    {
+      type: "list",
+      items: [
+        "Una barra finale presente in uno ma non nell'altro (<code>/callback</code> rispetto a <code>/callback/</code>).",
+        "<code>http</code> in un punto, <code>https</code> in un altro.",
+        "Un numero di porta presente qui e assente là (<code>localhost:3030</code> rispetto a <code>localhost</code>).",
+        "Maiuscole e minuscole diverse in qualsiasi punto del percorso.",
+        "<code>localhost</code> in un punto e <code>127.0.0.1</code> in un altro.",
+      ],
+    },
+    { type: "paragraph", html: "Anche uno solo di questi casi fa sì che Tradovate lo tratti come un redirect non registrato, includendolo nella risposta <code>invalid_client</code>." },
+    { type: "heading", text: "4. Hai effettuato la registrazione su un ambiente e stai chiamando l'altro" },
+    { type: "paragraph", html: "Un'app OAuth è vincolata a un unico ambiente. Se la registri su demo, il suo <code>client_id</code> e <code>client_secret</code> esistono solo lato demo. Se il tuo URL di autorizzazione o il tuo scambio del token puntano all'host live mentre l'app si trova su demo, o viceversa, le credenziali semplicemente non vengono trovate lì e ottieni <code>invalid_client</code>. Verifica su quale ambiente hai effettuato la registrazione, quindi assicurati che sia la fase di autorizzazione sia l'endpoint del token puntino allo stesso ambiente." },
+    { type: "heading", text: "5. Stai utilizzando codice di esempio obsoleto" },
+    { type: "paragraph", html: "Gli esempi OAuth diventano obsoleti nel tempo. Un progetto di esempio più vecchio può contenere URL degli endpoint, un <code>redirect_uri</code> hard-coded, o una struttura della richiesta che non corrisponde più a un'app appena registrata. Se hai clonato un tutorial e &ldquo;semplicemente non funziona,&rdquo; non dare per scontato che le tue credenziali siano sbagliate: verifica che gli endpoint e il corpo della richiesta in quel codice corrispondano ancora alla documentazione ufficiale attuale di Tradovate prima di passare un'ora a fare debug del tuo secret." },
+    { type: "heading", text: "6. Le credenziali mancano o si trovano nella parte sbagliata della richiesta" },
+    { type: "paragraph", html: "Ogni campo controllato dal server deve effettivamente arrivare, nel posto giusto e nel formato giusto. Il tuo POST del token richiede <code>grant_type=authorization_code</code>, il <code>code</code>, <code>client_id</code>, <code>client_secret</code> e <code>redirect_uri</code>, inviati nel corpo così come specificato dalla documentazione attuale. Se ometti uno dei tre campi di identità, o invii il corpo in un formato non atteso dall'endpoint, l'app non può essere autenticata, il che si manifesta come <code>invalid_client</code>." },
+    { type: "heading", text: "Come risolvere l'errore invalid_client: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Copia di nuovo il client_id e il client_secret", html: "Apri la schermata di registrazione della tua app OAuth (nell'area API Access delle tue impostazioni). Copia di nuovo il <code>client_id</code> e incollalo nella tua configurazione, quindi elimina eventuali spazi bianchi iniziali o finali residui. Fai lo stesso per il <code>client_secret</code>; se non sei sicuro che quello attuale corrisponda al tuo codice, rigeneralo, aggiorna ogni punto in cui è memorizzato ed esegui un nuovo deployment." },
+        { title: "Annota il redirect_uri registrato", html: "Annota il <code>redirect_uri</code> esatto salvato sull'app, così potrai confrontarlo con il tuo codice nel passaggio successivo." },
+        { title: "Fissa il redirect_uri in un'unica costante", html: "Definisci un'unica costante <code>REDIRECT_URI</code> per ambiente nel tuo codice. Usa esattamente quella costante per costruire sia l'URL di autorizzazione <em>sia</em> il corpo dello scambio del token, senza mai riscriverla. Confrontala con il valore registrato, prestando attenzione a barre, schema, porta e maiuscole/minuscole, e correggi il lato sbagliato in modo che tutte e tre le copie siano identiche." },
+        { title: "Conferma l'ambiente e gli endpoint", html: "Stabilisci in quale ambiente è registrata l'app, live o demo. Indirizza la richiesta di autorizzazione a <code>https://trader.tradovate.com/oauth</code> con <code>response_type=code</code>, il tuo <code>client_id</code> e il <code>redirect_uri</code> corrispondente. Invia lo scambio del token all'endpoint del token OAuth sull'host dello <em>stesso</em> ambiente, <code>live.tradovateapi.com</code> o <code>demo.tradovateapi.com</code>, utilizzando il percorso esatto indicato nel riferimento API attuale." },
+        { title: "Esegui di nuovo l'intero flusso", html: "Richiedi un authorization code completamente nuovo, quindi scambialo immediatamente. I codici sono a uso singolo, quindi non riutilizzare quello già fallito." },
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Errore", "Significato", "Soluzione"],
+      rows: [
+        ["<code>[invalid_client] client_id, redirect_uri and client_secret do not match existing setup</code>", "Uno o più dei tre campi di identità dell'app non corrispondono all'app OAuth registrata.", "Copia di nuovo client_id e client_secret; rendi redirect_uri identico in tutti e tre i punti."],
+        ["<code>invalid_client</code> (nessun dettaglio)", "Autenticazione del client non riuscita, l'app non è stata identificata.", "Verifica che client_id/secret siano corretti e inviati nel corpo della richiesta, non lasciati vuoti."],
+        ["<code>invalid_grant</code>", "L'authorization code è scaduto, già utilizzato o associato a un redirect_uri diverso.", "Richiedi un nuovo codice e scambialo immediatamente con il redirect_uri corrispondente."],
+        ["<code>redirect_uri_mismatch</code>", "Il redirect_uri non corrisponde a quello registrato sull'app.", "Allinea schema, host, porta, percorso e barra finale byte per byte."],
+        ["<code>unsupported_grant_type</code>", "Il valore di grant_type manca o è scritto in modo errato.", "Invia esattamente <code>grant_type=authorization_code</code>."],
+        ["Credenziali valide su demo, non funzionanti su live", "App registrata in un ambiente, richiesta inviata all'altro.", "Indirizza l'URL di autorizzazione e l'endpoint del token verso l'ambiente proprio dell'app."],
+      ],
+    },
+    { type: "heading", text: "Evita questo problema con PickMyTrade" },
+    { type: "paragraph", html: "L'intero handshake OAuth esiste per permettere a un software di operare sul tuo account al posto tuo. Se quel software è PickMyTrade, non devi mai toccare un <code>client_secret</code> né fare debug di un <code>redirect_uri</code>: colleghi il tuo account Tradovate una sola volta e da lì instradi i tuoi alert di TradingView verso ordini live." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connessione dell'account guidata</strong>, collega Tradovate tramite un flusso guidato invece di costruire manualmente uno scambio del token.",
+        "<strong class='text-white'>Sessioni gestite</strong>, il ciclo di vita del token e i rinnovi avvengono dietro le quinte, quindi non c'è nessun auth code che devi mantenere attivo.",
+        "<strong class='text-white'>Instradamento consapevole dell'ambiente</strong>, demo e live restano separati, così le credenziali non si mescolano mai.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replica lo stesso alert su più account senza dover configurare OAuth per ciascuno.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Skip the OAuth Handshake", de: "Überspringen Sie den OAuth-Handshake", es: "Evite el proceso de negociación OAuth", fr: "Faites l'impasse sur la poignée de main OAuth", it: "Salta l'handshake OAuth" },
+  ctaText: { en: "Connect Tradovate to PickMyTrade once and route your TradingView alerts to live orders, no client_secret or redirect_uri to debug.", de: "Verbinden Sie Tradovate einmal mit PickMyTrade und leiten Sie Ihre TradingView-Alerts zu Live-Orders weiter, ohne client_secret oder redirect_uri debuggen zu müssen.", es: "Conecte Tradovate a PickMyTrade una sola vez y enrute sus alertas de TradingView a órdenes en vivo, sin ningún client_secret ni redirect_uri que depurar.", fr: "Connectez Tradovate à PickMyTrade une seule fois et acheminez vos alertes TradingView vers des ordres réels, sans client_secret ni redirect_uri à déboguer.", it: "Collega Tradovate a PickMyTrade una sola volta e instrada i tuoi alert di TradingView verso ordini live, senza alcun client_secret o redirect_uri da debuggare." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Inizia la tua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas Frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does the Tradovate invalid_client error actually mean?", a: "It means Tradovate couldn't authenticate your application during the token exchange. The full message, [invalid_client] client_id, redirect_uri and client_secret do not match existing setup, is telling you that at least one of those three values in your POST doesn't match the record stored for your registered OAuth app. The authorization code was fine; the app identity is what failed." },
+    { q: "Why does invalid_client show up even though my login works in the web platform?", a: "Your web login uses your username and password. The OAuth token exchange uses a separate set of credentials, client_id and client_secret, that belong to the app you registered, not to your trading account. A perfect web login says nothing about whether those app credentials are right, so the two pass and fail independently." },
+    { q: "How exact does the redirect_uri have to be?", a: "Byte for byte. The redirect_uri in the authorize request and the one in the token exchange both have to match the value saved on the app, character for character. A trailing slash, http vs https, a different port, or a change in capitalization all count as a mismatch. Define one constant and reuse it everywhere." },
+    { q: "Can a live-versus-demo mix-up cause invalid_client?", a: "Yes. An OAuth app is registered against one environment. If you registered on demo but post the token request to the live host, or the reverse, the credentials aren't found and you get invalid_client. Point the authorize URL and the token endpoint at the same environment your app was created in." },
+    { q: "I regenerated my client_secret. Why do I still get invalid_client?", a: "Regenerating a secret instantly kills the old one. If your code, environment file, or deployment still sends the previous value, every exchange fails. Copy the new secret into every place that holds it, redeploy, and clear any cached config so nothing keeps handing over the retired string." },
+    { q: "Is invalid_client the same as invalid_grant?", a: "No, and the difference points you to the real problem. invalid_client is about app identity, a wrong client_id, wrong client_secret, or mismatched redirect_uri. invalid_grant is about the authorization code, it expired, it was already used, or it was issued for a different redirect_uri. If you see invalid_grant, request a fresh code instead of re-checking your secret." },
+    { q: "Do I even need a client_secret, or can I use the API a different way?", a: "OAuth with client_id and client_secret is one route, and it's the one that throws invalid_client. Tradovate also supports a direct access-token request using an app id and API secret. If you're automating your own account and don't need to send other users through a consent screen, the direct token request is often simpler and skips the OAuth handshake entirely." },
+    { q: "Where do I find or reset my OAuth app credentials?", a: "Open your account's application or settings area, go to the API Access section, and find the OAuth registration you created. The client_id and client_secret live there, along with the redirect_uri you saved. Labels shift over time, so if you don't see an API Access tab, check the current settings layout or the official documentation for the equivalent screen." },
+  ], de: [
+    { q: "Was bedeutet der Tradovate invalid_client-Fehler eigentlich?", a: "Er bedeutet, dass Tradovate Ihre Anwendung während des Token-Austauschs nicht authentifizieren konnte. Die vollständige Meldung, [invalid_client] client_id, redirect_uri and client_secret do not match existing setup, sagt Ihnen, dass mindestens einer dieser drei Werte in Ihrem POST nicht mit dem für Ihre registrierte OAuth-App gespeicherten Datensatz übereinstimmt. Der Autorisierungscode war in Ordnung; die App-Identität ist das, was fehlgeschlagen ist." },
+    { q: "Warum tritt invalid_client auf, obwohl mein Login in der Web-Plattform funktioniert?", a: "Ihr Web-Login verwendet Ihren Benutzernamen und Ihr Passwort. Der OAuth-Token-Austausch verwendet einen separaten Satz von Zugangsdaten, client_id und client_secret, die zur App gehören, die Sie registriert haben, nicht zu Ihrem Trading-Konto. Ein einwandfreier Web-Login sagt nichts darüber aus, ob diese App-Zugangsdaten korrekt sind, sodass beide unabhängig voneinander erfolgreich sein oder fehlschlagen können." },
+    { q: "Wie exakt muss die redirect_uri sein?", a: "Byte-genau. Die redirect_uri in der Autorisierungsanfrage und die im Token-Austausch müssen beide Zeichen für Zeichen mit dem auf der App gespeicherten Wert übereinstimmen. Ein abschließender Schrägstrich, http statt https, ein anderer Port oder eine andere Groß-/Kleinschreibung zählen alle als Abweichung. Definieren Sie eine Konstante und verwenden Sie sie überall wieder." },
+    { q: "Kann eine Live-/Demo-Verwechslung invalid_client verursachen?", a: "Ja. Eine OAuth-App wird gegen eine einzige Umgebung registriert. Wenn Sie auf demo registriert haben, die Token-Anfrage aber an den Live-Host senden, oder umgekehrt, werden die Zugangsdaten nicht gefunden und Sie erhalten invalid_client. Richten Sie die Autorisierungs-URL und den Token-Endpunkt auf dieselbe Umgebung aus, in der Ihre App erstellt wurde." },
+    { q: "Ich habe mein client_secret neu generiert. Warum erhalte ich trotzdem invalid_client?", a: "Das Neugenerieren eines Secrets macht das alte sofort ungültig. Wenn Ihr Code, Ihre Umgebungsdatei oder Ihr Deployment weiterhin den vorherigen Wert sendet, schlägt jeder Austausch fehl. Kopieren Sie das neue Secret an jede Stelle, an der es gespeichert ist, deployen Sie erneut, und leeren Sie jeden gecachten Konfigurationsstand, damit nichts weiterhin die ausgemusterte Zeichenfolge übergibt." },
+    { q: "Ist invalid_client dasselbe wie invalid_grant?", a: "Nein, und der Unterschied weist Sie auf das eigentliche Problem hin. invalid_client betrifft die App-Identität, eine falsche client_id, ein falsches client_secret oder eine nicht übereinstimmende redirect_uri. invalid_grant betrifft den Autorisierungscode, er ist abgelaufen, wurde bereits verwendet oder wurde für eine andere redirect_uri ausgestellt. Wenn Sie invalid_grant sehen, fordern Sie einen neuen Code an, statt Ihr Secret erneut zu prüfen." },
+    { q: "Brauche ich überhaupt ein client_secret, oder kann ich die API anders nutzen?", a: "OAuth mit client_id und client_secret ist ein Weg, und es ist derjenige, der invalid_client auslöst. Tradovate unterstützt außerdem eine direkte Access-Token-Anfrage mit einer App-ID und einem API-Secret. Wenn Sie Ihr eigenes Konto automatisieren und keine anderen Nutzer durch einen Consent-Screen leiten müssen, ist die direkte Token-Anfrage oft einfacher und umgeht den OAuth-Handshake vollständig." },
+    { q: "Wo finde oder setze ich meine OAuth-App-Zugangsdaten zurück?", a: "Öffnen Sie den Anwendungs- oder Einstellungsbereich Ihres Kontos, gehen Sie zum Abschnitt API Access, und suchen Sie die von Ihnen erstellte OAuth-Registrierung. Dort befinden sich die client_id und das client_secret sowie die von Ihnen gespeicherte redirect_uri. Bezeichnungen ändern sich mit der Zeit; wenn Sie keinen API-Access-Tab sehen, prüfen Sie das aktuelle Layout der Einstellungen oder die offizielle Dokumentation für den entsprechenden Bildschirm." },
+  ], es: [
+    { q: "¿Qué significa realmente el error invalid_client de Tradovate?", a: "Significa que Tradovate no pudo autenticar su aplicación durante el intercambio de token. El mensaje completo, [invalid_client] client_id, redirect_uri and client_secret do not match existing setup, le indica que al menos uno de esos tres valores en su POST no coincide con el registro almacenado para su app OAuth registrada. El código de autorización estaba bien; lo que falló fue la identidad de la app." },
+    { q: "¿Por qué aparece invalid_client aunque mi inicio de sesión funcione en la plataforma web?", a: "Su inicio de sesión web utiliza su nombre de usuario y contraseña. El intercambio de token OAuth utiliza un conjunto de credenciales distinto, client_id y client_secret, que pertenecen a la app que registró, no a su cuenta de trading. Un inicio de sesión web perfecto no dice nada sobre si esas credenciales de la app son correctas, por lo que ambos pasan y fallan de forma independiente." },
+    { q: "¿Con qué exactitud debe coincidir el redirect_uri?", a: "Byte por byte. El redirect_uri de la solicitud de autorización y el del intercambio de token deben coincidir con el valor guardado en la app, carácter por carácter. Una barra final, http frente a https, un puerto diferente o un cambio en mayúsculas/minúsculas cuentan como una discrepancia. Defina una sola constante y reutilícela en todas partes." },
+    { q: "¿Puede una confusión entre live y demo causar invalid_client?", a: "Sí. Una app OAuth se registra frente a un único entorno. Si se registró en demo pero envía la solicitud de token al host de live, o al revés, las credenciales no se encuentran y obtiene invalid_client. Dirija la URL de autorización y el endpoint de token al mismo entorno en el que creó su app." },
+    { q: "Regeneré mi client_secret. ¿Por qué sigo obteniendo invalid_client?", a: "Regenerar un secreto invalida instantáneamente el anterior. Si su código, archivo de entorno o despliegue siguen enviando el valor anterior, cada intercambio falla. Copie el nuevo secreto en cada lugar donde se almacena, vuelva a desplegar y borre cualquier configuración en caché para que nada siga entregando la cadena retirada." },
+    { q: "¿Es invalid_client lo mismo que invalid_grant?", a: "No, y la diferencia le indica el problema real. invalid_client tiene que ver con la identidad de la app, un client_id incorrecto, un client_secret incorrecto, o un redirect_uri no coincidente. invalid_grant tiene que ver con el código de autorización: expiró, ya fue usado, o fue emitido para un redirect_uri diferente. Si ve invalid_grant, solicite un código nuevo en lugar de volver a revisar su secreto." },
+    { q: "¿Realmente necesito un client_secret, o puedo usar la API de otra manera?", a: "OAuth con client_id y client_secret es una vía, y es la que genera invalid_client. Tradovate también admite una solicitud directa de access token usando un app id y un API secret. Si está automatizando su propia cuenta y no necesita enviar a otros usuarios a través de una pantalla de consentimiento, la solicitud directa de token suele ser más simple y evita por completo el proceso de negociación OAuth." },
+    { q: "¿Dónde encuentro o restablezco las credenciales de mi app OAuth?", a: "Abra el área de aplicaciones o configuración de su cuenta, vaya a la sección API Access, y busque el registro OAuth que creó. Allí se encuentran el client_id y el client_secret, junto con el redirect_uri que guardó. Las etiquetas cambian con el tiempo, así que si no ve una pestaña API Access, revise el diseño actual de la configuración o la documentación oficial para la pantalla equivalente." },
+  ], fr: [
+    { q: "Que signifie réellement l'erreur invalid_client de Tradovate ?", a: "Cela signifie que Tradovate n'a pas pu authentifier votre application pendant l'échange de jeton. Le message complet, [invalid_client] client_id, redirect_uri and client_secret do not match existing setup, vous indique qu'au moins une de ces trois valeurs dans votre POST ne correspond pas à l'enregistrement stocké pour votre application OAuth enregistrée. Le code d'autorisation était valide ; c'est l'identité de l'application qui a échoué." },
+    { q: "Pourquoi invalid_client apparaît-elle alors que ma connexion fonctionne sur la plateforme web ?", a: "Votre connexion web utilise votre nom d'utilisateur et votre mot de passe. L'échange de jeton OAuth utilise un ensemble d'identifiants distinct, client_id et client_secret, qui appartiennent à l'application que vous avez enregistrée, et non à votre compte de trading. Une connexion web parfaite ne dit rien sur l'exactitude de ces identifiants d'application, donc les deux réussissent ou échouent indépendamment." },
+    { q: "À quel point le redirect_uri doit-il être exact ?", a: "Octet pour octet. Le redirect_uri dans la requête d'autorisation et celui dans l'échange de jeton doivent tous deux correspondre à la valeur enregistrée sur l'application, caractère pour caractère. Une barre oblique finale, http contre https, un port différent, ou un changement de casse comptent tous comme une divergence. Définissez une seule constante et réutilisez-la partout." },
+    { q: "Une confusion entre live et demo peut-elle causer invalid_client ?", a: "Oui. Une application OAuth est enregistrée pour un seul environnement. Si vous l'avez enregistrée sur demo mais que vous envoyez la requête de jeton vers l'hôte live, ou l'inverse, les identifiants ne sont pas trouvés et vous obtenez invalid_client. Pointez l'URL d'autorisation et le point de terminaison de jeton vers le même environnement où votre application a été créée." },
+    { q: "J'ai régénéré mon client_secret. Pourquoi est-ce que j'obtiens toujours invalid_client ?", a: "Régénérer un secret annule instantanément l'ancien. Si votre code, votre fichier d'environnement, ou votre déploiement envoie encore l'ancienne valeur, chaque échange échoue. Copiez le nouveau secret dans tous les endroits où il est stocké, redéployez, et videz toute configuration mise en cache pour qu'aucune ne continue à transmettre la chaîne retirée." },
+    { q: "invalid_client est-elle la même chose qu'invalid_grant ?", a: "Non, et la différence vous oriente vers le véritable problème. invalid_client concerne l'identité de l'application : un client_id erroné, un client_secret erroné, ou un redirect_uri qui ne correspond pas. invalid_grant concerne le code d'autorisation : il a expiré, il a déjà été utilisé, ou il a été émis pour un redirect_uri différent. Si vous voyez invalid_grant, demandez un nouveau code au lieu de revérifier votre secret." },
+    { q: "Ai-je vraiment besoin d'un client_secret, ou puis-je utiliser l'API autrement ?", a: "OAuth avec client_id et client_secret est une voie possible, et c'est celle qui déclenche invalid_client. Tradovate prend également en charge une requête directe de jeton d'accès utilisant un identifiant d'application et un secret API. Si vous automatisez votre propre compte et n'avez pas besoin de faire passer d'autres utilisateurs par un écran de consentement, la requête directe de jeton est souvent plus simple et évite entièrement la poignée de main OAuth." },
+    { q: "Où puis-je trouver ou réinitialiser les identifiants de mon application OAuth ?", a: "Ouvrez la zone d'applications ou de paramètres de votre compte, allez dans la section API Access, et retrouvez l'enregistrement OAuth que vous avez créé. Le client_id et le client_secret s'y trouvent, ainsi que le redirect_uri que vous avez enregistré. Les libellés évoluent avec le temps, donc si vous ne voyez pas d'onglet API Access, consultez la disposition actuelle des paramètres ou la documentation officielle pour trouver l'écran équivalent." },
+  ], it: [
+    { q: "Cosa significa esattamente l'errore invalid_client di Tradovate?", a: "Significa che Tradovate non è riuscito ad autenticare la tua applicazione durante lo scambio del token. Il messaggio completo, [invalid_client] client_id, redirect_uri and client_secret do not match existing setup, ti sta dicendo che almeno uno di questi tre valori nel tuo POST non corrisponde al record memorizzato per la tua app OAuth registrata. L'authorization code era corretto; a fallire è stata l'identità dell'app." },
+    { q: "Perché compare invalid_client anche se il login funziona sulla piattaforma web?", a: "Il tuo login web utilizza nome utente e password. Lo scambio del token OAuth utilizza un insieme separato di credenziali, client_id e client_secret, che appartengono all'app registrata, non al tuo account di trading. Un login web perfettamente riuscito non dice nulla sulla correttezza di quelle credenziali dell'app, quindi i due processi hanno esiti indipendenti." },
+    { q: "Quanto deve essere esatto il redirect_uri?", a: "Byte per byte. Sia il redirect_uri nella richiesta di autorizzazione sia quello nello scambio del token devono corrispondere carattere per carattere al valore salvato sull'app. Una barra finale, http rispetto a https, una porta diversa o un cambio di maiuscole/minuscole contano tutti come discrepanze. Definisci un'unica costante e riutilizzala ovunque." },
+    { q: "Una confusione tra live e demo può causare invalid_client?", a: "Sì. Un'app OAuth viene registrata rispetto a un unico ambiente. Se hai effettuato la registrazione su demo ma invii la richiesta del token all'host live, o viceversa, le credenziali non vengono trovate e ottieni invalid_client. Indirizza l'URL di autorizzazione e l'endpoint del token verso lo stesso ambiente in cui è stata creata la tua app." },
+    { q: "Ho rigenerato il mio client_secret. Perché continuo a ricevere invalid_client?", a: "Rigenerare un secret invalida immediatamente quello vecchio. Se il tuo codice, il file di ambiente o il deployment inviano ancora il valore precedente, ogni scambio fallisce. Copia il nuovo secret in ogni punto in cui è memorizzato, esegui un nuovo deployment e cancella eventuali configurazioni in cache, in modo che nulla continui a inviare la stringa ormai ritirata." },
+    { q: "invalid_client è la stessa cosa di invalid_grant?", a: "No, e la differenza ti indica il problema reale. invalid_client riguarda l'identità dell'app: un client_id errato, un client_secret errato o un redirect_uri non corrispondente. invalid_grant riguarda l'authorization code: è scaduto, è già stato utilizzato oppure è stato emesso per un redirect_uri diverso. Se vedi invalid_grant, richiedi un nuovo codice invece di ricontrollare il tuo secret." },
+    { q: "Ho davvero bisogno di un client_secret, oppure posso usare l'API in un altro modo?", a: "OAuth con client_id e client_secret è una delle strade possibili, ed è quella che genera invalid_client. Tradovate supporta anche una richiesta diretta di access token utilizzando un app id e un API secret. Se stai automatizzando il tuo stesso account e non hai bisogno di far passare altri utenti attraverso una schermata di consenso, la richiesta diretta del token è spesso più semplice e salta del tutto l'handshake OAuth." },
+    { q: "Dove trovo o reimposto le credenziali della mia app OAuth?", a: "Apri l'area applicazioni o impostazioni del tuo account, vai alla sezione API Access e trova la registrazione OAuth che hai creato. Lì si trovano il client_id e il client_secret, insieme al redirect_uri salvato. Le etichette cambiano nel tempo, quindi se non vedi una scheda API Access, controlla il layout attuale delle impostazioni o la documentazione ufficiale per individuare la schermata equivalente." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías Relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich zu Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. und wird von diesem Unternehmen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada a Tradovate, Inc., ni cuenta con su respaldo o patrocinio. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, así que siempre confirme el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ou sponsorisée par Tradovate, Inc. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent au fil du temps ; vérifiez toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha uno scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio di perdita significativo e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifica sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

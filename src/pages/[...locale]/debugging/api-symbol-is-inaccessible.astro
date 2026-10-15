@@ -1,0 +1,598 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-symbol-is-inaccessible";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API 'Symbol Is Inaccessible' Fix";
+const META_DESCRIPTION =
+  "Fix Tradovate 'Symbol is inaccessible': add the CME market-data agreement and use a valid front-month contract to restore API quotes fast.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate API: solución a “Symbol is inaccessible”", it: "API Tradovate: risolvere “Symbol is inaccessible”" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API „Symbol Is Inaccessible“ beheben", es: "Cómo solucionar «Symbol is inaccessible» en la API de Tradovate", fr: "Corriger « Symbol is inaccessible » sur l'API Tradovate", it: "Come risolvere «Symbol is inaccessible» nell'API di Tradovate" },
+  dek: { en: "One Symbol is inaccessible response quietly cuts off your quotes, no entries, no exits. Here's the entitlement block vs. the symbol block, and how to fix each.", de: "Eine einzige Symbol-is-inaccessible-Antwort kappt still Ihre Kursdaten, keine Einstiege, keine Ausstiege. Hier lernen Sie den Unterschied zwischen dem Berechtigungs-Block und dem Symbol-Block kennen und wie Sie jeden beheben.", es: "Una sola respuesta Symbol is inaccessible corta silenciosamente sus cotizaciones, sin entradas, sin salidas. Aquí tiene el bloqueo por derechos de acceso frente al bloqueo por símbolo, y cómo solucionar cada uno.", fr: "Une seule réponse Symbol is inaccessible coupe discrètement vos cotations, plus d'entrées, plus de sorties. Voici le blocage lié aux droits d'accès face au blocage lié au symbole, et comment corriger chacun d'eux.", it: "Una sola risposta Symbol is inaccessible interrompe silenziosamente le vostre quotazioni, niente entrate, niente uscite. Ecco il blocco da diritti dati contro il blocco da simbolo, e come risolvere ciascuno." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You've got an ES or NQ bot humming along, and then one <code>Symbol is inaccessible</code> response quietly cuts off your quotes. No quotes means no entries and no exits, the bot just sits there blind while the market moves without you. Tradovate's market-data API hands this back as <code>{\"errorText\":\"Symbol is inaccessible\",\"errorCode\":\"UnknownSymbol\",\"mode\":\"None\"}</code>, and in 2026 it still shows up in two very different flavors: a hard <strong class='text-white'>entitlement block</strong> (no CME market-data agreement on file) and a soft <strong class='text-white'>symbol block</strong> (an expired or mistyped contract). It hits <code>md/subscribeQuote</code>, <code>md/getChart</code>, and historical tick requests alike, and it loves to strike right after code that ran fine for months. Here's every cause, every fix, and how PickMyTrade keeps the automation side of your stack running when a feed or symbol goes dark." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for \"Symbol Is Inaccessible\"",
+      items: [
+        "<strong class='text-white'>No CME market-data agreement on file</strong>, accept and subscribe to the CME data agreement in Tradovate before any real-time API quote request will resolve.",
+        "<strong class='text-white'>Prop or evaluation account</strong>, only your account provider can enable data. Contact your firm, not Tradovate.",
+        "<strong class='text-white'>Expired or wrong-format symbol</strong>, request the <em>current</em> front-month contract in <code>ROOT + month-code + year</code> form (for example <code>ESZ4</code>), never a rolled-off month.",
+        "<strong class='text-white'>API Access add-on not active</strong>, confirm the API Access subscription is on and your live account meets Tradovate's current funding requirement.",
+        "<strong class='text-white'>Stale session or entitlement</strong>, re-authenticate, then update the market-data subscription and place a fresh order if the platform prompts you to.",
+        "<strong class='text-white'>Redistributing data</strong>, sending quotes downstream to other users needs a separate CME data-distributor registration.",
+      ],
+    },
+    { type: "heading", text: "What \"Symbol Is Inaccessible\" Means" },
+    { type: "paragraph", html: "Despite the <code>UnknownSymbol</code> error code, this message rarely means the contract literally doesn't exist. In most cases your WebSocket request was well-formed and reached the server just fine, the server simply refuses to stream that instrument to <em>your</em> login. It's an authorization and entitlement response dressed up as a lookup failure. The tell is consistency: when the same call fails regardless of which symbol or ID you throw at it, you're looking at a missing market-data agreement, not a typo." },
+    { type: "paragraph", html: "There are two root buckets. The first is licensing. Real-time CME (and other exchange) data over the API is gated behind an exchange market-data agreement and fee, and without it every subscription bounces back as inaccessible. The second is the symbol itself. Futures contracts expire, so a symbol that was the front month last quarter, say an expired ES month, is no longer a tradable listing, and Tradovate treats it as inaccessible. Sorting out which bucket you're in is the whole job, so start by testing whether <em>any</em> live symbol resolves." },
+    { type: "heading", text: "Top Causes of \"Symbol Is Inaccessible\" in 2026" },
+    { type: "heading", text: "1. Missing CME Market-Data Agreement" },
+    { type: "paragraph", html: "This is the number-one cause, and it's blunt: the error shows up because you don't have the CME market-data agreement on file with Tradovate. Real-time exchange data over the API now carries a monthly exchange fee on top of Tradovate's own charges. Exact pricing depends on the exchange and on your license type (non-professional vs. professional / non-display), and it moves over time, so treat any specific dollar figure you find in an old post as stale and check the current CME and Tradovate rates." },
+    { type: "heading", text: "2. A Prop or Evaluation Account You Don't Control" },
+    { type: "paragraph", html: "If your account is with a prop firm or evaluation service, you can't enable market data yourself. Data entitlements sit with the account provider, so an API login tied to an evaluation will keep returning &ldquo;Symbol is inaccessible&rdquo; until the firm turns data on for that account. The fix is to contact your firm's support, not Tradovate's." },
+    { type: "heading", text: "3. Expired or Wrong-Format Contract Symbol" },
+    { type: "paragraph", html: "Even fully entitled accounts hit this error when they request a contract that has rolled off, or a symbol in the wrong shape. Tradovate expects the standard CME front-month convention: a root symbol, a month code, and a year digit, for example <code>ESZ4</code>, <code>NQZ4</code>, <code>MESH5</code>. A continuous root alone, a delisted month, or a mistyped code can all resolve as inaccessible." },
+    { type: "heading", text: "4. API Access Add-On Not Active" },
+    { type: "paragraph", html: "The Tradovate Market Data API is a paid add-on layered on a qualifying live account. If the API Access subscription lapses, or the account no longer meets Tradovate's current minimum-balance requirement, market-data calls stop authorizing. Confirm the add-on is active in Application Settings before you go chasing deeper causes." },
+    { type: "heading", text: "5. Stale Session, or a Data-Distributor Requirement" },
+    { type: "paragraph", html: "A couple of edge cases round out the list. Code that worked can suddenly fail after a stretch of inactivity, and re-authenticating the session usually clears it, when prompted, update the market-data subscription and place a fresh order too. Separately, if you intend to <em>redistribute</em> Tradovate/CME quotes to other users, you have to register as a data distributor through the CME's contact process. Ordinary self-use doesn't need this, but distribution does." },
+    { type: "heading", text: "How to Fix \"Symbol Is Inaccessible\": Step-by-Step" },
+    { type: "heading", text: "Fixing a Missing CME Data Agreement" },
+    {
+      type: "list",
+      items: [
+        "Log in to the Tradovate web or desktop platform with the same live account your API key authenticates against.",
+        "Open <strong class='text-white'>Application Settings</strong> and go to the market-data / add-ons area where subscriptions are managed.",
+        "Find the market-data subscription and <strong class='text-white'>accept the CME (and any other exchange) market-data agreement</strong>, then subscribe to the exchange feed you need.",
+        "Confirm the subscription shows as active, then re-run your <code>md/subscribeQuote</code> call. A previously failing symbol should now stream.",
+      ],
+    },
+    { type: "heading", text: "Enabling Data on a Prop or Evaluation Account" },
+    {
+      type: "list",
+      items: [
+        "Identify who owns the account, a prop firm or evaluation provider, not you.",
+        "Don't try to accept a data agreement inside Tradovate. The option is controlled upstream and won't stick.",
+        "Contact the firm's support and ask them to enable market data (and API access if applicable) for your specific account.",
+        "Once they confirm, re-authenticate and retry your subscription.",
+      ],
+    },
+    { type: "heading", text: "Using a Valid Front-Month Contract Symbol" },
+    {
+      type: "list",
+      items: [
+        "Query Tradovate for the currently tradable contract instead of hard-coding a month. Use the contract/product lookup endpoints (for example <code>/contract/find</code> or <code>/product/find</code>) to get the live front-month name.",
+        "Build the symbol as <code>ROOT + month-code + year</code>, for instance <code>ESZ4</code> for the December E-mini S&amp;P 500.",
+        "Replace any expired month in your code with the value the lookup returned.",
+        "Re-subscribe. If entitlements are correct, a valid front-month symbol resolves immediately.",
+      ],
+    },
+    { type: "heading", text: "Refreshing a Stale Session or Entitlement" },
+    {
+      type: "list",
+      items: [
+        "Discard your cached access token and re-run the authentication flow to get a fresh token.",
+        "If the platform shows a prompt to update the market-data subscription, complete it, then place a small order or re-open the position screen so the entitlement re-checks.",
+        "Reconnect the market-data WebSocket and re-issue the subscription.",
+        "If it still fails across <em>every</em> symbol, loop back to Cause 1, the agreement, not the session, is the blocker.",
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error", "Meaning", "Fix"],
+      rows: [
+        ["{\"errorText\":\"Symbol is inaccessible\",\"errorCode\":\"UnknownSymbol\"} on every symbol", "No exchange market-data agreement on file", "Accept the CME data agreement and subscribe to the feed"],
+        ["Inaccessible only on one prop/eval account", "Data controlled by your account provider", "Ask your prop firm to enable market data"],
+        ["Inaccessible on a specific contract", "Expired or wrong-format symbol", "Look up and use the current front-month (e.g. ESZ4)"],
+        ["Was working, now fails after idle time", "Stale session / entitlement", "Re-authenticate; update subscription and place a fresh order"],
+        ["Fails right after adding API integration", "API Access add-on inactive or account underfunded", "Re-enable API Access on a funded live account"],
+        ["Fails when serving quotes to other users", "No data-distributor registration", "Register as a distributor via CME's contact process"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade sits between TradingView and Tradovate, so the automation half of your stack stays healthy even when a feed or symbol misbehaves:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Symbol Validation &amp; Front-Month Resolution</strong>, maps your alert to the live, tradable contract so a rolled-off month never reaches Tradovate as an order.",
+        "<strong class='text-white'>Entitlement-Aware Routing</strong>, respects your account and data-agreement state, so trades aren't fired blind against a feed you can't read.",
+        "<strong class='text-white'>Managed Authentication</strong>, keeps tokens and sessions fresh, so a stale login doesn't silently block your workflow.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors the corrected order across every connected account in one pass.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Ihr ES- oder NQ-Bot läuft rund, und dann kappt eine einzige <code>Symbol is inaccessible</code>-Antwort still Ihre Kursdaten. Keine Kurse bedeuten keine Einstiege und keine Ausstiege, der Bot sitzt blind da, während sich der Markt ohne Sie bewegt. Tradovates Market-Data-API gibt dies als <code>{\"errorText\":\"Symbol is inaccessible\",\"errorCode\":\"UnknownSymbol\",\"mode\":\"None\"}</code> zurück, und im Jahr 2026 taucht es immer noch in zwei sehr unterschiedlichen Varianten auf: ein harter <strong class='text-white'>Berechtigungs-Block</strong> (keine CME-Marktdatenvereinbarung hinterlegt) und ein weicher <strong class='text-white'>Symbol-Block</strong> (ein abgelaufener oder falsch geschriebener Kontrakt). Er betrifft <code>md/subscribeQuote</code>, <code>md/getChart</code> und historische Tick-Anfragen gleichermaßen, und er schlägt gerne direkt nach Code zu, der monatelang einwandfrei lief. Hier finden Sie jede Ursache, jede Lösung und wie PickMyTrade die Automatisierungsseite Ihres Stacks am Laufen hält, wenn ein Feed oder Symbol ausfällt." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste für „Symbol Is Inaccessible“",
+      items: [
+        "<strong class='text-white'>Keine CME-Marktdatenvereinbarung hinterlegt</strong>, akzeptieren Sie die CME-Datenvereinbarung in Tradovate und abonnieren Sie sie, bevor eine Echtzeit-API-Kursanfrage aufgelöst werden kann.",
+        "<strong class='text-white'>Prop- oder Evaluierungskonto</strong>, nur Ihr Kontoanbieter kann Daten aktivieren. Wenden Sie sich an Ihre Firma, nicht an Tradovate.",
+        "<strong class='text-white'>Abgelaufenes oder falsch formatiertes Symbol</strong>, fordern Sie den <em>aktuellen</em> Frontmonat-Kontrakt im Format <code>ROOT + Monatscode + Jahr</code> an (zum Beispiel <code>ESZ4</code>), niemals einen abgelaufenen Monat.",
+        "<strong class='text-white'>API-Access-Add-on nicht aktiv</strong>, bestätigen Sie, dass das API-Access-Abo aktiv ist und Ihr Live-Konto Tradovates aktuelle Mindestkapitalanforderung erfüllt.",
+        "<strong class='text-white'>Veraltete Sitzung oder Berechtigung</strong>, authentifizieren Sie sich erneut und aktualisieren Sie dann das Marktdaten-Abo und platzieren Sie eine neue Order, falls die Plattform Sie dazu auffordert.",
+        "<strong class='text-white'>Datenweiterverteilung</strong>, das Weitergeben von Kursen an andere Nutzer erfordert eine separate CME-Datenvertriebs-Registrierung.",
+      ],
+    },
+    { type: "heading", text: "Was „Symbol Is Inaccessible“ bedeutet" },
+    { type: "paragraph", html: "Trotz des <code>UnknownSymbol</code>-Fehlercodes bedeutet diese Meldung selten, dass der Kontrakt buchstäblich nicht existiert. In den meisten Fällen war Ihre WebSocket-Anfrage korrekt formuliert und erreichte den Server problemlos, der Server weigert sich schlicht, dieses Instrument an <em>Ihren</em> Login zu streamen. Es ist eine Autorisierungs- und Berechtigungsantwort, die als Lookup-Fehler getarnt ist. Der Hinweis ist die Konsistenz: Wenn derselbe Aufruf unabhängig davon fehlschlägt, welches Symbol oder welche ID Sie ihm vorwerfen, geht es um eine fehlende Marktdatenvereinbarung, nicht um einen Tippfehler." },
+    { type: "paragraph", html: "Es gibt zwei Grundkategorien. Die erste ist die Lizenzierung. Echtzeit-CME-Daten (und Daten anderer Börsen) über die API sind hinter einer Marktdatenvereinbarung und Gebühr der Börse verriegelt, und ohne diese kommt jedes Abo als unzugänglich zurück. Die zweite ist das Symbol selbst. Futures-Kontrakte laufen ab, sodass ein Symbol, das letztes Quartal der Frontmonat war, sagen wir ein abgelaufener ES-Monat, kein handelbares Listing mehr ist, und Tradovate behandelt es als unzugänglich. Herauszufinden, in welcher Kategorie Sie sich befinden, ist die eigentliche Aufgabe, testen Sie also zunächst, ob <em>irgendein</em> aktuelles Symbol sich auflösen lässt." },
+    { type: "heading", text: "Häufigste Ursachen für „Symbol Is Inaccessible“ im Jahr 2026" },
+    { type: "heading", text: "1. Fehlende CME-Marktdatenvereinbarung" },
+    { type: "paragraph", html: "Dies ist die häufigste Ursache, und sie ist unverblümt: Der Fehler taucht auf, weil Sie keine CME-Marktdatenvereinbarung bei Tradovate hinterlegt haben. Echtzeit-Börsendaten über die API tragen inzwischen eine monatliche Börsengebühr zusätzlich zu Tradovates eigenen Gebühren. Der genaue Preis hängt von der Börse und Ihrem Lizenztyp ab (nicht-professionell vs. professionell / Non-Display) und ändert sich mit der Zeit, betrachten Sie also jeden konkreten Dollarbetrag, den Sie in einem alten Beitrag finden, als veraltet und prüfen Sie die aktuellen CME- und Tradovate-Tarife." },
+    { type: "heading", text: "2. Ein Prop- oder Evaluierungskonto, das Sie nicht kontrollieren" },
+    { type: "paragraph", html: "Wenn Ihr Konto bei einer Prop-Firma oder einem Evaluierungsanbieter liegt, können Sie Marktdaten nicht selbst aktivieren. Datenberechtigungen liegen beim Kontoanbieter, sodass ein API-Login, der an eine Evaluierung gebunden ist, weiterhin „Symbol is inaccessible“ zurückgibt, bis die Firma die Daten für dieses Konto aktiviert. Die Lösung besteht darin, den Support Ihrer Firma zu kontaktieren, nicht den von Tradovate." },
+    { type: "heading", text: "3. Abgelaufenes oder falsch formatiertes Kontraktsymbol" },
+    { type: "paragraph", html: "Selbst vollständig berechtigte Konten stoßen auf diesen Fehler, wenn sie einen abgelaufenen Kontrakt oder ein falsch geformtes Symbol anfordern. Tradovate erwartet die übliche CME-Frontmonat-Konvention: ein Root-Symbol, einen Monatscode und eine Jahresziffer, zum Beispiel <code>ESZ4</code>, <code>NQZ4</code>, <code>MESH5</code>. Ein alleiniger Continuous-Root, ein delisteter Monat oder ein falsch eingegebener Code können allesamt als unzugänglich aufgelöst werden." },
+    { type: "heading", text: "4. API-Access-Add-on nicht aktiv" },
+    { type: "paragraph", html: "Die Tradovate Market Data API ist ein kostenpflichtiges Add-on, das auf ein qualifizierendes Live-Konto aufsetzt. Läuft das API-Access-Abo aus oder erfüllt das Konto die aktuelle Mindestguthaben-Anforderung von Tradovate nicht mehr, hören Marktdatenaufrufe auf, autorisiert zu werden. Bestätigen Sie in den Application Settings, dass das Add-on aktiv ist, bevor Sie tiefer nach Ursachen suchen." },
+    { type: "heading", text: "5. Veraltete Sitzung oder eine Datenvertriebs-Anforderung" },
+    { type: "paragraph", html: "Ein paar Randfälle runden die Liste ab. Code, der funktionierte, kann nach einer Phase der Inaktivität plötzlich fehlschlagen, und eine erneute Authentifizierung der Sitzung behebt das meist, wenn Sie dazu aufgefordert werden, aktualisieren Sie auch das Marktdaten-Abo und platzieren eine neue Order. Getrennt davon: Wenn Sie beabsichtigen, Tradovate-/CME-Kurse an andere Nutzer <em>weiterzuverteilen</em>, müssen Sie sich über den Kontaktprozess der CME als Datenvertrieb registrieren. Für die gewöhnliche Eigennutzung ist das nicht erforderlich, für die Verteilung schon." },
+    { type: "heading", text: "So beheben Sie „Symbol Is Inaccessible“: Schritt für Schritt" },
+    { type: "heading", text: "Eine fehlende CME-Datenvereinbarung beheben" },
+    {
+      type: "list",
+      items: [
+        "Melden Sie sich in der Tradovate-Web- oder Desktop-Plattform mit demselben Live-Konto an, gegen das sich Ihr API-Schlüssel authentifiziert.",
+        "Öffnen Sie <strong class='text-white'>Application Settings</strong> und gehen Sie zum Bereich Marktdaten / Add-ons, in dem Abos verwaltet werden.",
+        "Finden Sie das Marktdaten-Abo und <strong class='text-white'>akzeptieren Sie die CME- (und jede andere Börsen-) Marktdatenvereinbarung</strong>, abonnieren Sie dann den benötigten Börsen-Feed.",
+        "Bestätigen Sie, dass das Abo als aktiv angezeigt wird, und führen Sie dann Ihren <code>md/subscribeQuote</code>-Aufruf erneut aus. Ein zuvor fehlgeschlagenes Symbol sollte nun streamen.",
+      ],
+    },
+    { type: "heading", text: "Daten auf einem Prop- oder Evaluierungskonto aktivieren" },
+    {
+      type: "list",
+      items: [
+        "Ermitteln Sie, wem das Konto gehört, einer Prop-Firma oder einem Evaluierungsanbieter, nicht Ihnen.",
+        "Versuchen Sie nicht, eine Datenvereinbarung innerhalb von Tradovate zu akzeptieren. Die Option wird vorgelagert gesteuert und bleibt nicht bestehen.",
+        "Kontaktieren Sie den Support der Firma und bitten Sie ihn, Marktdaten (und API-Zugriff, falls zutreffend) für Ihr spezifisches Konto zu aktivieren.",
+        "Sobald dies bestätigt ist, authentifizieren Sie sich erneut und versuchen Sie Ihr Abo erneut.",
+      ],
+    },
+    { type: "heading", text: "Ein gültiges Frontmonat-Kontraktsymbol verwenden" },
+    {
+      type: "list",
+      items: [
+        "Fragen Sie Tradovate nach dem aktuell handelbaren Kontrakt, anstatt einen Monat fest einzuprogrammieren. Verwenden Sie die Contract-/Product-Lookup-Endpunkte (zum Beispiel <code>/contract/find</code> oder <code>/product/find</code>), um den aktuellen Frontmonat-Namen zu erhalten.",
+        "Bauen Sie das Symbol als <code>ROOT + Monatscode + Jahr</code> auf, zum Beispiel <code>ESZ4</code> für den Dezember-E-mini-S&amp;P-500.",
+        "Ersetzen Sie jeden abgelaufenen Monat in Ihrem Code durch den vom Lookup zurückgegebenen Wert.",
+        "Abonnieren Sie erneut. Sind die Berechtigungen korrekt, löst sich ein gültiges Frontmonat-Symbol sofort auf.",
+      ],
+    },
+    { type: "heading", text: "Eine veraltete Sitzung oder Berechtigung auffrischen" },
+    {
+      type: "list",
+      items: [
+        "Verwerfen Sie Ihr gecachtes Zugriffstoken und führen Sie den Authentifizierungsablauf erneut aus, um ein frisches Token zu erhalten.",
+        "Wenn die Plattform eine Aufforderung zur Aktualisierung des Marktdaten-Abos anzeigt, schließen Sie diese ab, platzieren Sie dann eine kleine Order oder öffnen Sie den Positionsbildschirm erneut, damit die Berechtigung neu geprüft wird.",
+        "Verbinden Sie den Marktdaten-WebSocket neu und stellen Sie das Abo erneut aus.",
+        "Wenn es weiterhin bei <em>jedem</em> Symbol fehlschlägt, kehren Sie zu Ursache 1 zurück, die Vereinbarung, nicht die Sitzung, ist die Blockade.",
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Fehler", "Bedeutung", "Lösung"],
+      rows: [
+        ["{\"errorText\":\"Symbol is inaccessible\",\"errorCode\":\"UnknownSymbol\"} bei jedem Symbol", "Keine Börsen-Marktdatenvereinbarung hinterlegt", "CME-Datenvereinbarung akzeptieren und den Feed abonnieren"],
+        ["Unzugänglich nur bei einem Prop-/Evaluierungskonto", "Daten werden von Ihrem Kontoanbieter kontrolliert", "Ihre Prop-Firma bitten, Marktdaten zu aktivieren"],
+        ["Unzugänglich bei einem bestimmten Kontrakt", "Abgelaufenes oder falsch formatiertes Symbol", "Aktuellen Frontmonat nachschlagen und verwenden (z. B. ESZ4)"],
+        ["Funktionierte, schlägt nach Inaktivität fehl", "Veraltete Sitzung / Berechtigung", "Erneut authentifizieren; Abo aktualisieren und neue Order platzieren"],
+        ["Schlägt direkt nach Hinzufügen der API-Integration fehl", "API-Access-Add-on inaktiv oder Konto unterfinanziert", "API Access auf einem finanzierten Live-Konto reaktivieren"],
+        ["Schlägt beim Bereitstellen von Kursen für andere Nutzer fehl", "Keine Datenvertriebs-Registrierung", "Über den Kontaktprozess der CME als Vertrieb registrieren"],
+      ],
+    },
+    { type: "heading", text: "So verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade sitzt zwischen TradingView und Tradovate, sodass die Automatisierungsseite Ihres Stacks gesund bleibt, selbst wenn ein Feed oder Symbol Probleme macht:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Symbolvalidierung &amp; Frontmonat-Auflösung</strong>, ordnet Ihren Alert dem aktuellen, handelbaren Kontrakt zu, sodass ein abgelaufener Monat nie als Order bei Tradovate ankommt.",
+        "<strong class='text-white'>Berechtigungsbewusstes Routing</strong>, respektiert den Status Ihres Kontos und Ihrer Datenvereinbarung, sodass Trades nicht blind gegen einen Feed abgefeuert werden, den Sie nicht lesen können.",
+        "<strong class='text-white'>Verwaltete Authentifizierung</strong>, hält Token und Sitzungen frisch, sodass ein veralteter Login Ihren Workflow nicht still blockiert.",
+        "<strong class='text-white'>Multi-Account-Sync</strong>, spiegelt die korrigierte Order über jedes verbundene Konto in einem Durchgang.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Su bot de ES o NQ está funcionando sin problemas, y de repente una respuesta <code>Symbol is inaccessible</code> corta silenciosamente sus cotizaciones. Sin cotizaciones no hay entradas ni salidas, el bot simplemente se queda ahí, ciego, mientras el mercado se mueve sin usted. La API de datos de mercado de Tradovate devuelve esto como <code>{\"errorText\":\"Symbol is inaccessible\",\"errorCode\":\"UnknownSymbol\",\"mode\":\"None\"}</code>, y en 2026 todavía aparece en dos variantes muy distintas: un <strong class='text-white'>bloqueo de derechos de acceso</strong> duro (sin acuerdo de datos de mercado de la CME registrado) y un <strong class='text-white'>bloqueo de símbolo</strong> blando (un contrato caducado o mal escrito). Afecta por igual a <code>md/subscribeQuote</code>, <code>md/getChart</code> y a las solicitudes de datos históricos por ticks, y le encanta atacar justo después de un código que funcionó bien durante meses. Aquí tiene todas las causas, todas las soluciones, y cómo PickMyTrade mantiene sana la mitad de automatización de su stack cuando un feed o símbolo falla." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para «Symbol Is Inaccessible»",
+      items: [
+        "<strong class='text-white'>Sin acuerdo de datos de mercado de la CME registrado</strong>, acepte y suscríbase al acuerdo de datos de la CME en Tradovate antes de que cualquier solicitud de cotización de la API en tiempo real pueda resolverse.",
+        "<strong class='text-white'>Cuenta prop o de evaluación</strong>, solo su proveedor de la cuenta puede habilitar los datos. Contacte a su firma, no a Tradovate.",
+        "<strong class='text-white'>Símbolo caducado o con formato incorrecto</strong>, solicite el contrato de <em>mes de vencimiento actual</em> en el formato <code>RAÍZ + código de mes + año</code> (por ejemplo, <code>ESZ4</code>), nunca un mes ya vencido.",
+        "<strong class='text-white'>Complemento API Access no activo</strong>, confirme que la suscripción de API Access está activa y que su cuenta real cumple el requisito de fondos actual de Tradovate.",
+        "<strong class='text-white'>Sesión o derecho de acceso caducado</strong>, vuelva a autenticarse y luego actualice la suscripción de datos de mercado y coloque una orden nueva si la plataforma se lo solicita.",
+        "<strong class='text-white'>Redistribución de datos</strong>, enviar cotizaciones a otros usuarios requiere un registro independiente como distribuidor de datos de la CME.",
+      ],
+    },
+    { type: "heading", text: "Qué significa «Symbol Is Inaccessible»" },
+    { type: "paragraph", html: "A pesar del código de error <code>UnknownSymbol</code>, este mensaje rara vez significa que el contrato literalmente no exista. En la mayoría de los casos su solicitud WebSocket estaba bien formada y llegó al servidor sin problemas, el servidor simplemente se niega a transmitir ese instrumento a <em>su</em> inicio de sesión. Es una respuesta de autorización y derechos de acceso disfrazada de fallo de búsqueda. La pista es la consistencia: cuando la misma llamada falla sin importar qué símbolo o ID le lance, está ante un acuerdo de datos de mercado ausente, no ante una errata." },
+    { type: "paragraph", html: "Hay dos categorías raíz. La primera es la licencia. Los datos en tiempo real de la CME (y de otras bolsas) a través de la API están bloqueados detrás de un acuerdo de datos de mercado de la bolsa y una tarifa, y sin ello cada suscripción vuelve como inaccesible. La segunda es el propio símbolo. Los contratos de futuros caducan, así que un símbolo que fue el mes de vencimiento el trimestre pasado, digamos un mes de ES ya caducado, ya no es un listado negociable, y Tradovate lo trata como inaccesible. Averiguar en qué categoría está es todo el trabajo, así que empiece comprobando si <em>algún</em> símbolo vigente se resuelve." },
+    { type: "heading", text: "Principales causas de «Symbol Is Inaccessible» en 2026" },
+    { type: "heading", text: "1. Acuerdo de datos de mercado de la CME ausente" },
+    { type: "paragraph", html: "Esta es la causa número uno, y es contundente: el error aparece porque no tiene el acuerdo de datos de mercado de la CME registrado con Tradovate. Los datos de bolsa en tiempo real a través de la API ahora conllevan una tarifa mensual de la bolsa además de los propios cargos de Tradovate. El precio exacto depende de la bolsa y de su tipo de licencia (no profesional frente a profesional / no visualización) y cambia con el tiempo, así que trate cualquier cifra concreta en dólares que encuentre en una publicación antigua como obsoleta y consulte las tarifas actuales de la CME y de Tradovate." },
+    { type: "heading", text: "2. Una cuenta prop o de evaluación que usted no controla" },
+    { type: "paragraph", html: "Si su cuenta está en una firma prop o un servicio de evaluación, usted no puede habilitar los datos de mercado por su cuenta. Los derechos de datos están en manos del proveedor de la cuenta, así que un inicio de sesión de API vinculado a una evaluación seguirá devolviendo «Symbol is inaccessible» hasta que la firma active los datos para esa cuenta. La solución es contactar al soporte de su firma, no al de Tradovate." },
+    { type: "heading", text: "3. Símbolo de contrato caducado o con formato incorrecto" },
+    { type: "paragraph", html: "Incluso las cuentas con derechos completos se topan con este error cuando solicitan un contrato que ya venció, o un símbolo con la forma equivocada. Tradovate espera la convención estándar de la CME para el mes de vencimiento: un símbolo raíz, un código de mes y un dígito de año, por ejemplo <code>ESZ4</code>, <code>NQZ4</code>, <code>MESH5</code>. Una raíz continua sola, un mes deslistado o un código mal escrito pueden resolverse todos como inaccesibles." },
+    { type: "heading", text: "4. Complemento API Access no activo" },
+    { type: "paragraph", html: "La Tradovate Market Data API es un complemento de pago que se apoya en una cuenta real que cumple los requisitos. Si la suscripción de API Access caduca, o la cuenta ya no cumple el requisito actual de saldo mínimo de Tradovate, las llamadas de datos de mercado dejan de autorizarse. Confirme que el complemento está activo en Application Settings antes de perseguir causas más profundas." },
+    { type: "heading", text: "5. Sesión caducada, o un requisito de distribuidor de datos" },
+    { type: "paragraph", html: "Un par de casos límite completan la lista. Un código que funcionaba puede fallar de repente tras un periodo de inactividad, y volver a autenticar la sesión suele resolverlo, cuando se le solicite, actualice también la suscripción de datos de mercado y coloque una orden nueva. Por separado, si tiene intención de <em>redistribuir</em> cotizaciones de Tradovate/CME a otros usuarios, debe registrarse como distribuidor de datos a través del proceso de contacto de la CME. El uso propio ordinario no lo necesita, pero la distribución sí." },
+    { type: "heading", text: "Cómo solucionar «Symbol Is Inaccessible»: paso a paso" },
+    { type: "heading", text: "Solucionar un acuerdo de datos de la CME ausente" },
+    {
+      type: "list",
+      items: [
+        "Inicie sesión en la plataforma web o de escritorio de Tradovate con la misma cuenta real contra la que se autentica su clave de API.",
+        "Abra <strong class='text-white'>Application Settings</strong> y vaya al área de datos de mercado / complementos donde se gestionan las suscripciones.",
+        "Encuentre la suscripción de datos de mercado y <strong class='text-white'>acepte el acuerdo de datos de mercado de la CME (y de cualquier otra bolsa)</strong>, y luego suscríbase al feed de la bolsa que necesite.",
+        "Confirme que la suscripción aparece como activa y luego vuelva a ejecutar su llamada <code>md/subscribeQuote</code>. Un símbolo que antes fallaba ahora debería transmitir.",
+      ],
+    },
+    { type: "heading", text: "Habilitar datos en una cuenta prop o de evaluación" },
+    {
+      type: "list",
+      items: [
+        "Identifique quién es el propietario de la cuenta, una firma prop o un proveedor de evaluación, no usted.",
+        "No intente aceptar un acuerdo de datos dentro de Tradovate. La opción se controla desde arriba y no se mantendrá.",
+        "Contacte al soporte de la firma y pídales que habiliten los datos de mercado (y el acceso a la API si corresponde) para su cuenta específica.",
+        "Una vez que lo confirmen, vuelva a autenticarse y reintente su suscripción.",
+      ],
+    },
+    { type: "heading", text: "Usar un símbolo de contrato de mes de vencimiento válido" },
+    {
+      type: "list",
+      items: [
+        "Consulte a Tradovate por el contrato actualmente negociable en lugar de codificar un mes de forma fija. Use los endpoints de búsqueda de contrato/producto (por ejemplo <code>/contract/find</code> o <code>/product/find</code>) para obtener el nombre del mes de vencimiento vigente.",
+        "Construya el símbolo como <code>RAÍZ + código de mes + año</code>, por ejemplo <code>ESZ4</code> para el E-mini S&amp;P 500 de diciembre.",
+        "Reemplace cualquier mes caducado en su código por el valor que devolvió la búsqueda.",
+        "Vuelva a suscribirse. Si los derechos de acceso son correctos, un símbolo de mes de vencimiento válido se resuelve de inmediato.",
+      ],
+    },
+    { type: "heading", text: "Renovar una sesión o derecho de acceso caducado" },
+    {
+      type: "list",
+      items: [
+        "Descarte su token de acceso en caché y vuelva a ejecutar el flujo de autenticación para obtener un token nuevo.",
+        "Si la plataforma muestra un aviso para actualizar la suscripción de datos de mercado, complételo, luego coloque una pequeña orden o vuelva a abrir la pantalla de posiciones para que el derecho de acceso se vuelva a comprobar.",
+        "Vuelva a conectar el WebSocket de datos de mercado y vuelva a emitir la suscripción.",
+        "Si sigue fallando en <em>todos</em> los símbolos, vuelva a la Causa 1, el acuerdo, no la sesión, es el obstáculo.",
+      ],
+    },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Error", "Significado", "Solución"],
+      rows: [
+        ["{\"errorText\":\"Symbol is inaccessible\",\"errorCode\":\"UnknownSymbol\"} en todos los símbolos", "Sin acuerdo de datos de mercado de la bolsa registrado", "Acepte el acuerdo de datos de la CME y suscríbase al feed"],
+        ["Inaccesible solo en una cuenta prop/de evaluación", "Datos controlados por su proveedor de cuenta", "Pida a su firma prop que habilite los datos de mercado"],
+        ["Inaccesible en un contrato específico", "Símbolo caducado o con formato incorrecto", "Busque y use el mes de vencimiento actual (p. ej. ESZ4)"],
+        ["Funcionaba, ahora falla tras tiempo inactivo", "Sesión / derecho de acceso caducado", "Vuelva a autenticarse; actualice la suscripción y coloque una orden nueva"],
+        ["Falla justo tras añadir la integración de la API", "Complemento API Access inactivo o cuenta infrafinanciada", "Reactive API Access en una cuenta real con fondos"],
+        ["Falla al servir cotizaciones a otros usuarios", "Sin registro de distribuidor de datos", "Regístrese como distribuidor a través del proceso de contacto de la CME"],
+      ],
+    },
+    { type: "heading", text: "Cómo evitarlo con PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade se sitúa entre TradingView y Tradovate, de modo que la mitad de automatización de su stack se mantiene sana incluso cuando un feed o símbolo se comporta mal:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validación de símbolos y resolución del mes de vencimiento</strong>, mapea su alerta al contrato vigente y negociable para que un mes ya caducado nunca llegue a Tradovate como orden.",
+        "<strong class='text-white'>Enrutamiento consciente de los derechos de acceso</strong>, respeta el estado de su cuenta y de su acuerdo de datos, para que las operaciones no se disparen a ciegas contra un feed que no puede leer.",
+        "<strong class='text-white'>Autenticación gestionada</strong>, mantiene los tokens y las sesiones vigentes, para que un inicio de sesión caducado no bloquee silenciosamente su flujo de trabajo.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, refleja la orden corregida en todas las cuentas conectadas en una sola pasada.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Votre bot ES ou NQ tourne parfaitement, puis une réponse <code>Symbol is inaccessible</code> coupe discrètement vos cotations. Pas de cotations signifie pas d'entrées ni de sorties, le bot reste là, aveugle, pendant que le marché bouge sans vous. L'API de données de marché de Tradovate renvoie cela sous la forme <code>{\"errorText\":\"Symbol is inaccessible\",\"errorCode\":\"UnknownSymbol\",\"mode\":\"None\"}</code>, et en 2026, cela se présente encore sous deux formes bien différentes : un <strong class='text-white'>blocage de droits d'accès</strong> dur (aucun accord de données de marché CME enregistré) et un <strong class='text-white'>blocage de symbole</strong> plus souple (un contrat expiré ou mal saisi). Cela touche aussi bien <code>md/subscribeQuote</code>, <code>md/getChart</code>, que les requêtes de ticks historiques, et cela adore frapper juste après du code qui a fonctionné correctement pendant des mois. Voici toutes les causes, toutes les solutions, et comment PickMyTrade maintient la partie automatisation de votre stack opérationnelle lorsqu'un flux ou un symbole tombe en panne." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour « Symbol Is Inaccessible »",
+      items: [
+        "<strong class='text-white'>Aucun accord de données de marché CME enregistré</strong>, acceptez et souscrivez à l'accord de données CME dans Tradovate avant qu'une requête de cotation API en temps réel puisse se résoudre.",
+        "<strong class='text-white'>Compte prop ou d'évaluation</strong>, seul votre fournisseur de compte peut activer les données. Contactez votre firme, pas Tradovate.",
+        "<strong class='text-white'>Symbole expiré ou au mauvais format</strong>, demandez le contrat du <em>mois d'échéance actuel</em> au format <code>RACINE + code du mois + année</code> (par exemple <code>ESZ4</code>), jamais un mois déjà expiré.",
+        "<strong class='text-white'>Complément API Access non actif</strong>, vérifiez que l'abonnement API Access est actif et que votre compte réel remplit l'exigence de financement actuelle de Tradovate.",
+        "<strong class='text-white'>Session ou droit d'accès périmé</strong>, réauthentifiez-vous, puis mettez à jour l'abonnement de données de marché et passez un nouvel ordre si la plateforme vous y invite.",
+        "<strong class='text-white'>Redistribution des données</strong>, envoyer des cotations en aval à d'autres utilisateurs nécessite un enregistrement distinct en tant que distributeur de données CME.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie « Symbol Is Inaccessible »" },
+    { type: "paragraph", html: "Malgré le code d'erreur <code>UnknownSymbol</code>, ce message ne signifie que rarement que le contrat n'existe littéralement pas. Dans la plupart des cas, votre requête WebSocket était bien formée et a atteint le serveur sans problème, le serveur refuse simplement de diffuser cet instrument vers <em>votre</em> identifiant. C'est une réponse d'autorisation et de droits d'accès déguisée en échec de recherche. L'indice, c'est la cohérence : lorsque le même appel échoue quel que soit le symbole ou l'identifiant que vous lui soumettez, vous êtes face à un accord de données de marché manquant, pas à une faute de frappe." },
+    { type: "paragraph", html: "Il y a deux catégories fondamentales. La première est la licence. Les données CME (et d'autres bourses) en temps réel via l'API sont verrouillées derrière un accord de données de marché de la bourse et des frais, et sans cela, chaque abonnement revient comme inaccessible. La seconde est le symbole lui-même. Les contrats à terme expirent, donc un symbole qui était le mois d'échéance le trimestre dernier, disons un mois ES expiré, n'est plus une cotation négociable, et Tradovate le traite comme inaccessible. Déterminer dans quelle catégorie vous vous trouvez est tout le travail, alors commencez par tester si <em>un</em> symbole en cours se résout." },
+    { type: "heading", text: "Principales causes de « Symbol Is Inaccessible » en 2026" },
+    { type: "heading", text: "1. Accord de données de marché CME manquant" },
+    { type: "paragraph", html: "C'est la cause numéro un, et elle est simple : l'erreur apparaît parce que vous n'avez pas l'accord de données de marché CME enregistré auprès de Tradovate. Les données de bourse en temps réel via l'API comportent désormais des frais mensuels de bourse en plus des propres frais de Tradovate. Le tarif exact dépend de la bourse et de votre type de licence (non professionnel contre professionnel / non-affichage), et il évolue dans le temps, considérez donc tout montant précis en dollars trouvé dans un ancien article comme obsolète et vérifiez les tarifs actuels de la CME et de Tradovate." },
+    { type: "heading", text: "2. Un compte prop ou d'évaluation que vous ne contrôlez pas" },
+    { type: "paragraph", html: "Si votre compte est chez une firme prop ou un fournisseur d'évaluation, vous ne pouvez pas activer les données de marché vous-même. Les droits d'accès aux données relèvent du fournisseur de compte, si bien qu'un identifiant API lié à une évaluation continuera de renvoyer « Symbol is inaccessible » jusqu'à ce que la firme active les données pour ce compte. La solution consiste à contacter le support de votre firme, pas celui de Tradovate." },
+    { type: "heading", text: "3. Symbole de contrat expiré ou au mauvais format" },
+    { type: "paragraph", html: "Même des comptes entièrement habilités rencontrent cette erreur lorsqu'ils demandent un contrat qui a expiré, ou un symbole de forme incorrecte. Tradovate attend la convention standard CME du mois d'échéance : un symbole racine, un code de mois et un chiffre d'année, par exemple <code>ESZ4</code>, <code>NQZ4</code>, <code>MESH5</code>. Une racine continue seule, un mois radié, ou un code mal saisi peuvent tous se résoudre comme inaccessibles." },
+    { type: "heading", text: "4. Complément API Access non actif" },
+    { type: "paragraph", html: "L'API Tradovate Market Data est un complément payant s'appuyant sur un compte réel éligible. Si l'abonnement API Access expire, ou si le compte ne remplit plus l'exigence actuelle de solde minimum de Tradovate, les appels de données de marché cessent d'être autorisés. Vérifiez que le complément est actif dans Application Settings avant de chercher des causes plus profondes." },
+    { type: "heading", text: "5. Session périmée, ou une exigence de distributeur de données" },
+    { type: "paragraph", html: "Quelques cas particuliers complètent la liste. Un code qui fonctionnait peut soudainement échouer après une période d'inactivité, et réauthentifier la session résout généralement le problème, lorsque vous y êtes invité, mettez également à jour l'abonnement de données de marché et passez un nouvel ordre. Par ailleurs, si vous avez l'intention de <em>redistribuer</em> les cotations Tradovate/CME à d'autres utilisateurs, vous devez vous enregistrer comme distributeur de données via le processus de contact de la CME. Un usage propre ordinaire n'en a pas besoin, mais la distribution, si." },
+    { type: "heading", text: "Comment corriger « Symbol Is Inaccessible » : étape par étape" },
+    { type: "heading", text: "Corriger un accord de données CME manquant" },
+    {
+      type: "list",
+      items: [
+        "Connectez-vous à la plateforme web ou de bureau Tradovate avec le même compte réel contre lequel s'authentifie votre clé API.",
+        "Ouvrez <strong class='text-white'>Application Settings</strong> et rendez-vous dans la zone données de marché / compléments où les abonnements sont gérés.",
+        "Trouvez l'abonnement de données de marché et <strong class='text-white'>acceptez l'accord de données de marché CME (et de toute autre bourse)</strong>, puis abonnez-vous au flux de la bourse dont vous avez besoin.",
+        "Vérifiez que l'abonnement s'affiche comme actif, puis relancez votre appel <code>md/subscribeQuote</code>. Un symbole qui échouait auparavant devrait maintenant se diffuser.",
+      ],
+    },
+    { type: "heading", text: "Activer les données sur un compte prop ou d'évaluation" },
+    {
+      type: "list",
+      items: [
+        "Identifiez le propriétaire du compte, une firme prop ou un fournisseur d'évaluation, pas vous.",
+        "N'essayez pas d'accepter un accord de données à l'intérieur de Tradovate. L'option est contrôlée en amont et ne tiendra pas.",
+        "Contactez le support de la firme et demandez-lui d'activer les données de marché (et l'accès API si applicable) pour votre compte spécifique.",
+        "Une fois qu'ils confirment, réauthentifiez-vous et retentez votre abonnement.",
+      ],
+    },
+    { type: "heading", text: "Utiliser un symbole de contrat du mois d'échéance valide" },
+    {
+      type: "list",
+      items: [
+        "Interrogez Tradovate pour connaître le contrat actuellement négociable au lieu de coder un mois en dur. Utilisez les points de terminaison de recherche de contrat/produit (par exemple <code>/contract/find</code> ou <code>/product/find</code>) pour obtenir le nom du mois d'échéance en cours.",
+        "Construisez le symbole sous la forme <code>RACINE + code du mois + année</code>, par exemple <code>ESZ4</code> pour l'E-mini S&amp;P 500 de décembre.",
+        "Remplacez tout mois expiré dans votre code par la valeur renvoyée par la recherche.",
+        "Réabonnez-vous. Si les droits d'accès sont corrects, un symbole de mois d'échéance valide se résout immédiatement.",
+      ],
+    },
+    { type: "heading", text: "Rafraîchir une session ou un droit d'accès périmé" },
+    {
+      type: "list",
+      items: [
+        "Supprimez votre jeton d'accès en cache et relancez le flux d'authentification pour obtenir un jeton frais.",
+        "Si la plateforme affiche une invite pour mettre à jour l'abonnement de données de marché, complétez-la, puis passez un petit ordre ou rouvrez l'écran des positions afin que le droit d'accès soit revérifié.",
+        "Reconnectez le WebSocket de données de marché et réémettez l'abonnement.",
+        "Si cela échoue toujours sur <em>chaque</em> symbole, revenez à la Cause 1, l'accord, pas la session, est le blocage.",
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Erreur", "Signification", "Solution"],
+      rows: [
+        ["{\"errorText\":\"Symbol is inaccessible\",\"errorCode\":\"UnknownSymbol\"} sur chaque symbole", "Aucun accord de données de marché de la bourse enregistré", "Acceptez l'accord de données CME et abonnez-vous au flux"],
+        ["Inaccessible uniquement sur un compte prop/évaluation", "Données contrôlées par votre fournisseur de compte", "Demandez à votre firme prop d'activer les données de marché"],
+        ["Inaccessible sur un contrat spécifique", "Symbole expiré ou au mauvais format", "Recherchez et utilisez le mois d'échéance actuel (par ex. ESZ4)"],
+        ["Fonctionnait, échoue maintenant après une période d'inactivité", "Session / droit d'accès périmé", "Réauthentifiez-vous ; mettez à jour l'abonnement et passez un nouvel ordre"],
+        ["Échoue juste après l'ajout de l'intégration API", "Complément API Access inactif ou compte sous-financé", "Réactivez API Access sur un compte réel financé"],
+        ["Échoue lors de la diffusion de cotations à d'autres utilisateurs", "Aucun enregistrement de distributeur de données", "Enregistrez-vous comme distributeur via le processus de contact de la CME"],
+      ],
+    },
+    { type: "heading", text: "Comment éviter cela avec PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade se place entre TradingView et Tradovate, si bien que la moitié automatisation de votre stack reste saine même lorsqu'un flux ou un symbole se comporte mal :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validation des symboles et résolution du mois d'échéance</strong>, associe votre alerte au contrat en cours et négociable, afin qu'un mois expiré n'atteigne jamais Tradovate sous forme d'ordre.",
+        "<strong class='text-white'>Routage tenant compte des droits d'accès</strong>, respecte l'état de votre compte et de votre accord de données, afin que les trades ne soient jamais lancés à l'aveugle contre un flux que vous ne pouvez pas lire.",
+        "<strong class='text-white'>Authentification gérée</strong>, maintient les jetons et les sessions à jour, afin qu'une connexion périmée ne bloque pas silencieusement votre flux de travail.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, réplique l'ordre corrigé sur chaque compte connecté en un seul passage.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Il vostro bot ES o NQ sta girando senza intoppi, e poi una risposta <code>Symbol is inaccessible</code> interrompe silenziosamente le vostre quotazioni. Niente quotazioni significa niente entrate e niente uscite, il bot resta lì, cieco, mentre il mercato si muove senza di voi. L'API dati di mercato di Tradovate restituisce questo come <code>{\"errorText\":\"Symbol is inaccessible\",\"errorCode\":\"UnknownSymbol\",\"mode\":\"None\"}</code>, e nel 2026 si presenta ancora in due varianti molto diverse: un <strong class='text-white'>blocco da diritti dati</strong> duro (nessun accordo dati di mercato CME registrato) e un <strong class='text-white'>blocco da simbolo</strong> morbido (un contratto scaduto o digitato male). Colpisce sia <code>md/subscribeQuote</code>, <code>md/getChart</code>, sia le richieste di tick storici, e adora colpire proprio dopo codice che ha funzionato bene per mesi. Ecco ogni causa, ogni soluzione, e come PickMyTrade mantiene sana la parte di automazione del vostro stack quando un feed o un simbolo si oscura." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per «Symbol Is Inaccessible»",
+      items: [
+        "<strong class='text-white'>Nessun accordo dati di mercato CME registrato</strong>, accettate e sottoscrivete l'accordo dati CME in Tradovate prima che qualsiasi richiesta di quotazione API in tempo reale possa risolversi.",
+        "<strong class='text-white'>Conto prop o di valutazione</strong>, solo il vostro fornitore di conto può abilitare i dati. Contattate la vostra società, non Tradovate.",
+        "<strong class='text-white'>Simbolo scaduto o in formato errato</strong>, richiedete il contratto del <em>mese di scadenza attuale</em> nel formato <code>RADICE + codice mese + anno</code> (ad esempio <code>ESZ4</code>), mai un mese già scaduto.",
+        "<strong class='text-white'>Componente aggiuntivo API Access non attivo</strong>, confermate che l'abbonamento API Access è attivo e che il vostro conto reale soddisfa l'attuale requisito di finanziamento di Tradovate.",
+        "<strong class='text-white'>Sessione o diritto dati obsoleto</strong>, riautenticatevi, quindi aggiornate l'abbonamento ai dati di mercato e inviate un nuovo ordine se la piattaforma ve lo richiede.",
+        "<strong class='text-white'>Ridistribuzione dei dati</strong>, l'invio di quotazioni ad altri utenti richiede una registrazione separata come distributore di dati CME.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa «Symbol Is Inaccessible»" },
+    { type: "paragraph", html: "Nonostante il codice errore <code>UnknownSymbol</code>, questo messaggio raramente significa che il contratto letteralmente non esista. Nella maggior parte dei casi la vostra richiesta WebSocket era ben formata e ha raggiunto il server senza problemi, il server semplicemente rifiuta di trasmettere quello strumento al <em>vostro</em> login. È una risposta di autorizzazione e diritti dati camuffata da errore di ricerca. L'indizio è la coerenza: quando la stessa chiamata fallisce indipendentemente dal simbolo o dall'ID che le proponete, siete di fronte a un accordo dati di mercato mancante, non a un errore di battitura." },
+    { type: "paragraph", html: "Ci sono due categorie di base. La prima è la licenza. I dati CME (e di altre borse) in tempo reale tramite l'API sono bloccati dietro un accordo dati di mercato della borsa e una tariffa, e senza di esso ogni sottoscrizione torna come inaccessibile. La seconda è il simbolo stesso. I contratti future scadono, quindi un simbolo che era il mese di scadenza il trimestre scorso, diciamo un mese ES scaduto, non è più una quotazione negoziabile, e Tradovate lo tratta come inaccessibile. Capire in quale categoria vi trovate è tutto il lavoro, quindi iniziate testando se <em>qualsiasi</em> simbolo attuale si risolve." },
+    { type: "heading", text: "Principali cause di «Symbol Is Inaccessible» nel 2026" },
+    { type: "heading", text: "1. Accordo dati di mercato CME mancante" },
+    { type: "paragraph", html: "Questa è la causa numero uno, ed è diretta: l'errore compare perché non avete l'accordo dati di mercato CME registrato presso Tradovate. I dati di borsa in tempo reale tramite l'API ora comportano una tariffa mensile della borsa in aggiunta alle spese di Tradovate stesse. Il prezzo esatto dipende dalla borsa e dal vostro tipo di licenza (non professionale rispetto a professionale / non-display) e cambia nel tempo, quindi considerate obsoleta qualsiasi cifra specifica in dollari trovata in un vecchio post e verificate le tariffe attuali di CME e Tradovate." },
+    { type: "heading", text: "2. Un conto prop o di valutazione che non controllate" },
+    { type: "paragraph", html: "Se il vostro conto è presso una società prop o un servizio di valutazione, non potete abilitare i dati di mercato da soli. I diritti dati risiedono presso il fornitore del conto, quindi un login API legato a una valutazione continuerà a restituire «Symbol is inaccessible» finché la società non attiva i dati per quel conto. La soluzione è contattare il supporto della vostra società, non quello di Tradovate." },
+    { type: "heading", text: "3. Simbolo di contratto scaduto o in formato errato" },
+    { type: "paragraph", html: "Anche i conti pienamente abilitati incontrano questo errore quando richiedono un contratto già scaduto, o un simbolo nella forma sbagliata. Tradovate si aspetta la convenzione standard CME del mese di scadenza: un simbolo radice, un codice mese e una cifra anno, ad esempio <code>ESZ4</code>, <code>NQZ4</code>, <code>MESH5</code>. Una radice continua da sola, un mese delistato o un codice digitato male possono risolversi tutti come inaccessibili." },
+    { type: "heading", text: "4. Componente aggiuntivo API Access non attivo" },
+    { type: "paragraph", html: "La Tradovate Market Data API è un componente aggiuntivo a pagamento basato su un conto reale idoneo. Se l'abbonamento API Access scade, o il conto non soddisfa più l'attuale requisito di saldo minimo di Tradovate, le chiamate ai dati di mercato smettono di essere autorizzate. Verificate che il componente aggiuntivo sia attivo in Application Settings prima di cercare cause più profonde." },
+    { type: "heading", text: "5. Sessione obsoleta, o un requisito di distributore di dati" },
+    { type: "paragraph", html: "Un paio di casi limite completano l'elenco. Un codice che funzionava può improvvisamente fallire dopo un periodo di inattività, e riautenticare la sessione di solito risolve il problema, quando richiesto, aggiornate anche l'abbonamento ai dati di mercato e inviate un nuovo ordine. Separatamente, se intendete <em>ridistribuire</em> le quotazioni Tradovate/CME ad altri utenti, dovete registrarvi come distributore di dati tramite il processo di contatto della CME. L'uso proprio ordinario non lo richiede, ma la distribuzione sì." },
+    { type: "heading", text: "Come risolvere «Symbol Is Inaccessible»: passo dopo passo" },
+    { type: "heading", text: "Risolvere un accordo dati CME mancante" },
+    {
+      type: "list",
+      items: [
+        "Accedete alla piattaforma web o desktop di Tradovate con lo stesso conto reale su cui si autentica la vostra chiave API.",
+        "Aprite <strong class='text-white'>Application Settings</strong> e andate all'area dati di mercato / componenti aggiuntivi dove vengono gestiti gli abbonamenti.",
+        "Trovate l'abbonamento ai dati di mercato e <strong class='text-white'>accettate l'accordo dati di mercato CME (e di qualsiasi altra borsa)</strong>, quindi sottoscrivete il feed della borsa di cui avete bisogno.",
+        "Confermate che l'abbonamento risulti attivo, quindi rieseguite la vostra chiamata <code>md/subscribeQuote</code>. Un simbolo che prima falliva ora dovrebbe trasmettere.",
+      ],
+    },
+    { type: "heading", text: "Abilitare i dati su un conto prop o di valutazione" },
+    {
+      type: "list",
+      items: [
+        "Identificate chi possiede il conto, una società prop o un fornitore di valutazione, non voi.",
+        "Non provate ad accettare un accordo dati dentro Tradovate. L'opzione è controllata a monte e non resterà valida.",
+        "Contattate il supporto della società e chiedete di abilitare i dati di mercato (e l'accesso API, se applicabile) per il vostro conto specifico.",
+        "Una volta confermato, riautenticatevi e riprovate la vostra sottoscrizione.",
+      ],
+    },
+    { type: "heading", text: "Usare un simbolo di contratto del mese di scadenza valido" },
+    {
+      type: "list",
+      items: [
+        "Interrogate Tradovate per il contratto attualmente negoziabile invece di codificare un mese in modo fisso. Usate gli endpoint di ricerca contratto/prodotto (ad esempio <code>/contract/find</code> o <code>/product/find</code>) per ottenere il nome del mese di scadenza attuale.",
+        "Costruite il simbolo come <code>RADICE + codice mese + anno</code>, ad esempio <code>ESZ4</code> per l'E-mini S&amp;P 500 di dicembre.",
+        "Sostituite qualsiasi mese scaduto nel vostro codice con il valore restituito dalla ricerca.",
+        "Sottoscrivete di nuovo. Se i diritti dati sono corretti, un simbolo del mese di scadenza valido si risolve immediatamente.",
+      ],
+    },
+    { type: "heading", text: "Aggiornare una sessione o un diritto dati obsoleto" },
+    {
+      type: "list",
+      items: [
+        "Eliminate il vostro token di accesso in cache e rieseguite il flusso di autenticazione per ottenere un token nuovo.",
+        "Se la piattaforma mostra una richiesta di aggiornamento dell'abbonamento ai dati di mercato, completatela, quindi inviate un piccolo ordine o riaprite la schermata delle posizioni in modo che il diritto dati venga ricontrollato.",
+        "Riconnettete il WebSocket dei dati di mercato e riemettete la sottoscrizione.",
+        "Se continua a fallire su <em>ogni</em> simbolo, tornate alla Causa 1: l'accordo, non la sessione, è il blocco.",
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Errore", "Significato", "Soluzione"],
+      rows: [
+        ["{\"errorText\":\"Symbol is inaccessible\",\"errorCode\":\"UnknownSymbol\"} su ogni simbolo", "Nessun accordo dati di mercato della borsa registrato", "Accettate l'accordo dati CME e sottoscrivete il feed"],
+        ["Inaccessibile solo su un conto prop/di valutazione", "Dati controllati dal vostro fornitore di conto", "Chiedete alla vostra società prop di abilitare i dati di mercato"],
+        ["Inaccessibile su un contratto specifico", "Simbolo scaduto o in formato errato", "Cercate e usate il mese di scadenza attuale (es. ESZ4)"],
+        ["Funzionava, ora fallisce dopo un periodo di inattività", "Sessione / diritto dati obsoleto", "Riautenticatevi; aggiornate l'abbonamento e inviate un nuovo ordine"],
+        ["Fallisce subito dopo l'aggiunta dell'integrazione API", "Componente aggiuntivo API Access inattivo o conto sottofinanziato", "Riattivate API Access su un conto reale finanziato"],
+        ["Fallisce quando si forniscono quotazioni ad altri utenti", "Nessuna registrazione come distributore di dati", "Registratevi come distributore tramite il processo di contatto della CME"],
+      ],
+    },
+    { type: "heading", text: "Come prevenirlo con PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade si colloca tra TradingView e Tradovate, così la metà di automazione del vostro stack resta sana anche quando un feed o un simbolo si comporta male:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validazione del simbolo e risoluzione del mese di scadenza</strong>, mappa il vostro alert sul contratto attuale e negoziabile, così un mese scaduto non raggiunge mai Tradovate come ordine.",
+        "<strong class='text-white'>Instradamento consapevole dei diritti dati</strong>, rispetta lo stato del vostro conto e dell'accordo dati, così le operazioni non vengono sparate alla cieca contro un feed che non potete leggere.",
+        "<strong class='text-white'>Autenticazione gestita</strong>, mantiene token e sessioni aggiornati, così un login obsoleto non blocca silenziosamente il vostro flusso di lavoro.",
+        "<strong class='text-white'>Sincronizzazione multi-conto</strong>, replica l'ordine corretto su ogni conto collegato in un unico passaggio.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Ohne Ablehnungen handeln", es: "Opere sin rechazos", fr: "Tradez sans rejets", it: "Fate trading senza rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and let PickMyTrade route around a dark feed or expired symbol before it ever costs you a fill.", de: "Starten Sie Ihre kostenlose 5-Tage-Testphase, verknüpfen Sie noch heute Ihre Alerts und lassen Sie PickMyTrade einen ausgefallenen Feed oder ein abgelaufenes Symbol umgehen, bevor es Sie einen Fill kostet.", es: "Comience su prueba gratuita de 5 días, vincule sus alertas hoy mismo y deje que PickMyTrade esquive un feed caído o un símbolo caducado antes de que le cueste una ejecución.", fr: "Démarrez votre essai gratuit de 5 jours, reliez vos alertes dès aujourd'hui et laissez PickMyTrade contourner un flux en panne ou un symbole expiré avant que cela ne vous coûte une exécution.", it: "Iniziate la vostra prova gratuita di 5 giorni, collegate oggi stesso i vostri alert e lasciate che PickMyTrade aggiri un feed oscurato o un simbolo scaduto prima che vi costi un fill." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testphase", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Iniziate la vostra prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Does \"Symbol is inaccessible\" mean the contract doesn't exist?", a: "Usually no. Despite the UnknownSymbol code, the most common cause is a missing market-data agreement, the symbol is real, but your login isn't entitled to stream it." },
+    { q: "Do I have to pay the CME fee to use the Tradovate market-data API?", a: "To receive real-time exchange data over the API, yes, an exchange market-data agreement and fee apply. The amount varies by exchange and license type and changes over time, so check Tradovate's and the CME's current rates." },
+    { q: "Can I get real-time data on a demo or simulation account?", a: "Tradovate offers delayed data in some contexts, but real-time CME data over the API is gated behind the live entitlement and agreement. If you need real-time quotes, expect to enable them on a qualifying live account." },
+    { q: "My prop firm account throws this error, who do I fix it with?", a: "Your account provider. On prop and evaluation accounts, only the firm can enable market data, so contact their support rather than Tradovate's." },
+    { q: "Why did my working code suddenly start failing?", a: "Sessions and entitlements can go stale after inactivity, and exchange agreements can lapse. Re-authenticate first; if every symbol still fails, re-check that your market-data agreement is active." },
+    { q: "What symbol format does Tradovate expect?", a: "The CME front-month convention: root symbol + month code + year digit, such as ESZ4 or NQZ4. Query the contract lookup endpoints to grab the current front month instead of hard-coding it." },
+    { q: "Do I need anything extra to send quotes to other users?", a: "Yes. Self-use is covered by your own agreement, but redistributing data to other users requires registering as a data distributor through the CME." },
+    { q: "Is there a cheaper way to get futures data than the API feed?", a: "Third-party market-data vendors are worth a look when exchange fees are a concern. That's a data-sourcing decision separate from your Tradovate order routing, your execution can stay on Tradovate regardless." },
+  ], de: [
+    { q: "Bedeutet „Symbol is inaccessible“, dass der Kontrakt nicht existiert?", a: "Normalerweise nicht. Trotz des Codes UnknownSymbol ist die häufigste Ursache eine fehlende Marktdatenvereinbarung, das Symbol ist real, aber Ihr Login ist nicht berechtigt, es zu streamen." },
+    { q: "Muss ich die CME-Gebühr bezahlen, um die Tradovate Market-Data-API zu nutzen?", a: "Um Echtzeit-Börsendaten über die API zu erhalten, ja, es fällt eine Marktdatenvereinbarung und -gebühr der Börse an. Der Betrag variiert je nach Börse und Lizenztyp und ändert sich im Laufe der Zeit, prüfen Sie also die aktuellen Tarife von Tradovate und der CME." },
+    { q: "Kann ich auf einem Demo- oder Simulationskonto Echtzeitdaten erhalten?", a: "Tradovate bietet in manchen Kontexten verzögerte Daten an, aber Echtzeit-CME-Daten über die API sind hinter der Live-Berechtigung und -Vereinbarung verriegelt. Wenn Sie Echtzeitkurse benötigen, müssen Sie diese auf einem qualifizierenden Live-Konto aktivieren." },
+    { q: "Mein Prop-Firma-Konto zeigt diesen Fehler, mit wem behebe ich das?", a: "Mit Ihrem Kontoanbieter. Bei Prop- und Evaluierungskonten kann nur die Firma Marktdaten aktivieren, kontaktieren Sie also deren Support statt den von Tradovate." },
+    { q: "Warum hat mein funktionierender Code plötzlich angefangen zu fehlschlagen?", a: "Sitzungen und Berechtigungen können nach Inaktivität veralten, und Börsenvereinbarungen können ablaufen. Authentifizieren Sie sich zunächst erneut; wenn weiterhin jedes Symbol fehlschlägt, prüfen Sie erneut, ob Ihre Marktdatenvereinbarung aktiv ist." },
+    { q: "Welches Symbolformat erwartet Tradovate?", a: "Die CME-Frontmonat-Konvention: Root-Symbol + Monatscode + Jahresziffer, wie ESZ4 oder NQZ4. Fragen Sie die Contract-Lookup-Endpunkte ab, um den aktuellen Frontmonat zu erhalten, statt ihn fest einzuprogrammieren." },
+    { q: "Brauche ich zusätzlich etwas, um Kurse an andere Nutzer zu senden?", a: "Ja. Die Eigennutzung ist durch Ihre eigene Vereinbarung abgedeckt, aber die Weiterverteilung von Daten an andere Nutzer erfordert eine Registrierung als Datenvertrieb über die CME." },
+    { q: "Gibt es eine günstigere Möglichkeit, Futures-Daten zu erhalten als den API-Feed?", a: "Drittanbieter für Marktdaten sind einen Blick wert, wenn Börsengebühren ein Problem darstellen. Das ist eine von Ihrem Tradovate-Order-Routing getrennte Entscheidung zur Datenbeschaffung, Ihre Ausführung kann trotzdem bei Tradovate bleiben." },
+  ], es: [
+    { q: "¿Significa «Symbol is inaccessible» que el contrato no existe?", a: "Normalmente no. A pesar del código UnknownSymbol, la causa más común es un acuerdo de datos de mercado ausente, el símbolo es real, pero su inicio de sesión no tiene derecho a transmitirlo." },
+    { q: "¿Tengo que pagar la tarifa de la CME para usar la API de datos de mercado de Tradovate?", a: "Para recibir datos de bolsa en tiempo real a través de la API, sí, se aplica un acuerdo de datos de mercado de la bolsa y una tarifa. El importe varía según la bolsa y el tipo de licencia, y cambia con el tiempo, así que consulte las tarifas actuales de Tradovate y de la CME." },
+    { q: "¿Puedo obtener datos en tiempo real en una cuenta demo o de simulación?", a: "Tradovate ofrece datos retrasados en algunos contextos, pero los datos de la CME en tiempo real a través de la API están bloqueados detrás del derecho de acceso y el acuerdo de cuenta real. Si necesita cotizaciones en tiempo real, deberá habilitarlas en una cuenta real que cumpla los requisitos." },
+    { q: "Mi cuenta de firma prop muestra este error, ¿con quién lo soluciono?", a: "Con el proveedor de su cuenta. En cuentas prop y de evaluación, solo la firma puede habilitar los datos de mercado, así que contacte a su soporte en lugar del de Tradovate." },
+    { q: "¿Por qué mi código, que funcionaba, empezó de repente a fallar?", a: "Las sesiones y los derechos de acceso pueden caducar tras la inactividad, y los acuerdos de bolsa pueden vencer. Vuelva a autenticarse primero; si todos los símbolos siguen fallando, verifique de nuevo que su acuerdo de datos de mercado esté activo." },
+    { q: "¿Qué formato de símbolo espera Tradovate?", a: "La convención de la CME para el mes de vencimiento: símbolo raíz + código de mes + dígito de año, como ESZ4 o NQZ4. Consulte los endpoints de búsqueda de contrato para obtener el mes de vencimiento actual en lugar de codificarlo de forma fija." },
+    { q: "¿Necesito algo adicional para enviar cotizaciones a otros usuarios?", a: "Sí. El uso propio está cubierto por su propio acuerdo, pero redistribuir datos a otros usuarios requiere registrarse como distribuidor de datos a través de la CME." },
+    { q: "¿Hay una forma más económica de obtener datos de futuros que el feed de la API?", a: "Vale la pena considerar proveedores de datos de mercado de terceros cuando las tarifas de la bolsa sean una preocupación. Esa es una decisión de origen de datos independiente de su enrutamiento de órdenes en Tradovate, su ejecución puede permanecer en Tradovate de todos modos." },
+  ], fr: [
+    { q: "« Symbol is inaccessible » signifie-t-il que le contrat n'existe pas ?", a: "Généralement non. Malgré le code UnknownSymbol, la cause la plus courante est un accord de données de marché manquant, le symbole est réel, mais votre identifiant n'a pas le droit de le diffuser." },
+    { q: "Dois-je payer les frais CME pour utiliser l'API de données de marché Tradovate ?", a: "Pour recevoir des données de bourse en temps réel via l'API, oui, un accord de données de marché de la bourse et des frais s'appliquent. Le montant varie selon la bourse et le type de licence, et évolue dans le temps, vérifiez donc les tarifs actuels de Tradovate et de la CME." },
+    { q: "Puis-je obtenir des données en temps réel sur un compte démo ou de simulation ?", a: "Tradovate propose des données différées dans certains contextes, mais les données CME en temps réel via l'API sont verrouillées derrière le droit d'accès et l'accord du compte réel. Si vous avez besoin de cotations en temps réel, vous devrez les activer sur un compte réel éligible." },
+    { q: "Mon compte chez une firme prop affiche cette erreur, avec qui la résoudre ?", a: "Avec votre fournisseur de compte. Sur les comptes prop et d'évaluation, seule la firme peut activer les données de marché, contactez donc son support plutôt que celui de Tradovate." },
+    { q: "Pourquoi mon code, qui fonctionnait, a-t-il soudainement commencé à échouer ?", a: "Les sessions et les droits d'accès peuvent devenir périmés après une période d'inactivité, et les accords de bourse peuvent expirer. Réauthentifiez-vous d'abord ; si tous les symboles échouent encore, revérifiez que votre accord de données de marché est actif." },
+    { q: "Quel format de symbole Tradovate attend-il ?", a: "La convention CME du mois d'échéance : symbole racine + code du mois + chiffre d'année, comme ESZ4 ou NQZ4. Interrogez les points de terminaison de recherche de contrat pour récupérer le mois d'échéance actuel au lieu de le coder en dur." },
+    { q: "Ai-je besoin de quelque chose de plus pour envoyer des cotations à d'autres utilisateurs ?", a: "Oui. L'usage propre est couvert par votre propre accord, mais redistribuer des données à d'autres utilisateurs nécessite de s'enregistrer comme distributeur de données via la CME." },
+    { q: "Existe-t-il un moyen moins coûteux d'obtenir des données de futures que le flux API ?", a: "Les fournisseurs de données de marché tiers valent le coup d'œil lorsque les frais de bourse posent problème. C'est une décision d'approvisionnement en données distincte de votre routage d'ordres Tradovate, votre exécution peut rester sur Tradovate quoi qu'il arrive." },
+  ], it: [
+    { q: "«Symbol is inaccessible» significa che il contratto non esiste?", a: "Di solito no. Nonostante il codice UnknownSymbol, la causa più comune è un accordo dati di mercato mancante, il simbolo è reale, ma il vostro login non ha il diritto di trasmetterlo." },
+    { q: "Devo pagare la tariffa CME per usare l'API dati di mercato di Tradovate?", a: "Per ricevere dati di borsa in tempo reale tramite l'API, sì, si applicano un accordo dati di mercato della borsa e una tariffa. L'importo varia in base alla borsa e al tipo di licenza e cambia nel tempo, quindi verificate le tariffe attuali di Tradovate e della CME." },
+    { q: "Posso ottenere dati in tempo reale su un conto demo o di simulazione?", a: "Tradovate offre dati ritardati in alcuni contesti, ma i dati CME in tempo reale tramite l'API sono bloccati dietro il diritto e l'accordo del conto reale. Se vi servono quotazioni in tempo reale, dovrete abilitarle su un conto reale idoneo." },
+    { q: "Il mio conto presso una società prop mostra questo errore, con chi lo risolvo?", a: "Con il vostro fornitore di conto. Sui conti prop e di valutazione, solo la società può abilitare i dati di mercato, quindi contattate il loro supporto anziché quello di Tradovate." },
+    { q: "Perché il mio codice, che funzionava, ha improvvisamente iniziato a fallire?", a: "Sessioni e diritti dati possono diventare obsoleti dopo un periodo di inattività, e gli accordi di borsa possono scadere. Riautenticatevi prima; se ogni simbolo continua a fallire, riverificate che il vostro accordo dati di mercato sia attivo." },
+    { q: "Quale formato di simbolo si aspetta Tradovate?", a: "La convenzione CME del mese di scadenza: simbolo radice + codice mese + cifra anno, come ESZ4 o NQZ4. Interrogate gli endpoint di ricerca contratto per ottenere il mese di scadenza attuale invece di codificarlo in modo fisso." },
+    { q: "Mi serve qualcosa in più per inviare quotazioni ad altri utenti?", a: "Sì. L'uso proprio è coperto dal vostro accordo, ma ridistribuire dati ad altri utenti richiede la registrazione come distributore di dati tramite la CME." },
+    { q: "Esiste un modo più economico per ottenere dati sui futures rispetto al feed API?", a: "I fornitori di dati di mercato di terze parti meritano attenzione quando le tariffe di borsa sono un problema. Si tratta di una decisione sulla fonte dei dati separata dal vostro instradamento degli ordini su Tradovate, la vostra esecuzione può comunque restare su Tradovate." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie den aktuellen Ablauf daher immer in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización de terceros independiente y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni parrainée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione di terze parti indipendente e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verificate sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

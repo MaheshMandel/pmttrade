@@ -1,0 +1,579 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "poor-limit-order-fill-quality";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Limit Orders Not Filling at Price";
+const META_DESCRIPTION =
+  "Limit price touched but your order never filled? See why futures FIFO queue priority blocks limit fills and how to exit cleanly with a market order.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Limit-Orders werden nicht zum Kurs ausgeführt", es: "Las órdenes limitadas de Tradovate no se ejecutan al precio", fr: "Ordres à cours limité Tradovate non exécutés au prix", it: "Ordini limite Tradovate non eseguiti al prezzo" },
+  dek: { en: "Price ticked right down to your limit, sat there, and walked away without a fill. In almost every case the platform did exactly what a limit order is supposed to do, here's why a touched price isn't a filled price.", de: "Der Kurs fiel genau auf Ihr Limit, blieb dort und zog weiter, ohne dass Ihre Order ausgeführt wurde. In fast allen Fällen hat die Plattform genau das getan, was eine Limit-Order tun soll – hier erfahren Sie, warum ein berührter Kurs noch kein ausgeführter Kurs ist.", es: "El precio bajó justo hasta su límite, se quedó ahí y se fue sin ejecutarle la orden. En casi todos los casos la plataforma hizo exactamente lo que debe hacer una orden limitada: aquí le explicamos por qué un precio tocado no es un precio ejecutado.", fr: "Le prix est descendu pile à votre limite, y est resté, puis est reparti sans exécution. Dans presque tous les cas, la plateforme a fait exactement ce qu'un ordre à cours limité est censé faire : voici pourquoi un prix touché n'est pas un prix exécuté.", it: "Il prezzo è sceso esattamente al Suo limite, ci è rimasto e se n'è andato senza eseguire l'ordine. Quasi sempre la piattaforma ha fatto esattamente ciò che un ordine limite deve fare: ecco perché un prezzo toccato non è un prezzo eseguito." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-10",
+  blocks: { en: [
+    { type: "paragraph", html: "You set a buy limit at 5999.00, price ticks right down to 5999.00, sits there, and then walks away without giving you a fill. It looks broken. You watched the exact number print on the tape and your order never moved. This is one of the oldest execution gripes on Tradovate, and it stings most when you're exiting and the market just teases your level. Here's the part nobody likes to hear: in almost every case the platform did exactly what a limit order is supposed to do. There's no bug toggle to flip and no setting that “fixes” fill quality, because live limit orders are matched by the exchange, not by Tradovate. What you can do is understand why a touched price isn't a filled price, and change how you exit when being flat actually matters." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Limit Orders Not Filling",
+      items: [
+        "<strong class='text-white'>A touch is not a fill.</strong> Price reaching your limit doesn't entitle you to an execution; enough volume has to trade through the queue ahead of you first.",
+        "<strong class='text-white'>Check whether price traded through or just tagged your level.</strong> A one-tick-past move usually fills you; a tag-and-bounce often doesn't.",
+        "<strong class='text-white'>Stop re-queuing yourself.</strong> Every time you modify a working limit's price or size, you drop to the back of the line at that level.",
+        "<strong class='text-white'>Use a market order when you must be out.</strong> It guarantees a fill (not a price). A passive limit trades that certainty away.",
+        "<strong class='text-white'>Don't trust demo fills as live fills.</strong> The simulator is friendlier than the real queue.",
+        "<strong class='text-white'>Grab the Order ID for anything that looks truly wrong.</strong> That's what the Trade Desk needs to investigate a single order.",
+      ],
+    },
+    { type: "heading", text: "What “Price Hit My Limit and Didn't Fill” Actually Means" },
+    { type: "paragraph", html: "A limit order has one job: fill at your price or better, never worse. That protection is the whole point, and it's also why it can leave you empty-handed. Because a limit refuses a worse price, it fills only when the market reaches your level and there's enough trading to reach your specific spot in line." },
+    { type: "paragraph", html: "On futures, that line is run by the exchange's matching engine using <strong class='text-white'>price-time priority</strong>, commonly called FIFO. Best price gets served first, and among everyone resting at the same price, whoever got there first fills first. When you drop a buy limit onto a level that already has size resting on it, you're not first, you're last. Say 400 contracts are already bid at 5999.00 when your order lands. You're effectively the 401st contract in the queue. Now price trades down to 5999.00, but only 350 contracts trade before it lifts back to 5999.50. Those 350 fills went to the orders in front of you. You didn't get a single one, because the market never traded deep enough to reach your position, and it never traded <em>through</em> the level to sweep the whole queue." },
+    { type: "paragraph", html: "That's the difference that trips everyone up. If price had ticked to 5998.75, one level past your limit, the entire 5999.00 queue typically clears and you fill. A tag-and-bounce at exactly your price is the classic “it hit my level and I didn't get filled” scenario, and it's not a malfunction. It's queue mechanics working the way they always do." },
+    { type: "heading", text: "Top Causes of Poor Limit Fill Quality" },
+    { type: "heading", text: "1. Queue position (the main cause)" },
+    { type: "paragraph", html: "You almost always land at the back of the line at your price. If the market only partially trades your level before reversing, the fills go to the orders ahead of you and you're left working. The more size resting at that level, the more volume has to print before your turn arrives." },
+    { type: "heading", text: "2. Price only tagged the level, never traded through" },
+    { type: "paragraph", html: "A single touch, or a fast wick that prints your price for a heartbeat, rarely moves enough size to clear the queue. Limits fill cleanly when price trades a tick or more past them, not when they're grazed." },
+    { type: "heading", text: "3. You modified the order and lost priority" },
+    { type: "paragraph", html: "Changing a working limit's price, or bumping its quantity up, re-queues it. All the time priority you'd earned by resting there is gone, and you restart at the back. Chasing a level by nudging your order repeatedly can actively hurt your odds." },
+    { type: "heading", text: "4. Demo fills set the wrong expectation" },
+    { type: "paragraph", html: "Simulated accounts, including most prop-firm evaluations, don't route to the exchange. They model fills, and the model tends to be generous. A limit approach that fills every time in demo can start missing once it faces a real live queue, which makes live fills feel “worse” when they're really just honest." },
+    { type: "heading", text: "5. Thin liquidity or off-hours trading" },
+    { type: "paragraph", html: "In a low-volume contract or during quiet overnight hours, there aren't enough contracts trading to clear a resting queue quickly. The order isn't stuck; there's just no flow to fill it." },
+    { type: "heading", text: "How to Fix Poor Limit Fills and Exit Cleanly: Step-by-Step" },
+    { type: "heading", text: "Confirm it's queue mechanics, not a stuck order" },
+    {
+      type: "steps",
+      items: [
+        { title: "Check the order's status", html: "Open the Orders module and check the order's status. If it reads working or accepted, the order is live and just hasn't been reached in the queue, this is normal, not a freeze." },
+        { title: "Check if price traded through", html: "Look at whether price traded <em>through</em> your level or only tagged it. A tag-and-bounce no-fill is expected; a clean trade-through that skipped you is worth a closer look." },
+        { title: "Watch the DOM at your price", html: "Heavy size resting ahead of you means a lot of contracts have to print before your turn." },
+      ],
+    },
+    { type: "heading", text: "When you must be out, send a market order" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cancel the resting limit first", html: "Cancel the resting limit first so you don't end up double-filled if it triggers a moment later." },
+        { title: "Place a market order", html: "Place a plain <strong class='text-white'>market order</strong> in the opposite direction and matching quantity to flatten the position. A market order guarantees a fill; it does not guarantee price, so expect to give up a tick or two of slippage in a moving market." },
+        { title: "Confirm you're flat", html: "Confirm your net position reads flat before you do anything else." },
+      ],
+    },
+    { type: "paragraph", html: "This is the honest trade-off at the center of the problem: a limit protects your price but risks no fill; a market guarantees the fill but risks the price. If being out matters more than the exact level, don't ask a passive limit to do a market order's job." },
+    { type: "heading", text: "Improve your fill odds without giving up price" },
+    {
+      type: "list",
+      items: [
+        "Rest your limit slightly more aggressively. A buy limit placed a tick or two higher sits closer to the front of realistic trading and fills more often, at the cost of a marginally worse entry.",
+        "Place the order early and leave it alone. Time priority rewards patience; the earlier you rest and the less you fiddle, the closer to the front you stay.",
+        "For protective stops, prefer a stop that becomes a market order over a stop-limit, which can refuse to fill in a fast move, exactly when you can't afford to be stuck.",
+        "Trade the active contract during liquid hours, since more flow clears the queue faster.",
+      ],
+    },
+    { type: "heading", text: "Report a specific order that truly should have filled" },
+    {
+      type: "steps",
+      items: [
+        { title: "Copy the Order ID", html: "Open your Orders report and copy the <strong class='text-white'>Order ID</strong> for the order in question." },
+        { title: "Note the details", html: "Note the exact time, symbol, and price, and whether the tape shows a clean trade-through of your level." },
+        { title: "Send it to the Trade Desk", html: "Send that Order ID to the Trade Desk and ask them to check what happened to it at the exchange. A specific order is the only thing they can meaningfully investigate; there's no global “fix fills” button on their end either." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "What it means", "Fix"],
+      rows: [
+        ["Price tagged my limit and bounced, no fill", "Queue never cleared to your position at that level", "Expected; place more aggressively or use a market order if you must be filled"],
+        ["Price traded through but I still didn't fill", "Possible routing or a genuine order issue", "Grab the Order ID and send it to the Trade Desk to investigate"],
+        ["Fills were perfect in demo, poor when live", "Simulator was more generous than the real queue", "Re-test on a live account; don't size up on demo fill assumptions"],
+        ["Kept modifying my limit, fills got worse", "Each change re-queued you to the back of the line", "Set it once and let it rest; stop chasing the level"],
+        ["Can't exit; my limit won't fill", "Passive exit is waiting on the queue", "Cancel the limit and send an opposite market order to flatten"],
+        ["Stop-limit didn't get me out on a fast move", "The limit leg refused a worse price in a gap", "Use a stop that converts to a market order for protection"],
+      ],
+    },
+    { type: "heading", text: "Get Consistent Execution with PickMyTrade" },
+    { type: "paragraph", html: "No tool can rewrite the exchange's matching engine, and any product promising “guaranteed” limit fills is selling you a story. What automation can do is make sure your orders go out the way you intended, every time, without you fat-fingering an order type under pressure. PickMyTrade links your TradingView alerts straight to Tradovate and takes the manual guesswork out of execution:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Order type per signal.</strong> Decide up front whether an entry or exit goes out as a limit or a market order, so a “must be out” exit isn't left sitting on a passive limit.",
+        "<strong class='text-white'>Price offsets on entries.</strong> Rest limits a defined distance from signal price, the aggressive-placement idea above, applied automatically.",
+        "<strong class='text-white'>Protective stops on every position.</strong> Attach a real stop the moment you're in, sized to a loss you can survive, instead of a mental exit a passive limit might never reach.",
+        "<strong class='text-white'>Multi-account consistency.</strong> Send the same intended order across every connected account, so you're not hand-keying order types on five platforms while price moves.",
+      ],
+    },
+    { type: "paragraph", html: "The goal isn't to beat the queue. It's to make sure the order you meant to send is the one that actually goes out, so you're never trapped in a position because a limit wouldn't fill." },
+  ], de: [
+    { type: "paragraph",html: "Sie setzen ein Kauf-Limit bei 5999.00, der Kurs fällt exakt auf 5999.00, bleibt dort und zieht dann weiter, ohne Sie auszuführen. Es sieht defekt aus. Sie haben die genaue Zahl im Tape gesehen, und Ihre Order hat sich nie bewegt. Das ist eines der ältesten Ärgernisse bei der Ausführung auf Tradovate und es schmerzt am meisten, wenn Sie aussteigen wollen und der Markt Ihr Niveau nur anteasert. Was niemand gern hört: In fast allen Fällen hat die Plattform genau das getan, was eine Limit-Order tun soll. Es gibt keinen Fehlerschalter und keine Einstellung, die die Ausführungsqualität „repariert“, denn aktive Limit-Orders werden von der Börse gematcht, nicht von Tradovate. Was Sie tun können: verstehen, warum ein berührter Kurs kein ausgeführter Kurs ist, und ändern, wie Sie aussteigen, wenn es wirklich darauf ankommt, flat zu sein." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste bei nicht ausgeführten Limit-Orders",
+      items: [
+        "<strong class='text-white'>Eine Berührung ist keine Ausführung.</strong> Dass der Kurs Ihr Limit erreicht, gibt Ihnen keinen Anspruch auf Ausführung; zuerst muss genug Volumen durch die Warteschlange vor Ihnen gehandelt werden.",
+        "<strong class='text-white'>Prüfen Sie, ob der Kurs Ihr Niveau durchhandelt oder nur angetippt hat.</strong> Ein Move einen Tick darüber hinaus führt meist zur Ausführung; Antippen und Abprallen oft nicht.",
+        "<strong class='text-white'>Hören Sie auf, sich selbst neu einzureihen.</strong> Jedes Mal, wenn Sie Preis oder Größe eines aktiven Limits ändern, rutschen Sie ans Ende der Warteschlange auf diesem Niveau.",
+        "<strong class='text-white'>Nutzen Sie eine Market-Order, wenn Sie raus müssen.</strong> Sie garantiert eine Ausführung (nicht den Kurs). Ein passives Limit gibt diese Sicherheit auf.",
+        "<strong class='text-white'>Vertrauen Sie Demo-Ausführungen nicht als Live-Ausführungen.</strong> Der Simulator ist gnädiger als die echte Warteschlange.",
+        "<strong class='text-white'>Notieren Sie die Order ID, wenn etwas wirklich falsch aussieht.</strong> Das braucht der Trade Desk, um eine einzelne Order zu untersuchen.",
+      ],
+    },
+    { type: "heading",text: "Was „Kurs hat mein Limit erreicht und nicht ausgeführt“ tatsächlich bedeutet" },
+    { type: "paragraph",html: "Eine Limit-Order hat genau eine Aufgabe: zu Ihrem Kurs oder besser auszuführen, nie schlechter. Dieser Schutz ist der ganze Sinn, und er ist auch der Grund, warum Sie mit leeren Händen dastehen können. Weil ein Limit einen schlechteren Kurs ablehnt, wird es nur ausgeführt, wenn der Markt Ihr Niveau erreicht und genug gehandelt wird, um Ihren konkreten Platz in der Warteschlange zu erreichen." },
+    { type: "paragraph",html: "Bei Futures wird diese Warteschlange von der Matching-Engine der Börse nach <strong class='text-white'>Preis-Zeit-Priorität</strong> geführt, gemeinhin FIFO genannt. Der beste Preis wird zuerst bedient, und unter allen, die zum selben Preis warten, wird zuerst ausgeführt, wer zuerst da war. Setzen Sie ein Kauf-Limit auf ein Niveau, auf dem bereits Volumen wartet, sind Sie nicht der Erste, sondern der Letzte. Angenommen, 400 Kontrakte stehen bereits im Bid bei 5999.00, wenn Ihre Order eintrifft. Dann sind Sie praktisch der 401. Kontrakt in der Warteschlange. Nun handelt der Kurs auf 5999.00, aber es werden nur 350 Kontrakte gehandelt, bevor er zurück auf 5999.50 steigt. Diese 350 Ausführungen gingen an die Orders vor Ihnen. Sie haben keine einzige bekommen, weil der Markt nie tief genug handelte, um Ihre Position zu erreichen, und das Niveau nie <em>durchlief</em>, um die gesamte Warteschlange abzuräumen." },
+    { type: "paragraph",html: "Das ist der Unterschied, über den alle stolpern. Wäre der Kurs auf 5998.75 gefallen, einen Tick über Ihr Limit hinaus, wäre die gesamte Warteschlange bei 5999.00 in der Regel abgearbeitet worden, und Sie wären ausgeführt worden. Ein Antippen mit Abprallen genau auf Ihrem Kurs ist das klassische „Er hat mein Niveau erreicht und ich wurde nicht ausgeführt“-Szenario, und es ist keine Fehlfunktion. Es ist die Mechanik der Warteschlange, die so arbeitet, wie sie es immer tut." },
+    { type: "heading",text: "Die häufigsten Ursachen für schlechte Limit-Ausführung" },
+    { type: "heading",text: "1. Position in der Warteschlange (die Hauptursache)" },
+    { type: "paragraph",html: "Sie landen fast immer am Ende der Schlange auf Ihrem Kurs. Wird Ihr Niveau nur teilweise gehandelt, bevor der Markt dreht, gehen die Ausführungen an die Orders vor Ihnen, und Sie bleiben im Markt. Je mehr Volumen auf diesem Niveau wartet, desto mehr muss gehandelt werden, bevor Sie an der Reihe sind." },
+    { type: "heading",text: "2. Der Kurs hat das Niveau nur angetippt, aber nicht durchhandelt" },
+    { type: "paragraph",html: "Eine einzelne Berührung oder ein schneller Docht, der Ihren Kurs für einen Herzschlag druckt, bewegt selten genug Volumen, um die Warteschlange zu räumen. Limits werden sauber ausgeführt, wenn der Kurs einen Tick oder mehr darüber hinaus handelt, nicht wenn sie gestreift werden." },
+    { type: "heading",text: "3. Sie haben die Order geändert und die Priorität verloren" },
+    { type: "paragraph",html: "Wenn Sie den Preis eines aktiven Limits ändern oder die Menge erhöhen, wird es neu eingereiht. Die gesamte Zeitpriorität, die Sie durch das Warten erworben haben, ist weg, und Sie beginnen wieder am Ende. Ein Niveau durch wiederholtes Nachjustieren Ihrer Order zu jagen, kann Ihre Chancen aktiv verschlechtern." },
+    { type: "heading",text: "4. Demo-Ausführungen wecken falsche Erwartungen" },
+    { type: "paragraph",html: "Simulierte Konten, einschließlich der meisten Prop-Firm-Evaluierungen, routen nicht an die Börse. Sie modellieren Ausführungen, und das Modell ist tendenziell großzügig. Ein Limit-Ansatz, der in der Demo jedes Mal ausgeführt wird, kann anfangen, Ausführungen zu verpassen, sobald er auf eine echte Live-Warteschlange trifft – wodurch Live-Ausführungen „schlechter“ wirken, obwohl sie einfach nur ehrlich sind." },
+    { type: "heading",text: "5. Dünne Liquidität oder Handel außerhalb der Handelszeiten" },
+    { type: "paragraph",html: "Bei einem Kontrakt mit geringem Volumen oder in ruhigen Nachtstunden werden nicht genug Kontrakte gehandelt, um eine wartende Schlange schnell zu räumen. Die Order steckt nicht fest; es fehlt schlicht der Orderfluss, um sie auszuführen." },
+    { type: "heading",text: "So beheben Sie schlechte Limit-Ausführungen und steigen sauber aus: Schritt für Schritt" },
+    { type: "heading",text: "Bestätigen Sie, dass es die Warteschlangenmechanik ist und keine hängende Order" },
+    {
+      type: "steps",
+      items: [
+        { title: "Orderstatus prüfen", html: "Öffnen Sie das Orders-Modul und prüfen Sie den Status der Order. Steht dort „working“ oder „accepted“, ist die Order aktiv und wurde in der Warteschlange nur noch nicht erreicht – das ist normal, kein Einfrieren." },
+        { title: "Prüfen, ob der Kurs durchgehandelt hat", html: "Sehen Sie nach, ob der Kurs Ihr Niveau <em>durchhandelt</em> oder es nur angetippt hat. Eine Nichtausführung bei Antippen und Abprallen ist zu erwarten; ein sauberes Durchhandeln, bei dem Sie übersprungen wurden, verdient einen genaueren Blick." },
+        { title: "DOM bei Ihrem Kurs beobachten", html: "Viel Volumen vor Ihnen bedeutet, dass viele Kontrakte gehandelt werden müssen, bevor Sie an der Reihe sind." },
+      ],
+    },
+    { type: "heading",text: "Wenn Sie raus müssen, senden Sie eine Market-Order" },
+    {
+      type: "steps",
+      items: [
+        { title: "Zuerst das wartende Limit stornieren", html: "Stornieren Sie zuerst das wartende Limit, damit Sie nicht doppelt ausgeführt werden, falls es einen Moment später doch auslöst." },
+        { title: "Market-Order platzieren", html: "Platzieren Sie eine einfache <strong class='text-white'>Market-Order</strong> in Gegenrichtung und mit passender Menge, um die Position glattzustellen. Eine Market-Order garantiert die Ausführung, nicht den Kurs; rechnen Sie in einem bewegten Markt also mit ein bis zwei Ticks Slippage." },
+        { title: "Prüfen, dass Sie flat sind", html: "Bestätigen Sie, dass Ihre Nettoposition flat anzeigt, bevor Sie irgendetwas anderes tun." },
+      ],
+    },
+    { type: "paragraph",html: "Das ist der ehrliche Zielkonflikt im Kern des Problems: Ein Limit schützt Ihren Kurs, riskiert aber keine Ausführung; eine Market-Order garantiert die Ausführung, riskiert aber den Kurs. Wenn es wichtiger ist, draußen zu sein, als das exakte Niveau zu treffen, verlangen Sie von einem passiven Limit nicht die Arbeit einer Market-Order." },
+    { type: "heading",text: "Verbessern Sie Ihre Ausführungschancen, ohne den Kurs aufzugeben" },
+    {
+      type: "list",
+      items: [
+        "Platzieren Sie Ihr Limit etwas aggressiver. Ein Kauf-Limit, das ein bis zwei Ticks höher liegt, steht näher an der Spitze des realistischen Handels und wird häufiger ausgeführt – auf Kosten eines marginal schlechteren Einstiegs.",
+        "Platzieren Sie die Order früh und lassen Sie sie in Ruhe. Zeitpriorität belohnt Geduld; je früher Sie sich einreihen und je weniger Sie herumspielen, desto näher an der Spitze bleiben Sie.",
+        "Bevorzugen Sie für Schutz-Stops einen Stop, der zur Market-Order wird, gegenüber einem Stop-Limit, das sich in einem schnellen Markt weigern kann, auszuführen – genau dann, wenn Sie es sich nicht leisten können, festzustecken.",
+        "Handeln Sie den aktiven Kontrakt während liquider Zeiten, denn mehr Orderfluss räumt die Warteschlange schneller.",
+      ],
+    },
+    { type: "heading",text: "Melden Sie eine bestimmte Order, die wirklich hätte ausgeführt werden müssen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Order ID kopieren", html: "Öffnen Sie Ihren Orders-Bericht und kopieren Sie die <strong class='text-white'>Order ID</strong> der betreffenden Order." },
+        { title: "Details festhalten", html: "Notieren Sie genaue Uhrzeit, Symbol und Kurs sowie ob das Tape ein sauberes Durchhandeln Ihres Niveaus zeigt." },
+        { title: "An den Trade Desk senden", html: "Senden Sie diese Order ID an den Trade Desk und bitten Sie darum, zu prüfen, was an der Börse mit ihr geschehen ist. Eine bestimmte Order ist das Einzige, was dort sinnvoll untersucht werden kann; auch dort gibt es keinen globalen „Ausführung reparieren“-Knopf." },
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Symptom","Was es bedeutet","Lösung"], rows: [
+      ["Der Kurs tippte mein Limit an und prallte ab, keine Ausführung","Die Warteschlange wurde auf diesem Niveau nie bis zu Ihrer Position geräumt","Zu erwarten; platzieren Sie aggressiver oder nutzen Sie eine Market-Order, wenn Sie ausgeführt werden müssen"],
+      ["Der Kurs handelte durch, aber ich wurde trotzdem nicht ausgeführt","Möglicherweise Routing oder ein echtes Orderproblem","Notieren Sie die Order ID und senden Sie sie zur Untersuchung an den Trade Desk"],
+      ["Ausführungen waren in der Demo perfekt, live schlecht","Der Simulator war großzügiger als die echte Warteschlange","Auf einem Live-Konto neu testen; stocken Sie nicht auf Basis von Demo-Annahmen auf"],
+      ["Ich habe mein Limit ständig geändert, die Ausführungen wurden schlechter","Jede Änderung hat Sie ans Ende der Warteschlange zurückgesetzt","Einmal setzen und ruhen lassen; hören Sie auf, dem Niveau nachzujagen"],
+      ["Ich komme nicht raus; mein Limit wird nicht ausgeführt","Der passive Ausstieg wartet auf die Warteschlange","Limit stornieren und eine Market-Order in Gegenrichtung senden, um flat zu werden"],
+      ["Das Stop-Limit hat mich bei einem schnellen Move nicht rausgebracht","Der Limit-Teil hat bei einer Kurslücke einen schlechteren Kurs abgelehnt","Nutzen Sie einen Stop, der zur Market-Order wird, als Schutz"],
+    ] },
+    { type: "heading",text: "Konsistente Ausführung mit PickMyTrade" },
+    { type: "paragraph",html: "Kein Tool kann die Matching-Engine der Börse umschreiben, und jedes Produkt, das „garantierte“ Limit-Ausführungen verspricht, verkauft Ihnen ein Märchen. Was Automatisierung leisten kann: sicherstellen, dass Ihre Orders jedes Mal so hinausgehen, wie Sie es beabsichtigt haben, ohne dass Sie sich unter Druck beim Ordertyp vertippen. PickMyTrade verbindet Ihre TradingView-Alerts direkt mit Tradovate und nimmt das manuelle Raten aus der Ausführung:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ordertyp pro Signal.</strong> Legen Sie vorab fest, ob ein Einstieg oder Ausstieg als Limit- oder Market-Order hinausgeht, damit ein „Muss-raus“-Ausstieg nicht auf einem passiven Limit hängen bleibt.",
+        "<strong class='text-white'>Preis-Offsets bei Einstiegen.</strong> Platzieren Sie Limits in einem definierten Abstand zum Signalkurs – die oben beschriebene aggressive Platzierung, automatisch angewendet.",
+        "<strong class='text-white'>Schutz-Stops bei jeder Position.</strong> Hängen Sie einen echten Stop an, sobald Sie drin sind, bemessen auf einen Verlust, den Sie verkraften können, statt eines gedanklichen Ausstiegs, den ein passives Limit vielleicht nie erreicht.",
+        "<strong class='text-white'>Konsistenz über mehrere Konten.</strong> Senden Sie dieselbe beabsichtigte Order an alle verbundenen Konten, damit Sie nicht auf fünf Plattformen von Hand Ordertypen eintippen, während der Kurs sich bewegt.",
+      ],
+    },
+    { type: "paragraph",html: "Das Ziel ist nicht, die Warteschlange zu schlagen. Es geht darum sicherzustellen, dass die Order, die Sie senden wollten, auch tatsächlich hinausgeht, damit Sie nie in einer Position festsitzen, weil ein Limit nicht ausgeführt wurde." },
+  ], es: [
+    { type: "paragraph",html: "Coloca un límite de compra en 5999.00, el precio baja justo hasta 5999.00, se queda ahí y luego se aleja sin ejecutarle. Parece roto. Vio el número exacto imprimirse en la cinta y su orden nunca se movió. Es una de las quejas de ejecución más antiguas en Tradovate, y duele más cuando está saliendo y el mercado solo coquetea con su nivel. Lo que a nadie le gusta oír: en casi todos los casos la plataforma hizo exactamente lo que debe hacer una orden limitada. No hay ningún interruptor de errores que accionar ni ningún ajuste que «arregle» la calidad de ejecución, porque las órdenes limitadas activas las casa la bolsa, no Tradovate. Lo que sí puede hacer es entender por qué un precio tocado no es un precio ejecutado y cambiar cómo sale cuando estar flat realmente importa." },
+    {
+      type: "checklist",
+      heading: "Lista de comprobación rápida para órdenes limitadas que no se ejecutan",
+      items: [
+        "<strong class='text-white'>Un toque no es una ejecución.</strong> Que el precio llegue a su límite no le da derecho a una ejecución; primero tiene que negociarse volumen suficiente a través de la cola que tiene delante.",
+        "<strong class='text-white'>Compruebe si el precio atravesó su nivel o solo lo rozó.</strong> Un movimiento de un tick más allá normalmente le ejecuta; un roce con rebote a menudo no.",
+        "<strong class='text-white'>Deje de volver a ponerse en cola.</strong> Cada vez que modifica el precio o el tamaño de un límite activo, cae al final de la cola en ese nivel.",
+        "<strong class='text-white'>Use una orden de mercado cuando deba salir.</strong> Garantiza una ejecución (no un precio). Un límite pasivo renuncia a esa certeza.",
+        "<strong class='text-white'>No confíe en las ejecuciones demo como si fueran reales.</strong> El simulador es más amable que la cola real.",
+        "<strong class='text-white'>Anote el Order ID de cualquier cosa que parezca realmente incorrecta.</strong> Eso es lo que necesita el Trade Desk para investigar una orden concreta.",
+      ],
+    },
+    { type: "heading",text: "Qué significa realmente «el precio tocó mi límite y no se ejecutó»" },
+    { type: "paragraph",html: "Una orden limitada tiene una sola tarea: ejecutarse a su precio o mejor, nunca peor. Esa protección es todo el sentido de la orden, y también es la razón por la que puede dejarle con las manos vacías. Como un límite rechaza un precio peor, solo se ejecuta cuando el mercado llega a su nivel y hay negociación suficiente para alcanzar su lugar concreto en la cola." },
+    { type: "paragraph",html: "En futuros, esa cola la gestiona el motor de casación de la bolsa mediante <strong class='text-white'>prioridad precio-tiempo</strong>, comúnmente llamada FIFO. El mejor precio se atiende primero y, entre todos los que esperan al mismo precio, se ejecuta primero quien llegó antes. Cuando coloca un límite de compra en un nivel que ya tiene volumen en espera, no es el primero, es el último. Digamos que ya hay 400 contratos en el bid en 5999.00 cuando llega su orden. Usted es, en la práctica, el contrato 401 de la cola. Ahora el precio baja a 5999.00, pero solo se negocian 350 contratos antes de que vuelva a subir a 5999.50. Esas 350 ejecuciones fueron a las órdenes que tenía delante. No recibió ni una, porque el mercado nunca negoció lo bastante profundo para alcanzar su posición, y nunca <em>atravesó</em> el nivel para barrer toda la cola." },
+    { type: "paragraph",html: "Esa es la diferencia con la que tropieza todo el mundo. Si el precio hubiera bajado a 5998.75, un nivel más allá de su límite, normalmente se habría despejado toda la cola de 5999.00 y usted se habría ejecutado. Un roce con rebote exactamente en su precio es el clásico escenario de «tocó mi nivel y no me ejecutaron», y no es un mal funcionamiento. Es la mecánica de la cola funcionando como siempre." },
+    { type: "heading",text: "Principales causas de una mala calidad de ejecución en límites" },
+    { type: "heading",text: "1. Posición en la cola (la causa principal)" },
+    { type: "paragraph",html: "Casi siempre acaba al final de la cola a su precio. Si el mercado solo negocia parcialmente su nivel antes de revertir, las ejecuciones van a las órdenes que tiene delante y a usted le toca seguir esperando. Cuanto más volumen haya en espera en ese nivel, más tiene que imprimirse antes de que llegue su turno." },
+    { type: "heading",text: "2. El precio solo rozó el nivel, sin atravesarlo" },
+    { type: "paragraph",html: "Un solo toque, o una mecha rápida que imprime su precio por un instante, rara vez mueve volumen suficiente para despejar la cola. Los límites se ejecutan limpiamente cuando el precio cotiza un tick o más más allá, no cuando son rozados." },
+    { type: "heading",text: "3. Modificó la orden y perdió la prioridad" },
+    { type: "paragraph",html: "Cambiar el precio de un límite activo, o subir su cantidad, lo vuelve a poner en cola. Toda la prioridad de tiempo que había ganado al esperar ahí desaparece y vuelve a empezar al final. Perseguir un nivel ajustando la orden repetidamente puede perjudicar activamente sus probabilidades." },
+    { type: "heading",text: "4. Las ejecuciones demo crean una expectativa equivocada" },
+    { type: "paragraph",html: "Las cuentas simuladas, incluidas la mayoría de las evaluaciones de prop firms, no enrutan a la bolsa. Modelan las ejecuciones, y el modelo tiende a ser generoso. Un enfoque de límites que se ejecuta siempre en demo puede empezar a fallar cuando se enfrenta a una cola real en vivo, lo que hace que las ejecuciones reales parezcan «peores» cuando en realidad solo son honestas." },
+    { type: "heading",text: "5. Liquidez escasa u operativa fuera de horario" },
+    { type: "paragraph",html: "En un contrato de poco volumen o durante las horas tranquilas de la noche, no se negocian contratos suficientes para despejar rápidamente una cola en espera. La orden no está atascada; simplemente no hay flujo que la ejecute." },
+    { type: "heading",text: "Cómo corregir las malas ejecuciones limitadas y salir limpiamente: paso a paso" },
+    { type: "heading",text: "Confirme que es la mecánica de la cola y no una orden atascada" },
+    {
+      type: "steps",
+      items: [
+        { title: "Compruebe el estado de la orden", html: "Abra el módulo de Orders y compruebe el estado de la orden. Si indica working o accepted, la orden está activa y simplemente no se ha llegado a ella en la cola; es normal, no un bloqueo." },
+        { title: "Compruebe si el precio atravesó el nivel", html: "Mire si el precio <em>atravesó</em> su nivel o solo lo rozó. Que no se ejecute un roce con rebote es lo esperado; un cruce limpio en el que le saltaron merece una revisión más detenida." },
+        { title: "Observe el DOM en su precio", html: "Mucho volumen delante de usted significa que tienen que imprimirse muchos contratos antes de que llegue su turno." },
+      ],
+    },
+    { type: "heading",text: "Cuando deba salir, envíe una orden de mercado" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cancele primero el límite en espera", html: "Cancele primero el límite en espera para no acabar con una doble ejecución si se activa un momento después." },
+        { title: "Coloque una orden de mercado", html: "Coloque una simple <strong class='text-white'>orden de mercado</strong> en la dirección contraria y con la misma cantidad para cerrar la posición. Una orden de mercado garantiza la ejecución; no garantiza el precio, así que espere ceder un tick o dos de slippage en un mercado en movimiento." },
+        { title: "Confirme que está flat", html: "Confirme que su posición neta aparece como flat antes de hacer cualquier otra cosa." },
+      ],
+    },
+    { type: "paragraph",html: "Este es el honesto equilibrio en el centro del problema: un límite protege su precio pero arriesga no ejecutarse; una orden de mercado garantiza la ejecución pero arriesga el precio. Si estar fuera importa más que el nivel exacto, no le pida a un límite pasivo que haga el trabajo de una orden de mercado." },
+    { type: "heading",text: "Mejore sus probabilidades de ejecución sin renunciar al precio" },
+    {
+      type: "list",
+      items: [
+        "Coloque su límite algo más agresivo. Un límite de compra colocado uno o dos ticks más alto queda más cerca del frente de la negociación realista y se ejecuta con más frecuencia, a costa de una entrada ligeramente peor.",
+        "Coloque la orden pronto y déjela en paz. La prioridad de tiempo premia la paciencia; cuanto antes se coloque y menos la toquetee, más cerca del frente se mantiene.",
+        "Para los stops de protección, prefiera un stop que se convierta en orden de mercado antes que un stop-limit, que puede negarse a ejecutarse en un movimiento rápido, justo cuando no puede permitirse quedarse atascado.",
+        "Opere el contrato activo durante las horas líquidas, ya que más flujo despeja la cola más rápido.",
+      ],
+    },
+    { type: "heading",text: "Informe de una orden concreta que realmente debería haberse ejecutado" },
+    {
+      type: "steps",
+      items: [
+        { title: "Copie el Order ID", html: "Abra su informe de Orders y copie el <strong class='text-white'>Order ID</strong> de la orden en cuestión." },
+        { title: "Anote los detalles", html: "Anote la hora exacta, el símbolo y el precio, y si la cinta muestra un cruce limpio de su nivel." },
+        { title: "Envíelo al Trade Desk", html: "Envíe ese Order ID al Trade Desk y pídales que comprueben qué ocurrió con ella en la bolsa. Una orden concreta es lo único que pueden investigar de forma significativa; tampoco existe en su lado un botón global para «arreglar las ejecuciones»." },
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma","Qué significa","Solución"], rows: [
+      ["El precio tocó mi límite y rebotó, sin ejecución","La cola nunca se despejó hasta su posición en ese nivel","Es lo esperado; coloque de forma más agresiva o use una orden de mercado si necesita ejecutarse"],
+      ["El precio atravesó el nivel pero aun así no me ejecutaron","Posible problema de enrutamiento o de la orden","Anote el Order ID y envíelo al Trade Desk para que lo investigue"],
+      ["Las ejecuciones eran perfectas en demo, malas en real","El simulador fue más generoso que la cola real","Vuelva a probar en una cuenta real; no aumente el tamaño basándose en supuestos de ejecución de la demo"],
+      ["Seguí modificando mi límite y las ejecuciones empeoraron","Cada cambio le devolvió al final de la cola","Colóquelo una vez y déjelo reposar; deje de perseguir el nivel"],
+      ["No puedo salir; mi límite no se ejecuta","La salida pasiva está esperando en la cola","Cancele el límite y envíe una orden de mercado contraria para quedar flat"],
+      ["El stop-limit no me sacó en un movimiento rápido","El tramo límite rechazó un precio peor en un gap","Use un stop que se convierta en orden de mercado como protección"],
+    ] },
+    { type: "heading",text: "Obtenga una ejecución consistente con PickMyTrade" },
+    { type: "paragraph",html: "Ninguna herramienta puede reescribir el motor de casación de la bolsa, y cualquier producto que prometa ejecuciones limitadas «garantizadas» le está vendiendo un cuento. Lo que sí puede hacer la automatización es asegurarse de que sus órdenes salgan como usted pretendía, siempre, sin que se equivoque de tipo de orden bajo presión. PickMyTrade conecta sus alertas de TradingView directamente con Tradovate y elimina las conjeturas manuales de la ejecución:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Tipo de orden por señal.</strong> Decida de antemano si una entrada o una salida se envía como orden limitada o de mercado, para que una salida de «debo salir» no se quede esperando en un límite pasivo.",
+        "<strong class='text-white'>Desplazamientos de precio en las entradas.</strong> Coloque límites a una distancia definida del precio de la señal: la idea de colocación agresiva descrita arriba, aplicada automáticamente.",
+        "<strong class='text-white'>Stops de protección en cada posición.</strong> Adjunte un stop real en cuanto esté dentro, dimensionado a una pérdida que pueda soportar, en lugar de una salida mental que un límite pasivo quizá nunca alcance.",
+        "<strong class='text-white'>Coherencia multicuenta.</strong> Envíe la misma orden prevista a todas las cuentas conectadas, para no teclear a mano los tipos de orden en cinco plataformas mientras el precio se mueve.",
+      ],
+    },
+    { type: "paragraph",html: "El objetivo no es vencer a la cola. Es asegurarse de que la orden que quería enviar sea la que realmente sale, para que nunca quede atrapado en una posición porque un límite no se ejecutó." },
+  ], fr: [
+    { type: "paragraph",html: "Vous placez une limite d'achat à 5999.00, le prix descend pile à 5999.00, y reste, puis repart sans vous exécuter. Cela semble cassé. Vous avez vu le chiffre exact s'imprimer sur le tape et votre ordre n'a jamais bougé. C'est l'un des plus anciens griefs d'exécution sur Tradovate, et il pique surtout quand vous sortez et que le marché ne fait que taquiner votre niveau. Ce que personne n'aime entendre : dans presque tous les cas, la plateforme a fait exactement ce qu'un ordre à cours limité est censé faire. Il n'y a aucun bouton de bogue à actionner ni aucun réglage qui « corrige » la qualité d'exécution, car les ordres à cours limité actifs sont appariés par la bourse, pas par Tradovate. Ce que vous pouvez faire, c'est comprendre pourquoi un prix touché n'est pas un prix exécuté, et changer votre façon de sortir quand être à plat compte vraiment." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour les ordres à cours limité non exécutés",
+      items: [
+        "<strong class='text-white'>Un contact n'est pas une exécution.</strong> Le fait que le prix atteigne votre limite ne vous donne pas droit à une exécution ; il faut d'abord qu'un volume suffisant traverse la file devant vous.",
+        "<strong class='text-white'>Vérifiez si le prix a traversé votre niveau ou l'a simplement effleuré.</strong> Un mouvement d'un tick au-delà vous exécute généralement ; un effleurement suivi d'un rebond, souvent non.",
+        "<strong class='text-white'>Arrêtez de vous remettre vous-même en file.</strong> Chaque fois que vous modifiez le prix ou la taille d'une limite active, vous retombez au bout de la file à ce niveau.",
+        "<strong class='text-white'>Utilisez un ordre au marché quand vous devez sortir.</strong> Il garantit une exécution (pas un prix). Une limite passive abandonne cette certitude.",
+        "<strong class='text-white'>Ne prenez pas les exécutions démo pour des exécutions réelles.</strong> Le simulateur est plus clément que la vraie file.",
+        "<strong class='text-white'>Notez l'Order ID de tout ce qui semble réellement anormal.</strong> C'est ce dont le Trade Desk a besoin pour enquêter sur un ordre précis.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie vraiment « le prix a touché ma limite et n'a pas été exécuté »" },
+    { type: "paragraph",html: "Un ordre à cours limité n'a qu'une mission : s'exécuter à votre prix ou mieux, jamais pire. Cette protection est tout l'intérêt de l'ordre, et c'est aussi pourquoi il peut vous laisser les mains vides. Parce qu'une limite refuse un prix moins bon, elle ne s'exécute que lorsque le marché atteint votre niveau et qu'il s'échange assez de contrats pour atteindre votre place précise dans la file." },
+    { type: "paragraph",html: "Sur les contrats à terme, cette file est gérée par le moteur d'appariement de la bourse selon la <strong class='text-white'>priorité prix-temps</strong>, couramment appelée FIFO. Le meilleur prix est servi en premier et, parmi tous ceux qui attendent au même prix, celui qui est arrivé le premier est exécuté le premier. Quand vous posez une limite d'achat sur un niveau où il y a déjà du volume en attente, vous n'êtes pas le premier, vous êtes le dernier. Imaginons que 400 contrats soient déjà au bid à 5999.00 quand votre ordre arrive. Vous êtes en pratique le 401e contrat de la file. Le prix descend à 5999.00, mais seuls 350 contrats s'échangent avant qu'il ne remonte à 5999.50. Ces 350 exécutions sont allées aux ordres devant vous. Vous n'en avez reçu aucune, car le marché n'a jamais échangé assez profondément pour atteindre votre position, et n'a jamais <em>traversé</em> le niveau pour balayer toute la file." },
+    { type: "paragraph",html: "C'est la différence qui piège tout le monde. Si le prix était descendu à 5998.75, un niveau au-delà de votre limite, toute la file à 5999.00 aurait généralement été purgée et vous auriez été exécuté. Un effleurement suivi d'un rebond exactement à votre prix est le scénario classique du « il a touché mon niveau et je n'ai pas été exécuté », et ce n'est pas un dysfonctionnement. C'est la mécanique de la file qui fonctionne comme toujours." },
+    { type: "heading",text: "Principales causes d'une mauvaise qualité d'exécution des limites" },
+    { type: "heading",text: "1. La position dans la file (la cause principale)" },
+    { type: "paragraph",html: "Vous vous retrouvez presque toujours au bout de la file à votre prix. Si le marché n'échange que partiellement votre niveau avant de se retourner, les exécutions vont aux ordres devant vous et vous restez en attente. Plus il y a de volume en attente à ce niveau, plus il faut de contrats échangés avant que votre tour n'arrive." },
+    { type: "heading",text: "2. Le prix n'a fait qu'effleurer le niveau, sans le traverser" },
+    { type: "paragraph",html: "Un simple contact, ou une mèche rapide qui imprime votre prix l'espace d'un battement de cœur, déplace rarement assez de volume pour purger la file. Les limites s'exécutent proprement quand le prix s'échange un tick ou plus au-delà, pas quand elles sont frôlées." },
+    { type: "heading",text: "3. Vous avez modifié l'ordre et perdu la priorité" },
+    { type: "paragraph",html: "Changer le prix d'une limite active, ou augmenter sa quantité, la remet en file. Toute la priorité de temps gagnée en attendant là est perdue et vous repartez au bout de la file. Courir après un niveau en ajustant sans cesse votre ordre peut activement réduire vos chances." },
+    { type: "heading",text: "4. Les exécutions démo créent de fausses attentes" },
+    { type: "paragraph",html: "Les comptes simulés, y compris la plupart des évaluations de prop firms, ne sont pas acheminés vers la bourse. Ils modélisent les exécutions, et le modèle tend à être généreux. Une approche à limites qui s'exécute à chaque fois en démo peut se mettre à rater des exécutions face à une vraie file en réel, ce qui fait paraître les exécutions réelles « moins bonnes » alors qu'elles sont simplement honnêtes." },
+    { type: "heading",text: "5. Liquidité mince ou trading hors horaires" },
+    { type: "paragraph",html: "Sur un contrat à faible volume ou pendant les heures calmes de la nuit, il ne s'échange pas assez de contrats pour purger rapidement une file en attente. L'ordre n'est pas bloqué ; il n'y a simplement pas de flux pour l'exécuter." },
+    { type: "heading",text: "Comment corriger une mauvaise exécution des limites et sortir proprement : pas à pas" },
+    { type: "heading",text: "Confirmez qu'il s'agit de la mécanique de file et non d'un ordre bloqué" },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifier le statut de l'ordre", html: "Ouvrez le module Orders et vérifiez le statut de l'ordre. S'il indique working ou accepted, l'ordre est actif et n'a simplement pas encore été atteint dans la file ; c'est normal, pas un blocage." },
+        { title: "Vérifier si le prix a traversé", html: "Regardez si le prix a <em>traversé</em> votre niveau ou l'a seulement effleuré. Une absence d'exécution après un effleurement suivi d'un rebond est attendue ; une traversée nette qui vous a ignoré mérite un examen plus attentif." },
+        { title: "Observer le DOM à votre prix", html: "Un gros volume devant vous signifie que beaucoup de contrats doivent s'échanger avant que votre tour n'arrive." },
+      ],
+    },
+    { type: "heading",text: "Quand vous devez sortir, envoyez un ordre au marché" },
+    {
+      type: "steps",
+      items: [
+        { title: "Annuler d'abord la limite en attente", html: "Annulez d'abord la limite en attente afin de ne pas être exécuté deux fois si elle se déclenche un instant plus tard." },
+        { title: "Passer un ordre au marché", html: "Passez un simple <strong class='text-white'>ordre au marché</strong> dans la direction opposée et avec la quantité correspondante pour clôturer la position. Un ordre au marché garantit l'exécution ; il ne garantit pas le prix, attendez-vous donc à céder un tick ou deux de slippage sur un marché en mouvement." },
+        { title: "Confirmer que vous êtes à plat", html: "Vérifiez que votre position nette indique bien flat avant de faire quoi que ce soit d'autre." },
+      ],
+    },
+    { type: "paragraph",html: "C'est le compromis honnête au cœur du problème : une limite protège votre prix mais risque la non-exécution ; un ordre au marché garantit l'exécution mais risque le prix. Si être sorti compte plus que le niveau exact, ne demandez pas à une limite passive de faire le travail d'un ordre au marché." },
+    { type: "heading",text: "Améliorez vos chances d'exécution sans renoncer au prix" },
+    {
+      type: "list",
+      items: [
+        "Placez votre limite un peu plus agressivement. Une limite d'achat placée un ou deux ticks plus haut se trouve plus près du front du trading réaliste et s'exécute plus souvent, au prix d'une entrée légèrement moins bonne.",
+        "Placez l'ordre tôt et laissez-le tranquille. La priorité de temps récompense la patience ; plus tôt vous vous placez et moins vous y touchez, plus vous restez près du front.",
+        "Pour les stops de protection, préférez un stop qui devient un ordre au marché à un stop-limite, qui peut refuser de s'exécuter lors d'un mouvement rapide, précisément quand vous ne pouvez pas vous permettre d'être bloqué.",
+        "Tradez le contrat actif pendant les heures liquides, car un flux plus important purge la file plus vite.",
+      ],
+    },
+    { type: "heading",text: "Signalez un ordre précis qui aurait vraiment dû être exécuté" },
+    {
+      type: "steps",
+      items: [
+        { title: "Copier l'Order ID", html: "Ouvrez votre rapport Orders et copiez l'<strong class='text-white'>Order ID</strong> de l'ordre concerné." },
+        { title: "Noter les détails", html: "Notez l'heure exacte, le symbole et le prix, ainsi que si le tape montre une traversée nette de votre niveau." },
+        { title: "L'envoyer au Trade Desk", html: "Envoyez cet Order ID au Trade Desk et demandez-lui de vérifier ce qui est arrivé à l'ordre à la bourse. Un ordre précis est la seule chose qu'il peut examiner utilement ; il n'existe pas non plus de bouton global « corriger les exécutions » de son côté." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme","Ce que cela signifie","Solution"], rows: [
+      ["Le prix a touché ma limite et a rebondi, pas d'exécution","La file n'a jamais été purgée jusqu'à votre position à ce niveau","C'est attendu ; placez plus agressivement ou utilisez un ordre au marché si vous devez être exécuté"],
+      ["Le prix a traversé mais je n'ai quand même pas été exécuté","Problème possible d'acheminement ou d'ordre","Notez l'Order ID et envoyez-le au Trade Desk pour enquête"],
+      ["Les exécutions étaient parfaites en démo, mauvaises en réel","Le simulateur était plus généreux que la vraie file","Retestez sur un compte réel ; n'augmentez pas la taille sur la base des exécutions démo"],
+      ["J'ai continué à modifier ma limite, les exécutions ont empiré","Chaque modification vous a remis au bout de la file","Placez-la une fois et laissez-la en place ; arrêtez de courir après le niveau"],
+      ["Impossible de sortir ; ma limite ne s'exécute pas","La sortie passive attend dans la file","Annulez la limite et envoyez un ordre au marché opposé pour être à plat"],
+      ["Le stop-limite ne m'a pas sorti lors d'un mouvement rapide","La jambe limite a refusé un prix moins bon lors d'un gap","Utilisez un stop qui se convertit en ordre au marché pour vous protéger"],
+    ] },
+    { type: "heading",text: "Obtenez une exécution cohérente avec PickMyTrade" },
+    { type: "paragraph",html: "Aucun outil ne peut réécrire le moteur d'appariement de la bourse, et tout produit qui promet des exécutions à cours limité « garanties » vous vend du rêve. Ce que l'automatisation peut faire, c'est s'assurer que vos ordres partent comme vous l'aviez prévu, à chaque fois, sans que vous vous trompiez de type d'ordre sous pression. PickMyTrade relie vos alertes TradingView directement à Tradovate et retire la part de devinette manuelle de l'exécution :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Type d'ordre par signal.</strong> Décidez à l'avance si une entrée ou une sortie part en ordre à cours limité ou au marché, afin qu'une sortie « doit sortir » ne reste pas bloquée sur une limite passive.",
+        "<strong class='text-white'>Décalages de prix sur les entrées.</strong> Placez les limites à une distance définie du prix du signal : l'idée de placement agressif décrite plus haut, appliquée automatiquement.",
+        "<strong class='text-white'>Stops de protection sur chaque position.</strong> Attachez un vrai stop dès que vous êtes entré, dimensionné sur une perte que vous pouvez supporter, plutôt qu'une sortie mentale qu'une limite passive n'atteindra peut-être jamais.",
+        "<strong class='text-white'>Cohérence multi-comptes.</strong> Envoyez le même ordre prévu sur tous les comptes connectés, afin de ne pas saisir à la main des types d'ordre sur cinq plateformes pendant que le prix bouge.",
+      ],
+    },
+    { type: "paragraph",html: "L'objectif n'est pas de battre la file. C'est de s'assurer que l'ordre que vous vouliez envoyer est bien celui qui part, afin de ne jamais rester piégé dans une position parce qu'une limite ne s'est pas exécutée." },
+  ], it: [
+    { type: "paragraph",html: "Imposta un limite di acquisto a 5999.00, il prezzo scende esattamente a 5999.00, ci resta e poi se ne va senza eseguirLa. Sembra rotto. Ha visto il numero esatto stamparsi sul tape e il Suo ordine non si è mai mosso. È una delle più vecchie lamentele sull'esecuzione su Tradovate, e fa più male quando sta uscendo e il mercato si limita a stuzzicare il Suo livello. Ecco la parte che nessuno ama sentire: quasi sempre la piattaforma ha fatto esattamente ciò che un ordine limite deve fare. Non c'è alcun interruttore di bug da girare né alcuna impostazione che «sistemi» la qualità di esecuzione, perché gli ordini limite attivi vengono abbinati dalla borsa, non da Tradovate. Ciò che può fare è capire perché un prezzo toccato non è un prezzo eseguito e cambiare il modo in cui esce quando essere flat conta davvero." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per ordini limite non eseguiti",
+      items: [
+        "<strong class='text-white'>Un tocco non è un'esecuzione.</strong> Il fatto che il prezzo raggiunga il Suo limite non Le dà diritto a un'esecuzione; prima deve essere scambiato abbastanza volume attraverso la coda davanti a Lei.",
+        "<strong class='text-white'>Verifichi se il prezzo ha attraversato il Suo livello o l'ha solo sfiorato.</strong> Un movimento di un tick oltre di solito Le dà l'esecuzione; uno sfioramento con rimbalzo spesso no.",
+        "<strong class='text-white'>Smetta di rimettersi in coda da solo.</strong> Ogni volta che modifica prezzo o dimensione di un limite attivo, finisce in fondo alla coda a quel livello.",
+        "<strong class='text-white'>Usi un ordine a mercato quando deve uscire.</strong> Garantisce un'esecuzione (non un prezzo). Un limite passivo rinuncia a questa certezza.",
+        "<strong class='text-white'>Non consideri le esecuzioni demo come esecuzioni reali.</strong> Il simulatore è più indulgente della coda vera.",
+        "<strong class='text-white'>Annoti l'Order ID per tutto ciò che sembra davvero sbagliato.</strong> È ciò di cui il Trade Desk ha bisogno per indagare su un singolo ordine.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significa davvero «il prezzo ha toccato il mio limite e non è stato eseguito»" },
+    { type: "paragraph",html: "Un ordine limite ha un solo compito: eseguirsi al Suo prezzo o meglio, mai peggio. Questa protezione è tutto il senso dell'ordine, ed è anche il motivo per cui può lasciarLa a mani vuote. Poiché un limite rifiuta un prezzo peggiore, viene eseguito solo quando il mercato raggiunge il Suo livello e c'è abbastanza negoziazione da arrivare al Suo posto preciso in coda." },
+    { type: "paragraph",html: "Sui future, quella coda è gestita dal motore di abbinamento della borsa con <strong class='text-white'>priorità prezzo-tempo</strong>, comunemente detta FIFO. Il prezzo migliore viene servito per primo e, tra tutti quelli in attesa allo stesso prezzo, viene eseguito per primo chi è arrivato prima. Quando posiziona un limite di acquisto su un livello dove c'è già volume in attesa, non è il primo, è l'ultimo. Mettiamo che 400 contratti siano già in bid a 5999.00 quando il Suo ordine arriva. È di fatto il 401° contratto della coda. Ora il prezzo scende a 5999.00, ma vengono scambiati solo 350 contratti prima che risalga a 5999.50. Quelle 350 esecuzioni sono andate agli ordini davanti a Lei. Non ne ha ricevuta nemmeno una, perché il mercato non ha mai scambiato abbastanza in profondità da raggiungere la Sua posizione, e non ha mai <em>attraversato</em> il livello spazzando via l'intera coda." },
+    { type: "paragraph",html: "È questa la differenza su cui inciampano tutti. Se il prezzo fosse sceso a 5998.75, un livello oltre il Suo limite, l'intera coda a 5999.00 di norma si sarebbe smaltita e Lei sarebbe stato eseguito. Uno sfioramento con rimbalzo esattamente al Suo prezzo è il classico scenario «ha toccato il mio livello e non sono stato eseguito», e non è un malfunzionamento. È la meccanica della coda che funziona come sempre." },
+    { type: "heading",text: "Principali cause della scarsa qualità di esecuzione dei limiti" },
+    { type: "heading",text: "1. Posizione in coda (la causa principale)" },
+    { type: "paragraph",html: "Quasi sempre finisce in fondo alla coda al Suo prezzo. Se il mercato scambia solo parzialmente il Suo livello prima di invertire, le esecuzioni vanno agli ordini davanti a Lei e Lei resta in attesa. Più volume è in attesa a quel livello, più deve essere stampato prima che arrivi il Suo turno." },
+    { type: "heading",text: "2. Il prezzo ha solo sfiorato il livello, senza attraversarlo" },
+    { type: "paragraph",html: "Un singolo tocco, o un rapido spike che stampa il Suo prezzo per un attimo, raramente muove abbastanza volume da smaltire la coda. I limiti vengono eseguiti in modo pulito quando il prezzo scambia un tick o più oltre, non quando vengono sfiorati." },
+    { type: "heading",text: "3. Ha modificato l'ordine e perso la priorità" },
+    { type: "paragraph",html: "Cambiare il prezzo di un limite attivo, o aumentarne la quantità, lo rimette in coda. Tutta la priorità temporale guadagnata restando lì è persa e Lei riparte dal fondo. Rincorrere un livello ritoccando ripetutamente l'ordine può peggiorare attivamente le Sue probabilità." },
+    { type: "heading",text: "4. Le esecuzioni demo creano aspettative sbagliate" },
+    { type: "paragraph",html: "I conti simulati, comprese la maggior parte delle valutazioni delle prop firm, non instradano alla borsa. Modellano le esecuzioni, e il modello tende a essere generoso. Un approccio a limiti che in demo viene eseguito ogni volta può iniziare a perdere esecuzioni di fronte a una vera coda live, facendo sembrare «peggiori» le esecuzioni reali quando sono semplicemente oneste." },
+    { type: "heading",text: "5. Liquidità scarsa o trading fuori orario" },
+    { type: "paragraph",html: "Su un contratto a basso volume o durante le ore notturne tranquille, non vengono scambiati abbastanza contratti da smaltire rapidamente una coda in attesa. L'ordine non è bloccato; semplicemente manca il flusso che lo esegua." },
+    { type: "heading",text: "Come correggere la scarsa esecuzione dei limiti e uscire in modo pulito: passo dopo passo" },
+    { type: "heading",text: "Confermi che si tratta della meccanica della coda e non di un ordine bloccato" },
+    {
+      type: "steps",
+      items: [
+        { title: "Controlli lo stato dell'ordine", html: "Apra il modulo Orders e controlli lo stato dell'ordine. Se indica working o accepted, l'ordine è attivo e semplicemente non è stato ancora raggiunto in coda; è normale, non un blocco." },
+        { title: "Verifichi se il prezzo ha attraversato", html: "Guardi se il prezzo ha <em>attraversato</em> il Suo livello o l'ha solo sfiorato. Una mancata esecuzione con sfioramento e rimbalzo è prevista; un attraversamento netto che L'ha saltata merita un esame più attento." },
+        { title: "Osservi il DOM al Suo prezzo", html: "Molto volume davanti a Lei significa che devono essere stampati molti contratti prima che arrivi il Suo turno." },
+      ],
+    },
+    { type: "heading",text: "Quando deve uscire, invii un ordine a mercato" },
+    {
+      type: "steps",
+      items: [
+        { title: "Prima annulli il limite in attesa", html: "Annulli prima il limite in attesa, per non ritrovarsi con una doppia esecuzione se dovesse attivarsi un istante dopo." },
+        { title: "Inserisca un ordine a mercato", html: "Inserisca un semplice <strong class='text-white'>ordine a mercato</strong> nella direzione opposta e con la quantità corrispondente per chiudere la posizione. Un ordine a mercato garantisce l'esecuzione; non garantisce il prezzo, quindi si aspetti di cedere un tick o due di slippage in un mercato in movimento." },
+        { title: "Confermi di essere flat", html: "Confermi che la Sua posizione netta risulti flat prima di fare qualsiasi altra cosa." },
+      ],
+    },
+    { type: "paragraph",html: "Questo è il compromesso onesto al centro del problema: un limite protegge il Suo prezzo ma rischia di non essere eseguito; un ordine a mercato garantisce l'esecuzione ma rischia il prezzo. Se essere fuori conta più del livello esatto, non chieda a un limite passivo di fare il lavoro di un ordine a mercato." },
+    { type: "heading",text: "Migliori le probabilità di esecuzione senza rinunciare al prezzo" },
+    {
+      type: "list",
+      items: [
+        "Posizioni il limite in modo leggermente più aggressivo. Un limite di acquisto posto uno o due tick più in alto si trova più vicino al fronte del trading realistico e viene eseguito più spesso, al costo di un ingresso marginalmente peggiore.",
+        "Inserisca l'ordine presto e lo lasci stare. La priorità temporale premia la pazienza; prima si mette in coda e meno lo tocca, più resta vicino al fronte.",
+        "Per gli stop di protezione, preferisca uno stop che diventa ordine a mercato a uno stop-limit, che può rifiutarsi di essere eseguito in un movimento rapido, proprio quando non può permettersi di restare bloccato.",
+        "Negozi il contratto attivo durante le ore liquide, perché più flusso smaltisce la coda più in fretta.",
+      ],
+    },
+    { type: "heading",text: "Segnali uno specifico ordine che avrebbe davvero dovuto essere eseguito" },
+    {
+      type: "steps",
+      items: [
+        { title: "Copi l'Order ID", html: "Apra il Suo report Orders e copi l'<strong class='text-white'>Order ID</strong> dell'ordine in questione." },
+        { title: "Annoti i dettagli", html: "Annoti l'orario esatto, il simbolo e il prezzo, e se il tape mostra un attraversamento netto del Suo livello." },
+        { title: "Lo invii al Trade Desk", html: "Invii quell'Order ID al Trade Desk e chieda di verificare che cosa è successo in borsa. Un ordine specifico è l'unica cosa su cui possono indagare in modo significativo; neanche da parte loro esiste un pulsante globale «correggi le esecuzioni»." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo","Che cosa significa","Soluzione"], rows: [
+      ["Il prezzo ha toccato il mio limite ed è rimbalzato, nessuna esecuzione","La coda non è mai stata smaltita fino alla Sua posizione a quel livello","È previsto; posizioni in modo più aggressivo o usi un ordine a mercato se deve essere eseguito"],
+      ["Il prezzo ha attraversato ma non sono stato eseguito","Possibile problema di instradamento o dell'ordine","Annoti l'Order ID e lo invii al Trade Desk per le verifiche"],
+      ["Le esecuzioni erano perfette in demo, scarse in reale","Il simulatore era più generoso della coda reale","Ripeta il test su un conto reale; non aumenti la size sulla base delle esecuzioni demo"],
+      ["Ho continuato a modificare il limite e le esecuzioni sono peggiorate","Ogni modifica L'ha rimessa in fondo alla coda","Lo imposti una volta e lo lasci riposare; smetta di rincorrere il livello"],
+      ["Non riesco a uscire; il mio limite non viene eseguito","L'uscita passiva è in attesa nella coda","Annulli il limite e invii un ordine a mercato opposto per andare flat"],
+      ["Lo stop-limit non mi ha fatto uscire in un movimento rapido","La componente limite ha rifiutato un prezzo peggiore in un gap","Usi uno stop che si converte in ordine a mercato per proteggersi"],
+    ] },
+    { type: "heading",text: "Ottenga un'esecuzione coerente con PickMyTrade" },
+    { type: "paragraph",html: "Nessuno strumento può riscrivere il motore di abbinamento della borsa, e qualsiasi prodotto che prometta esecuzioni limite «garantite» Le sta vendendo una favola. Ciò che l'automazione può fare è assicurarsi che i Suoi ordini partano come intendeva, ogni volta, senza che Lei sbagli il tipo di ordine sotto pressione. PickMyTrade collega i Suoi alert di TradingView direttamente a Tradovate e toglie dall'esecuzione le congetture manuali:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Tipo di ordine per segnale.</strong> Decida in anticipo se un ingresso o un'uscita parte come ordine limite o a mercato, così un'uscita «deve uscire» non resta ferma su un limite passivo.",
+        "<strong class='text-white'>Offset di prezzo sugli ingressi.</strong> Posizioni i limiti a una distanza definita dal prezzo del segnale: l'idea di posizionamento aggressivo descritta sopra, applicata automaticamente.",
+        "<strong class='text-white'>Stop di protezione su ogni posizione.</strong> Alleghi uno stop reale non appena è dentro, dimensionato su una perdita che può sostenere, invece di un'uscita mentale che un limite passivo potrebbe non raggiungere mai.",
+        "<strong class='text-white'>Coerenza multi-account.</strong> Invii lo stesso ordine previsto a tutti gli account collegati, così non deve digitare a mano i tipi di ordine su cinque piattaforme mentre il prezzo si muove.",
+      ],
+    },
+    { type: "paragraph",html: "L'obiettivo non è battere la coda. È assicurarsi che l'ordine che intendeva inviare sia quello che parte davvero, così da non restare mai intrappolato in una posizione perché un limite non è stato eseguito." },
+  ] },
+  ctaHeading: { en: "Automate Entries, Exits, and Stops", de: "Automatisieren Sie Einstiege, Ausstiege und Stops", es: "Automatice entradas, salidas y stops", fr: "Automatisez vos entrées, sorties et stops", it: "Automatizzi ingressi, uscite e stop" },
+  ctaText: { en: "Make sure the order type you intend is the one that actually goes out to Tradovate, every time.", de: "Stellen Sie sicher, dass genau der Ordertyp an Tradovate gesendet wird, den Sie beabsichtigen – jedes Mal.", es: "Asegúrese de que el tipo de orden que usted pretende sea el que realmente se envía a Tradovate, siempre.", fr: "Assurez-vous que le type d'ordre que vous souhaitez est bien celui qui part vers Tradovate, à chaque fois.", it: "Si assicuri che il tipo di ordine che intende usare sia quello che viene realmente inviato a Tradovate, ogni volta." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why did my limit order not fill even though price hit my level?", a: "Futures limit orders are matched by the exchange's price-time (FIFO) engine, and you join the back of the line at your price. If price touches your level but not enough contracts trade to clear everyone resting there ahead of you, your order stays unfilled. A touch is not a fill; the volume has to trade through your queue position first." },
+    { q: "Does price have to trade through my limit price to fill?", a: "Not always, but it helps. If price only trades at your level and bounces, only part of the queue ahead of you may execute, leaving you behind. When price trades one tick past your limit, the whole resting queue at that level typically clears and you fill. That's why a limit that merely gets tagged can still come back empty." },
+    { q: "Is there a Tradovate setting that makes limit orders fill better?", a: "No. There's no toggle that improves fill quality, because live limit orders are matched by the exchange, not by the broker. What you control is order type and placement: use a market order when you must be out, and rest limits a tick or two more aggressively when you need higher fill odds." },
+    { q: "Why do fills look better in my demo account than live?", a: "Demo and evaluation accounts simulate fills instead of routing to the exchange, and a simulator can't reproduce the real matching engine and live queue depth. Sim fills often land more favorably than they would live, so a limit strategy that looks flawless in demo can miss fills once real queue priority applies. Test your fill assumptions on a live account first." },
+    { q: "How do I get out of a position when my limit exit won't fill?", a: "Cancel the resting limit and send a market order in the opposite direction and quantity. A market order guarantees execution, though not price, so you accept some slippage in exchange for being flat. If you routinely need to be out at a level, don't rely on a passive limit to do it." },
+    { q: "Does modifying my limit order cost me my place in line?", a: "Yes. Changing a working limit's price or increasing its quantity re-queues it at the back of the line at that level, so you lose the time priority you'd built up. Keep nudging an order while price sits at your level and you can push yourself behind fresh orders, making a fill even less likely." },
+    { q: "Are Tradovate's limit fills worse than other platforms?", a: "Live orders on any futures broker are filled by the same exchange matching engine, so genuine live-to-live differences come down to routing speed and queue handling, not a broker choosing to fill you worse. Poor fill quality is a recurring complaint here, but much of the gap people notice is really a generous demo simulator versus a strict live queue. Fill quality is still fair to weigh when you pick where to trade." },
+    { q: "Can Tradovate investigate a specific order that should have filled?", a: "Yes. Pull the Order ID from your Orders report and send it to the Trade Desk so they can check what happened to that exact order at the exchange. That's the only real path to a per-order answer, since there's no in-platform fix for fill quality." },
+  ], de: [
+    { q: "Warum wurde meine Limit-Order nicht ausgeführt, obwohl der Kurs mein Niveau erreicht hat?", a: "Futures-Limit-Orders werden von der Preis-Zeit-Priorität (FIFO) der Börse gematcht, und Sie reihen sich an Ihrem Kurs ans Ende der Warteschlange ein. Berührt der Kurs Ihr Niveau, es werden aber nicht genug Kontrakte gehandelt, um alle vor Ihnen wartenden Orders zu bedienen, bleibt Ihre Order unausgeführt. Eine Berührung ist keine Ausführung; das Volumen muss zuerst Ihre Position in der Warteschlange durchlaufen." },
+    { q: "Muss der Kurs durch meinen Limit-Preis hindurch gehandelt werden, damit die Order ausgeführt wird?", a: "Nicht immer, aber es hilft. Wird nur auf Ihrem Niveau gehandelt und der Kurs dreht ab, wird möglicherweise nur ein Teil der Warteschlange vor Ihnen bedient, und Sie bleiben zurück. Handelt der Kurs einen Tick über Ihr Limit hinaus, wird in der Regel die gesamte wartende Schlange auf diesem Niveau abgearbeitet, und Sie werden ausgeführt. Deshalb kann ein Limit, das nur angetippt wird, trotzdem leer ausgehen." },
+    { q: "Gibt es in Tradovate eine Einstellung, die Limit-Orders besser ausführen lässt?", a: "Nein. Es gibt keinen Schalter, der die Ausführungsqualität verbessert, weil aktive Limit-Orders von der Börse gematcht werden, nicht vom Broker. Sie kontrollieren Ordertyp und Platzierung: Verwenden Sie eine Market-Order, wenn Sie raus müssen, und platzieren Sie Limits ein bis zwei Ticks aggressiver, wenn Sie eine höhere Ausführungswahrscheinlichkeit brauchen." },
+    { q: "Warum sehen Ausführungen im Demo-Konto besser aus als live?", a: "Demo- und Evaluierungskonten simulieren Ausführungen, statt an die Börse zu routen, und ein Simulator kann die echte Matching-Engine und die Live-Tiefe der Warteschlange nicht nachbilden. Simulierte Ausführungen fallen oft günstiger aus als live, sodass eine Limit-Strategie, die in der Demo makellos aussieht, Ausführungen verpassen kann, sobald die echte Warteschlangenpriorität greift. Testen Sie Ihre Annahmen zur Ausführung zuerst auf einem Live-Konto." },
+    { q: "Wie komme ich aus einer Position, wenn mein Limit-Ausstieg nicht ausgeführt wird?", a: "Stornieren Sie das wartende Limit und senden Sie eine Market-Order in Gegenrichtung und mit derselben Menge. Eine Market-Order garantiert die Ausführung, aber nicht den Kurs; Sie nehmen also etwas Slippage in Kauf, um flat zu sein. Wenn Sie regelmäßig auf einem bestimmten Niveau raus müssen, verlassen Sie sich dafür nicht auf ein passives Limit." },
+    { q: "Kostet mich das Ändern meiner Limit-Order meinen Platz in der Warteschlange?", a: "Ja. Wenn Sie den Preis eines aktiven Limits ändern oder seine Menge erhöhen, wird es am Ende der Warteschlange auf diesem Niveau neu eingereiht, und Sie verlieren die aufgebaute Zeitpriorität. Wer eine Order ständig nachjustiert, während der Kurs an seinem Niveau steht, kann sich hinter neue Orders zurückfallen lassen, was eine Ausführung noch unwahrscheinlicher macht." },
+    { q: "Sind die Limit-Ausführungen bei Tradovate schlechter als bei anderen Plattformen?", a: "Live-Orders werden bei jedem Futures-Broker von derselben Matching-Engine der Börse ausgeführt; echte Unterschiede zwischen Live-Konten liegen daher in Routing-Geschwindigkeit und Warteschlangenbehandlung, nicht darin, dass ein Broker Sie schlechter ausführt. Schlechte Ausführungsqualität ist hier eine wiederkehrende Beschwerde, doch ein Großteil des wahrgenommenen Unterschieds ist in Wahrheit ein großzügiger Demo-Simulator gegenüber einer strengen Live-Warteschlange. Die Ausführungsqualität ist bei der Wahl des Handelsplatzes dennoch ein berechtigtes Kriterium." },
+    { q: "Kann Tradovate eine bestimmte Order untersuchen, die hätte ausgeführt werden müssen?", a: "Ja. Rufen Sie die Order ID aus Ihrem Orders-Bericht ab und senden Sie sie an den Trade Desk, damit dieser prüfen kann, was mit genau dieser Order an der Börse geschehen ist. Das ist der einzige echte Weg zu einer Antwort für eine einzelne Order, da es in der Plattform keine Korrektur für die Ausführungsqualität gibt." },
+  ], es: [
+    { q: "¿Por qué no se ejecutó mi orden limitada aunque el precio llegó a mi nivel?", a: "Las órdenes limitadas de futuros las casa el motor de prioridad precio-tiempo (FIFO) de la bolsa, y usted se coloca al final de la cola a su precio. Si el precio toca su nivel pero no se negocian contratos suficientes para despachar a todos los que esperan delante de usted, su orden queda sin ejecutar. Un toque no es una ejecución; primero tiene que negociarse volumen a través de su posición en la cola." },
+    { q: "¿Tiene que negociarse el precio a través de mi precio límite para que se ejecute?", a: "No siempre, pero ayuda. Si el precio solo cotiza en su nivel y rebota, es posible que solo se ejecute una parte de la cola que tiene delante y usted se quede atrás. Cuando el precio cotiza un tick más allá de su límite, normalmente se despeja toda la cola en espera en ese nivel y usted se ejecuta. Por eso un límite que solo es rozado puede volver vacío." },
+    { q: "¿Hay en Tradovate algún ajuste que haga que las órdenes limitadas se ejecuten mejor?", a: "No. No existe ningún interruptor que mejore la calidad de la ejecución, porque las órdenes limitadas activas las casa la bolsa, no el bróker. Lo que usted controla es el tipo de orden y su colocación: use una orden de mercado cuando necesite salir, y coloque los límites uno o dos ticks más agresivos cuando necesite mayores probabilidades de ejecución." },
+    { q: "¿Por qué las ejecuciones se ven mejores en mi cuenta demo que en real?", a: "Las cuentas demo y de evaluación simulan las ejecuciones en lugar de enrutarlas a la bolsa, y un simulador no puede reproducir el motor de casación real ni la profundidad de la cola en vivo. Las ejecuciones simuladas suelen salir más favorables que en real, por lo que una estrategia de límites que parece impecable en demo puede perder ejecuciones cuando se aplica la prioridad de cola real. Pruebe sus supuestos de ejecución primero en una cuenta real." },
+    { q: "¿Cómo salgo de una posición cuando mi salida limitada no se ejecuta?", a: "Cancele el límite en espera y envíe una orden de mercado en dirección contraria y con la misma cantidad. Una orden de mercado garantiza la ejecución, aunque no el precio, de modo que acepta algo de slippage a cambio de quedar flat. Si necesita salir con frecuencia en un nivel, no confíe en un límite pasivo para lograrlo." },
+    { q: "¿Modificar mi orden limitada me hace perder mi lugar en la cola?", a: "Sí. Cambiar el precio de un límite activo o aumentar su cantidad lo vuelve a colocar al final de la cola en ese nivel, de modo que pierde la prioridad de tiempo que había acumulado. Si sigue ajustando una orden mientras el precio está en su nivel, puede ponerse detrás de órdenes nuevas, lo que hace aún menos probable la ejecución." },
+    { q: "¿Las ejecuciones limitadas de Tradovate son peores que las de otras plataformas?", a: "Las órdenes en vivo de cualquier bróker de futuros las ejecuta el mismo motor de casación de la bolsa, así que las diferencias reales entre cuentas reales se reducen a la velocidad de enrutamiento y al manejo de la cola, no a que un bróker decida ejecutarle peor. La mala calidad de ejecución es una queja recurrente aquí, pero gran parte de la diferencia que la gente nota es en realidad un simulador demo generoso frente a una cola real estricta. Aun así, la calidad de ejecución es un factor legítimo al elegir dónde operar." },
+    { q: "¿Puede Tradovate investigar una orden concreta que debería haberse ejecutado?", a: "Sí. Obtenga el Order ID de su informe de Orders y envíelo al Trade Desk para que comprueben qué ocurrió con esa orden exacta en la bolsa. Es la única vía real para obtener una respuesta por orden, ya que no existe ninguna corrección dentro de la plataforma para la calidad de ejecución." },
+  ], fr: [
+    { q: "Pourquoi mon ordre à cours limité n'a-t-il pas été exécuté alors que le prix a atteint mon niveau ?", a: "Les ordres à cours limité sur contrats à terme sont appariés par le moteur de priorité prix-temps (FIFO) de la bourse, et vous vous placez au bout de la file à votre prix. Si le prix touche votre niveau mais que trop peu de contrats s'échangent pour servir tous ceux qui attendent devant vous, votre ordre reste non exécuté. Un contact n'est pas une exécution ; il faut d'abord que le volume traverse votre position dans la file." },
+    { q: "Le prix doit-il traverser mon prix limite pour que l'ordre soit exécuté ?", a: "Pas toujours, mais cela aide. Si le prix ne s'échange qu'à votre niveau puis rebondit, seule une partie de la file devant vous peut être exécutée, et vous restez derrière. Lorsque le prix s'échange un tick au-delà de votre limite, toute la file en attente à ce niveau est généralement purgée et vous êtes exécuté. C'est pourquoi une limite simplement effleurée peut quand même revenir vide." },
+    { q: "Existe-t-il un réglage Tradovate qui améliore l'exécution des ordres à cours limité ?", a: "Non. Aucun interrupteur n'améliore la qualité d'exécution, car les ordres à cours limité actifs sont appariés par la bourse, pas par le courtier. Ce que vous contrôlez, c'est le type d'ordre et son placement : utilisez un ordre au marché quand vous devez sortir, et placez vos limites un ou deux ticks plus agressivement quand vous avez besoin de meilleures chances d'exécution." },
+    { q: "Pourquoi les exécutions paraissent-elles meilleures sur mon compte démo qu'en réel ?", a: "Les comptes démo et d'évaluation simulent les exécutions au lieu de les acheminer vers la bourse, et un simulateur ne peut pas reproduire le vrai moteur d'appariement ni la profondeur réelle de la file. Les exécutions simulées sont souvent plus favorables qu'en réel ; une stratégie à limites qui paraît parfaite en démo peut donc manquer des exécutions une fois la vraie priorité de file appliquée. Testez vos hypothèses d'exécution d'abord sur un compte réel." },
+    { q: "Comment sortir d'une position quand ma sortie à cours limité ne s'exécute pas ?", a: "Annulez la limite en attente et envoyez un ordre au marché dans la direction opposée, avec la même quantité. Un ordre au marché garantit l'exécution, mais pas le prix ; vous acceptez donc un peu de slippage pour être à plat. Si vous devez régulièrement sortir à un niveau précis, ne comptez pas sur une limite passive pour le faire." },
+    { q: "Modifier mon ordre à cours limité me fait-il perdre ma place dans la file ?", a: "Oui. Changer le prix d'une limite active ou augmenter sa quantité la replace au bout de la file à ce niveau, et vous perdez la priorité de temps accumulée. Si vous continuez à ajuster un ordre pendant que le prix se trouve à votre niveau, vous pouvez vous retrouver derrière de nouveaux ordres, rendant l'exécution encore moins probable." },
+    { q: "Les exécutions à cours limité de Tradovate sont-elles moins bonnes que sur d'autres plateformes ?", a: "Les ordres réels de n'importe quel courtier de contrats à terme sont exécutés par le même moteur d'appariement de la bourse ; les vraies différences entre comptes réels tiennent donc à la vitesse d'acheminement et à la gestion de la file, pas à un courtier qui déciderait de vous exécuter moins bien. La mauvaise qualité d'exécution est une plainte récurrente ici, mais une grande partie de l'écart perçu vient en réalité d'un simulateur démo généreux face à une file réelle stricte. La qualité d'exécution reste un critère légitime pour choisir où trader." },
+    { q: "Tradovate peut-il enquêter sur un ordre précis qui aurait dû être exécuté ?", a: "Oui. Récupérez l'Order ID dans votre rapport Orders et envoyez-le au Trade Desk afin qu'il vérifie ce qui est arrivé à cet ordre précis à la bourse. C'est le seul véritable moyen d'obtenir une réponse par ordre, car il n'existe aucune correction de la qualité d'exécution dans la plateforme." },
+  ], it: [
+    { q: "Perché il mio ordine limite non è stato eseguito anche se il prezzo ha toccato il mio livello?", a: "Gli ordini limite sui future vengono abbinati dal motore di priorità prezzo-tempo (FIFO) della borsa, e Lei si accoda in fondo alla coda al Suo prezzo. Se il prezzo tocca il Suo livello ma non vengono scambiati abbastanza contratti da servire tutti quelli in attesa davanti a Lei, il Suo ordine resta non eseguito. Un tocco non è un'esecuzione; prima il volume deve attraversare la Sua posizione in coda." },
+    { q: "Il prezzo deve attraversare il mio prezzo limite affinché l'ordine venga eseguito?", a: "Non sempre, ma aiuta. Se il prezzo scambia solo al Suo livello e rimbalza, può essere eseguita solo una parte della coda davanti a Lei, e Lei resta indietro. Quando il prezzo scambia un tick oltre il Suo limite, l'intera coda in attesa a quel livello viene di norma smaltita e Lei viene eseguito. Per questo un limite appena sfiorato può comunque tornare a mani vuote." },
+    { q: "Esiste un'impostazione di Tradovate che migliora l'esecuzione degli ordini limite?", a: "No. Non esiste alcun interruttore che migliori la qualità dell'esecuzione, perché gli ordini limite attivi vengono abbinati dalla borsa, non dal broker. Ciò che controlla è il tipo di ordine e il suo posizionamento: usi un ordine a mercato quando deve uscire e posizioni i limiti uno o due tick in modo più aggressivo quando ha bisogno di maggiori probabilità di esecuzione." },
+    { q: "Perché le esecuzioni sembrano migliori sul mio conto demo che in reale?", a: "I conti demo e di valutazione simulano le esecuzioni anziché instradarle alla borsa, e un simulatore non può riprodurre il vero motore di abbinamento né la profondità reale della coda. Le esecuzioni simulate spesso risultano più favorevoli che in reale, quindi una strategia a limiti che in demo sembra impeccabile può perdere esecuzioni una volta che si applica la vera priorità di coda. Verifichi le Sue ipotesi sull'esecuzione prima su un conto reale." },
+    { q: "Come esco da una posizione quando la mia uscita con ordine limite non viene eseguita?", a: "Annulli il limite in attesa e invii un ordine a mercato nella direzione opposta e con la stessa quantità. Un ordine a mercato garantisce l'esecuzione, ma non il prezzo, quindi accetta un po' di slippage in cambio dell'essere flat. Se deve uscire regolarmente a un certo livello, non si affidi a un limite passivo per farlo." },
+    { q: "Modificare il mio ordine limite mi fa perdere il posto in coda?", a: "Sì. Cambiare il prezzo di un limite attivo o aumentarne la quantità lo rimette in coda in fondo a quel livello, e Lei perde la priorità temporale accumulata. Se continua a ritoccare un ordine mentre il prezzo si trova al Suo livello, può finire dietro a ordini nuovi, rendendo l'esecuzione ancora meno probabile." },
+    { q: "Le esecuzioni con ordini limite di Tradovate sono peggiori di quelle di altre piattaforme?", a: "Gli ordini live di qualsiasi broker di future vengono eseguiti dallo stesso motore di abbinamento della borsa, quindi le vere differenze tra conti reali dipendono dalla velocità di instradamento e dalla gestione della coda, non da un broker che decide di eseguirLa peggio. La scarsa qualità di esecuzione è una lamentela ricorrente qui, ma gran parte del divario percepito è in realtà un simulatore demo generoso rispetto a una coda reale rigorosa. La qualità di esecuzione resta comunque un criterio legittimo nella scelta di dove fare trading." },
+    { q: "Tradovate può indagare su un ordine specifico che avrebbe dovuto essere eseguito?", a: "Sì. Recuperi l'Order ID dal Suo report Orders e lo invii al Trade Desk, così potranno verificare che cosa è successo a quell'ordine esatto in borsa. È l'unico vero modo per ottenere una risposta per singolo ordine, dato che nella piattaforma non esiste alcuna correzione per la qualità di esecuzione." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc.; sie wird von Tradovate, Inc. weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par celle-ci. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; confirmez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né approvata o sponsorizzata da essa. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-10",
+  dateModified: "2026-07-10",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

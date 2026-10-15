@@ -1,0 +1,275 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-renew-token";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Renew a Tradovate API Token Before Expiry";
+const META_DESCRIPTION =
+  "Renew a Tradovate access token before its 90-minute expiry using the renew endpoint, so your automated orders never drop out with a 401 mid-session.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API-Token vor Ablauf erneuern", es: "Renovar un token de API de Tradovate antes de su vencimiento", fr: "Renouveler un jeton API Tradovate avant son expiration", it: "Rinnova un token API Tradovate prima della scadenza" },
+  dek: { en: "A Tradovate access token only lasts 90 minutes. Here's how to renew it on a schedule so your session, and your automated orders, never actually lapse.", de: "Ein Tradovate-Zugriffstoken ist nur 90 Minuten lang gültig. So erneuern Sie es nach einem festen Zeitplan, damit Ihre Sitzung und Ihre automatisierten Orders nie tatsächlich ablaufen.", es: "Un token de acceso de Tradovate solo dura 90 minutos. A continuación se explica cómo renovarlo de forma programada para que su sesión, y sus órdenes automatizadas, nunca lleguen a caducar.", fr: "Un jeton d'accès Tradovate ne dure que 90 minutes. Voici comment le renouveler selon un calendrier régulier afin que votre session, et vos ordres automatisés, n'expirent jamais réellement.", it: "Un token di accesso Tradovate dura solo 90 minuti. Ecco come rinnovarlo secondo una pianificazione, così la vostra sessione, e i vostri ordini automatizzati, non decadono mai realmente." },
+  readTime: { en: "5 min read", de: "5 Minuten Lesezeit", es: "Lectura de 5 minutos", fr: "Lecture de 5 minutes", it: "Lettura di 5 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "A Tradovate access token doesn't last your whole trading day. It's good for 90 minutes from the moment you log in, and once that window closes, every authenticated call comes back as a 401. If a bot is holding a position when that happens, it can't send a stop, a target, or a flatten until it re-authenticates. Not a great place to be." },
+    { type: "paragraph", html: "The fix is boring in the best way: renew the token while it's still alive, on a schedule, so the session never actually lapses. You call one endpoint, swap in the fresh token, and carry on. Here's the full routine." },
+    { type: "heading", text: "Why Renew Instead of Just Logging In Again" },
+    { type: "paragraph", html: "You could catch the 401 and call the login endpoint (<code>/auth/accessTokenRequest</code>) a second time. Don't make that your default. A fresh login opens a brand-new session, and Tradovate caps how many sessions you can hold at once and how often you can ask for tokens. Lean on new logins and you'll eventually trip a rate limit or a time penalty. Renewing keeps the same session going, so you sidestep both. Treat a full re-login as the emergency exit, not the routine." },
+    {
+      type: "table",
+      headers: ["", "Renew /auth/renewAccessToken", "New login /auth/accessTokenRequest"],
+      rows: [
+        ["Session", "Keeps your current session", "Starts a new session"],
+        ["Credentials", "Not needed, uses your current token", "Full username and password"],
+        ["When to use", "Every cycle, before expiry", "Only after the token has fully expired"],
+        ["Risk", "Minimal", "Can hit session or rate limits"],
+      ],
+    },
+    { type: "heading", text: "Before You Start" },
+    {
+      type: "list",
+      items: [
+        "API Access turned on for your account and a working access token.",
+        "The <code>accessToken</code> and <code>expirationTime</code> from your most recent login response.",
+        "Anything that can run a timer, a cron job, a <code>setInterval</code>, a background thread. The language doesn't matter.",
+      ],
+    },
+    { type: "heading", text: "Renew the Token: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Save the expirationTime from Your Login Response", html: "When you authenticate, the JSON that comes back carries more than the token. Two fields matter here: <code>accessToken</code>, which you send on every request, and <code>expirationTime</code>, an ISO timestamp for when that token dies. Store both. The <code>expirationTime</code> is your countdown clock, everything else keys off it." },
+        { title: "Check the Clock Every Couple of Minutes", html: "Don't sleep for a flat 75 minutes and hope. Run a light check on a short interval, every two minutes is plenty, that compares the current time against your stored <code>expirationTime</code>. When the gap drops under about 15 minutes, it's time to renew. Checking on an interval also means a paused or restarted process re-evaluates against the real clock instead of a stale countdown." },
+        { title: "Call the Renew Endpoint While the Token Is Still Valid", html: "Hit <code>/auth/renewAccessToken</code> with your current, still-valid access token in the <code>Authorization: Bearer</code> header. No username, no password, no re-login, the endpoint just extends the session you already have. The one hard rule: the token you send has to still be valid. Renew after it's already expired and the call fails, which drops you back to a full login." },
+        { title: "Swap in the New Token and Reset Your Clock", html: "The renew response hands you a fresh <code>accessToken</code> and a new <code>expirationTime</code>. Overwrite your stored values with both, then let your interval keep watching the new timestamp. Do this every cycle and a single session can run all day, or all week, without a gap. Miss it, and you're re-authenticating under pressure." },
+      ],
+    },
+    { type: "quote", html: "<code>POST /auth/renewAccessToken</code><br><code>Authorization: Bearer &lt;accessToken&gt;</code>" },
+    { type: "heading", text: "If the Token Already Expired" },
+    { type: "paragraph", html: "It happens. A process gets paused, a machine sleeps, the renew call slips past the deadline. When that's the case, renewing won't save you, the endpoint needs a token that's still alive. Run a full login again to get a new token and start a fresh session, then go straight back into the renew loop so it doesn't repeat. If you keep seeing 401s and aren't sure whether it's expiry or something else, the 401 Unauthorized (expired token) fix breaks down the usual causes." },
+    { type: "paragraph", html: "Once your session stays alive, the piece that actually moves size is order routing, see how to place orders through the Tradovate API." },
+    { type: "heading", text: "Automate This with PickMyTrade" },
+    { type: "paragraph", html: "Rather not write and babysit a refresh loop at all? <strong class='text-white'>PickMyTrade keeps the session alive for you</strong>, so your TradingView alerts route straight through to your account without you managing tokens by hand." },
+  ], de: [
+    { type: "paragraph", html: "Ein Tradovate-Zugriffstoken hält nicht Ihren gesamten Handelstag durch. Es ist ab dem Moment der Anmeldung 90 Minuten lang gültig, und sobald dieses Zeitfenster abläuft, liefert jeder authentifizierte Aufruf einen 401-Fehler zurück. Hält ein Bot in diesem Moment eine Position, kann er keinen Stop, kein Kursziel und keine Glattstellung senden, bis er sich erneut authentifiziert hat. Keine angenehme Situation." },
+    { type: "paragraph", html: "Die Lösung ist auf die beste Art langweilig: Erneuern Sie das Token nach einem festen Zeitplan, solange es noch gültig ist, damit die Sitzung nie tatsächlich abläuft. Sie rufen einen Endpunkt auf, tauschen das frische Token ein und machen weiter. Hier ist der komplette Ablauf." },
+    { type: "heading", text: "Warum erneuern statt sich einfach erneut anzumelden" },
+    { type: "paragraph", html: "Sie könnten den 401-Fehler abfangen und den Login-Endpunkt (<code>/auth/accessTokenRequest</code>) ein zweites Mal aufrufen. Machen Sie das aber nicht zu Ihrem Standardverfahren. Eine neue Anmeldung eröffnet eine brandneue Sitzung, und Tradovate begrenzt, wie viele Sitzungen Sie gleichzeitig halten und wie oft Sie Tokens anfordern können. Verlassen Sie sich zu sehr auf neue Anmeldungen, laufen Sie früher oder später in ein Rate-Limit oder eine Zeitsperre. Das Erneuern hält dieselbe Sitzung am Laufen und umgeht so beides. Behandeln Sie eine vollständige erneute Anmeldung als Notausgang, nicht als Routine." },
+    {
+      type: "table",
+      headers: ["", "Erneuern /auth/renewAccessToken", "Neue Anmeldung /auth/accessTokenRequest"],
+      rows: [
+        ["Sitzung", "Behält Ihre aktuelle Sitzung bei", "Startet eine neue Sitzung"],
+        ["Zugangsdaten", "Nicht nötig, nutzt Ihr aktuelles Token", "Vollständiger Benutzername und Passwort"],
+        ["Wann verwenden", "Bei jedem Zyklus, vor Ablauf", "Nur nachdem das Token vollständig abgelaufen ist"],
+        ["Risiko", "Minimal", "Kann Sitzungs- oder Rate-Limits auslösen"],
+      ],
+    },
+    { type: "heading", text: "Bevor Sie beginnen" },
+    {
+      type: "list",
+      items: [
+        "API-Zugriff für Ihr Konto aktiviert und ein funktionierendes Zugriffstoken.",
+        "Das <code>accessToken</code> und die <code>expirationTime</code> aus Ihrer letzten Login-Antwort.",
+        "Etwas, das einen Timer ausführen kann, ein Cron-Job, ein <code>setInterval</code>, ein Hintergrund-Thread. Die Programmiersprache spielt keine Rolle.",
+      ],
+    },
+    { type: "heading", text: "Das Token erneuern: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Speichern Sie die expirationTime aus Ihrer Login-Antwort", html: "Wenn Sie sich authentifizieren, enthält das zurückgegebene JSON mehr als nur das Token. Zwei Felder sind hier wichtig: <code>accessToken</code>, das Sie bei jeder Anfrage mitsenden, und <code>expirationTime</code>, ein ISO-Zeitstempel dafür, wann dieses Token abläuft. Speichern Sie beide. Die <code>expirationTime</code> ist Ihre Countdown-Uhr, alles andere richtet sich danach." },
+        { title: "Prüfen Sie die Uhr alle paar Minuten", html: "Warten Sie nicht einfach pauschal 75 Minuten und hoffen das Beste. Führen Sie stattdessen in kurzen Abständen eine leichte Prüfung durch, alle zwei Minuten reicht völlig, die die aktuelle Zeit mit Ihrer gespeicherten <code>expirationTime</code> vergleicht. Sinkt der Abstand unter etwa 15 Minuten, ist es Zeit zu erneuern. Die Prüfung in Intervallen sorgt außerdem dafür, dass ein pausierter oder neu gestarteter Prozess anhand der echten Uhrzeit neu bewertet wird statt anhand eines veralteten Countdowns." },
+        { title: "Rufen Sie den Renew-Endpunkt auf, solange das Token noch gültig ist", html: "Rufen Sie <code>/auth/renewAccessToken</code> mit Ihrem aktuellen, noch gültigen Zugriffstoken im <code>Authorization: Bearer</code>-Header auf. Kein Benutzername, kein Passwort, keine erneute Anmeldung, der Endpunkt verlängert lediglich die Sitzung, die Sie bereits haben. Die eine feste Regel: Das gesendete Token muss noch gültig sein. Erneuern Sie erst, nachdem es bereits abgelaufen ist, schlägt der Aufruf fehl und Sie landen wieder bei einer vollständigen Anmeldung." },
+        { title: "Tauschen Sie das neue Token ein und setzen Sie Ihre Uhr zurück", html: "Die Renew-Antwort liefert Ihnen ein frisches <code>accessToken</code> und eine neue <code>expirationTime</code>. Überschreiben Sie Ihre gespeicherten Werte mit beiden, und lassen Sie Ihr Intervall weiterhin den neuen Zeitstempel beobachten. Machen Sie das bei jedem Zyklus, und eine einzige Sitzung kann den ganzen Tag oder die ganze Woche ohne Unterbrechung laufen. Verpassen Sie es, müssen Sie sich unter Zeitdruck erneut authentifizieren." },
+      ],
+    },
+    { type: "quote", html: "<code>POST /auth/renewAccessToken</code><br><code>Authorization: Bearer &lt;accessToken&gt;</code>" },
+    { type: "heading", text: "Wenn das Token bereits abgelaufen ist" },
+    { type: "paragraph", html: "Das passiert. Ein Prozess wird pausiert, eine Maschine geht in den Ruhezustand, der Renew-Aufruf verpasst die Frist. In diesem Fall hilft Erneuern nicht mehr, der Endpunkt benötigt ein Token, das noch lebt. Führen Sie erneut eine vollständige Anmeldung durch, um ein neues Token zu erhalten und eine frische Sitzung zu starten, und kehren Sie danach sofort in die Renew-Schleife zurück, damit es sich nicht wiederholt. Wenn Sie weiterhin 401-Fehler sehen und nicht sicher sind, ob es an Ablauf oder etwas anderem liegt, schlüsselt der Fix für 401 Unauthorized (abgelaufenes Token) die üblichen Ursachen auf." },
+    { type: "paragraph", html: "Sobald Ihre Sitzung stabil läuft, ist das Order-Routing der Baustein, der tatsächlich Positionen bewegt, siehe, wie Sie Orders über die Tradovate-API platzieren." },
+    { type: "heading", text: "Automatisieren Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "Möchten Sie lieber gar keine Refresh-Schleife schreiben und überwachen? <strong class='text-white'>PickMyTrade hält die Sitzung für Sie am Leben</strong>, sodass Ihre TradingView-Alerts direkt an Ihr Konto weitergeleitet werden, ohne dass Sie Tokens manuell verwalten müssen." },
+  ], es: [
+    { type: "paragraph", html: "Un token de acceso de Tradovate no dura toda su jornada de trading. Es válido durante 90 minutos desde el momento en que inicia sesión y, en cuanto esa ventana se cierra, toda llamada autenticada devuelve un error 401. Si un bot está manteniendo una posición cuando eso ocurre, no puede enviar un stop, un objetivo ni un cierre de posición hasta que se reautentique. No es una situación cómoda." },
+    { type: "paragraph", html: "La solución es aburrida de la mejor manera posible: renueve el token mientras siga vigente, de forma programada, para que la sesión nunca llegue a caducar realmente. Llama a un endpoint, sustituye el token por el nuevo y continúa. Aquí tiene la rutina completa." },
+    { type: "heading", text: "Por Qué Renovar en Lugar de Simplemente Iniciar Sesión de Nuevo" },
+    { type: "paragraph", html: "Podría capturar el error 401 y llamar al endpoint de inicio de sesión (<code>/auth/accessTokenRequest</code>) por segunda vez. No convierta eso en su práctica habitual. Un nuevo inicio de sesión abre una sesión completamente distinta, y Tradovate limita cuántas sesiones puede mantener a la vez y con qué frecuencia puede solicitar tokens. Si depende demasiado de nuevos inicios de sesión, terminará provocando un límite de frecuencia o una penalización temporal. Renovar mantiene activa la misma sesión, de modo que evita ambos problemas. Trate un reinicio de sesión completo como la salida de emergencia, no como la rutina." },
+    {
+      type: "table",
+      headers: ["", "Renovar /auth/renewAccessToken", "Nuevo inicio de sesión /auth/accessTokenRequest"],
+      rows: [
+        ["Sesión", "Mantiene su sesión actual", "Inicia una nueva sesión"],
+        ["Credenciales", "No se necesitan, usa su token actual", "Nombre de usuario y contraseña completos"],
+        ["Cuándo usarlo", "En cada ciclo, antes del vencimiento", "Solo después de que el token haya caducado por completo"],
+        ["Riesgo", "Mínimo", "Puede activar límites de sesión o de frecuencia"],
+      ],
+    },
+    { type: "heading", text: "Antes de Empezar" },
+    {
+      type: "list",
+      items: [
+        "El acceso a la API activado para su cuenta y un token de acceso funcional.",
+        "El <code>accessToken</code> y el <code>expirationTime</code> de su respuesta de inicio de sesión más reciente.",
+        "Cualquier mecanismo capaz de ejecutar un temporizador: una tarea cron, un <code>setInterval</code>, un hilo en segundo plano. El lenguaje no importa.",
+      ],
+    },
+    { type: "heading", text: "Renovar el Token: Paso a Paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Guarde el expirationTime de Su Respuesta de Inicio de Sesión", html: "Cuando se autentica, el JSON que recibe contiene más que el token. Aquí importan dos campos: <code>accessToken</code>, que envía en cada solicitud, y <code>expirationTime</code>, una marca de tiempo ISO que indica cuándo caduca ese token. Guarde ambos. El <code>expirationTime</code> es su reloj de cuenta regresiva, todo lo demás depende de él." },
+        { title: "Revise el Reloj Cada Par de Minutos", html: "No se limite a esperar 75 minutos fijos y confiar en que todo salga bien. Ejecute una comprobación ligera en un intervalo corto, cada dos minutos es más que suficiente, que compare la hora actual con su <code>expirationTime</code> almacenado. Cuando la diferencia caiga por debajo de unos 15 minutos, es momento de renovar. Comprobarlo a intervalos también significa que un proceso pausado o reiniciado se reevalúa frente al reloj real en lugar de frente a una cuenta regresiva desactualizada." },
+        { title: "Llame al Endpoint de Renovación Mientras el Token Siga Siendo Válido", html: "Llame a <code>/auth/renewAccessToken</code> con su token de acceso actual, todavía válido, en el encabezado <code>Authorization: Bearer</code>. Sin nombre de usuario, sin contraseña, sin volver a iniciar sesión, el endpoint simplemente extiende la sesión que ya tiene. La única regla estricta: el token que envía debe seguir siendo válido. Si intenta renovarlo después de que ya haya caducado, la llamada falla y termina de nuevo en un inicio de sesión completo." },
+        { title: "Sustituya el Token Nuevo y Reinicie Su Reloj", html: "La respuesta de renovación le entrega un <code>accessToken</code> nuevo y un <code>expirationTime</code> nuevo. Sobrescriba sus valores almacenados con ambos y deje que su intervalo siga vigilando la nueva marca de tiempo. Haga esto en cada ciclo y una sola sesión podrá funcionar todo el día, o toda la semana, sin interrupciones. Si se le pasa, tendrá que reautenticarse bajo presión." },
+      ],
+    },
+    { type: "quote", html: "<code>POST /auth/renewAccessToken</code><br><code>Authorization: Bearer &lt;accessToken&gt;</code>" },
+    { type: "heading", text: "Si el Token Ya Caducó" },
+    { type: "paragraph", html: "Sucede. Un proceso se pausa, una máquina entra en suspensión, la llamada de renovación se pasa del plazo. Cuando eso ocurre, renovar no lo salvará, el endpoint necesita un token que todavía esté vigente. Realice un inicio de sesión completo de nuevo para obtener un token nuevo e iniciar una sesión fresca, y luego vuelva de inmediato al ciclo de renovación para que no se repita. Si sigue viendo errores 401 y no está seguro de si se debe a la caducidad o a otra cosa, la solución del error 401 Unauthorized (token caducado) desglosa las causas habituales." },
+    { type: "paragraph", html: "Una vez que su sesión se mantiene activa, la parte que realmente mueve volumen es el enrutamiento de órdenes; consulte cómo colocar órdenes a través de la API de Tradovate." },
+    { type: "heading", text: "Automatice Esto con PickMyTrade" },
+    { type: "paragraph", html: "¿Prefiere no escribir ni supervisar en absoluto un ciclo de renovación? <strong class='text-white'>PickMyTrade mantiene la sesión activa por usted</strong>, de modo que sus alertas de TradingView se enrutan directamente a su cuenta sin que tenga que gestionar tokens manualmente." },
+  ], fr: [
+    { type: "paragraph", html: "Un jeton d'accès Tradovate ne dure pas toute votre journée de trading. Il est valide pendant 90 minutes à partir du moment où vous vous connectez, et une fois cette fenêtre refermée, chaque appel authentifié revient avec une erreur 401. Si un bot détient une position à ce moment-là, il ne peut envoyer ni stop, ni objectif, ni ordre de clôture tant qu'il ne s'est pas réauthentifié. Ce n'est pas une bonne position à occuper." },
+    { type: "paragraph", html: "La solution est ennuyeuse dans le bon sens du terme : renouvelez le jeton pendant qu'il est encore valide, selon un calendrier, afin que la session n'expire jamais réellement. Vous appelez un seul endpoint, vous remplacez le jeton par le nouveau, et vous continuez. Voici la routine complète." },
+    { type: "heading", text: "Pourquoi renouveler plutôt que simplement se reconnecter" },
+    { type: "paragraph", html: "Vous pourriez intercepter le 401 et appeler une seconde fois le endpoint de connexion (<code>/auth/accessTokenRequest</code>). N'en faites pas votre pratique par défaut. Une nouvelle connexion ouvre une toute nouvelle session, et Tradovate plafonne le nombre de sessions que vous pouvez détenir simultanément ainsi que la fréquence à laquelle vous pouvez demander des jetons. Si vous vous appuyez trop sur de nouvelles connexions, vous finirez par déclencher une limite de requêtes ou une pénalité temporelle. Le renouvellement maintient la même session active, ce qui vous permet d'éviter les deux. Considérez une reconnexion complète comme une sortie de secours, pas comme la routine." },
+    {
+      type: "table",
+      headers: ["", "Renouvellement /auth/renewAccessToken", "Nouvelle connexion /auth/accessTokenRequest"],
+      rows: [
+        ["Session", "Conserve votre session actuelle", "Démarre une nouvelle session"],
+        ["Identifiants", "Non nécessaires, utilise votre jeton actuel", "Nom d'utilisateur et mot de passe complets"],
+        ["Quand l'utiliser", "À chaque cycle, avant expiration", "Uniquement après l'expiration complète du jeton"],
+        ["Risque", "Minimal", "Peut déclencher des limites de session ou de requêtes"],
+      ],
+    },
+    { type: "heading", text: "Avant de commencer" },
+    {
+      type: "list",
+      items: [
+        "L'accès API activé pour votre compte et un jeton d'accès fonctionnel.",
+        "Les valeurs <code>accessToken</code> et <code>expirationTime</code> de votre réponse de connexion la plus récente.",
+        "N'importe quel mécanisme capable d'exécuter une minuterie : une tâche cron, un <code>setInterval</code>, un thread en arrière-plan. Le langage n'a pas d'importance.",
+      ],
+    },
+    { type: "heading", text: "Renouveler le jeton : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Enregistrez l'expirationTime de votre réponse de connexion", html: "Lorsque vous vous authentifiez, le JSON renvoyé contient plus que le jeton. Deux champs comptent ici : <code>accessToken</code>, que vous envoyez à chaque requête, et <code>expirationTime</code>, un horodatage ISO indiquant quand ce jeton expire. Stockez les deux. L'<code>expirationTime</code> est votre horloge de compte à rebours, tout le reste en dépend." },
+        { title: "Vérifiez l'horloge toutes les quelques minutes", html: "Ne vous contentez pas d'attendre passivement 75 minutes en espérant que tout ira bien. Exécutez une vérification légère à un intervalle court, toutes les deux minutes suffit amplement, qui compare l'heure actuelle à votre <code>expirationTime</code> stockée. Lorsque l'écart descend sous environ 15 minutes, il est temps de renouveler. Vérifier à intervalles réguliers signifie aussi qu'un processus mis en pause ou redémarré se réévalue par rapport à l'heure réelle plutôt que par rapport à un compte à rebours obsolète." },
+        { title: "Appelez le endpoint de renouvellement pendant que le jeton est encore valide", html: "Appelez <code>/auth/renewAccessToken</code> avec votre jeton d'accès actuel, encore valide, dans l'en-tête <code>Authorization: Bearer</code>. Pas de nom d'utilisateur, pas de mot de passe, pas de reconnexion, le endpoint se contente de prolonger la session que vous avez déjà. La seule règle stricte : le jeton que vous envoyez doit encore être valide. Renouvelez-le après son expiration et l'appel échoue, ce qui vous ramène à une connexion complète." },
+        { title: "Remplacez par le nouveau jeton et réinitialisez votre horloge", html: "La réponse du renouvellement vous fournit un nouvel <code>accessToken</code> et une nouvelle <code>expirationTime</code>. Écrasez vos valeurs stockées avec les deux, puis laissez votre intervalle continuer à surveiller le nouvel horodatage. Faites cela à chaque cycle et une seule session peut tourner toute la journée, voire toute la semaine, sans interruption. Ratez-le, et vous devrez vous réauthentifier sous pression." },
+      ],
+    },
+    { type: "quote", html: "<code>POST /auth/renewAccessToken</code><br><code>Authorization: Bearer &lt;accessToken&gt;</code>" },
+    { type: "heading", text: "Si le jeton a déjà expiré" },
+    { type: "paragraph", html: "Cela arrive. Un processus est mis en pause, une machine se met en veille, l'appel de renouvellement dépasse l'échéance. Dans ce cas, renouveler ne vous sauvera pas, le endpoint a besoin d'un jeton encore valide. Effectuez à nouveau une connexion complète pour obtenir un nouveau jeton et démarrer une session fraîche, puis reprenez immédiatement la boucle de renouvellement pour que cela ne se reproduise pas. Si vous continuez à voir des erreurs 401 et n'êtes pas sûr qu'il s'agisse d'une expiration ou d'autre chose, la solution pour le 401 Unauthorized (jeton expiré) détaille les causes habituelles." },
+    { type: "paragraph", html: "Une fois votre session maintenue active, l'élément qui déplace réellement du volume est le routage des ordres ; consultez comment passer des ordres via l'API Tradovate." },
+    { type: "heading", text: "Automatisez cela avec PickMyTrade" },
+    { type: "paragraph", html: "Vous préférez ne pas du tout écrire ni surveiller une boucle de rafraîchissement ? <strong class='text-white'>PickMyTrade maintient la session active pour vous</strong>, afin que vos alertes TradingView soient acheminées directement vers votre compte sans que vous ayez à gérer les jetons manuellement." },
+  ], it: [
+    { type: "paragraph", html: "Un token di accesso Tradovate non dura per l'intera giornata di trading. È valido per 90 minuti dal momento del login e, una volta chiusa questa finestra, ogni chiamata autenticata restituisce un errore 401. Se un bot sta gestendo una posizione in quel momento, non può inviare uno stop, un target o una chiusura della posizione finché non si riautentica. Non è una situazione ideale." },
+    { type: "paragraph", html: "La soluzione è noiosa nel migliore dei modi: rinnovare il token mentre è ancora valido, secondo una pianificazione, in modo che la sessione non scada mai realmente. Si chiama un endpoint, si sostituisce il token con quello nuovo e si prosegue. Ecco la procedura completa." },
+    { type: "heading", text: "Perché rinnovare invece di limitarsi a effettuare nuovamente il login" },
+    { type: "paragraph", html: "È possibile intercettare l'errore 401 e richiamare una seconda volta l'endpoint di login (<code>/auth/accessTokenRequest</code>). Non fatene però la vostra prassi predefinita. Un nuovo login apre una sessione completamente nuova, e Tradovate limita quante sessioni potete mantenere contemporaneamente e con quale frequenza potete richiedere token. Se vi affidate troppo ai nuovi login, prima o poi incapperete in un rate limit o in una penalità temporale. Rinnovare mantiene attiva la stessa sessione, permettendovi di evitare entrambi i problemi. Considerate un login completo come l'uscita di emergenza, non come la routine." },
+    {
+      type: "table",
+      headers: ["", "Rinnova /auth/renewAccessToken", "Nuovo login /auth/accessTokenRequest"],
+      rows: [
+        ["Sessione", "Mantiene la sessione corrente", "Avvia una nuova sessione"],
+        ["Credenziali", "Non necessarie, utilizza il token corrente", "Nome utente e password completi"],
+        ["Quando usarlo", "Ad ogni ciclo, prima della scadenza", "Solo dopo che il token è completamente scaduto"],
+        ["Rischio", "Minimo", "Può far scattare limiti di sessione o di frequenza"],
+      ],
+    },
+    { type: "heading", text: "Prima di iniziare" },
+    {
+      type: "list",
+      items: [
+        "L'accesso API attivato per il vostro account e un token di accesso funzionante.",
+        "L'<code>accessToken</code> e l'<code>expirationTime</code> ottenuti dalla vostra risposta di login più recente.",
+        "Qualcosa in grado di eseguire un timer: un cron job, un <code>setInterval</code>, un thread in background. Il linguaggio non ha importanza.",
+      ],
+    },
+    { type: "heading", text: "Rinnovare il token: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Salvate l'expirationTime dalla risposta di login", html: "Quando vi autenticate, il JSON restituito contiene più del solo token. Due campi sono importanti qui: <code>accessToken</code>, che inviate a ogni richiesta, ed <code>expirationTime</code>, un timestamp ISO che indica quando quel token scade. Salvate entrambi. L'<code>expirationTime</code> è il vostro conto alla rovescia, tutto il resto si basa su di esso." },
+        { title: "Controllate l'orologio ogni paio di minuti", html: "Non limitatevi a attendere 75 minuti sperando che vada bene. Eseguite un controllo leggero a intervalli brevi, ogni due minuti è più che sufficiente, che confronti l'ora corrente con l'<code>expirationTime</code> salvato. Quando il divario scende sotto circa 15 minuti, è ora di rinnovare. Controllare a intervalli significa anche che un processo messo in pausa o riavviato si rivaluta rispetto all'orologio reale invece che a un conto alla rovescia obsoleto." },
+        { title: "Chiamate l'endpoint di rinnovo mentre il token è ancora valido", html: "Chiamate <code>/auth/renewAccessToken</code> con il vostro token di accesso corrente e ancora valido nell'header <code>Authorization: Bearer</code>. Nessun nome utente, nessuna password, nessun nuovo login: l'endpoint si limita a estendere la sessione che avete già. L'unica regola ferrea: il token inviato deve essere ancora valido. Se provate a rinnovarlo dopo che è già scaduto, la chiamata fallisce e vi ritrovate a dover effettuare un login completo." },
+        { title: "Sostituite il nuovo token e reimpostate l'orologio", html: "La risposta di rinnovo vi fornisce un nuovo <code>accessToken</code> e un nuovo <code>expirationTime</code>. Sovrascrivete i valori salvati con entrambi, quindi lasciate che il vostro intervallo continui a monitorare il nuovo timestamp. Fatelo a ogni ciclo e una singola sessione potrà funzionare per un'intera giornata, o un'intera settimana, senza interruzioni. Se lo perdete, dovrete riautenticarvi sotto pressione." },
+      ],
+    },
+    { type: "quote", html: "<code>POST /auth/renewAccessToken</code><br><code>Authorization: Bearer &lt;accessToken&gt;</code>" },
+    { type: "heading", text: "Se il token è già scaduto" },
+    { type: "paragraph", html: "Succede. Un processo viene messo in pausa, una macchina va in sospensione, la chiamata di rinnovo supera la scadenza. In questi casi rinnovare non vi salva: l'endpoint richiede un token ancora valido. Effettuate di nuovo un login completo per ottenere un nuovo token e avviare una sessione fresca, quindi tornate subito nel ciclo di rinnovo in modo che non si ripeta. Se continuate a vedere errori 401 e non siete sicuri se dipenda dalla scadenza o da altro, la guida alla risoluzione dell'errore 401 Unauthorized (token scaduto) analizza le cause più comuni." },
+    { type: "paragraph", html: "Una volta che la vostra sessione resta attiva, l'elemento che effettivamente muove le posizioni è l'instradamento degli ordini: scoprite come inviare ordini tramite l'API Tradovate." },
+    { type: "heading", text: "Automatizzate tutto questo con PickMyTrade" },
+    { type: "paragraph", html: "Preferite non scrivere e sorvegliare affatto un ciclo di rinnovo? <strong class='text-white'>PickMyTrade mantiene la sessione attiva al posto vostro</strong>, così i vostri alert di TradingView arrivano direttamente al vostro account senza che dobbiate gestire i token manualmente." },
+  ] },
+  ctaHeading: { en: "Skip the Token-Refresh Loop", de: "Überspringen Sie die Token-Refresh-Schleife", es: "Omita el Ciclo de Renovación de Tokens", fr: "Évitez la boucle de rafraîchissement des jetons", it: "Saltate il ciclo di rinnovo del token" },
+  ctaText: { en: "Rather not write and babysit a refresh loop at all? PickMyTrade keeps the session alive for you, so your TradingView alerts route straight through without you managing tokens by hand.", de: "Möchten Sie lieber gar keine Refresh-Schleife schreiben und überwachen? PickMyTrade hält die Sitzung für Sie am Leben, sodass Ihre TradingView-Alerts direkt weitergeleitet werden, ohne dass Sie Tokens manuell verwalten müssen.", es: "¿Prefiere no escribir ni supervisar en absoluto un ciclo de renovación? PickMyTrade mantiene la sesión activa por usted, de modo que sus alertas de TradingView se enrutan directamente sin que tenga que gestionar tokens manualmente.", fr: "Vous préférez ne pas du tout écrire ni surveiller une boucle de rafraîchissement ? PickMyTrade maintient la session active pour vous, afin que vos alertes TradingView soient acheminées directement sans que vous ayez à gérer les jetons manuellement.", it: "Preferite non scrivere e sorvegliare affatto un ciclo di rinnovo? PickMyTrade mantiene la sessione attiva al posto vostro, così i vostri alert di TradingView arrivano direttamente senza che dobbiate gestire i token manualmente." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-tägige Testversion", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Inizia la tua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas Frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [], de: [], es: [], fr: [], it: [] },
+  relatedHeading: { en: "Related Guides", de: "Weitere Anleitungen", es: "Guías Relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: `Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. und wird von diesem Unternehmen weder unterstützt noch gesponsert. "Tradovate" sowie alle damit verbundenen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -abläufe ändern sich im Laufe der Zeit. Bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.`, es: `Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión o de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. "Tradovate" y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.`, fr: `Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni sponsorisée par Tradovate, Inc. « Tradovate » et tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent avec le temps ; confirmez toujours la procédure actuelle dans la plateforme et la documentation officielles de Tradovate avant d'agir.`, it: `Questa guida ha uno scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio di perdita significativo e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente e di terze parti, non affiliata, sostenuta o sponsorizzata da Tradovate, Inc. "Tradovate" e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e le procedure della piattaforma cambiano nel tempo, pertanto verificate sempre il processo attuale sulla piattaforma e nella documentazione ufficiale di Tradovate prima di agire.` },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

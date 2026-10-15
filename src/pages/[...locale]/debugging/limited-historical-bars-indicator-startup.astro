@@ -1,0 +1,499 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "limited-historical-bars-indicator-startup";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate ~300 Bars Load at Indicator Startup";
+const META_DESCRIPTION =
+  "Only ~300 bars load when your Tradovate indicator starts? Apply a chart template with a high Minimum Bars to Load first so full history is ready.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate: Nur ca. 300 Balken beim Start des Indikators geladen", es: "Tradovate: solo ~300 barras al iniciar el indicador", fr: "Tradovate : seulement ~300 barres chargées au démarrage de l'indicateur", it: "Tradovate: solo ~300 barre caricate all'avvio dell'indicatore" },
+  dek: { en: "Your custom indicator only sees a few hundred bars the moment a Tradovate chart opens. Here's why the chart never requested more history, and the two-minute template fix that makes it stick.", de: "Ihr eigener Indikator sieht in dem Moment, in dem ein Tradovate-Chart geöffnet wird, nur ein paar hundert Balken. Hier erfahren Sie, warum der Chart nie mehr Historie angefordert hat und wie die Vorlagen-Lösung in zwei Minuten dafür sorgt, dass es dauerhaft funktioniert.", es: "Su indicador personalizado solo ve unos cientos de barras en el momento en que se abre un gráfico de Tradovate. Le explicamos por qué el gráfico nunca solicitó más historial y la solución con una plantilla, de dos minutos, que hace que el cambio se mantenga.", fr: "Votre indicateur personnalisé ne voit que quelques centaines de barres à l'instant où un graphique Tradovate s'ouvre. Voici pourquoi le graphique n'a jamais demandé plus d'historique, et la correction par modèle, en deux minutes, qui la rend durable.", it: "Il Suo indicatore personalizzato vede solo poche centinaia di barre nel momento in cui si apre un grafico Tradovate. Ecco perché il grafico non ha mai richiesto più storico e la correzione con un modello, in due minuti, che la rende permanente." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-09",
+  blocks: { en: [
+    { type: "paragraph", html: "You add a custom indicator to a Tradovate chart, and instead of chewing through your full history it only sees a few hundred bars. Log the bar count from inside the indicator and you'll see it: roughly 300 bars on something like ES or MES, maybe a bit more on another contract, nowhere near the thousands you expected. Anything that needs deeper lookback, a long moving average, a session anchor, a rolling window, is either wrong or blank until you manually scroll back to drag in more data. The frustrating part is that the data <em>is</em> available. The chart just never asked for it before your indicator started calculating. This one's fixable entirely inside Tradovate's chart settings, and the fix takes about two minutes to set up once." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Limited Bars at Startup",
+      items: [
+        "<strong class='text-white'>Raise &ldquo;Minimum Number of Bars to Load&rdquo;</strong>, bump it from the default 100 up to a deep value like 2000, well above your indicator's longest lookback.",
+        "<strong class='text-white'>Save that chart as a template</strong>, the raised value only sticks if it's baked into a template, because new tabs revert to the default.",
+        "<strong class='text-white'>Apply the template <em>before</em> you add the indicator</strong>, the history has to be loaded at the moment the indicator initializes, not after.",
+        "<strong class='text-white'>Confirm the count from inside the indicator</strong>, if you can log or display the available bar count, check it reads the full history now, not ~300.",
+        "<strong class='text-white'>Set it high enough with a buffer</strong>, Tradovate allows up to 9999 bars, so give long-period studies room to spare.",
+        "<strong class='text-white'>Reapply the template on every new chart tab</strong> where a startup calculation matters, one-time habit per chart.",
+      ],
+    },
+    { type: "heading", text: "What \"Limited Bars at Indicator Startup\" Actually Means" },
+    { type: "paragraph", html: "There's no error pop-up for this one. Nothing turns red. The symptom is quieter and easier to miss: your indicator draws, but it's calculating on a fraction of the history you think it has. If you print the length of the bar series when the indicator loads, the number comes back small, often around 300, sometimes closer to 1000 on a different contract, and it's inconsistent from symbol to symbol even though the data availability is the same." },
+    { type: "paragraph", html: "Here's the mechanism. When you open a new chart tab, Tradovate sets the <strong class='text-white'>Minimum Number of Bars to Load</strong> to its default value of 100. That's the floor for how much history the chart pulls before it renders. Your indicator initializes against whatever the chart has loaded at that moment. So if the chart preloaded only a shallow slice, the indicator warms up on that shallow slice, full stop. It doesn't reach back for more on its own. The extra bars only stream in when you physically scroll the chart left, and by then the indicator has already done its initial calculation on too little data." },
+    { type: "paragraph", html: "That's why this bites custom and long-lookback indicators hardest. A short study that only needs 20 or 30 bars behind it will look fine on 300. But a 200-period average, a VWAP that anchors to the session start, or anything doing a rolling statistical window across a big sample is starved. It either returns nothing for the early range or returns a wrong value that snaps into place later, once you scroll and the real bars arrive." },
+    { type: "heading", text: "Top Causes of Limited Bars at Startup" },
+    { type: "heading", text: "1. Minimum Bars to Load is sitting at the default 100" },
+    { type: "paragraph", html: "This is the root of the whole thing. Every new chart tab opens with Minimum Number of Bars to Load set to 100. That default governs how much history the chart requests up front, and the indicator can only use what's been requested. If you never raised it, your indicator is working off roughly that shallow window plus whatever small amount the chart pads on, which is how you end up at a few hundred bars instead of a few thousand." },
+    { type: "heading", text: "2. The indicator calculates before you scroll for more history" },
+    { type: "paragraph", html: "Scrolling the chart back pulls in older bars, but that happens <em>after</em> the indicator already initialized. The initial calculation is locked to the history that existed at load time. Manually scrolling to fix it forces a recalc on the fuller set, which is why the values suddenly correct themselves, but that's a band-aid you'd have to repeat every time, and it's useless for anything automated or unattended." },
+    { type: "heading", text: "3. The raised setting doesn't persist across tabs" },
+    { type: "paragraph", html: "Plenty of people find this setting, raise it once, and think they're done, then the problem comes right back on the next chart. That's because Tradovate applies the default per new tab. Change the value on one chart and it holds for that chart, but open a fresh tab and you're back to 100. Without a saved template carrying the value forward, the fix evaporates the moment you build a new layout." },
+    { type: "heading", text: "4. Bar counts vary by symbol and timeframe" },
+    { type: "paragraph", html: "The amount of history returned at startup isn't identical across contracts or intervals. One symbol might hand your indicator around 300 bars while another gives noticeably more on the exact same layout. That inconsistency is what makes the bug so confusing, it looks like the indicator is broken on one instrument and fine on another, when really it's the same shallow-load behavior expressing itself differently per symbol." },
+    { type: "heading", text: "5. Long-lookback studies need more runway than short ones" },
+    { type: "paragraph", html: "A shallow load only becomes a visible problem when the indicator's lookback exceeds the bars available. A 20-period study on 300 bars is fine. A 200-period study, or one that builds a large rolling sample, needs far more history behind the first visible bar to be correct from the start. The deeper your calculation reaches, the higher you need to push the minimum." },
+    { type: "heading", text: "How to Fix Limited Bars at Startup: Step-by-Step" },
+    { type: "heading", text: "Fixing Cause 1 & 2: Raise the Minimum Number of Bars to Load" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the chart's settings", html: "Use the gear/settings or three-dot menu on the chart toolbar to reach the chart editor, then find the section that controls how much history the chart loads." },
+        { title: "Locate the Minimum Number of Bars to Load field", html: "Some menus shorten the label to &ldquo;Minimum Bars to Load.&rdquo;" },
+        { title: "Raise it to a deep value like 2000", html: "Change it from the default 100 up to a deep value. Something like <strong class='text-white'>2000</strong> is a solid starting point, and it should comfortably exceed the longest lookback of any indicator you'll add." },
+        { title: "Push toward the 9999 ceiling for long studies", html: "Tradovate allows this value up to <strong class='text-white'>9999</strong> bars, so if you run very long-period studies, set it high enough that the history reaches well past your longest calculation window." },
+        { title: "Apply, save, and confirm", html: "Apply and save, then confirm the deeper history is actually present before your indicator would need it." },
+      ],
+    },
+    { type: "heading", text: "Fixing Cause 3: Bake it into a base template so it sticks" },
+    { type: "paragraph", html: "Because every new tab reverts to the default, the durable fix is a template. This is the step that actually solves the problem for good." },
+    {
+      type: "steps",
+      items: [
+        { title: "Set the deep value before adding indicators", html: "On a clean chart, set your <strong class='text-white'>Minimum Number of Bars to Load</strong> to your preferred deep value <em>first</em>, before you add any indicators." },
+        { title: "Save the chart as a template", html: "Open the chart menu and save the current chart as a template. Give it a clear, descriptive name like &ldquo;base 2000 bars&rdquo; so you always know which one preloads deep history." },
+        { title: "Apply the template before adding the indicator", html: "For every new chart where a startup calculation matters, <strong class='text-white'>apply this base template first, then add your indicator.</strong> Order matters: the template loads the history, and only then does the indicator initialize against the full set." },
+        { title: "Repeat only on brand-new charts", html: "Once the template is applied and the indicator is on, that chart holds its history for the session. You only repeat the apply-then-add step when you build a brand-new chart." },
+      ],
+    },
+    { type: "heading", text: "Fixing Cause 4 & 5: Size the buffer to your longest lookback" },
+    { type: "paragraph", html: "Don't set the minimum to the exact number of bars your indicator needs, give it a cushion. If your longest study is a 200-period average, don't set 200. Set something several times larger so the calculation has fully warmed up before the first bar you actually care about. When you run multiple indicators or multiple timeframes off one template, size the buffer for the hungriest one, and push toward the 9999 ceiling if your studies reach deep." },
+    { type: "quote", html: "<strong class='text-white'>The one-line version:</strong> raise Minimum Number of Bars to Load, save it as a template, and apply that template <em>before</em> adding the indicator. Skip any of those three and the ~300-bar startup comes back." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "What's happening", "Fix"],
+      rows: [
+        ["Indicator only sees ~300 bars at startup", "Chart loaded the default shallow history before the indicator ran", "Raise Minimum Number of Bars to Load well above the indicator's lookback"],
+        ["Values correct themselves only after you scroll back", "Recalc on the fuller set that loads when you scroll", "Preload the history up front so no manual scrolling is needed"],
+        ["Fix works on one chart, breaks on the next tab", "New tabs revert to the default of 100", "Save a base template and apply it before adding indicators"],
+        ["One symbol is fine, another is starved", "Startup bar count varies by contract and interval", "Use the template everywhere so the minimum is consistent"],
+        ["Long-period study still wrong at the left edge", "Bar count still below the study's window plus buffer", "Increase toward the 9999 maximum for a full cushion"],
+        ["Setting won't save", "Change applied to a single tab, not persisted", "Bake the value into a saved chart template"],
+      ],
+    },
+    { type: "heading", text: "Take the Chart Out of the Execution Loop with PickMyTrade" },
+    { type: "paragraph", html: "Preloading deep history fixes what the Tradovate chart shows you, but if your <em>entries</em> depend on an indicator calculating correctly the instant a chart loads, a shallow-history startup can still cost you a fill. The cleaner answer is to stop executing off the render entirely. PickMyTrade lets your strategy live where it has full history and fires the order for you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signal-Driven Entries</strong>, orders fire from your TradingView alert logic, computed on TradingView's full bar history, not from whatever a freshly opened Tradovate chart happened to preload.",
+        "<strong class='text-white'>Stable Indicator Context</strong>, your EMA, VWAP, or custom study calculates once, on the complete dataset, so a starved startup never produces a mis-timed trigger.",
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, malformed or wrong-contract orders get blocked before they're ever sent.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, the same validated order mirrors across every connected account at once, so you're not rebuilding charts account by account.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie fügen einem Tradovate-Chart einen eigenen Indikator hinzu, und statt Ihre vollständige Historie zu verarbeiten, sieht er nur ein paar hundert Balken. Protokollieren Sie die Balkenanzahl im Indikator, dann sehen Sie es: etwa 300 Balken bei ES oder MES, vielleicht etwas mehr bei einem anderen Kontrakt, weit entfernt von den Tausenden, die Sie erwartet haben. Alles, was einen tieferen Lookback braucht, etwa ein langer gleitender Durchschnitt, ein Sitzungsanker oder ein rollierendes Fenster, ist entweder falsch oder leer, bis Sie manuell zurückscrollen und weitere Daten nachladen. Das Frustrierende daran: Die Daten sind <em>vorhanden</em>. Der Chart hat sie nur nicht angefordert, bevor Ihr Indikator mit der Berechnung begann. Das lässt sich vollständig in den Chart-Einstellungen von Tradovate beheben, und die einmalige Einrichtung dauert etwa zwei Minuten." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste bei begrenzter Balkenzahl beim Start",
+      items: [
+        "<strong class='text-white'>Erhöhen Sie &ldquo;Minimum Number of Bars to Load&rdquo;</strong>, vom Standardwert 100 auf einen tiefen Wert wie 2000, deutlich über dem längsten Lookback Ihres Indikators.",
+        "<strong class='text-white'>Speichern Sie diesen Chart als Vorlage</strong>, der erhöhte Wert bleibt nur erhalten, wenn er in eine Vorlage eingebaut ist, weil neue Tabs auf den Standardwert zurückfallen.",
+        "<strong class='text-white'>Wenden Sie die Vorlage an, <em>bevor</em> Sie den Indikator hinzufügen</strong>, die Historie muss geladen sein, wenn der Indikator initialisiert wird, nicht erst danach.",
+        "<strong class='text-white'>Prüfen Sie die Anzahl im Indikator</strong>, wenn Sie die verfügbare Balkenzahl protokollieren oder anzeigen können, kontrollieren Sie, dass jetzt die volle Historie und nicht ca. 300 Balken angezeigt werden.",
+        "<strong class='text-white'>Setzen Sie den Wert hoch genug, mit Puffer</strong>, Tradovate erlaubt bis zu 9999 Balken, geben Sie Studien mit langer Periode also reichlich Spielraum.",
+        "<strong class='text-white'>Wenden Sie die Vorlage bei jedem neuen Chart-Tab erneut an</strong>, bei dem eine Startberechnung wichtig ist, eine einmalige Gewohnheit pro Chart.",
+      ],
+    },
+    { type: "heading",text: "Was „Begrenzte Balken beim Indikatorstart“ tatsächlich bedeutet" },
+    { type: "paragraph",html: "Hier gibt es kein Fehler-Pop-up. Nichts wird rot. Das Symptom ist leiser und leichter zu übersehen: Ihr Indikator wird gezeichnet, rechnet aber nur auf einem Bruchteil der Historie, die Sie vermuten. Wenn Sie beim Laden des Indikators die Länge der Balkenreihe ausgeben, kommt eine kleine Zahl zurück, oft rund 300, bei einem anderen Kontrakt manchmal eher 1000, und sie ist von Symbol zu Symbol uneinheitlich, obwohl die Datenverfügbarkeit dieselbe ist." },
+    { type: "paragraph",html: "So funktioniert der Mechanismus. Wenn Sie einen neuen Chart-Tab öffnen, setzt Tradovate <strong class='text-white'>Minimum Number of Bars to Load</strong> auf den Standardwert 100. Das ist die Untergrenze dafür, wie viel Historie der Chart vor dem Rendern lädt. Ihr Indikator initialisiert sich gegen das, was der Chart in diesem Moment geladen hat. Hat der Chart also nur einen flachen Ausschnitt vorgeladen, wärmt sich der Indikator auf diesem flachen Ausschnitt auf, Punkt. Von allein greift er nicht weiter zurück. Die zusätzlichen Balken werden erst nachgeladen, wenn Sie den Chart tatsächlich nach links scrollen, und dann hat der Indikator seine erste Berechnung bereits auf zu wenig Daten durchgeführt." },
+    { type: "paragraph",html: "Deshalb trifft es eigene Indikatoren und Studien mit langem Lookback am härtesten. Eine kurze Studie, die nur 20 oder 30 Balken Vorlauf braucht, sieht bei 300 Balken gut aus. Ein 200-Perioden-Durchschnitt, ein VWAP, der am Sitzungsbeginn verankert ist, oder alles, was ein rollierendes statistisches Fenster über eine große Stichprobe rechnet, ist unterversorgt. Es liefert für den frühen Bereich entweder nichts oder einen falschen Wert, der erst später einrastet, wenn Sie scrollen und die echten Balken eintreffen." },
+    { type: "heading",text: "Häufigste Ursachen für begrenzte Balken beim Start" },
+    { type: "heading",text: "1. Minimum Bars to Load steht auf dem Standardwert 100" },
+    { type: "paragraph",html: "Das ist die Wurzel des ganzen Problems. Jeder neue Chart-Tab öffnet sich mit Minimum Number of Bars to Load auf 100. Dieser Standardwert bestimmt, wie viel Historie der Chart vorab anfordert, und der Indikator kann nur verwenden, was angefordert wurde. Wenn Sie ihn nie erhöht haben, arbeitet Ihr Indikator mit diesem flachen Fenster plus der kleinen Menge, die der Chart noch dazugibt, und so landen Sie bei ein paar hundert statt ein paar tausend Balken." },
+    { type: "heading",text: "2. Der Indikator rechnet, bevor Sie nach mehr Historie scrollen" },
+    { type: "paragraph",html: "Wenn Sie den Chart zurückscrollen, werden ältere Balken geladen, aber das geschieht <em>nachdem</em> der Indikator bereits initialisiert wurde. Die erste Berechnung ist an die Historie gebunden, die zum Ladezeitpunkt existierte. Manuelles Scrollen erzwingt eine Neuberechnung auf dem größeren Datensatz, weshalb die Werte plötzlich korrekt werden, aber das ist ein Pflaster, das Sie jedes Mal wiederholen müssten, und für alles Automatisierte oder Unbeaufsichtigte nutzlos." },
+    { type: "heading",text: "3. Die erhöhte Einstellung bleibt nicht über Tabs hinweg erhalten" },
+    { type: "paragraph",html: "Viele finden diese Einstellung, erhöhen sie einmal und glauben, damit sei es erledigt. Dann kehrt das Problem beim nächsten Chart zurück. Der Grund: Tradovate wendet den Standardwert pro neuem Tab an. Ändern Sie den Wert in einem Chart, gilt er für diesen Chart, aber in einem frischen Tab stehen Sie wieder bei 100. Ohne gespeicherte Vorlage, die den Wert weitergibt, verpufft die Lösung, sobald Sie ein neues Layout aufbauen." },
+    { type: "heading",text: "4. Die Balkenanzahl variiert je nach Symbol und Zeitrahmen" },
+    { type: "paragraph",html: "Die beim Start gelieferte Historie ist nicht über alle Kontrakte oder Intervalle identisch. Ein Symbol liefert Ihrem Indikator vielleicht rund 300 Balken, ein anderes im exakt gleichen Layout deutlich mehr. Diese Uneinheitlichkeit macht den Fehler so verwirrend: Es sieht aus, als sei der Indikator bei einem Instrument defekt und beim anderen in Ordnung, dabei äußert sich nur dasselbe flache Ladeverhalten je Symbol unterschiedlich." },
+    { type: "heading",text: "5. Studien mit langem Lookback brauchen mehr Vorlauf als kurze" },
+    { type: "paragraph",html: "Ein flaches Laden wird erst dann zu einem sichtbaren Problem, wenn der Lookback des Indikators die verfügbaren Balken übersteigt. Eine 20-Perioden-Studie auf 300 Balken ist in Ordnung. Eine 200-Perioden-Studie oder eine, die eine große rollierende Stichprobe aufbaut, braucht deutlich mehr Historie hinter dem ersten sichtbaren Balken, um von Anfang an korrekt zu sein. Je tiefer Ihre Berechnung reicht, desto höher müssen Sie das Minimum ansetzen." },
+    { type: "heading",text: "So beheben Sie begrenzte Balken beim Start: Schritt für Schritt" },
+    { type: "heading",text: "Ursache 1 und 2 beheben: Minimum Number of Bars to Load erhöhen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Chart-Einstellungen öffnen", html: "Öffnen Sie über das Zahnrad- oder Drei-Punkte-Menü in der Chart-Symbolleiste den Chart-Editor und suchen Sie den Bereich, der steuert, wie viel Historie der Chart lädt." },
+        { title: "Das Feld Minimum Number of Bars to Load finden", html: "In manchen Menüs wird die Bezeichnung zu &ldquo;Minimum Bars to Load&rdquo; verkürzt." },
+        { title: "Auf einen tiefen Wert wie 2000 erhöhen", html: "Ändern Sie den Standardwert 100 auf einen tiefen Wert. Etwa <strong class='text-white'>2000</strong> ist ein solider Startpunkt, und er sollte den längsten Lookback jedes Indikators, den Sie hinzufügen, deutlich übersteigen." },
+        { title: "Für lange Studien Richtung Obergrenze 9999 gehen", html: "Tradovate erlaubt für diesen Wert bis zu <strong class='text-white'>9999</strong> Balken. Wenn Sie Studien mit sehr langen Perioden nutzen, setzen Sie ihn also so hoch, dass die Historie weit über Ihr längstes Berechnungsfenster hinausreicht." },
+        { title: "Übernehmen, speichern und prüfen", html: "Übernehmen und speichern Sie, und prüfen Sie dann, ob die tiefere Historie tatsächlich vorhanden ist, bevor Ihr Indikator sie braucht." },
+      ],
+    },
+    { type: "heading",text: "Ursache 3 beheben: In eine Basisvorlage einbauen, damit es dauerhaft gilt" },
+    { type: "paragraph",html: "Weil jeder neue Tab auf den Standardwert zurückfällt, ist eine Vorlage die dauerhafte Lösung. Dieser Schritt löst das Problem endgültig." },
+    {
+      type: "steps",
+      items: [
+        { title: "Den tiefen Wert vor dem Hinzufügen von Indikatoren setzen", html: "Setzen Sie in einem leeren Chart <strong class='text-white'>Minimum Number of Bars to Load</strong> auf Ihren bevorzugten tiefen Wert, <em>bevor</em> Sie Indikatoren hinzufügen." },
+        { title: "Den Chart als Vorlage speichern", html: "Öffnen Sie das Chart-Menü und speichern Sie den aktuellen Chart als Vorlage. Geben Sie ihr einen klaren, beschreibenden Namen wie &ldquo;base 2000 bars&rdquo;, damit Sie immer wissen, welche Vorlage tiefe Historie vorlädt." },
+        { title: "Die Vorlage anwenden, bevor der Indikator hinzugefügt wird", html: "Für jeden neuen Chart, bei dem eine Startberechnung wichtig ist, <strong class='text-white'>wenden Sie zuerst diese Basisvorlage an und fügen dann Ihren Indikator hinzu.</strong> Die Reihenfolge ist entscheidend: Die Vorlage lädt die Historie, und erst dann initialisiert sich der Indikator auf dem vollständigen Datensatz." },
+        { title: "Nur bei brandneuen Charts wiederholen", html: "Sobald die Vorlage angewendet und der Indikator aktiv ist, behält dieser Chart seine Historie für die Sitzung. Sie wiederholen das Anwenden-und-Hinzufügen nur, wenn Sie einen ganz neuen Chart aufbauen." },
+      ],
+    },
+    { type: "heading",text: "Ursache 4 und 5 beheben: Den Puffer an Ihren längsten Lookback anpassen" },
+    { type: "paragraph",html: "Setzen Sie das Minimum nicht exakt auf die Anzahl Balken, die Ihr Indikator braucht, sondern geben Sie ihm ein Polster. Wenn Ihre längste Studie ein 200-Perioden-Durchschnitt ist, setzen Sie nicht 200. Wählen Sie einen mehrfach größeren Wert, damit die Berechnung vollständig aufgewärmt ist, bevor der erste Balken kommt, der Sie wirklich interessiert. Wenn Sie mehrere Indikatoren oder mehrere Zeitrahmen mit einer Vorlage betreiben, bemessen Sie den Puffer nach dem anspruchsvollsten, und gehen Sie Richtung Obergrenze 9999, wenn Ihre Studien tief reichen." },
+    { type: "quote",html: "<strong class='text-white'>Die Kurzfassung:</strong> Erhöhen Sie Minimum Number of Bars to Load, speichern Sie es als Vorlage und wenden Sie diese Vorlage an, <em>bevor</em> Sie den Indikator hinzufügen. Lassen Sie einen dieser drei Schritte aus, kehrt der Start mit ca. 300 Balken zurück." },
+    { type: "heading",text: "Tabelle zur Fehlersuche" },
+    { type: "table", headers: ["Symptom","Was passiert","Lösung"], rows: [
+      ["Indikator sieht beim Start nur ca. 300 Balken","Der Chart hat die flache Standardhistorie geladen, bevor der Indikator lief","Minimum Number of Bars to Load deutlich über den Lookback des Indikators erhöhen"],
+      ["Werte korrigieren sich erst nach dem Zurückscrollen","Neuberechnung auf dem größeren Datensatz, der beim Scrollen geladen wird","Die Historie vorab laden, damit kein manuelles Scrollen nötig ist"],
+      ["Lösung funktioniert in einem Chart, im nächsten Tab nicht","Neue Tabs fallen auf den Standardwert 100 zurück","Eine Basisvorlage speichern und vor dem Hinzufügen von Indikatoren anwenden"],
+      ["Ein Symbol ist in Ordnung, ein anderes unterversorgt","Die Balkenanzahl beim Start variiert je nach Kontrakt und Intervall","Die Vorlage überall verwenden, damit das Minimum einheitlich ist"],
+      ["Studie mit langer Periode am linken Rand weiter falsch","Balkenanzahl liegt noch unter dem Fenster der Studie plus Puffer","Richtung Maximum 9999 erhöhen, für ein volles Polster"],
+      ["Einstellung wird nicht gespeichert","Änderung gilt nur für einen Tab und wird nicht dauerhaft übernommen","Den Wert in eine gespeicherte Chart-Vorlage einbauen"],
+    ] },
+    { type: "heading",text: "Nehmen Sie den Chart mit PickMyTrade aus der Ausführungsschleife" },
+    { type: "paragraph",html: "Das Vorladen tiefer Historie behebt, was der Tradovate-Chart Ihnen anzeigt. Hängen Ihre <em>Einstiege</em> jedoch davon ab, dass ein Indikator in dem Moment korrekt rechnet, in dem ein Chart geladen wird, kann ein flacher Start Sie trotzdem einen Fill kosten. Die sauberere Antwort ist, die Ausführung nicht mehr am Rendering aufzuhängen. Mit PickMyTrade lebt Ihre Strategie dort, wo sie die volle Historie hat, und der Auftrag wird für Sie ausgelöst:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signalgesteuerte Einstiege</strong>, Aufträge werden von Ihrer TradingView-Alarmlogik ausgelöst, berechnet auf der vollständigen Balkenhistorie von TradingView, nicht auf dem, was ein frisch geöffneter Tradovate-Chart zufällig vorgeladen hat.",
+        "<strong class='text-white'>Stabiler Indikatorkontext</strong>, Ihr EMA, VWAP oder eigener Indikator wird einmal auf dem vollständigen Datensatz berechnet, sodass ein unterversorgter Start nie einen falsch getimten Auslöser erzeugt.",
+        "<strong class='text-white'>Validierung von Menge und Symbol</strong>, fehlerhafte Aufträge oder Aufträge für den falschen Kontrakt werden blockiert, bevor sie überhaupt gesendet werden.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong>, derselbe validierte Auftrag wird gleichzeitig auf allen verbundenen Konten gespiegelt, sodass Sie nicht Konto für Konto Charts neu aufbauen müssen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Añade un indicador personalizado a un gráfico de Tradovate y, en lugar de recorrer todo su historial, solo ve unos cientos de barras. Si registra el número de barras desde el propio indicador lo verá: unas 300 barras en algo como ES o MES, quizá algo más en otro contrato, muy lejos de los miles que esperaba. Cualquier cálculo que necesite más retrospectiva, como una media móvil larga, un ancla de sesión o una ventana móvil, sale mal o en blanco hasta que usted retrocede manualmente para arrastrar más datos. Lo frustrante es que los datos <em>sí</em> están disponibles. El gráfico simplemente no los solicitó antes de que su indicador empezara a calcular. Esto se resuelve por completo dentro de la configuración del gráfico de Tradovate, y la solución lleva unos dos minutos de preparación una sola vez." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para el límite de barras al iniciar",
+      items: [
+        "<strong class='text-white'>Suba &ldquo;Minimum Number of Bars to Load&rdquo;</strong>, de los 100 predeterminados a un valor alto como 2000, muy por encima de la mayor retrospectiva de su indicador.",
+        "<strong class='text-white'>Guarde ese gráfico como plantilla</strong>, el valor elevado solo se mantiene si va incluido en una plantilla, porque las pestañas nuevas vuelven al valor predeterminado.",
+        "<strong class='text-white'>Aplique la plantilla <em>antes</em> de añadir el indicador</strong>, el historial debe estar cargado en el momento en que el indicador se inicializa, no después.",
+        "<strong class='text-white'>Confirme el recuento desde el propio indicador</strong>, si puede registrar o mostrar el número de barras disponibles, compruebe que ahora indica el historial completo y no ~300.",
+        "<strong class='text-white'>Configúrelo lo bastante alto y con colchón</strong>, Tradovate permite hasta 9999 barras, así que deje margen a los estudios de periodo largo.",
+        "<strong class='text-white'>Vuelva a aplicar la plantilla en cada pestaña de gráfico nueva</strong> en la que importe un cálculo de inicio, un hábito que se hace una vez por gráfico.",
+      ],
+    },
+    { type: "heading",text: "Qué significa realmente «barras limitadas al iniciar el indicador»" },
+    { type: "paragraph",html: "Aquí no hay ninguna ventana de error. Nada se pone en rojo. El síntoma es más silencioso y más fácil de pasar por alto: su indicador se dibuja, pero calcula sobre una fracción del historial que usted cree que tiene. Si imprime la longitud de la serie de barras cuando se carga el indicador, el número resulta pequeño, a menudo en torno a 300, a veces cerca de 1000 en otro contrato, y es incoherente entre símbolos aunque la disponibilidad de datos sea la misma." },
+    { type: "paragraph",html: "Este es el mecanismo. Cuando abre una pestaña de gráfico nueva, Tradovate establece <strong class='text-white'>Minimum Number of Bars to Load</strong> en su valor predeterminado de 100. Ese es el mínimo de historial que el gráfico extrae antes de renderizar. Su indicador se inicializa con lo que el gráfico haya cargado en ese momento. Así que, si el gráfico precargó solo un fragmento superficial, el indicador se calienta sobre ese fragmento superficial, y punto. No retrocede por su cuenta para pedir más. Las barras adicionales solo llegan cuando usted desplaza físicamente el gráfico hacia la izquierda, y para entonces el indicador ya hizo su cálculo inicial con muy pocos datos." },
+    { type: "paragraph",html: "Por eso afecta sobre todo a los indicadores personalizados y de retrospectiva larga. Un estudio corto que solo necesita 20 o 30 barras previas se verá bien con 300. Pero una media de 200 periodos, un VWAP anclado al inicio de la sesión o cualquier cosa que calcule una ventana estadística móvil sobre una muestra grande se queda sin datos. O no devuelve nada para el rango inicial o devuelve un valor erróneo que se corrige más tarde, cuando usted desplaza el gráfico y llegan las barras reales." },
+    { type: "heading",text: "Principales causas de barras limitadas al iniciar" },
+    { type: "heading",text: "1. Minimum Bars to Load está en el valor predeterminado de 100" },
+    { type: "paragraph",html: "Esta es la raíz de todo el problema. Cada pestaña de gráfico nueva se abre con Minimum Number of Bars to Load en 100. Ese valor predeterminado rige cuánto historial solicita el gráfico de antemano, y el indicador solo puede usar lo que se ha solicitado. Si nunca lo subió, su indicador trabaja con esa ventana superficial más la pequeña cantidad que el gráfico añade, y así termina con unos cientos de barras en lugar de unos miles." },
+    { type: "heading",text: "2. El indicador calcula antes de que usted desplace el gráfico para obtener más historial" },
+    { type: "paragraph",html: "Al desplazar el gráfico hacia atrás se cargan barras más antiguas, pero eso ocurre <em>después</em> de que el indicador ya se inicializó. El cálculo inicial queda fijado al historial que existía en el momento de la carga. Desplazarse manualmente fuerza un nuevo cálculo sobre el conjunto más completo, y por eso los valores se corrigen de repente, pero es un parche que tendría que repetir cada vez y no sirve para nada automatizado o desatendido." },
+    { type: "heading",text: "3. El ajuste elevado no persiste entre pestañas" },
+    { type: "paragraph",html: "Mucha gente encuentra este ajuste, lo sube una vez y cree que ya está, y el problema vuelve en el siguiente gráfico. Esto se debe a que Tradovate aplica el valor predeterminado en cada pestaña nueva. Si cambia el valor en un gráfico, se mantiene en ese gráfico, pero al abrir una pestaña nueva vuelve a 100. Sin una plantilla guardada que lleve el valor consigo, la solución se evapora en cuanto crea un nuevo diseño." },
+    { type: "heading",text: "4. El número de barras varía según el símbolo y el marco temporal" },
+    { type: "paragraph",html: "La cantidad de historial que se devuelve al iniciar no es idéntica entre contratos o intervalos. Un símbolo puede entregar a su indicador unas 300 barras mientras que otro entrega bastantes más en el mismo diseño. Esa incoherencia es lo que hace que el fallo sea tan confuso: parece que el indicador está roto en un instrumento y bien en otro, cuando en realidad es el mismo comportamiento de carga superficial manifestándose de forma distinta en cada símbolo." },
+    { type: "heading",text: "5. Los estudios de retrospectiva larga necesitan más margen que los cortos" },
+    { type: "paragraph",html: "Una carga superficial solo se convierte en un problema visible cuando la retrospectiva del indicador supera las barras disponibles. Un estudio de 20 periodos con 300 barras funciona bien. Un estudio de 200 periodos, o uno que construye una muestra móvil grande, necesita mucho más historial detrás de la primera barra visible para ser correcto desde el principio. Cuanto más profundo llegue su cálculo, más debe subir el mínimo." },
+    { type: "heading",text: "Cómo solucionar las barras limitadas al iniciar: paso a paso" },
+    { type: "heading",text: "Solución a las causas 1 y 2: subir Minimum Number of Bars to Load" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra la configuración del gráfico", html: "Use el menú del engranaje o de los tres puntos en la barra de herramientas del gráfico para acceder al editor de gráficos y busque la sección que controla cuánto historial carga el gráfico." },
+        { title: "Localice el campo Minimum Number of Bars to Load", html: "Algunos menús acortan la etiqueta a &ldquo;Minimum Bars to Load&rdquo;." },
+        { title: "Súbalo a un valor alto como 2000", html: "Cambie el valor predeterminado de 100 a uno alto. Algo como <strong class='text-white'>2000</strong> es un buen punto de partida, y debería superar con holgura la retrospectiva más larga de cualquier indicador que vaya a añadir." },
+        { title: "Acérquese al límite de 9999 para estudios largos", html: "Tradovate permite que este valor llegue hasta <strong class='text-white'>9999</strong> barras, así que, si usa estudios de periodo muy largo, configúrelo lo bastante alto como para que el historial llegue mucho más allá de su ventana de cálculo más larga." },
+        { title: "Aplique, guarde y confirme", html: "Aplique y guarde, y luego confirme que el historial más profundo está realmente presente antes de que su indicador lo necesite." },
+      ],
+    },
+    { type: "heading",text: "Solución a la causa 3: incorporarlo a una plantilla base para que se mantenga" },
+    { type: "paragraph",html: "Como cada pestaña nueva vuelve al valor predeterminado, la solución duradera es una plantilla. Este es el paso que resuelve el problema de forma definitiva." },
+    {
+      type: "steps",
+      items: [
+        { title: "Configure el valor alto antes de añadir indicadores", html: "En un gráfico limpio, configure <strong class='text-white'>Minimum Number of Bars to Load</strong> en el valor alto que prefiera <em>primero</em>, antes de añadir ningún indicador." },
+        { title: "Guarde el gráfico como plantilla", html: "Abra el menú del gráfico y guarde el gráfico actual como plantilla. Asígnele un nombre claro y descriptivo como &ldquo;base 2000 bars&rdquo; para saber siempre cuál precarga el historial profundo." },
+        { title: "Aplique la plantilla antes de añadir el indicador", html: "En cada gráfico nuevo en el que importe un cálculo de inicio, <strong class='text-white'>aplique primero esta plantilla base y luego añada su indicador.</strong> El orden importa: la plantilla carga el historial y solo entonces el indicador se inicializa sobre el conjunto completo." },
+        { title: "Repita solo en gráficos totalmente nuevos", html: "Una vez aplicada la plantilla y con el indicador puesto, ese gráfico conserva su historial durante la sesión. Solo repite el paso de aplicar y añadir cuando crea un gráfico completamente nuevo." },
+      ],
+    },
+    { type: "heading",text: "Solución a las causas 4 y 5: dimensionar el colchón según su retrospectiva más larga" },
+    { type: "paragraph",html: "No configure el mínimo en el número exacto de barras que necesita su indicador; déle un colchón. Si su estudio más largo es una media de 200 periodos, no configure 200. Configure un valor varias veces mayor para que el cálculo esté completamente calentado antes de la primera barra que realmente le interesa. Cuando ejecute varios indicadores o varios marcos temporales desde una misma plantilla, dimensione el colchón para el más exigente y acérquese al límite de 9999 si sus estudios llegan muy atrás." },
+    { type: "quote",html: "<strong class='text-white'>La versión en una línea:</strong> suba Minimum Number of Bars to Load, guárdelo como plantilla y aplique esa plantilla <em>antes</em> de añadir el indicador. Si se salta cualquiera de esos tres pasos, vuelve el inicio con ~300 barras." },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma","Qué ocurre","Solución"], rows: [
+      ["El indicador solo ve ~300 barras al iniciar","El gráfico cargó el historial superficial predeterminado antes de que se ejecutara el indicador","Suba Minimum Number of Bars to Load muy por encima de la retrospectiva del indicador"],
+      ["Los valores se corrigen solo después de desplazar el gráfico hacia atrás","Nuevo cálculo sobre el conjunto más completo que se carga al desplazarse","Precargue el historial de antemano para no tener que desplazarse manualmente"],
+      ["La solución funciona en un gráfico y falla en la siguiente pestaña","Las pestañas nuevas vuelven al valor predeterminado de 100","Guarde una plantilla base y aplíquela antes de añadir indicadores"],
+      ["Un símbolo va bien y otro se queda escaso","El número de barras al iniciar varía según el contrato y el intervalo","Use la plantilla en todas partes para que el mínimo sea coherente"],
+      ["Un estudio de periodo largo sigue mal en el borde izquierdo","El número de barras sigue por debajo de la ventana del estudio más el colchón","Aumente hacia el máximo de 9999 para tener un colchón completo"],
+      ["El ajuste no se guarda","El cambio se aplicó a una sola pestaña y no se hizo persistente","Incorpore el valor a una plantilla de gráfico guardada"],
+    ] },
+    { type: "heading",text: "Saque el gráfico del bucle de ejecución con PickMyTrade" },
+    { type: "paragraph",html: "Precargar historial profundo corrige lo que le muestra el gráfico de Tradovate, pero si sus <em>entradas</em> dependen de que un indicador calcule correctamente en el instante en que se carga un gráfico, un inicio con poco historial aún puede costarle una ejecución. La respuesta más limpia es dejar de ejecutar a partir del renderizado. PickMyTrade permite que su estrategia viva donde tiene el historial completo y lanza la orden por usted:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Entradas basadas en señales</strong>, las órdenes se lanzan desde la lógica de sus alertas de TradingView, calculadas sobre el historial completo de barras de TradingView, no sobre lo que un gráfico de Tradovate recién abierto haya precargado.",
+        "<strong class='text-white'>Contexto de indicador estable</strong>, su EMA, VWAP o estudio personalizado se calcula una sola vez sobre el conjunto completo, de modo que un inicio con pocos datos nunca produce un disparo mal sincronizado.",
+        "<strong class='text-white'>Validación de cantidad y símbolo</strong>, las órdenes mal formadas o del contrato equivocado se bloquean antes de enviarse.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, la misma orden validada se replica en todas las cuentas conectadas a la vez, por lo que no tiene que reconstruir gráficos cuenta por cuenta.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous ajoutez un indicateur personnalisé à un graphique Tradovate et, au lieu de traiter tout votre historique, il ne voit que quelques centaines de barres. Consignez le nombre de barres depuis l'indicateur et vous le constaterez : environ 300 barres sur un contrat comme ES ou MES, un peu plus peut-être sur un autre, loin des milliers que vous attendiez. Tout ce qui demande une rétrospective plus profonde, une longue moyenne mobile, une ancre de session, une fenêtre glissante, est soit faux, soit vide jusqu'à ce que vous fassiez défiler manuellement le graphique pour récupérer davantage de données. Le plus frustrant, c'est que les données <em>sont</em> disponibles. Le graphique ne les a simplement jamais demandées avant que votre indicateur ne commence à calculer. Tout se règle dans les paramètres du graphique de Tradovate, et la mise en place prend environ deux minutes, une seule fois." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour un nombre de barres limité au démarrage",
+      items: [
+        "<strong class='text-white'>Augmentez &ldquo;Minimum Number of Bars to Load&rdquo;</strong>, faites-le passer de 100 par défaut à une valeur élevée comme 2000, bien au-dessus de la rétrospective la plus longue de votre indicateur.",
+        "<strong class='text-white'>Enregistrez ce graphique comme modèle</strong>, la valeur augmentée ne persiste que si elle est intégrée à un modèle, car les nouveaux onglets reviennent à la valeur par défaut.",
+        "<strong class='text-white'>Appliquez le modèle <em>avant</em> d'ajouter l'indicateur</strong>, l'historique doit être chargé au moment où l'indicateur s'initialise, pas après.",
+        "<strong class='text-white'>Vérifiez le nombre depuis l'indicateur</strong>, si vous pouvez consigner ou afficher le nombre de barres disponibles, assurez-vous qu'il indique maintenant l'historique complet et non ~300.",
+        "<strong class='text-white'>Réglez-le assez haut, avec une marge</strong>, Tradovate autorise jusqu'à 9999 barres, laissez donc de la marge aux études à longue période.",
+        "<strong class='text-white'>Réappliquez le modèle sur chaque nouvel onglet de graphique</strong> où un calcul de démarrage compte, une habitude à prendre une fois par graphique.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie réellement « barres limitées au démarrage de l'indicateur »" },
+    { type: "paragraph",html: "Il n'y a pas de fenêtre d'erreur pour celui-ci. Rien ne devient rouge. Le symptôme est plus discret et plus facile à manquer : votre indicateur se dessine, mais il calcule sur une fraction de l'historique que vous croyez avoir. Si vous affichez la longueur de la série de barres au chargement de l'indicateur, le nombre obtenu est faible, souvent autour de 300, parfois plus proche de 1000 sur un autre contrat, et il est incohérent d'un symbole à l'autre alors que la disponibilité des données est la même." },
+    { type: "paragraph",html: "Voici le mécanisme. Lorsque vous ouvrez un nouvel onglet de graphique, Tradovate règle <strong class='text-white'>Minimum Number of Bars to Load</strong> sur sa valeur par défaut de 100. C'est le plancher de l'historique que le graphique récupère avant l'affichage. Votre indicateur s'initialise sur ce que le graphique a chargé à cet instant. Si le graphique n'a préchargé qu'une mince tranche, l'indicateur se met en route sur cette mince tranche, point final. Il ne va pas en chercher davantage de lui-même. Les barres supplémentaires n'arrivent que lorsque vous faites physiquement défiler le graphique vers la gauche, et à ce moment-là l'indicateur a déjà effectué son calcul initial sur trop peu de données." },
+    { type: "paragraph",html: "C'est pourquoi cela touche le plus durement les indicateurs personnalisés et à longue rétrospective. Une étude courte qui n'a besoin que de 20 ou 30 barres en arrière paraîtra correcte sur 300. Mais une moyenne sur 200 périodes, un VWAP ancré au début de la session, ou tout calcul de fenêtre statistique glissante sur un grand échantillon, manque de données. Il ne renvoie rien sur la plage initiale ou renvoie une valeur erronée qui se corrige plus tard, lorsque vous faites défiler le graphique et que les vraies barres arrivent." },
+    { type: "heading",text: "Principales causes d'un nombre de barres limité au démarrage" },
+    { type: "heading",text: "1. Minimum Bars to Load reste à la valeur par défaut de 100" },
+    { type: "paragraph",html: "C'est la racine de tout le problème. Chaque nouvel onglet de graphique s'ouvre avec Minimum Number of Bars to Load à 100. Cette valeur par défaut détermine la quantité d'historique que le graphique demande d'emblée, et l'indicateur ne peut utiliser que ce qui a été demandé. Si vous ne l'avez jamais augmentée, votre indicateur travaille sur cette fenêtre réduite plus le petit supplément que le graphique ajoute, ce qui explique que vous vous retrouviez avec quelques centaines de barres au lieu de quelques milliers." },
+    { type: "heading",text: "2. L'indicateur calcule avant que vous ne fassiez défiler le graphique pour plus d'historique" },
+    { type: "paragraph",html: "Faire défiler le graphique vers l'arrière charge des barres plus anciennes, mais cela se produit <em>après</em> l'initialisation de l'indicateur. Le calcul initial est figé sur l'historique qui existait au moment du chargement. Le défilement manuel force un nouveau calcul sur l'ensemble plus complet, ce qui explique que les valeurs se corrigent soudainement, mais c'est un pansement qu'il faudrait répéter à chaque fois, et il est inutile pour tout ce qui est automatisé ou sans surveillance." },
+    { type: "heading",text: "3. Le paramètre augmenté ne persiste pas d'un onglet à l'autre" },
+    { type: "paragraph",html: "Beaucoup de gens trouvent ce paramètre, l'augmentent une fois et pensent que c'est réglé, puis le problème revient sur le graphique suivant. C'est parce que Tradovate applique la valeur par défaut à chaque nouvel onglet. Modifiez la valeur sur un graphique et elle tient pour ce graphique, mais ouvrez un nouvel onglet et vous voilà de retour à 100. Sans modèle enregistré pour reporter la valeur, la correction s'évapore dès que vous construisez une nouvelle disposition." },
+    { type: "heading",text: "4. Le nombre de barres varie selon le symbole et l'unité de temps" },
+    { type: "paragraph",html: "La quantité d'historique renvoyée au démarrage n'est pas identique d'un contrat ou d'un intervalle à l'autre. Un symbole peut donner à votre indicateur environ 300 barres tandis qu'un autre en fournit nettement plus sur la même disposition. Cette incohérence rend le bogue si déroutant : on dirait que l'indicateur est cassé sur un instrument et correct sur un autre, alors qu'il s'agit du même comportement de chargement superficiel qui s'exprime différemment selon le symbole." },
+    { type: "heading",text: "5. Les études à longue rétrospective ont besoin de plus de marge que les courtes" },
+    { type: "paragraph",html: "Un chargement superficiel ne devient un problème visible que lorsque la rétrospective de l'indicateur dépasse les barres disponibles. Une étude sur 20 périodes avec 300 barres est correcte. Une étude sur 200 périodes, ou une qui construit un grand échantillon glissant, a besoin de beaucoup plus d'historique derrière la première barre visible pour être juste dès le départ. Plus votre calcul remonte loin, plus vous devez relever le minimum." },
+    { type: "heading",text: "Comment corriger un nombre de barres limité au démarrage : pas à pas" },
+    { type: "heading",text: "Corriger les causes 1 et 2 : augmenter Minimum Number of Bars to Load" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez les paramètres du graphique", html: "Utilisez le menu en forme d'engrenage ou à trois points dans la barre d'outils du graphique pour accéder à l'éditeur de graphique, puis trouvez la section qui contrôle la quantité d'historique chargée par le graphique." },
+        { title: "Repérez le champ Minimum Number of Bars to Load", html: "Certains menus abrègent l'intitulé en &ldquo;Minimum Bars to Load&rdquo;." },
+        { title: "Augmentez-le à une valeur élevée, par exemple 2000", html: "Faites passer la valeur de 100 par défaut à une valeur élevée. Environ <strong class='text-white'>2000</strong> est un bon point de départ, et la valeur doit dépasser confortablement la rétrospective la plus longue de tout indicateur que vous ajouterez." },
+        { title: "Rapprochez-vous du plafond de 9999 pour les longues études", html: "Tradovate autorise cette valeur jusqu'à <strong class='text-white'>9999</strong> barres ; si vous utilisez des études à très longue période, réglez-la donc assez haut pour que l'historique aille bien au-delà de votre fenêtre de calcul la plus longue." },
+        { title: "Appliquez, enregistrez et vérifiez", html: "Appliquez et enregistrez, puis vérifiez que l'historique plus profond est bien présent avant que votre indicateur n'en ait besoin." },
+      ],
+    },
+    { type: "heading",text: "Corriger la cause 3 : l'intégrer dans un modèle de base pour qu'elle persiste" },
+    { type: "paragraph",html: "Comme chaque nouvel onglet revient à la valeur par défaut, la solution durable est un modèle. C'est l'étape qui règle réellement le problème pour de bon." },
+    {
+      type: "steps",
+      items: [
+        { title: "Réglez la valeur élevée avant d'ajouter des indicateurs", html: "Sur un graphique vierge, réglez <strong class='text-white'>Minimum Number of Bars to Load</strong> sur la valeur élevée de votre choix <em>d'abord</em>, avant d'ajouter le moindre indicateur." },
+        { title: "Enregistrez le graphique comme modèle", html: "Ouvrez le menu du graphique et enregistrez le graphique actuel comme modèle. Donnez-lui un nom clair et descriptif, comme &ldquo;base 2000 bars&rdquo;, afin de toujours savoir lequel précharge un historique profond." },
+        { title: "Appliquez le modèle avant d'ajouter l'indicateur", html: "Pour chaque nouveau graphique où un calcul de démarrage compte, <strong class='text-white'>appliquez d'abord ce modèle de base, puis ajoutez votre indicateur.</strong> L'ordre est important : le modèle charge l'historique, et ce n'est qu'ensuite que l'indicateur s'initialise sur l'ensemble complet." },
+        { title: "Ne répétez que sur les graphiques tout neufs", html: "Une fois le modèle appliqué et l'indicateur en place, ce graphique conserve son historique pendant la session. Vous ne répétez l'étape appliquer puis ajouter que lorsque vous construisez un tout nouveau graphique." },
+      ],
+    },
+    { type: "heading",text: "Corriger les causes 4 et 5 : dimensionner la marge sur votre rétrospective la plus longue" },
+    { type: "paragraph",html: "Ne réglez pas le minimum sur le nombre exact de barres dont votre indicateur a besoin, donnez-lui une marge. Si votre étude la plus longue est une moyenne sur 200 périodes, ne réglez pas 200. Réglez une valeur plusieurs fois supérieure afin que le calcul soit entièrement échauffé avant la première barre qui vous intéresse vraiment. Lorsque vous exécutez plusieurs indicateurs ou plusieurs unités de temps à partir d'un même modèle, dimensionnez la marge pour le plus gourmand, et rapprochez-vous du plafond de 9999 si vos études remontent loin." },
+    { type: "quote",html: "<strong class='text-white'>La version en une ligne :</strong> augmentez Minimum Number of Bars to Load, enregistrez-le comme modèle et appliquez ce modèle <em>avant</em> d'ajouter l'indicateur. Si vous omettez l'une de ces trois étapes, le démarrage à ~300 barres revient." },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme","Ce qui se passe","Solution"], rows: [
+      ["L'indicateur ne voit que ~300 barres au démarrage","Le graphique a chargé l'historique superficiel par défaut avant l'exécution de l'indicateur","Augmenter Minimum Number of Bars to Load bien au-dessus de la rétrospective de l'indicateur"],
+      ["Les valeurs ne se corrigent qu'après un défilement vers l'arrière","Nouveau calcul sur l'ensemble plus complet chargé lorsque vous faites défiler","Précharger l'historique d'emblée pour éviter tout défilement manuel"],
+      ["La correction marche sur un graphique et échoue sur l'onglet suivant","Les nouveaux onglets reviennent à la valeur par défaut de 100","Enregistrer un modèle de base et l'appliquer avant d'ajouter des indicateurs"],
+      ["Un symbole va bien, un autre est démuni","Le nombre de barres au démarrage varie selon le contrat et l'intervalle","Utiliser le modèle partout pour que le minimum soit constant"],
+      ["Une étude à longue période reste fausse au bord gauche","Le nombre de barres reste inférieur à la fenêtre de l'étude plus la marge","Augmenter vers le maximum de 9999 pour une marge complète"],
+      ["Le paramètre ne s'enregistre pas","La modification s'est appliquée à un seul onglet et n'est pas persistante","Intégrer la valeur dans un modèle de graphique enregistré"],
+    ] },
+    { type: "heading",text: "Sortez le graphique de la boucle d'exécution avec PickMyTrade" },
+    { type: "paragraph",html: "Précharger un historique profond corrige ce que le graphique Tradovate vous affiche, mais si vos <em>entrées</em> dépendent d'un indicateur calculant correctement dès le chargement d'un graphique, un démarrage à historique réduit peut quand même vous coûter une exécution. La réponse la plus propre consiste à ne plus exécuter à partir de l'affichage. PickMyTrade permet à votre stratégie de vivre là où elle dispose de l'historique complet, et déclenche l'ordre pour vous :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Entrées pilotées par signaux</strong>, les ordres partent de la logique de vos alertes TradingView, calculée sur l'historique complet des barres de TradingView, et non sur ce qu'un graphique Tradovate fraîchement ouvert a préchargé par hasard.",
+        "<strong class='text-white'>Contexte d'indicateur stable</strong>, votre EMA, VWAP ou étude personnalisée se calcule une seule fois sur l'ensemble complet, de sorte qu'un démarrage démuni ne produit jamais un déclencheur mal synchronisé.",
+        "<strong class='text-white'>Validation de la quantité et du symbole</strong>, les ordres mal formés ou portant sur le mauvais contrat sont bloqués avant même d'être envoyés.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, le même ordre validé est répliqué simultanément sur tous les comptes connectés, vous n'avez donc pas à reconstruire les graphiques compte par compte.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Aggiunge un indicatore personalizzato a un grafico Tradovate e, invece di elaborare l'intero storico, vede solo poche centinaia di barre. Se registra il numero di barre dall'interno dell'indicatore lo noterà: circa 300 barre su qualcosa come ES o MES, magari un po' di più su un altro contratto, ben lontane dalle migliaia che si aspettava. Qualsiasi calcolo che richieda una retrospettiva più profonda, una media mobile lunga, un'ancora di sessione, una finestra mobile, è sbagliato o vuoto finché non scorre manualmente indietro per trascinare altri dati. La parte frustrante è che i dati <em>sono</em> disponibili. Il grafico semplicemente non li ha richiesti prima che il Suo indicatore iniziasse a calcolare. Il problema si risolve interamente nelle impostazioni del grafico di Tradovate, e la correzione richiede circa due minuti, una sola volta." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per le barre limitate all'avvio",
+      items: [
+        "<strong class='text-white'>Alzi &ldquo;Minimum Number of Bars to Load&rdquo;</strong>, dal valore predefinito 100 a un valore elevato come 2000, ben al di sopra della retrospettiva più lunga del Suo indicatore.",
+        "<strong class='text-white'>Salvi quel grafico come modello</strong>, il valore aumentato persiste solo se è incorporato in un modello, perché le nuove schede tornano al valore predefinito.",
+        "<strong class='text-white'>Applichi il modello <em>prima</em> di aggiungere l'indicatore</strong>, lo storico deve essere caricato nel momento in cui l'indicatore si inizializza, non dopo.",
+        "<strong class='text-white'>Verifichi il conteggio dall'interno dell'indicatore</strong>, se può registrare o mostrare il numero di barre disponibili, controlli che ora riporti lo storico completo e non ~300.",
+        "<strong class='text-white'>Lo imposti abbastanza alto, con un margine</strong>, Tradovate consente fino a 9999 barre, quindi lasci spazio agli studi con periodi lunghi.",
+        "<strong class='text-white'>Riapplichi il modello a ogni nuova scheda del grafico</strong> in cui un calcolo all'avvio è importante, un'abitudine da fare una volta per grafico.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significa davvero «barre limitate all'avvio dell'indicatore»" },
+    { type: "paragraph",html: "Per questo problema non compare alcun popup di errore. Nulla diventa rosso. Il sintomo è più silenzioso e più facile da non notare: l'indicatore viene disegnato, ma calcola su una frazione dello storico che crede di avere. Se stampa la lunghezza della serie di barre al caricamento dell'indicatore, il numero risulta piccolo, spesso intorno a 300, a volte più vicino a 1000 su un altro contratto, ed è incoerente da simbolo a simbolo anche se la disponibilità dei dati è la stessa." },
+    { type: "paragraph",html: "Ecco il meccanismo. Quando apre una nuova scheda del grafico, Tradovate imposta <strong class='text-white'>Minimum Number of Bars to Load</strong> sul valore predefinito di 100. È il minimo di storico che il grafico carica prima del rendering. Il Suo indicatore si inizializza su ciò che il grafico ha caricato in quel momento. Quindi, se il grafico ha precaricato solo una porzione ridotta, l'indicatore si scalda su quella porzione ridotta, e basta. Non va a cercarne altre da solo. Le barre aggiuntive arrivano solo quando fa scorrere fisicamente il grafico verso sinistra, e a quel punto l'indicatore ha già eseguito il calcolo iniziale su troppo pochi dati." },
+    { type: "paragraph",html: "Per questo il problema colpisce più duramente gli indicatori personalizzati e a lunga retrospettiva. Uno studio breve che richiede solo 20 o 30 barre precedenti sembrerà a posto su 300. Ma una media a 200 periodi, un VWAP ancorato all'inizio della sessione o qualsiasi calcolo con finestra statistica mobile su un campione ampio rimane a corto di dati. Restituisce nulla per l'intervallo iniziale oppure un valore errato che si corregge in seguito, quando scorre il grafico e arrivano le barre reali." },
+    { type: "heading",text: "Cause principali delle barre limitate all'avvio" },
+    { type: "heading",text: "1. Minimum Bars to Load è fermo al valore predefinito 100" },
+    { type: "paragraph",html: "Questa è la radice dell'intero problema. Ogni nuova scheda del grafico si apre con Minimum Number of Bars to Load a 100. Quel valore predefinito stabilisce quanto storico il grafico richiede in anticipo, e l'indicatore può usare solo ciò che è stato richiesto. Se non lo ha mai alzato, il Suo indicatore lavora su quella finestra ridotta più la piccola quantità che il grafico aggiunge, ed è così che si ritrova con poche centinaia di barre invece di qualche migliaio." },
+    { type: "heading",text: "2. L'indicatore calcola prima che Lei scorra per ottenere più storico" },
+    { type: "paragraph",html: "Scorrere il grafico all'indietro carica barre più vecchie, ma ciò avviene <em>dopo</em> che l'indicatore si è già inizializzato. Il calcolo iniziale è vincolato allo storico esistente al momento del caricamento. Lo scorrimento manuale forza un nuovo calcolo sull'insieme più completo, ed è per questo che i valori si correggono all'improvviso, ma è un rimedio provvisorio che dovrebbe ripetere ogni volta, e non serve a nulla per ciò che è automatizzato o non presidiato." },
+    { type: "heading",text: "3. L'impostazione aumentata non persiste tra le schede" },
+    { type: "paragraph",html: "Molti trovano questa impostazione, la alzano una volta e pensano di aver finito, poi il problema ritorna sul grafico successivo. Succede perché Tradovate applica il valore predefinito a ogni nuova scheda. Se cambia il valore su un grafico, resta per quel grafico, ma aprendo una nuova scheda torna a 100. Senza un modello salvato che porti il valore con sé, la correzione svanisce nel momento in cui costruisce un nuovo layout." },
+    { type: "heading",text: "4. Il numero di barre varia in base al simbolo e al timeframe" },
+    { type: "paragraph",html: "La quantità di storico restituita all'avvio non è identica tra contratti o intervalli. Un simbolo può fornire al Suo indicatore circa 300 barre mentre un altro ne fornisce sensibilmente di più sullo stesso layout. Questa incoerenza è ciò che rende il problema così confuso: sembra che l'indicatore sia guasto su uno strumento e a posto su un altro, quando in realtà è lo stesso comportamento di caricamento ridotto che si manifesta in modo diverso per ogni simbolo." },
+    { type: "heading",text: "5. Gli studi a lunga retrospettiva richiedono più margine di quelli brevi" },
+    { type: "paragraph",html: "Un caricamento ridotto diventa un problema visibile solo quando la retrospettiva dell'indicatore supera le barre disponibili. Uno studio a 20 periodi su 300 barre va bene. Uno studio a 200 periodi, o uno che costruisce un ampio campione mobile, richiede molto più storico dietro la prima barra visibile per essere corretto fin dall'inizio. Più in profondità arriva il calcolo, più in alto deve spingere il minimo." },
+    { type: "heading",text: "Come correggere le barre limitate all'avvio: passo dopo passo" },
+    { type: "heading",text: "Correggere le cause 1 e 2: alzare Minimum Number of Bars to Load" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra le impostazioni del grafico", html: "Usi il menu a ingranaggio o a tre puntini nella barra degli strumenti del grafico per accedere all'editor del grafico, quindi trovi la sezione che controlla quanto storico carica il grafico." },
+        { title: "Individui il campo Minimum Number of Bars to Load", html: "Alcuni menu abbreviano l'etichetta in &ldquo;Minimum Bars to Load&rdquo;." },
+        { title: "Lo alzi a un valore elevato come 2000", html: "Cambi il valore dal 100 predefinito a uno elevato. Circa <strong class='text-white'>2000</strong> è un buon punto di partenza, e dovrebbe superare con ampio margine la retrospettiva più lunga di qualsiasi indicatore che aggiungerà." },
+        { title: "Si avvicini al tetto di 9999 per gli studi lunghi", html: "Tradovate consente a questo valore di arrivare fino a <strong class='text-white'>9999</strong> barre, quindi, se usa studi con periodi molto lunghi, lo imposti abbastanza alto da far arrivare lo storico ben oltre la Sua finestra di calcolo più lunga." },
+        { title: "Applichi, salvi e verifichi", html: "Applichi e salvi, quindi verifichi che lo storico più profondo sia effettivamente presente prima che il Suo indicatore ne abbia bisogno." },
+      ],
+    },
+    { type: "heading",text: "Correggere la causa 3: incorporarlo in un modello di base perché persista" },
+    { type: "paragraph",html: "Poiché ogni nuova scheda torna al valore predefinito, la soluzione duratura è un modello. Questo è il passaggio che risolve il problema in modo definitivo." },
+    {
+      type: "steps",
+      items: [
+        { title: "Imposti il valore elevato prima di aggiungere gli indicatori", html: "Su un grafico pulito, imposti <strong class='text-white'>Minimum Number of Bars to Load</strong> sul valore elevato che preferisce <em>per primo</em>, prima di aggiungere qualsiasi indicatore." },
+        { title: "Salvi il grafico come modello", html: "Apra il menu del grafico e salvi il grafico corrente come modello. Gli dia un nome chiaro e descrittivo come &ldquo;base 2000 bars&rdquo;, in modo da sapere sempre quale precarica lo storico profondo." },
+        { title: "Applichi il modello prima di aggiungere l'indicatore", html: "Per ogni nuovo grafico in cui un calcolo all'avvio è importante, <strong class='text-white'>applichi prima questo modello di base, poi aggiunga l'indicatore.</strong> L'ordine conta: il modello carica lo storico e solo dopo l'indicatore si inizializza sull'insieme completo." },
+        { title: "Ripeta solo sui grafici nuovi di zecca", html: "Una volta applicato il modello e aggiunto l'indicatore, quel grafico mantiene il suo storico per la sessione. Ripete il passaggio applica-poi-aggiungi solo quando costruisce un grafico completamente nuovo." },
+      ],
+    },
+    { type: "heading",text: "Correggere le cause 4 e 5: dimensionare il margine sulla retrospettiva più lunga" },
+    { type: "paragraph",html: "Non imposti il minimo sul numero esatto di barre di cui l'indicatore ha bisogno, gli dia un margine. Se il Suo studio più lungo è una media a 200 periodi, non imposti 200. Imposti un valore diverse volte più grande, così che il calcolo sia completamente scaldato prima della prima barra che Le interessa davvero. Quando esegue più indicatori o più timeframe da un unico modello, dimensioni il margine sul più esigente e si avvicini al tetto di 9999 se i Suoi studi arrivano in profondità." },
+    { type: "quote",html: "<strong class='text-white'>La versione in una riga:</strong> alzi Minimum Number of Bars to Load, lo salvi come modello e applichi quel modello <em>prima</em> di aggiungere l'indicatore. Salti uno qualsiasi di questi tre passaggi e l'avvio con ~300 barre ritorna." },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo","Cosa succede","Soluzione"], rows: [
+      ["L'indicatore vede solo ~300 barre all'avvio","Il grafico ha caricato lo storico ridotto predefinito prima dell'esecuzione dell'indicatore","Alzare Minimum Number of Bars to Load ben al di sopra della retrospettiva dell'indicatore"],
+      ["I valori si correggono solo dopo lo scorrimento all'indietro","Nuovo calcolo sull'insieme più completo che si carica durante lo scorrimento","Precaricare lo storico in anticipo, senza bisogno di scorrere manualmente"],
+      ["La correzione funziona su un grafico e fallisce sulla scheda successiva","Le nuove schede tornano al valore predefinito di 100","Salvare un modello di base e applicarlo prima di aggiungere gli indicatori"],
+      ["Un simbolo va bene, un altro è a corto di dati","Il numero di barre all'avvio varia in base al contratto e all'intervallo","Usare il modello ovunque, così il minimo è costante"],
+      ["Lo studio a periodo lungo è ancora sbagliato sul bordo sinistro","Il numero di barre è ancora inferiore alla finestra dello studio più il margine","Aumentare verso il massimo di 9999 per un margine completo"],
+      ["L'impostazione non si salva","La modifica è stata applicata a una sola scheda e non è persistente","Incorporare il valore in un modello di grafico salvato"],
+    ] },
+    { type: "heading",text: "Tolga il grafico dal ciclo di esecuzione con PickMyTrade" },
+    { type: "paragraph",html: "Precaricare uno storico profondo corregge ciò che il grafico Tradovate Le mostra, ma se i Suoi <em>ingressi</em> dipendono dal fatto che un indicatore calcoli correttamente nell'istante in cui un grafico si carica, un avvio con storico ridotto può comunque costarLe un'esecuzione. La risposta più pulita è smettere del tutto di eseguire a partire dal rendering. PickMyTrade permette alla Sua strategia di vivere dove dispone dello storico completo e attiva l'ordine per Lei:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ingressi guidati dai segnali</strong>, gli ordini partono dalla logica dei Suoi alert di TradingView, calcolata sullo storico completo delle barre di TradingView, non su ciò che un grafico Tradovate appena aperto ha precaricato per caso.",
+        "<strong class='text-white'>Contesto dell'indicatore stabile</strong>, la Sua EMA, il VWAP o lo studio personalizzato viene calcolato una sola volta sull'insieme completo, così un avvio a corto di dati non produce mai un'attivazione sfasata.",
+        "<strong class='text-white'>Validazione di quantità e simbolo</strong>, gli ordini malformati o sul contratto sbagliato vengono bloccati prima ancora di essere inviati.",
+        "<strong class='text-white'>Sincronizzazione multi-conto</strong>, lo stesso ordine validato viene replicato contemporaneamente su tutti i conti collegati, così non deve ricostruire i grafici conto per conto.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Execute on Full History, Not a Cold Chart", de: "Mit voller Historie handeln, nicht mit einem kalten Chart", es: "Opere con el historial completo, no con un gráfico en frío", fr: "Exécutez sur l'historique complet, pas sur un graphique à froid", it: "Operi sullo storico completo, non su un grafico a freddo" },
+  ctaText: { en: "PickMyTrade fires your entries from TradingView's full bar history, so a freshly opened Tradovate chart that only loaded 300 bars never mistimes a signal.", de: "PickMyTrade löst Ihre Einstiege auf Grundlage der vollständigen Balkenhistorie von TradingView aus. So verzögert sich ein Signal nie, nur weil ein frisch geöffneter Tradovate-Chart lediglich 300 Balken geladen hat.", es: "PickMyTrade lanza sus entradas a partir del historial completo de barras de TradingView, de modo que un gráfico de Tradovate recién abierto que solo cargó 300 barras nunca desajusta una señal.", fr: "PickMyTrade déclenche vos entrées à partir de l'historique complet des barres de TradingView : un graphique Tradovate fraîchement ouvert, qui n'a chargé que 300 barres, ne décale donc jamais un signal.", it: "PickMyTrade attiva i Suoi ingressi a partire dallo storico completo delle barre di TradingView, così un grafico Tradovate appena aperto che ha caricato solo 300 barre non sfasa mai un segnale." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does my Tradovate indicator only see about 300 bars at startup?", a: "Every new chart tab opens with the Minimum Number of Bars to Load set to Tradovate's default of 100. The indicator initializes on whatever slice of history the chart preloaded, which often works out to only a few hundred bars. It never sees your full history because the chart never requested it before the indicator started calculating." },
+    { q: "How do I make Tradovate load more historical bars before the indicator runs?", a: "Raise the Minimum Number of Bars to Load in the chart settings to a high value such as 2000, save that chart as a template, then apply the template to a fresh chart before you add your indicator. When the indicator initializes, the deeper history is already loaded, so it calculates on the full set." },
+    { q: "Why doesn't just raising the bar count fix it?", a: "Raising it on one chart helps that chart, but every new tab reverts to the default of 100. The value only persists if you bake it into a saved template and apply that template first. Otherwise the next chart you open starts shallow again and the indicator is back to a few hundred bars." },
+    { q: "What is the maximum I can set Minimum Number of Bars to Load to?", a: "Tradovate raised the ceiling on this setting to 9999 bars. That gives you plenty of headroom to cover long-lookback indicators. Set it comfortably above your indicator's longest period so it has a buffer, not just the bare minimum." },
+    { q: "Does the number of bars I get depend on the symbol or timeframe?", a: "Yes. Different contracts and intervals return different amounts of history at startup, which is why one symbol might warm up fine while another looks starved on the same layout. The template fix works across all of them because it forces the chart to request a consistent minimum before the indicator calculates." },
+    { q: "Do I have to apply the template every single time?", a: "For any fresh chart tab where a startup calculation matters, yes, apply the base template before adding the indicator. Once the template is applied and the indicator is on, that chart keeps its history for the session. The discipline is only needed at the moment you build a new chart." },
+  ], de: [
+    { q: "Warum sieht mein Tradovate-Indikator beim Start nur etwa 300 Balken?", a: "Jeder neue Chart-Tab öffnet sich mit der Einstellung Minimum Number of Bars to Load auf Tradovates Standardwert von 100. Der Indikator wird auf dem Ausschnitt der Historie initialisiert, den der Chart vorab geladen hat, und das sind oft nur einige hundert Balken. Er sieht Ihre vollständige Historie nie, weil der Chart sie nicht angefordert hat, bevor der Indikator mit der Berechnung begann." },
+    { q: "Wie bringe ich Tradovate dazu, mehr historische Balken zu laden, bevor der Indikator läuft?", a: "Erhöhen Sie in den Chart-Einstellungen Minimum Number of Bars to Load auf einen hohen Wert wie 2000, speichern Sie den Chart als Vorlage und wenden Sie die Vorlage auf einen neuen Chart an, bevor Sie Ihren Indikator hinzufügen. Wenn der Indikator initialisiert wird, ist die tiefere Historie bereits geladen und er rechnet auf dem vollständigen Datensatz." },
+    { q: "Warum reicht es nicht, einfach die Balkenanzahl zu erhöhen?", a: "Die Erhöhung auf einem Chart hilft nur diesem Chart. Jeder neue Tab fällt auf den Standardwert von 100 zurück. Der Wert bleibt nur erhalten, wenn Sie ihn in eine gespeicherte Vorlage einbauen und diese Vorlage zuerst anwenden. Andernfalls startet der nächste geöffnete Chart wieder flach und der Indikator hat erneut nur ein paar hundert Balken." },
+    { q: "Auf welchen Höchstwert kann ich Minimum Number of Bars to Load setzen?", a: "Tradovate hat die Obergrenze für diese Einstellung auf 9999 Balken angehoben. Das bietet reichlich Spielraum für Indikatoren mit langem Lookback. Setzen Sie den Wert komfortabel über die längste Periode Ihres Indikators, damit ein Puffer vorhanden ist und nicht nur das absolute Minimum." },
+    { q: "Hängt die Anzahl der Balken vom Symbol oder vom Zeitrahmen ab?", a: "Ja. Verschiedene Kontrakte und Intervalle liefern beim Start unterschiedlich viel Historie. Deshalb kann ein Symbol problemlos aufwärmen, während ein anderes im selben Layout unterversorgt wirkt. Die Vorlagen-Lösung funktioniert bei allen, weil sie den Chart zwingt, ein einheitliches Minimum anzufordern, bevor der Indikator rechnet." },
+    { q: "Muss ich die Vorlage jedes Mal anwenden?", a: "Für jeden neuen Chart-Tab, bei dem eine Startberechnung wichtig ist, ja: Wenden Sie die Basisvorlage an, bevor Sie den Indikator hinzufügen. Sobald die Vorlage angewendet und der Indikator aktiv ist, behält dieser Chart seine Historie für die Sitzung. Die Routine ist nur nötig, wenn Sie einen neuen Chart aufbauen." },
+  ], es: [
+    { q: "¿Por qué mi indicador de Tradovate solo ve unas 300 barras al iniciar?", a: "Cada pestaña de gráfico nueva se abre con Minimum Number of Bars to Load en el valor predeterminado de Tradovate, 100. El indicador se inicializa con el fragmento de historial que el gráfico precargó, que a menudo equivale a solo unos cientos de barras. Nunca ve su historial completo porque el gráfico no lo solicitó antes de que el indicador empezara a calcular." },
+    { q: "¿Cómo hago que Tradovate cargue más barras históricas antes de que se ejecute el indicador?", a: "Suba Minimum Number of Bars to Load en la configuración del gráfico a un valor alto, como 2000, guarde ese gráfico como plantilla y aplique la plantilla a un gráfico nuevo antes de añadir su indicador. Cuando el indicador se inicializa, el historial más profundo ya está cargado, por lo que calcula sobre el conjunto completo." },
+    { q: "¿Por qué no basta con subir el número de barras?", a: "Subirlo en un gráfico ayuda solo a ese gráfico, pero cada pestaña nueva vuelve al valor predeterminado de 100. El valor solo persiste si lo incorpora a una plantilla guardada y aplica esa plantilla primero. De lo contrario, el siguiente gráfico que abra empieza otra vez con poco historial y el indicador vuelve a tener solo unos cientos de barras." },
+    { q: "¿Cuál es el máximo al que puedo configurar Minimum Number of Bars to Load?", a: "Tradovate elevó el límite de este ajuste a 9999 barras. Eso le da margen de sobra para indicadores con un periodo de revisión largo. Configúrelo con holgura por encima del periodo más largo de su indicador, de modo que tenga un colchón y no solo el mínimo estricto." },
+    { q: "¿El número de barras depende del símbolo o del marco temporal?", a: "Sí. Distintos contratos e intervalos devuelven cantidades distintas de historial al iniciar, por eso un símbolo puede calentarse bien mientras otro parece escaso en el mismo diseño. La solución con plantilla funciona en todos porque obliga al gráfico a solicitar un mínimo consistente antes de que el indicador calcule." },
+    { q: "¿Tengo que aplicar la plantilla cada vez?", a: "En cualquier pestaña de gráfico nueva en la que importe un cálculo de inicio, sí: aplique la plantilla base antes de añadir el indicador. Una vez aplicada la plantilla y con el indicador puesto, ese gráfico conserva su historial durante la sesión. Esta disciplina solo es necesaria en el momento de crear un gráfico nuevo." },
+  ], fr: [
+    { q: "Pourquoi mon indicateur Tradovate ne voit-il qu'environ 300 barres au démarrage ?", a: "Chaque nouvel onglet de graphique s'ouvre avec Minimum Number of Bars to Load réglé sur la valeur par défaut de Tradovate, 100. L'indicateur s'initialise sur la tranche d'historique que le graphique a préchargée, ce qui représente souvent seulement quelques centaines de barres. Il ne voit jamais votre historique complet, car le graphique ne l'a pas demandé avant que l'indicateur ne commence à calculer." },
+    { q: "Comment faire charger à Tradovate plus de barres historiques avant l'exécution de l'indicateur ?", a: "Augmentez Minimum Number of Bars to Load dans les paramètres du graphique à une valeur élevée, par exemple 2000, enregistrez ce graphique comme modèle, puis appliquez le modèle à un nouveau graphique avant d'ajouter votre indicateur. Lorsque l'indicateur s'initialise, l'historique plus profond est déjà chargé, et il calcule donc sur l'ensemble complet." },
+    { q: "Pourquoi ne suffit-il pas d'augmenter simplement le nombre de barres ?", a: "L'augmenter sur un graphique n'aide que ce graphique, mais chaque nouvel onglet revient à la valeur par défaut de 100. La valeur ne persiste que si vous l'intégrez dans un modèle enregistré et appliquez ce modèle en premier. Sinon, le prochain graphique que vous ouvrez repart avec peu d'historique et l'indicateur retombe à quelques centaines de barres." },
+    { q: "Quel est le maximum auquel je peux régler Minimum Number of Bars to Load ?", a: "Tradovate a relevé le plafond de ce paramètre à 9999 barres. Cela vous laisse une large marge pour les indicateurs à longue période de rétrospective. Réglez la valeur confortablement au-dessus de la période la plus longue de votre indicateur, afin de disposer d'une marge et pas seulement du strict minimum." },
+    { q: "Le nombre de barres dépend-il du symbole ou de l'unité de temps ?", a: "Oui. Selon les contrats et les intervalles, la quantité d'historique renvoyée au démarrage diffère, ce qui explique qu'un symbole puisse bien se mettre en route alors qu'un autre semble démuni sur la même disposition. La correction par modèle fonctionne pour tous, car elle force le graphique à demander un minimum constant avant que l'indicateur ne calcule." },
+    { q: "Dois-je appliquer le modèle à chaque fois ?", a: "Pour tout nouvel onglet de graphique où un calcul de démarrage compte, oui : appliquez le modèle de base avant d'ajouter l'indicateur. Une fois le modèle appliqué et l'indicateur en place, ce graphique conserve son historique pendant la session. Cette discipline n'est nécessaire qu'au moment où vous construisez un nouveau graphique." },
+  ], it: [
+    { q: "Perché il mio indicatore Tradovate vede solo circa 300 barre all'avvio?", a: "Ogni nuova scheda del grafico si apre con Minimum Number of Bars to Load impostato sul valore predefinito di Tradovate, 100. L'indicatore si inizializza sulla porzione di storico che il grafico ha precaricato, che spesso equivale a poche centinaia di barre. Non vede mai l'intero storico perché il grafico non lo ha richiesto prima che l'indicatore iniziasse a calcolare." },
+    { q: "Come faccio a far caricare a Tradovate più barre storiche prima che l'indicatore venga eseguito?", a: "Alzi Minimum Number of Bars to Load nelle impostazioni del grafico a un valore elevato, come 2000, salvi quel grafico come modello, quindi applichi il modello a un grafico nuovo prima di aggiungere l'indicatore. Quando l'indicatore si inizializza, lo storico più profondo è già caricato e quindi calcola sull'intero insieme." },
+    { q: "Perché non basta aumentare il numero di barre?", a: "Aumentarlo su un grafico aiuta solo quel grafico, ma ogni nuova scheda torna al valore predefinito di 100. Il valore persiste solo se lo incorpora in un modello salvato e applica prima quel modello. Altrimenti il grafico successivo che apre riparte con poco storico e l'indicatore torna a poche centinaia di barre." },
+    { q: "Qual è il massimo a cui posso impostare Minimum Number of Bars to Load?", a: "Tradovate ha alzato il limite di questa impostazione a 9999 barre. Ciò offre ampio margine per gli indicatori con una lunga finestra di osservazione. Lo imposti con una comoda eccedenza rispetto al periodo più lungo del Suo indicatore, in modo da avere un margine e non solo il minimo indispensabile." },
+    { q: "Il numero di barre dipende dal simbolo o dal timeframe?", a: "Sì. Contratti e intervalli diversi restituiscono quantità diverse di storico all'avvio, ed è per questo che un simbolo può scaldarsi bene mentre un altro appare a corto di dati sullo stesso layout. La correzione con il modello funziona su tutti perché costringe il grafico a richiedere un minimo costante prima che l'indicatore calcoli." },
+    { q: "Devo applicare il modello ogni singola volta?", a: "Per ogni nuova scheda del grafico in cui un calcolo all'avvio è importante, sì: applichi il modello di base prima di aggiungere l'indicatore. Una volta applicato il modello e aggiunto l'indicatore, quel grafico mantiene il suo storico per la sessione. Questa disciplina serve solo nel momento in cui costruisce un grafico nuovo." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap, wird von diesen weder empfohlen noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit. Prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil en trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc. ou Bookmap, ni approuvée ou sponsorisée par ces sociétés. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc. o Bookmap, né da esse approvata o sponsorizzata. Tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-09",
+  dateModified: "2026-07-09",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

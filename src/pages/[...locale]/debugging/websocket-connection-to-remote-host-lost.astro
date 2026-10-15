@@ -1,0 +1,604 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "websocket-connection-to-remote-host-lost";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate WebSocket 'Connection to Remote Host Lost'";
+const META_DESCRIPTION =
+  "Tradovate WebSocket connection lost? Send 2.5s heartbeats, auto-reconnect, renew tokens, and cycle sockets before 24 hours to keep data streaming.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate-WebSocket „Connection to Remote Host Lost“", es: "WebSocket de Tradovate «Connection to Remote Host Lost»", fr: "WebSocket Tradovate « Connection to Remote Host Lost »", it: "WebSocket di Tradovate «Connection to Remote Host Lost»" },
+  dek: { en: "The socket runs fine for hours, then dies with Connection to remote host was lost, often right around the 24-hour mark. Here's what's actually failing and the heartbeat, reconnect, and token pattern that keeps a feed alive indefinitely.", de: "Der Socket läuft stundenlang einwandfrei und bricht dann mit Connection to remote host was lost ab, oft rund um die 24-Stunden-Marke. Hier erfahren Sie, was tatsächlich ausfällt, und welches Muster aus Heartbeat, Reconnect und Token einen Feed dauerhaft am Leben hält.", es: "El socket funciona sin problemas durante horas y luego muere con Connection to remote host was lost, a menudo justo en torno a las 24 horas. Esto es lo que realmente falla y el patrón de heartbeat, reconexión y token que mantiene un feed vivo indefinidamente.", fr: "Le socket fonctionne sans problème pendant des heures, puis meurt avec Connection to remote host was lost, souvent autour de la barre des 24 heures. Voici ce qui échoue réellement, ainsi que le schéma de heartbeat, de reconnexion et de jeton qui maintient un flux en vie indéfiniment.", it: "Il socket funziona senza problemi per ore, poi muore con Connection to remote host was lost, spesso intorno alle 24 ore. Ecco cosa fallisce davvero e lo schema di heartbeat, riconnessione e token che mantiene vivo un feed all'infinito." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "When your bot is streaming ES or NQ quotes around the clock, nothing kills a strategy faster than a Tradovate WebSocket that quietly dies with <strong class='text-white'>&ldquo;Connection to remote host was lost.&rdquo;</strong> It's one of the most common Tradovate API headaches: the socket runs fine for hours, then drops, very often right around the 24-hour mark, and takes your live market data and order routing down with it. Sometimes you'll see it as a raw WebSocket close (code 1006, &ldquo;abnormal closure&rdquo;). Sometimes it looks like a mass disconnection. Sometimes it's just a dead feed that never throws an exception at all." },
+    { type: "paragraph", html: "There's no single magic setting that fixes this. What actually keeps a socket alive is a handful of habits working together: 2.5-second heartbeats, automatic reconnection, token renewal, and cycling the connection before it goes stale. PickMyTrade bakes this reconnect-and-re-auth logic in, so your TradingView alerts keep reaching Tradovate even when a hand-rolled socket would have quietly fallen over." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for a Lost Tradovate WebSocket",
+      items: [
+        "<strong class='text-white'>Heartbeat every 2.5 seconds</strong>, send an empty <code>[]</code> frame so the server never marks your client idle and closes it.",
+        "<strong class='text-white'>Don't trust setInterval in a browser tab</strong>, background throttling drops your timer below 2.5s and kills the socket. Use a message-timestamp check instead.",
+        "<strong class='text-white'>Auto-reconnect on every close</strong>, when the socket closes, reopen it, re-authorize, and resubscribe to your market-data symbols.",
+        "<strong class='text-white'>Renew the token before it expires</strong>, call renewAccessToken roughly 15 minutes before the ~90-minute access-token expiry, and keep sessions within Tradovate's concurrent-session limit.",
+        "<strong class='text-white'>Cycle the connection before ~24 hours</strong>, tear down and reopen the socket on a timer instead of waiting for the server to drop it.",
+        "<strong class='text-white'>Back off when you reconnect</strong>, space out retries so a reconnect storm doesn't trip Tradovate's rate limits and lock you out.",
+      ],
+    },
+    { type: "heading", text: "What \"Connection to Remote Host Was Lost\" Means" },
+    { type: "paragraph", html: "&ldquo;Connection to remote host was lost&rdquo; is Tradovate's way of telling you the WebSocket to its servers is closed and no longer usable. It's a transport-level event, not a rejected order, not a bad request. The pipe itself went away. Under the hood this usually shows up as an abnormal WebSocket close (close code 1006), meaning the connection dropped without a clean close handshake, so your client can't always tell you exactly why." },
+    { type: "paragraph", html: "Here's the part that trips people up: a lost connection is normal and expected on a long-lived feed. Networks blip, load balancers recycle, idle sockets get pruned, tokens expire, and very long sessions get cycled server-side. Even a perfectly well-behaved client streaming live data can lose the socket after enough hours of uptime. So the goal isn't a socket that never drops, that's impossible. The goal is a client that notices the drop instantly and recovers on its own, without you babysitting it." },
+    { type: "paragraph", html: "That distinction matters for risk. If your feed dies silently and your code still assumes it's connected, you can miss fills, miss stop triggers, or fire orders into a stale view of the market. Treat every WebSocket as disposable and every disconnect as a routine event to handle, not an emergency." },
+    { type: "heading", text: "Top Causes of a Dropped Tradovate WebSocket" },
+    { type: "heading", text: "1. Missed heartbeats (server idle timeout)" },
+    { type: "paragraph", html: "This is the single most common cause. Tradovate's WebSocket protocol requires the <strong class='text-white'>client</strong> to send a heartbeat every <strong class='text-white'>2.5 seconds</strong>, a frame whose text is an empty array, <code>[]</code>, to prove it's still alive. If the server goes 2.5 seconds without hearing from you and isn't actively streaming data to you, it treats the client as idle and closes the connection. And here's the catch: while the server is actively pushing messages (say, a busy market-data subscription), it won't send its own heartbeats, so keeping the <code>[]</code> frames flowing is entirely on your client." },
+    { type: "heading", text: "2. Browser / timer throttling" },
+    { type: "paragraph", html: "If you build in the browser and schedule heartbeats with setInterval or setTimeout, you're walking into a subtle trap: browsers throttle timers in background or inactive tabs, stretching your 2.5-second interval out to several seconds. The moment it exceeds the window, the server closes the socket. Don't lean on setInterval, time your heartbeats from the last message you actually received instead." },
+    { type: "heading", text: "3. Access token expiry" },
+    { type: "paragraph", html: "Your WebSocket is authorized once with an access token, and that token has a limited lifespan, around <strong class='text-white'>90 minutes</strong> from creation per Tradovate's API docs. When the token behind an active connection expires, the connection is no longer authenticated and can be dropped. A long-running client that never renews its token will watch the socket die on a predictable cadence." },
+    { type: "heading", text: "4. Long-lived connections over ~24 hours" },
+    { type: "paragraph", html: "Maintaining a connection for more than 24 hours is a recognized cause of drops on its own. Even with perfect heartbeats and a fresh token, a socket that's been open for roughly a day is a prime candidate to get recycled server-side. That's why a raw connection that &ldquo;worked all afternoon&rdquo; mysteriously dies overnight." },
+    { type: "heading", text: "5. Reconnect storms and the session limit" },
+    { type: "paragraph", html: "When a socket drops, naive code often hammers the server with immediate, back-to-back reconnect attempts. That can trip Tradovate's request rate limits and make things worse, and repeatedly re-authenticating (instead of renewing) can bump you against the concurrent-session cap. The result is a client stuck in a reconnect loop that never stabilizes." },
+    { type: "heading", text: "How to Fix a Lost Tradovate WebSocket Connection: Step-by-Step" },
+    { type: "heading", text: "Send a Heartbeat Every 2.5 Seconds, the Right Way" },
+    {
+      type: "steps",
+      items: [
+        { title: "Timestamp every incoming message", html: "On every message you receive over the socket, record a timestamp (a plain <code>new Date()</code> is fine)." },
+        { title: "Compare against the last heartbeat", html: "On a short cadence, compare &ldquo;now&rdquo; against the timestamp of the last message received." },
+        { title: "Send the heartbeat when needed", html: "If more than <strong class='text-white'>2500 ms</strong> have elapsed since the last message, send a single heartbeat frame containing exactly <code>[]</code> using the socket's send method." },
+        { title: "Avoid a fixed setInterval", html: "Drive this from a message-based check rather than a fixed setInterval, so browser throttling can't silently stretch the gap and disconnect you." },
+      ],
+    },
+    { type: "paragraph", html: "This one habit resolves the majority of &ldquo;connection to remote host was lost&rdquo; reports, because it directly satisfies the server's idle-timeout rule." },
+    { type: "heading", text: "Add Automatic Reconnect and Resubscribe Logic" },
+    {
+      type: "steps",
+      items: [
+        { title: "Detect the drop immediately", html: "Attach a handler to the socket's close (and error) event so a drop is detected immediately." },
+        { title: "Open a fresh socket", html: "On close, assume the connection was lost in error and open a fresh WebSocket to the same endpoint." },
+        { title: "Re-send the authorize request", html: "Re-send the authorize request with a currently valid access token, a new socket isn't authorized just because your previous one was." },
+        { title: "Resubscribe to everything", html: "Resubscribe to every market-data symbol and every user/order sync you were listening to before, since subscriptions don't survive a reconnect." },
+        { title: "Back off exponentially", html: "Wrap reconnect attempts in an exponential backoff (for example, wait 1s, then 2s, then 4s, capped) so a prolonged outage doesn't turn into a rate-limit lockout." },
+      ],
+    },
+    { type: "heading", text: "Renew the Access Token and Re-Authorize the Socket" },
+    {
+      type: "steps",
+      items: [
+        { title: "Schedule a renewal ahead of expiry", html: "When you first authenticate, read the token's expiration time from the auth response and schedule a renewal ahead of it." },
+        { title: "Call renewAccessToken early", html: "Call renewAccessToken roughly <strong class='text-white'>15 minutes before</strong> the token expires. Renewing (rather than re-authorizing from scratch) extends your current session instead of opening a new one, which keeps you under Tradovate's concurrent-session limit." },
+        { title: "Re-authorize the active socket", html: "After renewing, make sure the active socket is authorized with the fresh token. The safest approach is to reconnect and send a new authorize frame with the renewed token, because renewing the token alone doesn't always keep an already-open socket authenticated." },
+      ],
+    },
+    { type: "heading", text: "Confirm API Access Is Enabled and You're Within the Session Limit" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirm API Access is enabled", html: "In the Tradovate web trader, open <strong class='text-white'>Application Settings</strong> and confirm <strong class='text-white'>API Access</strong> (the API add-on) is enabled for your account, a socket can't stay authorized against an account that isn't entitled for API use." },
+        { title: "Check your concurrent-session count", html: "Check that you aren't running more concurrent sessions than Tradovate allows across your bot, the desktop app, TradingView, and any other connections; extra sessions can knock your API connection offline." },
+        { title: "Confirm your market-data entitlement", html: "If you need real-time API market data specifically, confirm your market-data entitlements are in place, since an unauthorized data subscription can cause the feed to close." },
+      ],
+    },
+    { type: "heading", text: "Proactively Cycle the Connection Before 24 Hours" },
+    { type: "paragraph", html: "Rather than waiting for the server to drop a day-old socket, get ahead of it. On a timer, comfortably under the ~24-hour ceiling, close your existing WebSocket cleanly and open a new one with a freshly renewed token, then re-authorize and resubscribe. Since your reconnect path already exists (you built it in the step above), a scheduled cycle is just a controlled version of the same routine. It turns a surprise 3 a.m. disconnect into a planned, invisible refresh." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / State", "What it means", "Fix"],
+      rows: [
+        ["Connection to remote host was lost", "The WebSocket to Tradovate was closed and is unusable", "Auto-reconnect, re-authorize, and resubscribe; make sure heartbeats are flowing"],
+        ["WebSocket closed with code 1006", "Abnormal closure, dropped without a clean handshake", "Handle it as a normal disconnect; reopen the socket with backoff"],
+        ["Socket dies every ~90 minutes", "The access token behind the connection expired", "Call renewAccessToken ~15 min before expiry and re-authorize the socket"],
+        ["Feed drops after many hours / overnight", "Long-lived connection recycled (often around 24 hours)", "Proactively cycle the connection on a timer under ~24 hours"],
+        ["Disconnects only when the tab is in the background", "Browser throttled your setInterval heartbeat below 2.5s", "Time heartbeats from the last received message, not a fixed interval"],
+        ["Reconnect loop / new drops after reconnecting", "Reconnect storm tripping rate limits or the session cap", "Add exponential backoff; renew tokens instead of re-authing new sessions"],
+        ["Data feed silent but no error thrown", "Socket half-open; server stopped sending, client didn't notice", "Enforce the 2.5s heartbeat and treat missed heartbeats as a disconnect"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "If your goal is simply to get TradingView alerts into Tradovate reliably, you don't have to hand-build and babysit all of this socket plumbing yourself. PickMyTrade sits between TradingView and Tradovate and keeps the connection healthy for you." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Managed Reconnect Logic</strong>, automatic reconnect, re-authorization, and resubscription on every drop, so a lost socket recovers without you writing or maintaining the code.",
+        "<strong class='text-white'>Token Renewal Built In</strong>, sessions are refreshed before they expire, keeping the connection authenticated instead of dying on the ~90-minute token clock.",
+        "<strong class='text-white'>Connection Cycling</strong>, long-lived connections are recycled proactively, so the ~24-hour drop never catches your automation offline.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, reconnects and order flow are spaced out to respect Tradovate's limits, avoiding the reconnect-storm lockouts that plague raw sockets.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Wenn Ihr Bot rund um die Uhr ES- oder NQ-Kurse streamt, killt nichts eine Strategie schneller als ein Tradovate-WebSocket, der still mit <strong class='text-white'>&ldquo;Connection to remote host was lost.&rdquo;</strong> stirbt. Es ist eines der häufigsten Probleme mit der Tradovate-API: Der Socket läuft stundenlang einwandfrei und bricht dann ab, sehr oft rund um die 24-Stunden-Marke, und nimmt Ihre Live-Marktdaten und das Order-Routing mit. Manchmal sehen Sie es als rohen WebSocket-Abbruch (Code 1006, &ldquo;abnormal closure&rdquo;). Manchmal wirkt es wie eine Massentrennung. Manchmal ist es einfach ein toter Feed, der nie eine Ausnahme auslöst." },
+    { type: "paragraph",html: "Es gibt keine einzelne Zauber-Einstellung, die das behebt. Was einen Socket tatsächlich am Leben hält, ist ein Bündel zusammenwirkender Gewohnheiten: 2,5-Sekunden-Heartbeats, automatische Wiederverbindung, Token-Erneuerung und der Wechsel der Verbindung, bevor sie veraltet. PickMyTrade bringt diese Reconnect- und Re-Auth-Logik mit, sodass Ihre TradingView-Alarme Tradovate weiter erreichen, selbst wenn ein selbstgebauter Socket still umgefallen wäre." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste für einen verlorenen Tradovate-WebSocket",
+      items: [
+        "<strong class='text-white'>Heartbeat alle 2,5 Sekunden</strong>, senden Sie einen leeren <code>[]</code>-Frame, damit der Server Ihren Client nie als inaktiv einstuft und schließt.",
+        "<strong class='text-white'>Vertrauen Sie setInterval in einem Browser-Tab nicht</strong>, die Hintergrunddrosselung lässt Ihren Timer unter 2,5 s fallen und tötet den Socket. Verwenden Sie stattdessen eine Prüfung per Nachrichten-Zeitstempel.",
+        "<strong class='text-white'>Bei jedem Schließen automatisch neu verbinden</strong>, wenn der Socket schließt, öffnen Sie ihn neu, autorisieren Sie neu und abonnieren Sie Ihre Marktdaten-Symbole neu.",
+        "<strong class='text-white'>Erneuern Sie das Token vor Ablauf</strong>, rufen Sie renewAccessToken etwa 15 Minuten vor Ablauf des rund 90 Minuten gültigen Zugriffstokens auf und halten Sie die Sitzungen innerhalb des Limits gleichzeitiger Sitzungen von Tradovate.",
+        "<strong class='text-white'>Wechseln Sie die Verbindung vor ca. 24 Stunden</strong>, bauen Sie den Socket per Timer ab und wieder auf, statt darauf zu warten, dass der Server ihn trennt.",
+        "<strong class='text-white'>Beim Reconnect ein Backoff einsetzen</strong>, verteilen Sie die Versuche, damit ein Reconnect-Sturm nicht die Ratenlimits von Tradovate auslöst und Sie aussperrt.",
+      ],
+    },
+    { type: "heading",text: "Was „Connection to Remote Host Was Lost“ bedeutet" },
+    { type: "paragraph",html: "&ldquo;Connection to remote host was lost&rdquo; ist die Art von Tradovate, Ihnen mitzuteilen, dass der WebSocket zu seinen Servern geschlossen und nicht mehr nutzbar ist. Es ist ein Ereignis auf Transportebene, keine abgelehnte Order, keine fehlerhafte Anfrage. Die Leitung selbst ist weggefallen. Intern zeigt sich das meist als abnormaler WebSocket-Abbruch (Close-Code 1006), also eine Verbindung, die ohne sauberen Close-Handshake abgebrochen ist, sodass Ihr Client nicht immer genau sagen kann, warum." },
+    { type: "paragraph",html: "Und hier stolpern viele: Eine verlorene Verbindung ist bei einem langlebigen Feed normal und erwartbar. Netzwerke zucken, Load Balancer recyceln, Leerlauf-Sockets werden entfernt, Tokens laufen ab, und sehr lange Sitzungen werden serverseitig gewechselt. Selbst ein vorbildlicher Client, der Live-Daten streamt, kann den Socket nach genügend Stunden Laufzeit verlieren. Das Ziel ist also nicht ein Socket, der nie abbricht, das ist unmöglich. Das Ziel ist ein Client, der den Abbruch sofort bemerkt und sich selbst wiederherstellt, ohne dass Sie ihn überwachen müssen." },
+    { type: "paragraph",html: "Diese Unterscheidung ist für das Risiko wichtig. Stirbt Ihr Feed still und Ihr Code geht weiter davon aus, verbunden zu sein, können Sie Fills verpassen, Stop-Auslösungen verpassen oder Orders in ein veraltetes Marktbild feuern. Behandeln Sie jeden WebSocket als Wegwerfobjekt und jede Trennung als Routineereignis, das zu behandeln ist, nicht als Notfall." },
+    { type: "heading",text: "Die häufigsten Ursachen für einen abgebrochenen Tradovate-WebSocket" },
+    { type: "heading",text: "1. Verpasste Heartbeats (Server-Leerlauf-Timeout)" },
+    { type: "paragraph",html: "Das ist die mit Abstand häufigste Ursache. Das WebSocket-Protokoll von Tradovate verlangt, dass der <strong class='text-white'>Client</strong> alle <strong class='text-white'>2,5 Sekunden</strong> einen Heartbeat sendet, einen Frame, dessen Text ein leeres Array ist, <code>[]</code>, um zu beweisen, dass er noch lebt. Hört der Server 2,5 Sekunden nichts von Ihnen und streamt Ihnen nicht aktiv Daten, behandelt er den Client als inaktiv und schließt die Verbindung. Und hier der Haken: Solange der Server aktiv Nachrichten pusht (etwa bei einem regen Marktdaten-Abonnement), sendet er keine eigenen Heartbeats, sodass es allein Ihrem Client obliegt, die <code>[]</code>-Frames fließen zu lassen." },
+    { type: "heading",text: "2. Browser-/Timer-Drosselung" },
+    { type: "paragraph",html: "Wenn Sie im Browser entwickeln und Heartbeats mit setInterval oder setTimeout planen, tappen Sie in eine subtile Falle: Browser drosseln Timer in Hintergrund- oder inaktiven Tabs und dehnen Ihr 2,5-Sekunden-Intervall auf mehrere Sekunden. Sobald es das Fenster überschreitet, schließt der Server den Socket. Verlassen Sie sich nicht auf setInterval, sondern takten Sie Ihre Heartbeats ab der zuletzt tatsächlich empfangenen Nachricht." },
+    { type: "heading",text: "3. Ablauf des Zugriffstokens" },
+    { type: "paragraph",html: "Ihr WebSocket wird einmal mit einem Zugriffstoken autorisiert, und dieses Token hat laut API-Dokumentation von Tradovate eine begrenzte Lebensdauer von etwa <strong class='text-white'>90 Minuten</strong> ab Erstellung. Läuft das Token hinter einer aktiven Verbindung ab, ist die Verbindung nicht mehr authentifiziert und kann getrennt werden. Ein langlaufender Client, der sein Token nie erneuert, sieht den Socket in vorhersehbarem Takt sterben." },
+    { type: "heading",text: "4. Langlebige Verbindungen über ca. 24 Stunden" },
+    { type: "paragraph",html: "Eine Verbindung länger als 24 Stunden aufrechtzuerhalten, ist für sich genommen eine anerkannte Ursache für Abbrüche. Selbst mit perfekten Heartbeats und einem frischen Token ist ein Socket, der seit etwa einem Tag offen ist, ein Hauptkandidat dafür, serverseitig recycelt zu werden. Deshalb stirbt eine rohe Verbindung, die &ldquo;den ganzen Nachmittag funktionierte&rdquo;, rätselhaft über Nacht." },
+    { type: "heading",text: "5. Reconnect-Stürme und das Sitzungslimit" },
+    { type: "paragraph",html: "Bricht ein Socket ab, bombardiert naiver Code den Server oft mit sofortigen, aufeinanderfolgenden Reconnect-Versuchen. Das kann die Anfrage-Ratenlimits von Tradovate auslösen und die Lage verschlimmern, und wiederholtes erneutes Authentifizieren (statt Erneuerung) kann Sie gegen die Obergrenze gleichzeitiger Sitzungen laufen lassen. Das Ergebnis ist ein Client, der in einer Reconnect-Schleife festhängt und sich nie stabilisiert." },
+    { type: "heading",text: "So beheben Sie eine verlorene Tradovate-WebSocket-Verbindung: Schritt für Schritt" },
+    { type: "heading",text: "Den Heartbeat alle 2,5 Sekunden richtig senden" },
+    {
+      type: "steps",
+      items: [
+        { title: "Jede eingehende Nachricht mit einem Zeitstempel versehen", html: "Speichern Sie bei jeder über den Socket empfangenen Nachricht einen Zeitstempel (ein einfaches <code>new Date()</code> genügt)." },
+        { title: "Mit dem letzten Heartbeat vergleichen", html: "Vergleichen Sie in kurzem Takt &ldquo;jetzt&rdquo; mit dem Zeitstempel der zuletzt empfangenen Nachricht." },
+        { title: "Den Heartbeat bei Bedarf senden", html: "Sind seit der letzten Nachricht mehr als <strong class='text-white'>2500 ms</strong> vergangen, senden Sie mit der send-Methode des Sockets einen einzelnen Heartbeat-Frame, der genau <code>[]</code> enthält." },
+        { title: "Ein festes setInterval vermeiden", html: "Steuern Sie dies über eine nachrichtenbasierte Prüfung statt über ein festes setInterval, damit die Browser-Drosselung die Lücke nicht unbemerkt dehnen und Sie trennen kann." },
+      ],
+    },
+    { type: "paragraph",html: "Diese eine Gewohnheit löst die Mehrheit der Meldungen &ldquo;connection to remote host was lost&rdquo;, weil sie die Leerlauf-Timeout-Regel des Servers direkt erfüllt." },
+    { type: "heading",text: "Automatische Wiederverbindung und Neuabonnement-Logik hinzufügen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Den Abbruch sofort erkennen", html: "Hängen Sie einen Handler an das close- (und error-) Ereignis des Sockets, damit ein Abbruch sofort erkannt wird." },
+        { title: "Einen frischen Socket öffnen", html: "Gehen Sie beim Schließen davon aus, dass die Verbindung fälschlich verloren ging, und öffnen Sie einen frischen WebSocket zum selben Endpunkt." },
+        { title: "Die Autorisierungsanfrage erneut senden", html: "Senden Sie die Autorisierungsanfrage erneut mit einem aktuell gültigen Zugriffstoken, ein neuer Socket ist nicht autorisiert, nur weil Ihr vorheriger es war." },
+        { title: "Alles neu abonnieren", html: "Abonnieren Sie jedes Marktdaten-Symbol und jeden User-/Order-Sync neu, den Sie zuvor abgehört haben, da Abonnements einen Reconnect nicht überleben." },
+        { title: "Exponentiell zurückfahren", html: "Hüllen Sie Reconnect-Versuche in ein exponentielles Backoff (warten Sie zum Beispiel 1 s, dann 2 s, dann 4 s, nach oben begrenzt), damit ein längerer Ausfall nicht zur Ratenlimit-Sperre wird." },
+      ],
+    },
+    { type: "heading",text: "Das Zugriffstoken erneuern und den Socket neu autorisieren" },
+    {
+      type: "steps",
+      items: [
+        { title: "Eine Erneuerung vor Ablauf planen", html: "Lesen Sie bei der ersten Authentifizierung die Ablaufzeit des Tokens aus der Auth-Antwort und planen Sie eine Erneuerung davor ein." },
+        { title: "renewAccessToken frühzeitig aufrufen", html: "Rufen Sie renewAccessToken etwa <strong class='text-white'>15 Minuten vor</strong> Ablauf des Tokens auf. Das Erneuern (statt einer kompletten Neuautorisierung) verlängert Ihre aktuelle Sitzung, statt eine neue zu öffnen, wodurch Sie unter dem Limit gleichzeitiger Sitzungen von Tradovate bleiben." },
+        { title: "Den aktiven Socket neu autorisieren", html: "Stellen Sie nach der Erneuerung sicher, dass der aktive Socket mit dem frischen Token autorisiert ist. Am sichersten ist es, sich neu zu verbinden und einen neuen authorize-Frame mit dem erneuerten Token zu senden, denn allein das Erneuern des Tokens hält einen bereits offenen Socket nicht immer authentifiziert." },
+      ],
+    },
+    { type: "heading",text: "Bestätigen, dass der API-Zugriff aktiviert ist und Sie innerhalb des Sitzungslimits liegen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Bestätigen, dass der API-Zugriff aktiviert ist", html: "Öffnen Sie im Tradovate Web Trader die <strong class='text-white'>Application Settings</strong> und bestätigen Sie, dass <strong class='text-white'>API Access</strong> (das API-Add-on) für Ihr Konto aktiviert ist, ein Socket kann nicht autorisiert bleiben gegenüber einem Konto, das für die API-Nutzung nicht freigeschaltet ist." },
+        { title: "Die Anzahl gleichzeitiger Sitzungen prüfen", html: "Prüfen Sie, dass Sie nicht mehr gleichzeitige Sitzungen betreiben, als Tradovate über Ihren Bot, die Desktop-App, TradingView und alle weiteren Verbindungen hinweg erlaubt; zusätzliche Sitzungen können Ihre API-Verbindung offline schalten." },
+        { title: "Ihre Marktdatenberechtigung bestätigen", html: "Benötigen Sie speziell Echtzeit-API-Marktdaten, bestätigen Sie, dass Ihre Marktdatenberechtigungen vorhanden sind, da ein nicht autorisiertes Datenabonnement den Feed schließen kann." },
+      ],
+    },
+    { type: "heading",text: "Die Verbindung vor 24 Stunden proaktiv wechseln" },
+    { type: "paragraph",html: "Warten Sie nicht, bis der Server einen Tag alten Socket trennt, sondern kommen Sie ihm zuvor. Schließen Sie per Timer, deutlich unter der Obergrenze von ca. 24 Stunden, Ihren bestehenden WebSocket sauber und öffnen Sie einen neuen mit einem frisch erneuerten Token, dann neu autorisieren und neu abonnieren. Da Ihr Reconnect-Pfad bereits existiert (Sie haben ihn im vorherigen Schritt gebaut), ist ein geplanter Wechsel nur eine kontrollierte Version derselben Routine. Er macht aus einer überraschenden Trennung um 3 Uhr nachts eine geplante, unsichtbare Auffrischung." },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Fehler / Zustand","Was es bedeutet","Lösung"], rows: [
+      ["Connection to remote host was lost","Der WebSocket zu Tradovate wurde geschlossen und ist unbrauchbar","Automatisch neu verbinden, neu autorisieren und neu abonnieren; sicherstellen, dass Heartbeats fließen"],
+      ["WebSocket closed with code 1006","Abnormaler Abbruch, ohne sauberen Handshake getrennt","Als normale Trennung behandeln; Socket mit Backoff neu öffnen"],
+      ["Socket stirbt etwa alle 90 Minuten","Das Zugriffstoken hinter der Verbindung ist abgelaufen","renewAccessToken ca. 15 Min. vor Ablauf aufrufen und den Socket neu autorisieren"],
+      ["Feed bricht nach vielen Stunden / über Nacht ab","Langlebige Verbindung wurde recycelt (oft um 24 Stunden)","Die Verbindung per Timer proaktiv vor ca. 24 Stunden wechseln"],
+      ["Trennung nur, wenn der Tab im Hintergrund ist","Der Browser hat Ihren setInterval-Heartbeat unter 2,5 s gedrosselt","Heartbeats ab der zuletzt empfangenen Nachricht takten, nicht in festem Intervall"],
+      ["Reconnect-Schleife / neue Abbrüche nach dem Reconnect","Reconnect-Sturm löst Ratenlimits oder die Sitzungsobergrenze aus","Exponentielles Backoff hinzufügen; Tokens erneuern, statt neue Sitzungen zu authentifizieren"],
+      ["Datenfeed still, aber kein Fehler ausgelöst","Socket halb offen; Server hat aufgehört zu senden, Client hat es nicht bemerkt","Den 2,5-s-Heartbeat erzwingen und verpasste Heartbeats als Trennung behandeln"],
+    ] },
+    { type: "heading",text: "Verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Wenn Ihr Ziel schlicht ist, TradingView-Alarme zuverlässig in Tradovate zu bekommen, müssen Sie diese gesamte Socket-Infrastruktur nicht selbst bauen und überwachen. PickMyTrade sitzt zwischen TradingView und Tradovate und hält die Verbindung für Sie gesund." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Verwaltete Reconnect-Logik</strong>, automatischer Reconnect, Re-Autorisierung und Neuabonnement bei jedem Abbruch, sodass ein verlorener Socket sich erholt, ohne dass Sie den Code schreiben oder pflegen müssen.",
+        "<strong class='text-white'>Integrierte Token-Erneuerung</strong>, Sitzungen werden vor Ablauf aufgefrischt, sodass die Verbindung authentifiziert bleibt, statt an der 90-Minuten-Token-Uhr zu sterben.",
+        "<strong class='text-white'>Verbindungswechsel</strong>, langlebige Verbindungen werden proaktiv recycelt, sodass der Abbruch nach ca. 24 Stunden Ihre Automatisierung nie offline erwischt.",
+        "<strong class='text-white'>Ratenlimit-sicheres Routing</strong>, Reconnects und Order-Fluss werden zeitlich gestreckt, um die Limits von Tradovate einzuhalten, und vermeiden die Reconnect-Sturm-Sperren, die rohe Sockets plagen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Cuando su bot transmite cotizaciones de ES o NQ las 24 horas, nada mata una estrategia más rápido que un WebSocket de Tradovate que muere en silencio con <strong class='text-white'>&ldquo;Connection to remote host was lost.&rdquo;</strong> Es uno de los dolores de cabeza más comunes de la API de Tradovate: el socket funciona sin problemas durante horas y luego se cae, muy a menudo justo en torno a las 24 horas, y arrastra consigo sus datos de mercado en vivo y el enrutamiento de órdenes. A veces lo verá como un cierre WebSocket en bruto (código 1006, &ldquo;abnormal closure&rdquo;). A veces parece una desconexión masiva. A veces es solo un feed muerto que nunca lanza una excepción." },
+    { type: "paragraph",html: "No existe una única configuración mágica que lo arregle. Lo que de verdad mantiene vivo un socket es un conjunto de hábitos que funcionan juntos: heartbeats de 2,5 segundos, reconexión automática, renovación de token y ciclado de la conexión antes de que se quede obsoleta. PickMyTrade incorpora esta lógica de reconexión y reautorización, de modo que sus alertas de TradingView siguen llegando a Tradovate incluso cuando un socket hecho a mano se habría caído en silencio." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para un WebSocket de Tradovate perdido",
+      items: [
+        "<strong class='text-white'>Heartbeat cada 2,5 segundos</strong>, envíe un frame <code>[]</code> vacío para que el servidor nunca marque su cliente como inactivo y lo cierre.",
+        "<strong class='text-white'>No confíe en setInterval en una pestaña del navegador</strong>, la limitación en segundo plano hace caer su temporizador por debajo de 2,5 s y mata el socket. Use en su lugar una comprobación por marca de tiempo del mensaje.",
+        "<strong class='text-white'>Reconexión automática en cada cierre</strong>, cuando el socket se cierre, reábralo, reautorice y vuelva a suscribirse a sus símbolos de datos de mercado.",
+        "<strong class='text-white'>Renueve el token antes de que caduque</strong>, llame a renewAccessToken unos 15 minutos antes de la caducidad del token de acceso de ~90 minutos y mantenga las sesiones dentro del límite de sesiones simultáneas de Tradovate.",
+        "<strong class='text-white'>Cicle la conexión antes de ~24 horas</strong>, desmonte y reabra el socket con un temporizador en lugar de esperar a que el servidor lo corte.",
+        "<strong class='text-white'>Aplique backoff al reconectar</strong>, espacie los reintentos para que una tormenta de reconexiones no active los límites de tasa de Tradovate y le bloquee.",
+      ],
+    },
+    { type: "heading",text: "Qué significa «Connection to Remote Host Was Lost»" },
+    { type: "paragraph",html: "&ldquo;Connection to remote host was lost&rdquo; es la forma que tiene Tradovate de decirle que el WebSocket hacia sus servidores está cerrado y ya no se puede usar. Es un evento a nivel de transporte, no una orden rechazada ni una solicitud incorrecta. La tubería misma desapareció. Por debajo, esto suele aparecer como un cierre WebSocket anormal (código de cierre 1006), es decir, una conexión que se cayó sin un handshake de cierre limpio, de modo que su cliente no siempre puede decirle exactamente por qué." },
+    { type: "paragraph",html: "Aquí está lo que confunde a la gente: perder la conexión es normal y esperable en un feed de larga duración. Las redes parpadean, los balanceadores de carga se reciclan, los sockets inactivos se podan, los tokens caducan y las sesiones muy largas se ciclan en el servidor. Incluso un cliente perfectamente bien portado que transmite datos en vivo puede perder el socket tras suficientes horas de actividad. Así que el objetivo no es un socket que nunca se caiga, eso es imposible. El objetivo es un cliente que note la caída al instante y se recupere solo, sin que tenga que vigilarlo." },
+    { type: "paragraph",html: "Esa distinción importa para el riesgo. Si su feed muere en silencio y su código sigue asumiendo que está conectado, puede perder ejecuciones, perder disparos de stop o lanzar órdenes sobre una vista obsoleta del mercado. Trate cada WebSocket como desechable y cada desconexión como un evento rutinario que gestionar, no como una emergencia." },
+    { type: "heading",text: "Principales causas de un WebSocket de Tradovate caído" },
+    { type: "heading",text: "1. Heartbeats perdidos (tiempo de espera de inactividad del servidor)" },
+    { type: "paragraph",html: "Esta es la causa más común con diferencia. El protocolo WebSocket de Tradovate exige que el <strong class='text-white'>cliente</strong> envíe un heartbeat cada <strong class='text-white'>2,5 segundos</strong>, un frame cuyo texto es un array vacío, <code>[]</code>, para demostrar que sigue vivo. Si el servidor pasa 2,5 segundos sin saber de usted y no le está transmitiendo datos activamente, trata al cliente como inactivo y cierra la conexión. Y aquí está el problema: mientras el servidor envía mensajes activamente (por ejemplo, una suscripción de datos de mercado muy activa), no enviará sus propios heartbeats, así que mantener fluyendo los frames <code>[]</code> depende por completo de su cliente." },
+    { type: "heading",text: "2. Limitación del navegador / de los temporizadores" },
+    { type: "paragraph",html: "Si desarrolla en el navegador y programa los heartbeats con setInterval o setTimeout, cae en una trampa sutil: los navegadores limitan los temporizadores en pestañas en segundo plano o inactivas, estirando su intervalo de 2,5 segundos a varios segundos. En cuanto supera la ventana, el servidor cierra el socket. No se apoye en setInterval, calcule el momento de sus heartbeats a partir del último mensaje que realmente recibió." },
+    { type: "heading",text: "3. Caducidad del token de acceso" },
+    { type: "paragraph",html: "Su WebSocket se autoriza una vez con un token de acceso, y ese token tiene una vida limitada, de alrededor de <strong class='text-white'>90 minutos</strong> desde su creación según la documentación de la API de Tradovate. Cuando caduca el token tras una conexión activa, la conexión deja de estar autenticada y puede cortarse. Un cliente de larga ejecución que nunca renueva su token verá morir el socket con una cadencia predecible." },
+    { type: "heading",text: "4. Conexiones de larga duración de más de ~24 horas" },
+    { type: "paragraph",html: "Mantener una conexión durante más de 24 horas es por sí mismo una causa reconocida de caídas. Incluso con heartbeats perfectos y un token nuevo, un socket que lleva abierto aproximadamente un día es un candidato principal para ser reciclado en el servidor. Por eso una conexión en bruto que &ldquo;funcionó toda la tarde&rdquo; muere misteriosamente durante la noche." },
+    { type: "heading",text: "5. Tormentas de reconexión y el límite de sesiones" },
+    { type: "paragraph",html: "Cuando un socket se cae, el código ingenuo suele saturar al servidor con intentos de reconexión inmediatos y consecutivos. Eso puede activar los límites de tasa de solicitudes de Tradovate y empeorar las cosas, y reautenticarse repetidamente (en lugar de renovar) puede hacerle chocar con el tope de sesiones simultáneas. El resultado es un cliente atascado en un bucle de reconexión que nunca se estabiliza." },
+    { type: "heading",text: "Cómo arreglar una conexión WebSocket de Tradovate perdida: paso a paso" },
+    { type: "heading",text: "Envíe un heartbeat cada 2,5 segundos, de la forma correcta" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ponga una marca de tiempo a cada mensaje entrante", html: "En cada mensaje que reciba por el socket, registre una marca de tiempo (un simple <code>new Date()</code> basta)." },
+        { title: "Compare con el último heartbeat", html: "Con una cadencia corta, compare &ldquo;ahora&rdquo; con la marca de tiempo del último mensaje recibido." },
+        { title: "Envíe el heartbeat cuando haga falta", html: "Si han transcurrido más de <strong class='text-white'>2500 ms</strong> desde el último mensaje, envíe un único frame de heartbeat que contenga exactamente <code>[]</code> usando el método send del socket." },
+        { title: "Evite un setInterval fijo", html: "Dirija esto con una comprobación basada en mensajes en lugar de un setInterval fijo, para que la limitación del navegador no pueda estirar en silencio el intervalo y desconectarle." },
+      ],
+    },
+    { type: "paragraph",html: "Este único hábito resuelve la mayoría de los informes de &ldquo;connection to remote host was lost&rdquo;, porque cumple directamente la regla de tiempo de espera de inactividad del servidor." },
+    { type: "heading",text: "Añada lógica de reconexión automática y resuscripción" },
+    {
+      type: "steps",
+      items: [
+        { title: "Detecte la caída de inmediato", html: "Adjunte un manejador al evento close (y error) del socket para que una caída se detecte de inmediato." },
+        { title: "Abra un socket nuevo", html: "Al cerrarse, asuma que la conexión se perdió por error y abra un WebSocket nuevo hacia el mismo endpoint." },
+        { title: "Reenvíe la solicitud de autorización", html: "Reenvíe la solicitud de autorización con un token de acceso válido en ese momento, un socket nuevo no está autorizado solo porque lo estuviera el anterior." },
+        { title: "Vuelva a suscribirse a todo", html: "Vuelva a suscribirse a cada símbolo de datos de mercado y a cada sync de usuario/órdenes que escuchaba antes, ya que las suscripciones no sobreviven a una reconexión." },
+        { title: "Aplique un backoff exponencial", html: "Envuelva los intentos de reconexión en un backoff exponencial (por ejemplo, espere 1 s, luego 2 s, luego 4 s, con un tope) para que una interrupción prolongada no se convierta en un bloqueo por límite de tasa." },
+      ],
+    },
+    { type: "heading",text: "Renueve el token de acceso y reautorice el socket" },
+    {
+      type: "steps",
+      items: [
+        { title: "Programe una renovación antes de la caducidad", html: "Cuando se autentique por primera vez, lea la hora de caducidad del token en la respuesta de autenticación y programe una renovación antes de ella." },
+        { title: "Llame a renewAccessToken con antelación", html: "Llame a renewAccessToken unos <strong class='text-white'>15 minutos antes</strong> de que caduque el token. Renovar (en lugar de reautorizar desde cero) extiende su sesión actual en vez de abrir una nueva, lo que le mantiene por debajo del límite de sesiones simultáneas de Tradovate." },
+        { title: "Reautorice el socket activo", html: "Tras renovar, asegúrese de que el socket activo esté autorizado con el token nuevo. Lo más seguro es reconectar y enviar un nuevo frame authorize con el token renovado, porque renovar el token por sí solo no siempre mantiene autenticado un socket ya abierto." },
+      ],
+    },
+    { type: "heading",text: "Confirme que el acceso a la API está habilitado y que está dentro del límite de sesiones" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirme que el acceso a la API está habilitado", html: "En el Web Trader de Tradovate, abra <strong class='text-white'>Application Settings</strong> y confirme que <strong class='text-white'>API Access</strong> (el complemento de API) está habilitado para su cuenta, un socket no puede permanecer autorizado frente a una cuenta que no tiene derecho al uso de la API." },
+        { title: "Compruebe su número de sesiones simultáneas", html: "Compruebe que no ejecuta más sesiones simultáneas de las que Tradovate permite entre su bot, la aplicación de escritorio, TradingView y cualquier otra conexión; las sesiones adicionales pueden dejar sin conexión su conexión API." },
+        { title: "Confirme su autorización de datos de mercado", html: "Si necesita específicamente datos de mercado de API en tiempo real, confirme que sus autorizaciones de datos de mercado están en vigor, ya que una suscripción de datos no autorizada puede hacer que el feed se cierre." },
+      ],
+    },
+    { type: "heading",text: "Cicle la conexión de forma proactiva antes de las 24 horas" },
+    { type: "paragraph",html: "En lugar de esperar a que el servidor corte un socket de un día de antigüedad, adelántese. Con un temporizador, cómodamente por debajo del techo de ~24 horas, cierre limpiamente su WebSocket existente y abra uno nuevo con un token recién renovado, luego reautorice y vuelva a suscribirse. Como su ruta de reconexión ya existe (la construyó en el paso anterior), un ciclo programado es solo una versión controlada de la misma rutina. Convierte una desconexión sorpresa a las 3 de la madrugada en un refresco planificado e invisible." },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Error / estado","Qué significa","Solución"], rows: [
+      ["Connection to remote host was lost","El WebSocket hacia Tradovate se cerró y es inutilizable","Reconexión automática, reautorizar y volver a suscribirse; asegúrese de que los heartbeats fluyen"],
+      ["WebSocket closed with code 1006","Cierre anormal, caída sin handshake limpio","Trátelo como una desconexión normal; reabra el socket con backoff"],
+      ["El socket muere cada ~90 minutos","El token de acceso de la conexión caducó","Llame a renewAccessToken ~15 min antes de la caducidad y reautorice el socket"],
+      ["El feed se cae tras muchas horas / durante la noche","Conexión de larga duración reciclada (a menudo en torno a las 24 horas)","Cicle la conexión de forma proactiva con un temporizador por debajo de ~24 horas"],
+      ["Se desconecta solo cuando la pestaña está en segundo plano","El navegador limitó su heartbeat de setInterval por debajo de 2,5 s","Calcule el momento de los heartbeats desde el último mensaje recibido, no con un intervalo fijo"],
+      ["Bucle de reconexión / nuevas caídas tras reconectar","Una tormenta de reconexiones activa los límites de tasa o el tope de sesiones","Añada backoff exponencial; renueve tokens en lugar de reautenticar nuevas sesiones"],
+      ["Feed de datos en silencio pero sin error","Socket medio abierto; el servidor dejó de enviar y el cliente no lo notó","Aplique el heartbeat de 2,5 s y trate los heartbeats perdidos como una desconexión"],
+    ] },
+    { type: "heading",text: "Evite esto con PickMyTrade" },
+    { type: "paragraph",html: "Si su objetivo es simplemente que las alertas de TradingView lleguen a Tradovate de forma fiable, no tiene que construir ni vigilar usted mismo toda esta infraestructura de sockets. PickMyTrade se sitúa entre TradingView y Tradovate y mantiene sana la conexión por usted." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Lógica de reconexión gestionada</strong>, reconexión, reautorización y resuscripción automáticas en cada caída, de modo que un socket perdido se recupera sin que tenga que escribir ni mantener el código.",
+        "<strong class='text-white'>Renovación de token integrada</strong>, las sesiones se refrescan antes de caducar, manteniendo la conexión autenticada en lugar de morir con el reloj del token de ~90 minutos.",
+        "<strong class='text-white'>Ciclado de conexión</strong>, las conexiones de larga duración se reciclan de forma proactiva, así que la caída de ~24 horas nunca sorprende a su automatización sin conexión.",
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de tasa</strong>, las reconexiones y el flujo de órdenes se espacian para respetar los límites de Tradovate, evitando los bloqueos por tormenta de reconexión que afectan a los sockets en bruto.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Quand votre bot diffuse des cotations ES ou NQ en continu, rien ne tue une stratégie plus vite qu'un WebSocket Tradovate qui meurt discrètement avec <strong class='text-white'>&ldquo;Connection to remote host was lost.&rdquo;</strong> C'est l'un des casse-têtes les plus courants de l'API Tradovate : le socket fonctionne sans problème pendant des heures, puis tombe, très souvent autour de la barre des 24 heures, et emporte avec lui vos données de marché en direct et l'acheminement des ordres. Parfois cela apparaît comme une fermeture WebSocket brute (code 1006, &ldquo;abnormal closure&rdquo;). Parfois cela ressemble à une déconnexion massive. Parfois, c'est simplement un flux mort qui ne lève jamais d'exception." },
+    { type: "paragraph",html: "Il n'existe pas de réglage magique unique qui règle cela. Ce qui maintient réellement un socket en vie, c'est un ensemble d'habitudes qui fonctionnent ensemble : des heartbeats de 2,5 secondes, la reconnexion automatique, le renouvellement du jeton et la rotation de la connexion avant qu'elle ne devienne périmée. PickMyTrade intègre cette logique de reconnexion et de réautorisation, de sorte que vos alertes TradingView continuent d'atteindre Tradovate même quand un socket artisanal serait discrètement tombé." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour un WebSocket Tradovate perdu",
+      items: [
+        "<strong class='text-white'>Heartbeat toutes les 2,5 secondes</strong>, envoyez une trame <code>[]</code> vide afin que le serveur ne marque jamais votre client comme inactif et ne le ferme pas.",
+        "<strong class='text-white'>Ne vous fiez pas à setInterval dans un onglet de navigateur</strong>, le bridage en arrière-plan fait descendre votre minuteur sous 2,5 s et tue le socket. Utilisez plutôt une vérification par horodatage des messages.",
+        "<strong class='text-white'>Reconnexion automatique à chaque fermeture</strong>, quand le socket se ferme, rouvrez-le, réautorisez et réabonnez-vous à vos symboles de données de marché.",
+        "<strong class='text-white'>Renouvelez le jeton avant son expiration</strong>, appelez renewAccessToken environ 15 minutes avant l'expiration du jeton d'accès de ~90 minutes, et gardez les sessions dans la limite de sessions simultanées de Tradovate.",
+        "<strong class='text-white'>Faites tourner la connexion avant ~24 heures</strong>, démontez et rouvrez le socket sur minuteur au lieu d'attendre que le serveur le coupe.",
+        "<strong class='text-white'>Appliquez un backoff à la reconnexion</strong>, espacez les nouvelles tentatives afin qu'une tempête de reconnexions ne déclenche pas les limites de débit de Tradovate et ne vous bloque pas.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « Connection to Remote Host Was Lost »" },
+    { type: "paragraph",html: "&ldquo;Connection to remote host was lost&rdquo; est la façon dont Tradovate vous indique que le WebSocket vers ses serveurs est fermé et n'est plus utilisable. C'est un événement de niveau transport, pas un ordre rejeté ni une mauvaise requête. Le tuyau lui-même a disparu. En coulisses, cela se manifeste généralement par une fermeture WebSocket anormale (code de fermeture 1006), c'est-à-dire une connexion tombée sans handshake de fermeture propre, si bien que votre client ne peut pas toujours vous dire exactement pourquoi." },
+    { type: "paragraph",html: "Voici ce qui piège les gens : une connexion perdue est normale et attendue sur un flux de longue durée. Les réseaux vacillent, les répartiteurs de charge se recyclent, les sockets inactifs sont élagués, les jetons expirent et les très longues sessions sont renouvelées côté serveur. Même un client parfaitement bien élevé qui diffuse des données en direct peut perdre le socket après assez d'heures de fonctionnement. Le but n'est donc pas un socket qui ne tombe jamais, c'est impossible. Le but est un client qui remarque la coupure instantanément et se rétablit tout seul, sans que vous ayez à le surveiller." },
+    { type: "paragraph",html: "Cette distinction compte pour le risque. Si votre flux meurt en silence et que votre code continue de se croire connecté, vous pouvez manquer des exécutions, manquer des déclenchements de stop ou envoyer des ordres sur une vue périmée du marché. Traitez chaque WebSocket comme jetable et chaque déconnexion comme un événement de routine à gérer, pas comme une urgence." },
+    { type: "heading",text: "Principales causes d'un WebSocket Tradovate interrompu" },
+    { type: "heading",text: "1. Heartbeats manqués (délai d'inactivité du serveur)" },
+    { type: "paragraph",html: "C'est de loin la cause la plus courante. Le protocole WebSocket de Tradovate exige que le <strong class='text-white'>client</strong> envoie un heartbeat toutes les <strong class='text-white'>2,5 secondes</strong>, une trame dont le texte est un tableau vide, <code>[]</code>, pour prouver qu'il est toujours en vie. Si le serveur reste 2,5 secondes sans vous entendre et ne vous diffuse pas activement de données, il traite le client comme inactif et ferme la connexion. Et voici le piège : tant que le serveur pousse activement des messages (par exemple un abonnement aux données de marché très actif), il n'enverra pas ses propres heartbeats ; maintenir le flux des trames <code>[]</code> incombe donc entièrement à votre client." },
+    { type: "heading",text: "2. Bridage du navigateur / des minuteurs" },
+    { type: "paragraph",html: "Si vous développez dans le navigateur et planifiez les heartbeats avec setInterval ou setTimeout, vous tombez dans un piège subtil : les navigateurs brident les minuteurs dans les onglets en arrière-plan ou inactifs, étirant votre intervalle de 2,5 secondes à plusieurs secondes. Dès qu'il dépasse la fenêtre, le serveur ferme le socket. Ne vous appuyez pas sur setInterval, calez plutôt vos heartbeats sur le dernier message réellement reçu." },
+    { type: "heading",text: "3. Expiration du jeton d'accès" },
+    { type: "paragraph",html: "Votre WebSocket est autorisé une fois avec un jeton d'accès, et ce jeton a une durée de vie limitée, d'environ <strong class='text-white'>90 minutes</strong> depuis sa création selon la documentation API de Tradovate. Quand le jeton derrière une connexion active expire, la connexion n'est plus authentifiée et peut être coupée. Un client de longue durée qui ne renouvelle jamais son jeton verra le socket mourir à intervalle prévisible." },
+    { type: "heading",text: "4. Connexions de longue durée au-delà de ~24 heures" },
+    { type: "paragraph",html: "Maintenir une connexion plus de 24 heures est en soi une cause reconnue de coupures. Même avec des heartbeats parfaits et un jeton frais, un socket ouvert depuis environ un jour est un candidat de choix au recyclage côté serveur. C'est pourquoi une connexion brute qui &ldquo;a fonctionné tout l'après-midi&rdquo; meurt mystérieusement pendant la nuit." },
+    { type: "heading",text: "5. Tempêtes de reconnexion et limite de sessions" },
+    { type: "paragraph",html: "Quand un socket tombe, le code naïf martèle souvent le serveur de tentatives de reconnexion immédiates et successives. Cela peut déclencher les limites de débit de requêtes de Tradovate et aggraver les choses, et se réauthentifier à répétition (au lieu de renouveler) peut vous faire buter sur le plafond de sessions simultanées. Le résultat est un client coincé dans une boucle de reconnexion qui ne se stabilise jamais." },
+    { type: "heading",text: "Comment réparer une connexion WebSocket Tradovate perdue : pas à pas" },
+    { type: "heading",text: "Envoyez un heartbeat toutes les 2,5 secondes, de la bonne façon" },
+    {
+      type: "steps",
+      items: [
+        { title: "Horodatez chaque message entrant", html: "À chaque message reçu sur le socket, enregistrez un horodatage (un simple <code>new Date()</code> suffit)." },
+        { title: "Comparez au dernier heartbeat", html: "À courte cadence, comparez &ldquo;maintenant&rdquo; à l'horodatage du dernier message reçu." },
+        { title: "Envoyez le heartbeat si nécessaire", html: "Si plus de <strong class='text-white'>2500 ms</strong> se sont écoulées depuis le dernier message, envoyez une seule trame de heartbeat contenant exactement <code>[]</code> avec la méthode send du socket." },
+        { title: "Évitez un setInterval fixe", html: "Pilotez cela par une vérification basée sur les messages plutôt que par un setInterval fixe, afin que le bridage du navigateur ne puisse pas étirer silencieusement l'écart et vous déconnecter." },
+      ],
+    },
+    { type: "paragraph",html: "Cette seule habitude résout la majorité des signalements &ldquo;connection to remote host was lost&rdquo;, car elle satisfait directement la règle de délai d'inactivité du serveur." },
+    { type: "heading",text: "Ajoutez une logique de reconnexion automatique et de réabonnement" },
+    {
+      type: "steps",
+      items: [
+        { title: "Détectez la coupure immédiatement", html: "Attachez un gestionnaire à l'événement close (et error) du socket afin qu'une coupure soit détectée immédiatement." },
+        { title: "Ouvrez un nouveau socket", html: "À la fermeture, supposez que la connexion a été perdue par erreur et ouvrez un nouveau WebSocket vers le même point d'accès." },
+        { title: "Renvoyez la requête d'autorisation", html: "Renvoyez la requête d'autorisation avec un jeton d'accès actuellement valide, un nouveau socket n'est pas autorisé du simple fait que le précédent l'était." },
+        { title: "Réabonnez-vous à tout", html: "Réabonnez-vous à chaque symbole de données de marché et à chaque sync utilisateur/ordres que vous écoutiez auparavant, puisque les abonnements ne survivent pas à une reconnexion." },
+        { title: "Appliquez un backoff exponentiel", html: "Enveloppez les tentatives de reconnexion dans un backoff exponentiel (par exemple, attendez 1 s, puis 2 s, puis 4 s, plafonné) afin qu'une panne prolongée ne se transforme pas en blocage par limite de débit." },
+      ],
+    },
+    { type: "heading",text: "Renouvelez le jeton d'accès et réautorisez le socket" },
+    {
+      type: "steps",
+      items: [
+        { title: "Planifiez un renouvellement avant l'expiration", html: "Lors de la première authentification, lisez l'heure d'expiration du jeton dans la réponse d'authentification et planifiez un renouvellement avant celle-ci." },
+        { title: "Appelez renewAccessToken tôt", html: "Appelez renewAccessToken environ <strong class='text-white'>15 minutes avant</strong> l'expiration du jeton. Renouveler (plutôt que de réautoriser à partir de zéro) prolonge votre session actuelle au lieu d'en ouvrir une nouvelle, ce qui vous maintient sous la limite de sessions simultanées de Tradovate." },
+        { title: "Réautorisez le socket actif", html: "Après le renouvellement, assurez-vous que le socket actif est autorisé avec le nouveau jeton. L'approche la plus sûre consiste à vous reconnecter et à envoyer une nouvelle trame authorize avec le jeton renouvelé, car le seul renouvellement du jeton ne garde pas toujours authentifié un socket déjà ouvert." },
+      ],
+    },
+    { type: "heading",text: "Confirmez que l'accès API est activé et que vous êtes dans la limite de sessions" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirmez que l'accès API est activé", html: "Dans le Web Trader de Tradovate, ouvrez <strong class='text-white'>Application Settings</strong> et confirmez que <strong class='text-white'>API Access</strong> (le module complémentaire API) est activé pour votre compte, un socket ne peut pas rester autorisé sur un compte qui n'a pas droit à l'usage de l'API." },
+        { title: "Vérifiez votre nombre de sessions simultanées", html: "Vérifiez que vous n'exécutez pas plus de sessions simultanées que Tradovate n'en autorise entre votre bot, l'application de bureau, TradingView et toute autre connexion ; des sessions supplémentaires peuvent mettre hors ligne votre connexion API." },
+        { title: "Confirmez votre autorisation de données de marché", html: "Si vous avez spécifiquement besoin de données de marché API en temps réel, confirmez que vos autorisations de données de marché sont en place, car un abonnement aux données non autorisé peut provoquer la fermeture du flux." },
+      ],
+    },
+    { type: "heading",text: "Faites tourner proactivement la connexion avant 24 heures" },
+    { type: "paragraph",html: "Plutôt que d'attendre que le serveur coupe un socket vieux d'un jour, prenez les devants. Sur minuteur, confortablement sous le plafond de ~24 heures, fermez proprement votre WebSocket existant et ouvrez-en un nouveau avec un jeton fraîchement renouvelé, puis réautorisez et réabonnez-vous. Comme votre chemin de reconnexion existe déjà (vous l'avez construit à l'étape précédente), un cycle planifié n'est qu'une version contrôlée de la même routine. Il transforme une déconnexion surprise à 3 h du matin en un rafraîchissement planifié et invisible." },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Erreur / état","Ce que cela signifie","Solution"], rows: [
+      ["Connection to remote host was lost","Le WebSocket vers Tradovate a été fermé et est inutilisable","Reconnexion automatique, réautoriser et réabonner ; s'assurer que les heartbeats circulent"],
+      ["WebSocket closed with code 1006","Fermeture anormale, coupure sans handshake propre","La traiter comme une déconnexion normale ; rouvrir le socket avec backoff"],
+      ["Le socket meurt toutes les ~90 minutes","Le jeton d'accès derrière la connexion a expiré","Appeler renewAccessToken ~15 min avant l'expiration et réautoriser le socket"],
+      ["Le flux tombe après de nombreuses heures / pendant la nuit","Connexion de longue durée recyclée (souvent autour de 24 heures)","Faire tourner proactivement la connexion sur minuteur sous ~24 heures"],
+      ["Déconnexions uniquement quand l'onglet est en arrière-plan","Le navigateur a bridé votre heartbeat setInterval sous 2,5 s","Caler les heartbeats sur le dernier message reçu, pas sur un intervalle fixe"],
+      ["Boucle de reconnexion / nouvelles coupures après reconnexion","Une tempête de reconnexions déclenche les limites de débit ou le plafond de sessions","Ajouter un backoff exponentiel ; renouveler les jetons au lieu de réauthentifier de nouvelles sessions"],
+      ["Flux de données silencieux mais aucune erreur levée","Socket à moitié ouvert ; le serveur a cessé d'envoyer, le client ne l'a pas remarqué","Appliquer le heartbeat de 2,5 s et traiter les heartbeats manqués comme une déconnexion"],
+    ] },
+    { type: "heading",text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph",html: "Si votre but est simplement de faire parvenir de façon fiable les alertes TradingView à Tradovate, vous n'avez pas à construire et surveiller vous-même toute cette tuyauterie de sockets. PickMyTrade se place entre TradingView et Tradovate et maintient la connexion en bonne santé pour vous." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Logique de reconnexion gérée</strong>, reconnexion, réautorisation et réabonnement automatiques à chaque coupure, de sorte qu'un socket perdu se rétablit sans que vous ayez à écrire ou maintenir le code.",
+        "<strong class='text-white'>Renouvellement du jeton intégré</strong>, les sessions sont rafraîchies avant leur expiration, ce qui garde la connexion authentifiée au lieu de mourir à l'horloge du jeton de ~90 minutes.",
+        "<strong class='text-white'>Rotation des connexions</strong>, les connexions de longue durée sont recyclées de façon proactive, afin que la coupure à ~24 heures ne surprenne jamais votre automatisation hors ligne.",
+        "<strong class='text-white'>Acheminement respectueux des limites de débit</strong>, les reconnexions et le flux d'ordres sont espacés pour respecter les limites de Tradovate, évitant les blocages par tempête de reconnexion qui affligent les sockets bruts.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Quando il suo bot trasmette quotazioni ES o NQ ventiquattr'ore su ventiquattro, nulla uccide una strategia più in fretta di un WebSocket di Tradovate che muore silenziosamente con <strong class='text-white'>&ldquo;Connection to remote host was lost.&rdquo;</strong> È uno dei mal di testa più comuni dell'API di Tradovate: il socket funziona senza problemi per ore, poi cade, molto spesso intorno alle 24 ore, e si porta via i suoi dati di mercato in tempo reale e l'instradamento degli ordini. A volte lo vede come una chiusura WebSocket grezza (codice 1006, &ldquo;abnormal closure&rdquo;). A volte sembra una disconnessione di massa. A volte è semplicemente un feed morto che non solleva mai un'eccezione." },
+    { type: "paragraph",html: "Non esiste una singola impostazione magica che risolva il problema. Ciò che tiene davvero in vita un socket è un insieme di abitudini che lavorano insieme: heartbeat da 2,5 secondi, riconnessione automatica, rinnovo del token e rotazione della connessione prima che diventi obsoleta. PickMyTrade integra questa logica di riconnessione e riautorizzazione, così i suoi alert di TradingView continuano a raggiungere Tradovate anche quando un socket artigianale sarebbe silenziosamente caduto." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per un WebSocket di Tradovate perso",
+      items: [
+        "<strong class='text-white'>Heartbeat ogni 2,5 secondi</strong>, invii un frame <code>[]</code> vuoto in modo che il server non segni mai il suo client come inattivo e non lo chiuda.",
+        "<strong class='text-white'>Non si fidi di setInterval in una scheda del browser</strong>, la limitazione in background fa scendere il suo timer sotto i 2,5 s e uccide il socket. Usi invece un controllo basato sul timestamp dei messaggi.",
+        "<strong class='text-white'>Riconnessione automatica a ogni chiusura</strong>, quando il socket si chiude, lo riapra, riautorizzi e si iscriva di nuovo ai suoi simboli di dati di mercato.",
+        "<strong class='text-white'>Rinnovi il token prima che scada</strong>, chiami renewAccessToken circa 15 minuti prima della scadenza del token di accesso di ~90 minuti e mantenga le sessioni entro il limite di sessioni simultanee di Tradovate.",
+        "<strong class='text-white'>Cicli la connessione prima di ~24 ore</strong>, smonti e riapra il socket con un timer invece di aspettare che sia il server a troncarlo.",
+        "<strong class='text-white'>Applichi un backoff alla riconnessione</strong>, distanzi i tentativi in modo che una tempesta di riconnessioni non faccia scattare i limiti di frequenza di Tradovate e non la blocchi.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa «Connection to Remote Host Was Lost»" },
+    { type: "paragraph",html: "&ldquo;Connection to remote host was lost&rdquo; è il modo in cui Tradovate le comunica che il WebSocket verso i suoi server è chiuso e non più utilizzabile. È un evento a livello di trasporto, non un ordine rifiutato né una richiesta errata. È la condotta stessa a essere sparita. Sotto il cofano, di solito si presenta come una chiusura WebSocket anomala (codice di chiusura 1006), cioè una connessione caduta senza un handshake di chiusura pulito, quindi il suo client non sempre può dirle esattamente perché." },
+    { type: "paragraph",html: "Ecco la parte che mette in difficoltà: una connessione persa è normale e attesa su un feed di lunga durata. Le reti ballano, i load balancer si riciclano, i socket inattivi vengono potati, i token scadono e le sessioni molto lunghe vengono ciclate lato server. Anche un client perfettamente ben educato che trasmette dati in tempo reale può perdere il socket dopo abbastanza ore di attività. Quindi l'obiettivo non è un socket che non cade mai, è impossibile. L'obiettivo è un client che si accorga subito della caduta e si riprenda da solo, senza doverlo sorvegliare." },
+    { type: "paragraph",html: "Questa distinzione conta per il rischio. Se il suo feed muore in silenzio e il suo codice continua a credersi connesso, può perdere fill, mancare l'attivazione degli stop o inviare ordini su una vista obsoleta del mercato. Tratti ogni WebSocket come usa e getta e ogni disconnessione come un evento di routine da gestire, non come un'emergenza." },
+    { type: "heading",text: "Principali cause di un WebSocket di Tradovate interrotto" },
+    { type: "heading",text: "1. Heartbeat mancati (timeout di inattività del server)" },
+    { type: "paragraph",html: "È di gran lunga la causa più comune. Il protocollo WebSocket di Tradovate richiede che il <strong class='text-white'>client</strong> invii un heartbeat ogni <strong class='text-white'>2,5 secondi</strong>, un frame il cui testo è un array vuoto, <code>[]</code>, per dimostrare di essere ancora vivo. Se il server resta 2,5 secondi senza sentirla e non le sta trasmettendo attivamente dati, tratta il client come inattivo e chiude la connessione. E qui sta il problema: finché il server sta spingendo attivamente messaggi (ad esempio un'iscrizione ai dati di mercato molto attiva), non invierà i propri heartbeat, quindi mantenere in flusso i frame <code>[]</code> spetta interamente al suo client." },
+    { type: "heading",text: "2. Limitazione del browser / dei timer" },
+    { type: "paragraph",html: "Se sviluppa nel browser e pianifica gli heartbeat con setInterval o setTimeout, cade in una trappola sottile: i browser limitano i timer nelle schede in background o inattive, dilatando il suo intervallo di 2,5 secondi a diversi secondi. Nel momento in cui supera la finestra, il server chiude il socket. Non si appoggi a setInterval, cadenzi invece i suoi heartbeat a partire dall'ultimo messaggio effettivamente ricevuto." },
+    { type: "heading",text: "3. Scadenza del token di accesso" },
+    { type: "paragraph",html: "Il suo WebSocket viene autorizzato una volta con un token di accesso, e quel token ha una durata limitata, di circa <strong class='text-white'>90 minuti</strong> dalla creazione secondo la documentazione API di Tradovate. Quando il token dietro una connessione attiva scade, la connessione non è più autenticata e può essere interrotta. Un client in esecuzione prolungata che non rinnova mai il token vedrà il socket morire con una cadenza prevedibile." },
+    { type: "heading",text: "4. Connessioni di lunga durata oltre ~24 ore" },
+    { type: "paragraph",html: "Mantenere una connessione per più di 24 ore è di per sé una causa riconosciuta di cadute. Anche con heartbeat perfetti e un token fresco, un socket aperto da circa un giorno è un candidato ideale al riciclo lato server. Ecco perché una connessione grezza che &ldquo;ha funzionato tutto il pomeriggio&rdquo; muore misteriosamente durante la notte." },
+    { type: "heading",text: "5. Tempeste di riconnessione e limite di sessioni" },
+    { type: "paragraph",html: "Quando un socket cade, il codice ingenuo spesso martella il server con tentativi di riconnessione immediati e consecutivi. Ciò può far scattare i limiti di frequenza delle richieste di Tradovate e peggiorare le cose, e riautenticarsi ripetutamente (invece di rinnovare) può farla scontrare con il tetto di sessioni simultanee. Il risultato è un client bloccato in un ciclo di riconnessione che non si stabilizza mai." },
+    { type: "heading",text: "Come riparare una connessione WebSocket di Tradovate persa: passo dopo passo" },
+    { type: "heading",text: "Invii un heartbeat ogni 2,5 secondi, nel modo giusto" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apponga un timestamp a ogni messaggio in arrivo", html: "A ogni messaggio ricevuto sul socket, registri un timestamp (basta un semplice <code>new Date()</code>)." },
+        { title: "Confronti con l'ultimo heartbeat", html: "Con una cadenza breve, confronti &ldquo;adesso&rdquo; con il timestamp dell'ultimo messaggio ricevuto." },
+        { title: "Invii l'heartbeat quando serve", html: "Se sono trascorsi più di <strong class='text-white'>2500 ms</strong> dall'ultimo messaggio, invii un singolo frame heartbeat contenente esattamente <code>[]</code> usando il metodo send del socket." },
+        { title: "Eviti un setInterval fisso", html: "Gestisca tutto con un controllo basato sui messaggi anziché con un setInterval fisso, in modo che la limitazione del browser non possa dilatare silenziosamente l'intervallo e disconnetterla." },
+      ],
+    },
+    { type: "paragraph",html: "Questa sola abitudine risolve la maggior parte delle segnalazioni &ldquo;connection to remote host was lost&rdquo;, perché soddisfa direttamente la regola del timeout di inattività del server." },
+    { type: "heading",text: "Aggiunga logica di riconnessione automatica e nuova iscrizione" },
+    {
+      type: "steps",
+      items: [
+        { title: "Rilevi subito la caduta", html: "Colleghi un gestore all'evento close (ed error) del socket in modo che una caduta venga rilevata immediatamente." },
+        { title: "Apra un socket nuovo", html: "Alla chiusura, presuma che la connessione sia stata persa per errore e apra un nuovo WebSocket verso lo stesso endpoint." },
+        { title: "Reinvii la richiesta di autorizzazione", html: "Reinvii la richiesta di autorizzazione con un token di accesso attualmente valido, un nuovo socket non è autorizzato solo perché lo era il precedente." },
+        { title: "Si iscriva di nuovo a tutto", html: "Si iscriva di nuovo a ogni simbolo di dati di mercato e a ogni sync utente/ordini che stava ascoltando prima, poiché le iscrizioni non sopravvivono a una riconnessione." },
+        { title: "Applichi un backoff esponenziale", html: "Racchiuda i tentativi di riconnessione in un backoff esponenziale (ad esempio, attenda 1 s, poi 2 s, poi 4 s, con un tetto) in modo che un'interruzione prolungata non si trasformi in un blocco per limite di frequenza." },
+      ],
+    },
+    { type: "heading",text: "Rinnovi il token di accesso e riautorizzi il socket" },
+    {
+      type: "steps",
+      items: [
+        { title: "Pianifichi un rinnovo prima della scadenza", html: "Quando si autentica per la prima volta, legga l'ora di scadenza del token dalla risposta di autenticazione e pianifichi un rinnovo prima di essa." },
+        { title: "Chiami renewAccessToken in anticipo", html: "Chiami renewAccessToken circa <strong class='text-white'>15 minuti prima</strong> della scadenza del token. Rinnovare (invece di riautorizzare da zero) prolunga la sua sessione corrente anziché aprirne una nuova, il che la mantiene sotto il limite di sessioni simultanee di Tradovate." },
+        { title: "Riautorizzi il socket attivo", html: "Dopo il rinnovo, si assicuri che il socket attivo sia autorizzato con il token fresco. L'approccio più sicuro è riconnettersi e inviare un nuovo frame authorize con il token rinnovato, perché il solo rinnovo del token non sempre mantiene autenticato un socket già aperto." },
+      ],
+    },
+    { type: "heading",text: "Confermi che l'accesso API sia abilitato e di essere entro il limite di sessioni" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confermi che l'accesso API sia abilitato", html: "Nel Web Trader di Tradovate, apra <strong class='text-white'>Application Settings</strong> e confermi che <strong class='text-white'>API Access</strong> (il componente aggiuntivo API) sia abilitato per il suo conto, un socket non può restare autorizzato su un conto non abilitato all'uso dell'API." },
+        { title: "Controlli il numero di sessioni simultanee", html: "Controlli di non eseguire più sessioni simultanee di quante Tradovate ne consenta tra il suo bot, l'app desktop, TradingView e qualsiasi altra connessione; sessioni extra possono mettere offline la sua connessione API." },
+        { title: "Confermi la sua autorizzazione ai dati di mercato", html: "Se le servono specificamente dati di mercato API in tempo reale, confermi che le sue autorizzazioni ai dati di mercato siano in regola, poiché un'iscrizione ai dati non autorizzata può far chiudere il feed." },
+      ],
+    },
+    { type: "heading",text: "Cicli in modo proattivo la connessione prima delle 24 ore" },
+    { type: "paragraph",html: "Invece di aspettare che il server tronchi un socket vecchio di un giorno, lo anticipi. Con un timer, comodamente sotto il tetto di ~24 ore, chiuda in modo pulito il suo WebSocket esistente e ne apra uno nuovo con un token appena rinnovato, quindi riautorizzi e si iscriva di nuovo. Poiché il suo percorso di riconnessione esiste già (lo ha costruito nel passaggio precedente), un ciclo programmato è solo una versione controllata della stessa routine. Trasforma una disconnessione a sorpresa alle 3 di notte in un aggiornamento pianificato e invisibile." },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Errore / stato","Cosa significa","Soluzione"], rows: [
+      ["Connection to remote host was lost","Il WebSocket verso Tradovate è stato chiuso ed è inutilizzabile","Riconnessione automatica, riautorizzare e iscriversi di nuovo; assicurarsi che gli heartbeat fluiscano"],
+      ["WebSocket closed with code 1006","Chiusura anomala, caduta senza handshake pulito","Gestirla come una disconnessione normale; riaprire il socket con backoff"],
+      ["Il socket muore ogni ~90 minuti","Il token di accesso dietro la connessione è scaduto","Chiamare renewAccessToken ~15 min prima della scadenza e riautorizzare il socket"],
+      ["Il feed cade dopo molte ore / durante la notte","Connessione di lunga durata riciclata (spesso intorno alle 24 ore)","Ciclare in modo proattivo la connessione con un timer sotto le ~24 ore"],
+      ["Si disconnette solo quando la scheda è in background","Il browser ha limitato il suo heartbeat setInterval sotto i 2,5 s","Cadenzare gli heartbeat dall'ultimo messaggio ricevuto, non con un intervallo fisso"],
+      ["Ciclo di riconnessione / nuove cadute dopo la riconnessione","Una tempesta di riconnessioni fa scattare i limiti di frequenza o il tetto di sessioni","Aggiungere backoff esponenziale; rinnovare i token invece di riautenticare nuove sessioni"],
+      ["Feed dati silenzioso ma nessun errore sollevato","Socket semiaperto; il server ha smesso di inviare, il client non se n'è accorto","Applicare l'heartbeat da 2,5 s e trattare gli heartbeat mancati come una disconnessione"],
+    ] },
+    { type: "heading",text: "Lo prevenga con PickMyTrade" },
+    { type: "paragraph",html: "Se il suo obiettivo è semplicemente far arrivare in modo affidabile gli alert di TradingView a Tradovate, non deve costruire e sorvegliare da sé tutta questa infrastruttura di socket. PickMyTrade si colloca tra TradingView e Tradovate e mantiene sana la connessione per Lei." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Logica di riconnessione gestita</strong>, riconnessione, riautorizzazione e nuova iscrizione automatiche a ogni caduta, così un socket perso si riprende senza che debba scrivere o mantenere il codice.",
+        "<strong class='text-white'>Rinnovo del token integrato</strong>, le sessioni vengono aggiornate prima della scadenza, mantenendo la connessione autenticata invece di morire con l'orologio del token da ~90 minuti.",
+        "<strong class='text-white'>Rotazione delle connessioni</strong>, le connessioni di lunga durata vengono riciclate in modo proattivo, così la caduta a ~24 ore non coglie mai la sua automazione offline.",
+        "<strong class='text-white'>Instradamento sicuro rispetto ai limiti di frequenza</strong>, riconnessioni e flusso degli ordini sono distanziati per rispettare i limiti di Tradovate, evitando i blocchi da tempesta di riconnessione che affliggono i socket grezzi.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Babysitting Your Socket", de: "Schluss mit der Socket-Überwachung", es: "Deje de vigilar su socket", fr: "Arrêtez de surveiller votre socket", it: "Smetta di sorvegliare il suo socket" },
+  ctaText: { en: "Ready to stop babysitting your socket? Start your free 7-day trial, link alerts today and trade rejection-free.", de: "Möchten Sie aufhören, Ihren Socket zu überwachen? Starten Sie Ihre kostenlose 7-Tage-Testphase, verknüpfen Sie heute Ihre Alarme und handeln Sie ohne Ablehnungen.", es: "¿Listo para dejar de vigilar su socket? Comience su prueba gratuita de 7 días, vincule sus alertas hoy y opere sin rechazos.", fr: "Prêt à arrêter de surveiller votre socket ? Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et tradez sans rejet.", it: "Pronto a smettere di sorvegliare il suo socket? Inizi la prova gratuita di 7 giorni, colleghi oggi i suoi alert e faccia trading senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does my Tradovate WebSocket keep dropping with \"Connection to remote host was lost\" in 2026?", a: "Almost always because the client stopped sending its 2.5-second heartbeat, the access token expired, or the connection simply aged out (long sessions past ~24 hours get recycled). Add heartbeats, token renewal, and auto-reconnect and the drops become a non-event." },
+    { q: "How often do I have to send a heartbeat?", a: "Every 2.5 seconds. Send a frame whose text is an empty array, []. If the server goes 2.5 seconds without hearing from you while it isn't streaming data to you, it closes the socket for inactivity." },
+    { q: "My heartbeats work in the foreground but the socket dies when the tab is in the background. Why?", a: "Browsers throttle setInterval/setTimeout in inactive tabs, so your interval stretches past 2.5 seconds. Instead of a fixed interval, timestamp each received message and send a heartbeat only when more than 2500 ms have passed since the last one." },
+    { q: "How long does a Tradovate access token last, and how do I keep the connection authenticated?", a: "An access token lasts around 90 minutes per Tradovate's API docs. Call renewAccessToken about 15 minutes before it expires to extend the session, then make sure the socket is authorized with the renewed token, reconnecting and re-sending an authorize frame is the safest way to keep it authenticated." },
+    { q: "Do I need to resubscribe to market data after reconnecting?", a: "Yes. A new socket starts with no subscriptions, so after you reopen and re-authorize you must resubscribe to every symbol and sync you were listening to before the drop." },
+    { q: "Is the ~24-hour disconnect a bug I can turn off?", a: "No. It's an expected characteristic of very long-lived connections. The reliable answer is to proactively cycle the connection before it reaches that age rather than waiting for the server to drop it." },
+    { q: "Why does my client get stuck in a reconnect loop and then get rate-limited?", a: "Immediate, back-to-back reconnect attempts hammer the server and can trip Tradovate's request limits, and repeatedly re-authenticating can bump the concurrent-session cap. Add exponential backoff between attempts and renew tokens instead of spawning new sessions." },
+    { q: "Can I just use PickMyTrade instead of writing all this reconnect code?", a: "If you only need TradingView alerts to reach Tradovate, yes, PickMyTrade manages the heartbeat, token renewal, reconnection, and connection cycling for you, so you don't maintain a resilient WebSocket client yourself." },
+  ], de: [
+    { q: "Warum bricht mein Tradovate-WebSocket 2026 immer wieder mit „Connection to remote host was lost“ ab?", a: "Fast immer, weil der Client seinen 2,5-Sekunden-Heartbeat nicht mehr gesendet hat, das Zugriffstoken abgelaufen ist oder die Verbindung einfach gealtert ist (lange Sitzungen jenseits von ca. 24 Stunden werden recycelt). Fügen Sie Heartbeats, Token-Erneuerung und automatischen Reconnect hinzu, und die Abbrüche werden zum Nicht-Ereignis." },
+    { q: "Wie oft muss ich einen Heartbeat senden?", a: "Alle 2,5 Sekunden. Senden Sie einen Frame, dessen Text ein leeres Array ist, []. Hört der Server 2,5 Sekunden nichts von Ihnen, während er Ihnen keine Daten streamt, schließt er den Socket wegen Inaktivität." },
+    { q: "Meine Heartbeats funktionieren im Vordergrund, aber der Socket stirbt, wenn der Tab im Hintergrund ist. Warum?", a: "Browser drosseln setInterval/setTimeout in inaktiven Tabs, sodass sich Ihr Intervall über 2,5 Sekunden hinaus dehnt. Versehen Sie statt eines festen Intervalls jede empfangene Nachricht mit einem Zeitstempel und senden Sie nur dann einen Heartbeat, wenn seit dem letzten mehr als 2500 ms vergangen sind." },
+    { q: "Wie lange hält ein Tradovate-Zugriffstoken und wie halte ich die Verbindung authentifiziert?", a: "Ein Zugriffstoken hält laut API-Dokumentation von Tradovate etwa 90 Minuten. Rufen Sie renewAccessToken etwa 15 Minuten vor Ablauf auf, um die Sitzung zu verlängern, und stellen Sie dann sicher, dass der Socket mit dem erneuerten Token autorisiert ist. Ein erneutes Verbinden und das erneute Senden eines authorize-Frames ist der sicherste Weg, ihn authentifiziert zu halten." },
+    { q: "Muss ich Marktdaten nach dem Reconnect neu abonnieren?", a: "Ja. Ein neuer Socket beginnt ohne Abonnements, daher müssen Sie nach dem erneuten Öffnen und Autorisieren jedes Symbol und jeden Sync neu abonnieren, den Sie vor dem Abbruch abgehört haben." },
+    { q: "Ist der Abbruch nach ca. 24 Stunden ein Fehler, den ich abschalten kann?", a: "Nein. Es ist eine erwartbare Eigenschaft sehr langlebiger Verbindungen. Die verlässliche Antwort besteht darin, die Verbindung proaktiv zu wechseln, bevor sie dieses Alter erreicht, statt darauf zu warten, dass der Server sie trennt." },
+    { q: "Warum bleibt mein Client in einer Reconnect-Schleife hängen und wird dann ratenbegrenzt?", a: "Sofortige, aufeinanderfolgende Reconnect-Versuche bombardieren den Server und können die Anfragegrenzen von Tradovate auslösen, und wiederholtes erneutes Authentifizieren kann die Obergrenze für gleichzeitige Sitzungen erreichen. Fügen Sie zwischen den Versuchen ein exponentielles Backoff hinzu und erneuern Sie Tokens, statt neue Sitzungen zu starten." },
+    { q: "Kann ich einfach PickMyTrade verwenden, statt all diesen Reconnect-Code zu schreiben?", a: "Wenn Sie nur TradingView-Alarme an Tradovate übermitteln müssen, ja. PickMyTrade verwaltet Heartbeat, Token-Erneuerung, Reconnect und Verbindungswechsel für Sie, sodass Sie keinen widerstandsfähigen WebSocket-Client selbst pflegen müssen." },
+  ], es: [
+    { q: "¿Por qué mi WebSocket de Tradovate sigue cayéndose con «Connection to remote host was lost» en 2026?", a: "Casi siempre porque el cliente dejó de enviar su heartbeat de 2,5 segundos, el token de acceso caducó o la conexión simplemente envejeció (las sesiones largas de más de ~24 horas se reciclan). Añada heartbeats, renovación de token y reconexión automática y las caídas se vuelven irrelevantes." },
+    { q: "¿Con qué frecuencia tengo que enviar un heartbeat?", a: "Cada 2,5 segundos. Envíe un frame cuyo texto sea un array vacío, []. Si el servidor pasa 2,5 segundos sin saber de usted mientras no le está transmitiendo datos, cierra el socket por inactividad." },
+    { q: "Mis heartbeats funcionan en primer plano, pero el socket muere cuando la pestaña está en segundo plano. ¿Por qué?", a: "Los navegadores limitan setInterval/setTimeout en las pestañas inactivas, de modo que su intervalo se estira más allá de 2,5 segundos. En lugar de un intervalo fijo, ponga una marca de tiempo a cada mensaje recibido y envíe un heartbeat solo cuando hayan pasado más de 2500 ms desde el último." },
+    { q: "¿Cuánto dura un token de acceso de Tradovate y cómo mantengo la conexión autenticada?", a: "Un token de acceso dura alrededor de 90 minutos según la documentación de la API de Tradovate. Llame a renewAccessToken unos 15 minutos antes de que caduque para extender la sesión y luego asegúrese de que el socket esté autorizado con el token renovado; reconectar y reenviar un frame authorize es la forma más segura de mantenerlo autenticado." },
+    { q: "¿Necesito volver a suscribirme a los datos de mercado tras reconectar?", a: "Sí. Un socket nuevo empieza sin suscripciones, así que después de reabrir y reautorizar debe volver a suscribirse a cada símbolo y sync que escuchaba antes de la caída." },
+    { q: "¿La desconexión de ~24 horas es un error que puedo desactivar?", a: "No. Es una característica esperada de las conexiones de muy larga duración. La respuesta fiable es ciclar la conexión de forma proactiva antes de que alcance esa antigüedad en lugar de esperar a que el servidor la corte." },
+    { q: "¿Por qué mi cliente se queda atascado en un bucle de reconexión y luego se limita su tasa?", a: "Los intentos de reconexión inmediatos y consecutivos saturan al servidor y pueden activar los límites de solicitudes de Tradovate, y reautenticarse repetidamente puede chocar con el tope de sesiones simultáneas. Añada un backoff exponencial entre intentos y renueve los tokens en lugar de crear nuevas sesiones." },
+    { q: "¿Puedo usar simplemente PickMyTrade en lugar de escribir todo este código de reconexión?", a: "Si solo necesita que las alertas de TradingView lleguen a Tradovate, sí. PickMyTrade gestiona por usted el heartbeat, la renovación de token, la reconexión y el ciclado de la conexión, así que no tiene que mantener usted mismo un cliente WebSocket resistente." },
+  ], fr: [
+    { q: "Pourquoi mon WebSocket Tradovate tombe-t-il sans cesse avec « Connection to remote host was lost » en 2026 ?", a: "Presque toujours parce que le client a cessé d'envoyer son heartbeat de 2,5 secondes, que le jeton d'accès a expiré ou que la connexion a simplement vieilli (les sessions longues au-delà de ~24 heures sont recyclées). Ajoutez des heartbeats, le renouvellement du jeton et la reconnexion automatique, et les coupures deviennent un non-événement." },
+    { q: "À quelle fréquence dois-je envoyer un heartbeat ?", a: "Toutes les 2,5 secondes. Envoyez une trame dont le texte est un tableau vide, []. Si le serveur reste 2,5 secondes sans vous entendre alors qu'il ne vous diffuse pas de données, il ferme le socket pour inactivité." },
+    { q: "Mes heartbeats fonctionnent au premier plan, mais le socket meurt quand l'onglet est en arrière-plan. Pourquoi ?", a: "Les navigateurs brident setInterval/setTimeout dans les onglets inactifs, de sorte que votre intervalle dépasse 2,5 secondes. Au lieu d'un intervalle fixe, horodatez chaque message reçu et n'envoyez un heartbeat que lorsque plus de 2500 ms se sont écoulées depuis le dernier." },
+    { q: "Combien de temps dure un jeton d'accès Tradovate et comment garder la connexion authentifiée ?", a: "Un jeton d'accès dure environ 90 minutes selon la documentation API de Tradovate. Appelez renewAccessToken environ 15 minutes avant son expiration pour prolonger la session, puis assurez-vous que le socket est autorisé avec le jeton renouvelé ; se reconnecter et renvoyer une trame authorize est le moyen le plus sûr de le garder authentifié." },
+    { q: "Dois-je me réabonner aux données de marché après la reconnexion ?", a: "Oui. Un nouveau socket démarre sans abonnements ; après la réouverture et la réautorisation, vous devez donc vous réabonner à chaque symbole et sync que vous écoutiez avant la coupure." },
+    { q: "La déconnexion à ~24 heures est-elle un bug que je peux désactiver ?", a: "Non. C'est une caractéristique attendue des connexions de très longue durée. La réponse fiable consiste à faire tourner la connexion de façon proactive avant qu'elle n'atteigne cet âge plutôt que d'attendre que le serveur la coupe." },
+    { q: "Pourquoi mon client reste-t-il bloqué dans une boucle de reconnexion puis est-il limité en débit ?", a: "Des tentatives de reconnexion immédiates et successives martèlent le serveur et peuvent déclencher les limites de requêtes de Tradovate, et se réauthentifier à répétition peut vous faire buter sur le plafond de sessions simultanées. Ajoutez un backoff exponentiel entre les tentatives et renouvelez les jetons au lieu de créer de nouvelles sessions." },
+    { q: "Puis-je simplement utiliser PickMyTrade au lieu d'écrire tout ce code de reconnexion ?", a: "Si vous avez seulement besoin que les alertes TradingView atteignent Tradovate, oui. PickMyTrade gère pour vous le heartbeat, le renouvellement du jeton, la reconnexion et la rotation de la connexion, de sorte que vous n'avez pas à maintenir vous-même un client WebSocket résilient." },
+  ], it: [
+    { q: "Perché il mio WebSocket di Tradovate continua a cadere con «Connection to remote host was lost» nel 2026?", a: "Quasi sempre perché il client ha smesso di inviare il suo heartbeat da 2,5 secondi, il token di accesso è scaduto o la connessione è semplicemente invecchiata (le sessioni lunghe oltre ~24 ore vengono riciclate). Aggiunga heartbeat, rinnovo del token e riconnessione automatica e le cadute diventano un non-evento." },
+    { q: "Con quale frequenza devo inviare un heartbeat?", a: "Ogni 2,5 secondi. Invii un frame il cui testo è un array vuoto, []. Se il server resta 2,5 secondi senza sentirla mentre non le sta trasmettendo dati, chiude il socket per inattività." },
+    { q: "I miei heartbeat funzionano in primo piano ma il socket muore quando la scheda è in background. Perché?", a: "I browser limitano setInterval/setTimeout nelle schede inattive, quindi il suo intervallo si dilata oltre i 2,5 secondi. Invece di un intervallo fisso, apponga un timestamp a ogni messaggio ricevuto e invii un heartbeat solo quando sono trascorsi più di 2500 ms dall'ultimo." },
+    { q: "Quanto dura un token di accesso di Tradovate e come mantengo la connessione autenticata?", a: "Un token di accesso dura circa 90 minuti secondo la documentazione API di Tradovate. Chiami renewAccessToken circa 15 minuti prima della scadenza per prolungare la sessione, quindi si assicuri che il socket sia autorizzato con il token rinnovato; riconnettersi e reinviare un frame authorize è il modo più sicuro per mantenerlo autenticato." },
+    { q: "Devo iscrivermi di nuovo ai dati di mercato dopo la riconnessione?", a: "Sì. Un nuovo socket parte senza iscrizioni, quindi dopo la riapertura e la riautorizzazione deve iscriversi di nuovo a ogni simbolo e sync che stava ascoltando prima della caduta." },
+    { q: "La disconnessione a ~24 ore è un bug che posso disattivare?", a: "No. È una caratteristica attesa delle connessioni di durata molto lunga. La risposta affidabile è ciclare in modo proattivo la connessione prima che raggiunga quell'età, invece di aspettare che sia il server a troncarla." },
+    { q: "Perché il mio client resta bloccato in un ciclo di riconnessione e poi viene limitato?", a: "Tentativi di riconnessione immediati e consecutivi martellano il server e possono far scattare i limiti di richieste di Tradovate, e riautenticarsi ripetutamente può farle sbattere contro il tetto di sessioni simultanee. Aggiunga un backoff esponenziale tra i tentativi e rinnovi i token invece di creare nuove sessioni." },
+    { q: "Posso usare semplicemente PickMyTrade invece di scrivere tutto questo codice di riconnessione?", a: "Se le serve solo far arrivare gli alert di TradingView a Tradovate, sì. PickMyTrade gestisce per Lei heartbeat, rinnovo del token, riconnessione e rotazione della connessione, quindi non deve mantenere da sé un client WebSocket resiliente." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. \"Tradovate\" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von diesem weder unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und Abläufe ändern sich im Laufe der Zeit. Bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones de la plataforma y los pasos cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. « Tradovate » ainsi que tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités de la plateforme et les étapes évoluent avec le temps ; confirmez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha esclusivamente finalità educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né approvata o sponsorizzata da essa. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità della piattaforma e le procedure cambiano nel tempo, quindi verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

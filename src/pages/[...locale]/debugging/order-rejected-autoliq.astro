@@ -1,0 +1,529 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "order-rejected-autoliq";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate 'AutoLiq 50000.0%' Order Rejection Fix";
+const META_DESCRIPTION =
+  "AutoLiq 50000.0% in Tradovate means auto-liquidation triggered, sign data agreements, keep a margin buffer, and avoid news and session-close spikes.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate: Behebung der Order-Ablehnung „AutoLiq 50000.0%“", es: "Tradovate: solución al rechazo de orden «AutoLiq 50000.0%»", fr: "Tradovate : correction du rejet d'ordre « AutoLiq 50000.0% »", it: "Tradovate: come risolvere il rifiuto d'ordine «AutoLiq 50000.0%»" },
+  dek: { en: "An entry bounces back with a cryptic \"AutoLiq 50000.0%\" rejection. It's the risk engine refusing new risk while your account is in, or near, auto-liquidation.", de: "Ein Einstieg wird mit der kryptischen Meldung „AutoLiq 50000.0%“ abgelehnt. Die Risiko-Engine verweigert neues Risiko, solange Ihr Konto in der Auto-Liquidation steckt oder kurz davor steht.", es: "Una entrada rebota con el críptico rechazo «AutoLiq 50000.0%». Es el motor de riesgo negándose a admitir nuevo riesgo mientras su cuenta está en autoliquidación o cerca de ella.", fr: "Une entrée est renvoyée avec le rejet énigmatique « AutoLiq 50000.0% ». C'est le moteur de risque qui refuse tout nouveau risque tant que votre compte est en auto-liquidation ou proche de l'être.", it: "Un ingresso viene respinto con l'enigmatico rifiuto «AutoLiq 50000.0%». È il motore di rischio che rifiuta nuovo rischio mentre il Suo conto è in auto-liquidazione o vicino ad essa." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You're trading fast futures, ES, NQ, CL, your entry goes in, and it bounces straight back with a cryptic <strong class='text-white'>&ldquo;AutoLiq 50000.0%&rdquo;</strong> rejection. It feels like the platform just deleted your edge. Here's the reassuring part: that message isn't a random glitch. It's the risk engine telling you the account is in, or dangerously close to, auto-liquidation, so it's refusing to let you pile on more risk. And the timing matters more than anything else. These rejections cluster around the daily session close and news-driven margin spikes, and once you know that, the fix gets obvious. Below, we'll walk through what the error actually means, what causes it, and how to clear it fast, plus how routing your alerts through PickMyTrade keeps these rejections from quietly eating your fills." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for AutoLiq Order Rejections",
+      items: [
+        "<strong class='text-white'>Check whether you're flat or liquidation-only.</strong> If the account is being auto-liquidated, new opening orders are blocked by design.",
+        "<strong class='text-white'>Sign every required market-data and exchange agreement.</strong> Unsigned data agreements cascade into risk-parameter and quote errors that surface as rejections.",
+        "<strong class='text-white'>Confirm your risk settings.</strong> A Max Position, daily loss limit, or auto-liquidate threshold may have tripped.",
+        "<strong class='text-white'>Watch the clock around session close.</strong> Intraday margin ends about 15 minutes before the close, when the higher initial margin kicks in.",
+        "<strong class='text-white'>Avoid holding into major news.</strong> Tradovate raises intraday margins sharply ahead of key economic releases, which can push an account into liquidation.",
+        "<strong class='text-white'>Keep a margin buffer.</strong> Margin requirements can change without notice, and the firm may liquidate with or without warning.",
+      ],
+    },
+    { type: "heading", text: "What \"AutoLiq 50000.0%\" Means" },
+    { type: "paragraph", html: "&ldquo;AutoLiq&rdquo; is short for <strong class='text-white'>auto-liquidation</strong>. When Tradovate attaches this reason to a rejected order, it's telling you the order was refused because the account is under an automatic liquidation condition, not because of a normal order-routing error. In plain English: the platform believes your account no longer meets its margin requirement, so instead of accepting a new position it's trying to <em>reduce</em> risk. It won't let you add to the problem." },
+    { type: "paragraph", html: "That eye-catching <strong class='text-white'>&ldquo;50000.0%&rdquo;</strong> is a system-generated risk figure shown in the rejection reason. It reflects an internal margin/risk ratio the engine flags when an account is deep into a liquidation state. Think of it as the platform's way of saying &ldquo;risk is off the scale here,&rdquo; not a number you set or can tune directly. Tradovate doesn't publish the exact formula behind that specific value, so treat the percentage as a <em>symptom label</em>, not a setting." },
+    { type: "paragraph", html: "Here's the pattern worth burning into memory: this rejection almost always clusters around two events, the <strong class='text-white'>daily session close/reset</strong> and <strong class='text-white'>major economic news</strong>. It tends to fire right as the session rolls, or when volatility spikes and Tradovate bumps margins for a big release. That lines up exactly with Tradovate's published margin policy, which is why the fix is about <em>timing and margin</em>, not resubmitting the order." },
+    { type: "heading", text: "Top Causes of AutoLiq Rejections in 2026" },
+    { type: "heading", text: "1. Margin Spikes Around Economic News" },
+    { type: "paragraph", html: "Tradovate temporarily raises intraday margins ahead of key economic releases, it has cited increases of as much as 4&times; its standard rates, and keeps them elevated until volatility settles. The exact multiple varies by product and event, so always check Tradovate's current margin schedule. If you're holding a position when that jump hits and your account can't cover the new requirement, the risk engine can move the account into auto-liquidation and reject any new orders." },
+    { type: "heading", text: "2. Hitting the Session-Close Initial-Margin Transition" },
+    { type: "paragraph", html: "Intraday margin rates generally run from the product open until <strong class='text-white'>15 minutes prior to the session close</strong>, when the higher <strong class='text-white'>initial margin</strong> is required for positions carried overnight. An account that's perfectly comfortable on intraday margin can suddenly be short at that transition, the same late-afternoon window where these AutoLiq rejections tend to bunch up." },
+    { type: "heading", text: "3. Unsigned Data Agreements and Tripped Risk Parameters" },
+    { type: "paragraph", html: "Order rejections frequently trace back to <strong class='text-white'>unsigned market-data or exchange agreements</strong>. When those agreements are missing, real-time data and entitlements break, and the platform surfaces the failure as risk-parameter and &ldquo;no quote&rdquo; style rejections that can accompany or masquerade as an AutoLiq state. Signing the outstanding agreements clears the entitlement half of the problem." },
+    { type: "heading", text: "4. Risk Settings or Prop-Firm Limits Already Breached" },
+    { type: "paragraph", html: "A configured <strong class='text-white'>Max Position size, daily loss limit, or auto-liquidate threshold</strong>, either your own or one set by your prop firm, can flip the account into liquidation-only. On evaluation and funded accounts, these limits are controlled by the firm, and once breached the account rejects new opening orders until the next session or a reset." },
+    { type: "heading", text: "5. A Platform-Side Risk or Maintenance Event" },
+    { type: "paragraph", html: "Sometimes the AutoLiq wave isn't about your account at all. When the identical rejection lands on many accounts at the exact same second, at least part of that episode is a <strong class='text-white'>platform-wide event</strong> tied to a news-driven margin change and the session roll, not an individual account fault. In those cases, waiting out the event and filing a ticket is usually the only real fix." },
+    { type: "heading", text: "How to Fix AutoLiq 50000.0% Rejections: Step-by-Step" },
+    { type: "heading", text: "Fixing Data Agreements and Risk Parameters" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the agreements area", html: "Open your Tradovate account settings and go to the market-data / exchange <strong class='text-white'>agreements</strong> area." },
+        { title: "Sign every outstanding agreement", html: "Sign at least the non-professional data agreements so real-time entitlements are active." },
+        { title: "Confirm your risk settings", html: "Open <strong class='text-white'>Risk Settings</strong> and confirm your Max Position, daily/weekly loss limits, and any auto-liquidate threshold are set where you expect, not accidentally at zero or some tiny value." },
+        { title: "Check with your firm if applicable", html: "On a prop-firm evaluation or funded account, remember you usually can't change these yourself, contact the firm to confirm the account isn't in liquidation-only." },
+      ],
+    },
+    { type: "heading", text: "Keeping a Margin Buffer Through Spikes" },
+    {
+      type: "steps",
+      items: [
+        { title: "Check available margin before you trade", html: "Check your account's <strong class='text-white'>available/excess margin</strong> against the position you want to open." },
+        { title: "Keep a cushion", html: "Keep a cushion well above the initial margin requirement, since requirements can change without notice and the firm may liquidate with or without warning." },
+        { title: "Size down for news windows", html: "If you must hold through a news window, size down so the elevated (news) margin still fits, or just stay flat until margins normalize." },
+      ],
+    },
+    { type: "heading", text: "Trading Around Session Close and News" },
+    {
+      type: "steps",
+      items: [
+        { title: "Identify the session-close window", html: "Identify the product's <strong class='text-white'>session close</strong> and the ~15-minute pre-close window where initial margin takes over (for many CME futures the daily reset lands around 5 PM Central)." },
+        { title: "Flatten or hold enough margin", html: "Either flatten before that transition or make sure you're holding enough margin for the overnight/initial requirement." },
+        { title: "Avoid opening into elevated-margin windows", html: "Around scheduled economic releases, don't open fresh positions into the elevated-margin window; wait for the platform to restore normal intraday margin." },
+        { title: "File a ticket if it persists while flat", html: "If the rejection persists while you're flat and within normal hours, capture the exact reject text and <strong class='text-white'>file a support ticket</strong>, a same-second, multi-account AutoLiq is a platform event, not your setup." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error", "Meaning", "Fix"],
+      rows: [
+        ["AutoLiq 50000.0%", "Account is in (or at the edge of) auto-liquidation; new opening orders blocked", "Confirm you're flat/liquidation-only, restore a margin buffer, wait out the event, then re-enter"],
+        ["Order Rejected: Risk Parameters", "A risk limit or entitlement check failed", "Sign data agreements and confirm Max Position / loss-limit settings"],
+        ["No Quote Available", "Missing data subscription or entitlement", "Subscribe to the exchange data and sign the non-professional agreement"],
+        ["Liquidation Only", "Account restricted to closing orders after a limit breach", "Wait for the next session/week or have the firm reset the account"],
+        ["Insufficient Margin", "Free margin below the requirement (often after a news/session-close spike)", "Reduce quantity or add funds so excess margin covers the requirement"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade sits between your TradingView alerts and Tradovate, so a bad or ill-timed order never blindly hits the risk engine:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Entitlement &amp; Risk Filters</strong>, respects your account's data-agreement state and risk limits, so orders that would trip a risk-parameter or AutoLiq rejection get caught early.",
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, blocks orders that would breach position caps before they're ever sent.",
+        "<strong class='text-white'>Session-Aware Routing</strong>, you control when alerts fire, so you can keep automation out of the news and session-close margin windows.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors the corrected order across every connected account, so one rejection doesn't leave your accounts out of sync.",
+      ],
+    },
+    { type: "paragraph", html: "Instead of discovering an AutoLiq rejection after your setup has already moved, you keep your automation disciplined around the exact conditions that cause it." },
+  ], de: [
+    { type: "paragraph",html: "Sie handeln schnelle Futures, ES, NQ, CL, Ihr Einstieg geht raus und prallt sofort mit der kryptischen Meldung <strong class='text-white'>&ldquo;AutoLiq 50000.0%&rdquo;</strong> zurück. Es fühlt sich an, als hätte die Plattform gerade Ihren Vorteil gelöscht. Die beruhigende Nachricht: Diese Meldung ist kein zufälliger Fehler. Die Risiko-Engine sagt Ihnen damit, dass sich das Konto in der Auto-Liquidation befindet oder gefährlich nah davor steht, und verweigert deshalb zusätzliches Risiko. Und das Timing ist wichtiger als alles andere. Diese Ablehnungen häufen sich um den täglichen Sitzungsschluss und um nachrichtengetriebene Margin-Spitzen, und sobald Sie das wissen, wird die Lösung offensichtlich. Im Folgenden zeigen wir, was der Fehler tatsächlich bedeutet, was ihn verursacht und wie Sie ihn schnell beheben, und wie das Routing Ihrer Alerts über PickMyTrade verhindert, dass diese Ablehnungen unbemerkt Ihre Fills auffressen." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste für AutoLiq-Order-Ablehnungen",
+      items: [
+        "<strong class='text-white'>Prüfen Sie, ob Sie flat sind oder Liquidation Only gilt.</strong> Wird das Konto automatisch liquidiert, sind neue eröffnende Orders absichtlich blockiert.",
+        "<strong class='text-white'>Unterzeichnen Sie alle erforderlichen Marktdaten- und Börsenvereinbarungen.</strong> Nicht unterzeichnete Datenvereinbarungen ziehen Risikoparameter- und Kursfehler nach sich, die sich als Ablehnungen zeigen.",
+        "<strong class='text-white'>Bestätigen Sie Ihre Risikoeinstellungen.</strong> Eine Max Position, ein tägliches Verlustlimit oder eine Auto-Liquidate-Schwelle kann ausgelöst worden sein.",
+        "<strong class='text-white'>Beachten Sie die Uhr rund um den Sitzungsschluss.</strong> Die Intraday-Margin endet etwa 15 Minuten vor Handelsschluss, wenn die höhere Initial Margin greift.",
+        "<strong class='text-white'>Halten Sie nicht durch große Nachrichten hindurch.</strong> Tradovate erhöht die Intraday-Margins vor wichtigen Wirtschaftsdaten deutlich, was ein Konto in die Liquidation treiben kann.",
+        "<strong class='text-white'>Halten Sie einen Margin-Puffer vor.</strong> Margin-Anforderungen können sich ohne Vorankündigung ändern, und die Firma kann mit oder ohne Warnung liquidieren.",
+      ],
+    },
+    { type: "heading",text: "Was „AutoLiq 50000.0%“ bedeutet" },
+    { type: "paragraph",html: "&ldquo;AutoLiq&rdquo; steht für <strong class='text-white'>Auto-Liquidation</strong>. Wenn Tradovate diesen Grund an eine abgelehnte Order hängt, bedeutet das, dass die Order verweigert wurde, weil für das Konto eine automatische Liquidationsbedingung gilt, und nicht wegen eines normalen Routing-Fehlers. Auf Deutsch gesagt: Die Plattform glaubt, dass Ihr Konto die Margin-Anforderung nicht mehr erfüllt, und versucht daher, statt eine neue Position anzunehmen, das Risiko zu <em>reduzieren</em>. Sie lässt Sie das Problem nicht noch vergrößern." },
+    { type: "paragraph",html: "Die auffällige Zahl <strong class='text-white'>&ldquo;50000.0%&rdquo;</strong> ist eine vom System erzeugte Risikokennzahl im Ablehnungsgrund. Sie spiegelt ein internes Margin-/Risikoverhältnis wider, das die Engine markiert, wenn ein Konto tief in einem Liquidationszustand steckt. Betrachten Sie sie als die Art der Plattform zu sagen: &ldquo;Das Risiko ist hier jenseits der Skala&rdquo;, nicht als Wert, den Sie festlegen oder direkt anpassen können. Tradovate veröffentlicht die genaue Formel hinter diesem konkreten Wert nicht, behandeln Sie den Prozentwert also als <em>Symptombezeichnung</em>, nicht als Einstellung." },
+    { type: "paragraph",html: "Dieses Muster sollten Sie sich einprägen: Diese Ablehnung häuft sich fast immer um zwei Ereignisse, den <strong class='text-white'>täglichen Sitzungsschluss/Reset</strong> und <strong class='text-white'>wichtige Wirtschaftsnachrichten</strong>. Sie tritt tendenziell genau beim Sitzungswechsel auf oder wenn die Volatilität steigt und Tradovate die Margins für eine große Veröffentlichung anhebt. Das deckt sich exakt mit der veröffentlichten Margin-Richtlinie von Tradovate, weshalb es bei der Lösung um <em>Timing und Margin</em> geht und nicht darum, die Order erneut zu senden." },
+    { type: "heading",text: "Hauptursachen für AutoLiq-Ablehnungen 2026" },
+    { type: "heading",text: "1. Margin-Spitzen rund um Wirtschaftsnachrichten" },
+    { type: "paragraph",html: "Tradovate erhöht die Intraday-Margins vor wichtigen Wirtschaftsdaten vorübergehend, es hat Erhöhungen von bis zu 4&times; der Standardsätze genannt, und hält sie erhöht, bis sich die Volatilität beruhigt. Das genaue Vielfache variiert je nach Produkt und Ereignis, prüfen Sie daher stets die aktuelle Margin-Tabelle von Tradovate. Wenn Sie eine Position halten, während dieser Sprung eintritt, und Ihr Konto die neue Anforderung nicht decken kann, kann die Risiko-Engine das Konto in die Auto-Liquidation versetzen und alle neuen Orders ablehnen." },
+    { type: "heading",text: "2. Der Übergang zur Initial Margin beim Sitzungsschluss" },
+    { type: "paragraph",html: "Die Intraday-Margin-Sätze gelten in der Regel von der Produkteröffnung bis <strong class='text-white'>15 Minuten vor dem Sitzungsschluss</strong>, wenn für über Nacht gehaltene Positionen die höhere <strong class='text-white'>Initial Margin</strong> erforderlich ist. Ein Konto, das mit Intraday-Margin völlig komfortabel dasteht, kann an diesem Übergang plötzlich zu knapp sein, im selben späten Nachmittagsfenster, in dem sich diese AutoLiq-Ablehnungen häufen." },
+    { type: "heading",text: "3. Nicht unterzeichnete Datenvereinbarungen und ausgelöste Risikoparameter" },
+    { type: "paragraph",html: "Order-Ablehnungen lassen sich häufig auf <strong class='text-white'>nicht unterzeichnete Marktdaten- oder Börsenvereinbarungen</strong> zurückführen. Fehlen diese Vereinbarungen, brechen Echtzeitdaten und Berechtigungen weg, und die Plattform zeigt den Fehler als Risikoparameter- und &ldquo;No Quote&rdquo;-artige Ablehnungen an, die einen AutoLiq-Zustand begleiten oder vortäuschen können. Das Unterzeichnen der ausstehenden Vereinbarungen behebt die Berechtigungshälfte des Problems." },
+    { type: "heading",text: "4. Risikoeinstellungen oder Prop-Firm-Limits bereits überschritten" },
+    { type: "paragraph",html: "Eine konfigurierte <strong class='text-white'>Max-Position-Größe, ein tägliches Verlustlimit oder eine Auto-Liquidate-Schwelle</strong>, ob von Ihnen selbst oder von Ihrem Prop-Firm gesetzt, kann das Konto in Liquidation Only versetzen. Bei Evaluierungs- und finanzierten Konten werden diese Limits von der Firma kontrolliert, und sobald sie überschritten sind, lehnt das Konto neue eröffnende Orders bis zur nächsten Sitzung oder einem Reset ab." },
+    { type: "heading",text: "5. Ein plattformseitiges Risiko- oder Wartungsereignis" },
+    { type: "paragraph",html: "Manchmal hat die AutoLiq-Welle gar nichts mit Ihrem Konto zu tun. Wenn dieselbe Ablehnung in derselben Sekunde bei vielen Konten eintrifft, ist zumindest ein Teil dieser Episode ein <strong class='text-white'>plattformweites Ereignis</strong>, das mit einer nachrichtengetriebenen Margin-Änderung und dem Sitzungswechsel zusammenhängt, kein Fehler eines einzelnen Kontos. In diesen Fällen ist Abwarten und das Eröffnen eines Tickets meist die einzige echte Lösung." },
+    { type: "heading",text: "So beheben Sie AutoLiq-50000.0%-Ablehnungen: Schritt für Schritt" },
+    { type: "heading",text: "Datenvereinbarungen und Risikoparameter korrigieren" },
+    {
+      type: "steps",
+      items: [
+        { title: "Bereich für Vereinbarungen öffnen", html: "Öffnen Sie Ihre Tradovate-Kontoeinstellungen und gehen Sie zum Bereich für Marktdaten-/Börsen-<strong class='text-white'>Vereinbarungen</strong>." },
+        { title: "Alle ausstehenden Vereinbarungen unterzeichnen", html: "Unterzeichnen Sie mindestens die Datenvereinbarungen für Nichtprofessionelle, damit die Echtzeit-Berechtigungen aktiv sind." },
+        { title: "Risikoeinstellungen bestätigen", html: "Öffnen Sie <strong class='text-white'>Risk Settings</strong> und bestätigen Sie, dass Max Position, tägliche/wöchentliche Verlustlimits und eine eventuelle Auto-Liquidate-Schwelle dort stehen, wo Sie es erwarten, nicht versehentlich bei null oder einem winzigen Wert." },
+        { title: "Gegebenenfalls bei Ihrer Firma nachfragen", html: "Bei einem Evaluierungs- oder finanzierten Konto eines Prop-Firms können Sie diese Werte in der Regel nicht selbst ändern, wenden Sie sich an die Firma, um zu bestätigen, dass das Konto nicht im Modus Liquidation Only ist." },
+      ],
+    },
+    { type: "heading",text: "Einen Margin-Puffer durch Spitzen hindurch halten" },
+    {
+      type: "steps",
+      items: [
+        { title: "Verfügbare Margin vor dem Handel prüfen", html: "Prüfen Sie die <strong class='text-white'>verfügbare/überschüssige Margin</strong> Ihres Kontos im Verhältnis zur Position, die Sie eröffnen möchten." },
+        { title: "Einen Puffer vorhalten", html: "Halten Sie einen Puffer deutlich über der Initial-Margin-Anforderung, da sich Anforderungen ohne Vorankündigung ändern können und die Firma mit oder ohne Warnung liquidieren kann." },
+        { title: "Für Nachrichtenfenster die Größe reduzieren", html: "Wenn Sie durch ein Nachrichtenfenster hindurch halten müssen, reduzieren Sie die Größe, damit die erhöhte (Nachrichten-)Margin noch passt, oder bleiben Sie flat, bis sich die Margins normalisiert haben." },
+      ],
+    },
+    { type: "heading",text: "Rund um Sitzungsschluss und Nachrichten handeln" },
+    {
+      type: "steps",
+      items: [
+        { title: "Das Sitzungsschluss-Fenster ermitteln", html: "Ermitteln Sie den <strong class='text-white'>Sitzungsschluss</strong> des Produkts und das Fenster von etwa 15 Minuten davor, in dem die Initial Margin übernimmt (bei vielen CME-Futures liegt der tägliche Reset gegen 17 Uhr Central)." },
+        { title: "Flat gehen oder ausreichend Margin halten", html: "Gehen Sie entweder vor diesem Übergang flat oder stellen Sie sicher, dass Sie genügend Margin für die Übernacht-/Initial-Anforderung halten." },
+        { title: "Nicht in Fenster mit erhöhter Margin eröffnen", html: "Eröffnen Sie rund um geplante Wirtschaftsveröffentlichungen keine neuen Positionen in das Fenster mit erhöhter Margin; warten Sie, bis die Plattform die normale Intraday-Margin wiederherstellt." },
+        { title: "Ticket eröffnen, wenn es im flachen Zustand weiterbesteht", html: "Besteht die Ablehnung weiter, während Sie flat sind und sich innerhalb der normalen Handelszeiten bewegen, halten Sie den genauen Ablehnungstext fest und <strong class='text-white'>eröffnen Sie ein Support-Ticket</strong>, ein AutoLiq in derselben Sekunde bei mehreren Konten ist ein Plattformereignis, nicht Ihr Setup." },
+      ],
+    },
+    { type: "heading",text: "Fehlerbehebungstabelle" },
+    { type: "table", headers: ["Fehler","Bedeutung","Lösung"], rows: [
+      ["AutoLiq 50000.0%","Das Konto befindet sich in der Auto-Liquidation (oder an deren Rand); neue eröffnende Orders sind blockiert","Prüfen, ob Sie flat/Liquidation Only sind, einen Margin-Puffer wiederherstellen, das Ereignis abwarten, dann neu einsteigen"],
+      ["Order Rejected: Risk Parameters","Ein Risikolimit oder eine Berechtigungsprüfung ist fehlgeschlagen","Datenvereinbarungen unterzeichnen und die Einstellungen für Max Position / Verlustlimit bestätigen"],
+      ["No Quote Available","Fehlendes Datenabonnement oder fehlende Berechtigung","Die Börsendaten abonnieren und die Vereinbarung für Nichtprofessionelle unterzeichnen"],
+      ["Liquidation Only","Das Konto ist nach einer Limitüberschreitung auf schließende Orders beschränkt","Auf die nächste Sitzung/Woche warten oder das Konto von der Firma zurücksetzen lassen"],
+      ["Insufficient Margin","Freie Margin liegt unter der Anforderung (oft nach einer Nachrichten-/Sitzungsschluss-Spitze)","Menge reduzieren oder Guthaben einzahlen, damit die überschüssige Margin die Anforderung deckt"],
+    ] },
+    { type: "heading",text: "Mit PickMyTrade verhindern" },
+    { type: "paragraph",html: "PickMyTrade sitzt zwischen Ihren TradingView-Alerts und Tradovate, sodass eine fehlerhafte oder zeitlich ungünstige Order nie blind auf die Risiko-Engine trifft:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Berechtigungs- &amp; Risikofilter</strong>, berücksichtigt den Stand der Datenvereinbarungen und die Risikolimits Ihres Kontos, sodass Orders, die eine Risikoparameter- oder AutoLiq-Ablehnung auslösen würden, frühzeitig abgefangen werden.",
+        "<strong class='text-white'>Mengen-/Symbolvalidierung</strong>, blockiert Orders, die Positionsgrenzen verletzen würden, bevor sie überhaupt gesendet werden.",
+        "<strong class='text-white'>Sitzungsbewusstes Routing</strong>, Sie steuern, wann Alerts ausgelöst werden, und können die Automatisierung so aus den Nachrichten- und Sitzungsschluss-Margin-Fenstern heraushalten.",
+        "<strong class='text-white'>Multi-Account-Synchronisierung</strong>, spiegelt die korrigierte Order auf alle verbundenen Konten, sodass eine Ablehnung Ihre Konten nicht aus dem Gleichschritt bringt.",
+      ],
+    },
+    { type: "paragraph",html: "Statt eine AutoLiq-Ablehnung erst zu entdecken, nachdem sich Ihr Setup bereits weiterbewegt hat, halten Sie Ihre Automatisierung diszipliniert rund um genau die Bedingungen, die sie auslösen." },
+  ], es: [
+    { type: "paragraph",html: "Está operando futuros rápidos, ES, NQ, CL, su entrada sale y rebota de inmediato con el críptico rechazo <strong class='text-white'>&ldquo;AutoLiq 50000.0%&rdquo;</strong>. Parece que la plataforma acaba de borrar su ventaja. Lo tranquilizador es que ese mensaje no es un fallo aleatorio. Es el motor de riesgo diciéndole que la cuenta está en autoliquidación, o peligrosamente cerca de ella, y por eso no le deja acumular más riesgo. Y el momento importa más que cualquier otra cosa. Estos rechazos se concentran en torno al cierre diario de la sesión y a los picos de margen provocados por noticias, y una vez que lo sabe, la solución resulta obvia. A continuación veremos qué significa realmente el error, qué lo causa y cómo resolverlo rápido, además de cómo enrutar sus alertas a través de PickMyTrade evita que estos rechazos se coman en silencio sus ejecuciones." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para rechazos de órdenes AutoLiq",
+      items: [
+        "<strong class='text-white'>Compruebe si está en plano o en modo solo liquidación.</strong> Si la cuenta se está autoliquidando, las nuevas órdenes de apertura se bloquean por diseño.",
+        "<strong class='text-white'>Firme todos los acuerdos de datos de mercado y de bolsa necesarios.</strong> Los acuerdos de datos sin firmar provocan en cascada errores de parámetros de riesgo y de cotización que aparecen como rechazos.",
+        "<strong class='text-white'>Confirme sus ajustes de riesgo.</strong> Puede haberse activado un Max Position, un límite de pérdida diaria o un umbral de autoliquidación.",
+        "<strong class='text-white'>Vigile el reloj en torno al cierre de la sesión.</strong> El margen intradía termina unos 15 minutos antes del cierre, cuando entra en vigor el margen inicial más alto.",
+        "<strong class='text-white'>Evite mantener posiciones durante noticias importantes.</strong> Tradovate eleva los márgenes intradía de forma acusada antes de publicaciones económicas clave, lo que puede llevar una cuenta a la liquidación.",
+        "<strong class='text-white'>Mantenga un colchón de margen.</strong> Los requisitos de margen pueden cambiar sin previo aviso, y la firma puede liquidar con o sin advertencia.",
+      ],
+    },
+    { type: "heading",text: "Qué significa «AutoLiq 50000.0%»" },
+    { type: "paragraph",html: "&ldquo;AutoLiq&rdquo; es la abreviatura de <strong class='text-white'>autoliquidación</strong>. Cuando Tradovate asocia este motivo a una orden rechazada, le está diciendo que la orden fue rechazada porque la cuenta se encuentra bajo una condición de liquidación automática, no por un error normal de enrutamiento. En lenguaje llano: la plataforma cree que su cuenta ya no cumple el requisito de margen, así que en lugar de aceptar una nueva posición intenta <em>reducir</em> el riesgo. No le permitirá agravar el problema." },
+    { type: "paragraph",html: "Ese llamativo <strong class='text-white'>&ldquo;50000.0%&rdquo;</strong> es una cifra de riesgo generada por el sistema que aparece en el motivo del rechazo. Refleja una relación interna de margen/riesgo que el motor señala cuando una cuenta está muy metida en un estado de liquidación. Piense en ello como la forma que tiene la plataforma de decir &ldquo;el riesgo se sale de la escala&rdquo;, no como un número que usted fije o pueda ajustar directamente. Tradovate no publica la fórmula exacta de ese valor concreto, así que trate el porcentaje como una <em>etiqueta de síntoma</em>, no como un ajuste." },
+    { type: "paragraph",html: "Este es el patrón que merece la pena grabarse: este rechazo casi siempre se concentra en torno a dos eventos, el <strong class='text-white'>cierre/reinicio diario de la sesión</strong> y las <strong class='text-white'>noticias económicas importantes</strong>. Tiende a dispararse justo cuando la sesión cambia, o cuando la volatilidad se dispara y Tradovate sube los márgenes para una gran publicación. Eso coincide exactamente con la política de márgenes publicada de Tradovate, por lo que la solución tiene que ver con el <em>momento y el margen</em>, no con reenviar la orden." },
+    { type: "heading",text: "Principales causas de los rechazos AutoLiq en 2026" },
+    { type: "heading",text: "1. Picos de margen en torno a noticias económicas" },
+    { type: "paragraph",html: "Tradovate eleva temporalmente los márgenes intradía antes de publicaciones económicas clave, ha citado aumentos de hasta 4&times; sus tarifas estándar, y los mantiene elevados hasta que la volatilidad se calma. El múltiplo exacto varía según el producto y el evento, así que consulte siempre la tabla de márgenes vigente de Tradovate. Si mantiene una posición cuando llega ese salto y su cuenta no puede cubrir el nuevo requisito, el motor de riesgo puede llevar la cuenta a la autoliquidación y rechazar cualquier orden nueva." },
+    { type: "heading",text: "2. Coincidir con la transición al margen inicial en el cierre de la sesión" },
+    { type: "paragraph",html: "Las tarifas de margen intradía generalmente rigen desde la apertura del producto hasta <strong class='text-white'>15 minutos antes del cierre de la sesión</strong>, cuando se exige el <strong class='text-white'>margen inicial</strong> más alto para las posiciones mantenidas durante la noche. Una cuenta que está perfectamente cómoda con margen intradía puede quedarse de repente corta en esa transición, la misma ventana de última hora de la tarde en la que se agrupan estos rechazos AutoLiq." },
+    { type: "heading",text: "3. Acuerdos de datos sin firmar y parámetros de riesgo activados" },
+    { type: "paragraph",html: "Los rechazos de órdenes se remontan con frecuencia a <strong class='text-white'>acuerdos de datos de mercado o de bolsa sin firmar</strong>. Cuando faltan esos acuerdos, los datos en tiempo real y las autorizaciones fallan, y la plataforma muestra el fallo como rechazos de parámetros de riesgo y de tipo &ldquo;no quote&rdquo; que pueden acompañar o hacerse pasar por un estado AutoLiq. Firmar los acuerdos pendientes resuelve la mitad del problema relativa a las autorizaciones." },
+    { type: "heading",text: "4. Ajustes de riesgo o límites de la prop firm ya superados" },
+    { type: "paragraph",html: "Un <strong class='text-white'>tamaño Max Position, un límite de pérdida diaria o un umbral de autoliquidación</strong> configurados, ya sean suyos o fijados por su prop firm, pueden poner la cuenta en modo solo liquidación. En las cuentas de evaluación y financiadas, estos límites los controla la firma, y una vez superados la cuenta rechaza nuevas órdenes de apertura hasta la siguiente sesión o un reinicio." },
+    { type: "heading",text: "5. Un evento de riesgo o de mantenimiento del lado de la plataforma" },
+    { type: "paragraph",html: "A veces la oleada de AutoLiq no tiene nada que ver con su cuenta. Cuando el mismo rechazo llega a muchas cuentas en el mismo segundo exacto, al menos parte de ese episodio es un <strong class='text-white'>evento de toda la plataforma</strong> vinculado a un cambio de margen provocado por noticias y al cambio de sesión, no un fallo de una cuenta individual. En esos casos, esperar a que pase el evento y abrir un ticket suele ser la única solución real." },
+    { type: "heading",text: "Cómo solucionar los rechazos AutoLiq 50000.0%: paso a paso" },
+    { type: "heading",text: "Corregir los acuerdos de datos y los parámetros de riesgo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra el área de acuerdos", html: "Abra los ajustes de su cuenta de Tradovate y vaya al área de <strong class='text-white'>acuerdos</strong> de datos de mercado / bolsa." },
+        { title: "Firme todos los acuerdos pendientes", html: "Firme al menos los acuerdos de datos para no profesionales para que las autorizaciones en tiempo real estén activas." },
+        { title: "Confirme sus ajustes de riesgo", html: "Abra <strong class='text-white'>Risk Settings</strong> y confirme que su Max Position, los límites de pérdida diaria/semanal y cualquier umbral de autoliquidación están donde espera, no a cero por accidente ni en algún valor diminuto." },
+        { title: "Consulte con su firma si procede", html: "En una cuenta de evaluación o financiada de una prop firm, recuerde que normalmente no puede cambiar esto usted mismo, contacte con la firma para confirmar que la cuenta no está en modo solo liquidación." },
+      ],
+    },
+    { type: "heading",text: "Mantener un colchón de margen durante los picos" },
+    {
+      type: "steps",
+      items: [
+        { title: "Compruebe el margen disponible antes de operar", html: "Compruebe el <strong class='text-white'>margen disponible/excedente</strong> de su cuenta frente a la posición que quiere abrir." },
+        { title: "Mantenga un colchón", html: "Mantenga un colchón muy por encima del requisito de margen inicial, ya que los requisitos pueden cambiar sin previo aviso y la firma puede liquidar con o sin advertencia." },
+        { title: "Reduzca el tamaño en las ventanas de noticias", html: "Si debe mantener una posición durante una ventana de noticias, reduzca el tamaño para que el margen elevado (de noticias) siga cabiendo, o permanezca en plano hasta que los márgenes se normalicen." },
+      ],
+    },
+    { type: "heading",text: "Operar en torno al cierre de sesión y a las noticias" },
+    {
+      type: "steps",
+      items: [
+        { title: "Identifique la ventana de cierre de sesión", html: "Identifique el <strong class='text-white'>cierre de sesión</strong> del producto y la ventana de unos 15 minutos previa en la que el margen inicial toma el relevo (en muchos futuros de CME el reinicio diario cae en torno a las 5 PM Central)." },
+        { title: "Cierre posiciones o mantenga margen suficiente", html: "Cierre las posiciones antes de esa transición o asegúrese de mantener margen suficiente para el requisito nocturno/inicial." },
+        { title: "Evite abrir en ventanas de margen elevado", html: "En torno a las publicaciones económicas programadas, no abra posiciones nuevas dentro de la ventana de margen elevado; espere a que la plataforma restablezca el margen intradía normal." },
+        { title: "Abra un ticket si persiste estando en plano", html: "Si el rechazo persiste mientras está en plano y dentro del horario normal, capture el texto exacto del rechazo y <strong class='text-white'>abra un ticket de soporte</strong>, un AutoLiq simultáneo en varias cuentas es un evento de la plataforma, no su configuración." },
+      ],
+    },
+    { type: "heading",text: "Tabla de resolución de problemas" },
+    { type: "table", headers: ["Error","Significado","Solución"], rows: [
+      ["AutoLiq 50000.0%","La cuenta está en autoliquidación (o al borde de ella); las nuevas órdenes de apertura están bloqueadas","Confirme que está en plano/solo liquidación, restablezca un colchón de margen, espere a que pase el evento y vuelva a entrar"],
+      ["Order Rejected: Risk Parameters","Falló una comprobación de límite de riesgo o de autorización","Firme los acuerdos de datos y confirme los ajustes de Max Position / límite de pérdida"],
+      ["No Quote Available","Falta la suscripción de datos o la autorización","Suscríbase a los datos de la bolsa y firme el acuerdo para no profesionales"],
+      ["Liquidation Only","Cuenta restringida a órdenes de cierre tras superar un límite","Espere a la siguiente sesión/semana o pida a la firma que reinicie la cuenta"],
+      ["Insufficient Margin","El margen libre está por debajo del requisito (a menudo tras un pico por noticias/cierre de sesión)","Reduzca la cantidad o añada fondos para que el margen excedente cubra el requisito"],
+    ] },
+    { type: "heading",text: "Prevéngalo con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade se sitúa entre sus alertas de TradingView y Tradovate, de modo que una orden errónea o a destiempo nunca golpea a ciegas el motor de riesgo:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Filtros de autorización y riesgo</strong>, respeta el estado de los acuerdos de datos de su cuenta y sus límites de riesgo, de modo que las órdenes que provocarían un rechazo de parámetros de riesgo o AutoLiq se detectan pronto.",
+        "<strong class='text-white'>Validación de cantidad / símbolo</strong>, bloquea las órdenes que superarían los límites de posición antes de que se envíen.",
+        "<strong class='text-white'>Enrutamiento consciente de la sesión</strong>, usted controla cuándo se disparan las alertas, por lo que puede mantener la automatización fuera de las ventanas de margen de noticias y de cierre de sesión.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replica la orden corregida en todas las cuentas conectadas, de modo que un rechazo no deja sus cuentas desincronizadas.",
+      ],
+    },
+    { type: "paragraph",html: "En lugar de descubrir un rechazo AutoLiq cuando su configuración ya se ha movido, mantiene su automatización disciplinada en torno a las condiciones exactas que lo provocan." },
+  ], fr: [
+    { type: "paragraph",html: "Vous tradez des futures rapides, ES, NQ, CL, votre entrée part et revient aussitôt avec le rejet énigmatique <strong class='text-white'>&ldquo;AutoLiq 50000.0%&rdquo;</strong>. On dirait que la plateforme vient d'effacer votre avantage. Voici la bonne nouvelle : ce message n'est pas un bug aléatoire. C'est le moteur de risque qui vous indique que le compte est en auto-liquidation, ou dangereusement proche de l'être, et qui refuse donc de vous laisser empiler davantage de risque. Et le timing compte plus que tout. Ces rejets se concentrent autour de la clôture quotidienne de la session et des pics de marge liés aux actualités, et une fois que vous le savez, la solution devient évidente. Ci-dessous, nous verrons ce que l'erreur signifie réellement, ce qui la cause et comment la résoudre rapidement, ainsi que la façon dont l'acheminement de vos alertes via PickMyTrade évite que ces rejets ne grignotent discrètement vos exécutions." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour les rejets d'ordres AutoLiq",
+      items: [
+        "<strong class='text-white'>Vérifiez si vous êtes à plat ou en liquidation seule.</strong> Si le compte est auto-liquidé, les nouveaux ordres d'ouverture sont bloqués par conception.",
+        "<strong class='text-white'>Signez tous les accords de données de marché et de bourse requis.</strong> Les accords de données non signés entraînent en cascade des erreurs de paramètres de risque et de cotation qui apparaissent comme des rejets.",
+        "<strong class='text-white'>Confirmez vos paramètres de risque.</strong> Un Max Position, une limite de perte quotidienne ou un seuil d'auto-liquidation a pu être déclenché.",
+        "<strong class='text-white'>Surveillez l'heure autour de la clôture de la session.</strong> La marge intraday prend fin environ 15 minutes avant la clôture, lorsque la marge initiale plus élevée s'applique.",
+        "<strong class='text-white'>Évitez de conserver vos positions pendant les annonces majeures.</strong> Tradovate relève fortement les marges intraday avant les publications économiques importantes, ce qui peut précipiter un compte en liquidation.",
+        "<strong class='text-white'>Gardez un coussin de marge.</strong> Les exigences de marge peuvent changer sans préavis, et la firme peut liquider avec ou sans avertissement.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « AutoLiq 50000.0% »" },
+    { type: "paragraph",html: "&ldquo;AutoLiq&rdquo; est l'abréviation d'<strong class='text-white'>auto-liquidation</strong>. Lorsque Tradovate associe ce motif à un ordre rejeté, cela signifie que l'ordre a été refusé parce que le compte est soumis à une condition de liquidation automatique, et non à cause d'une erreur d'acheminement ordinaire. En clair : la plateforme estime que votre compte ne satisfait plus son exigence de marge ; au lieu d'accepter une nouvelle position, elle cherche donc à <em>réduire</em> le risque. Elle ne vous laissera pas aggraver le problème." },
+    { type: "paragraph",html: "Ce <strong class='text-white'>&ldquo;50000.0%&rdquo;</strong> accrocheur est une valeur de risque générée par le système et affichée dans le motif du rejet. Il reflète un ratio interne marge/risque que le moteur signale lorsqu'un compte est profondément engagé dans un état de liquidation. Voyez-y la façon qu'a la plateforme de dire &ldquo;le risque est hors échelle&rdquo;, et non un nombre que vous définissez ou pouvez régler directement. Tradovate ne publie pas la formule exacte derrière cette valeur précise ; considérez donc le pourcentage comme une <em>étiquette de symptôme</em>, pas comme un paramètre." },
+    { type: "paragraph",html: "Voici le schéma à retenir : ce rejet se concentre presque toujours autour de deux événements, la <strong class='text-white'>clôture/réinitialisation quotidienne de la session</strong> et les <strong class='text-white'>annonces économiques majeures</strong>. Il tend à se déclencher juste au moment du changement de session, ou lorsque la volatilité grimpe et que Tradovate relève les marges pour une grande publication. Cela correspond exactement à la politique de marge publiée par Tradovate, c'est pourquoi la solution relève du <em>timing et de la marge</em>, et non du renvoi de l'ordre." },
+    { type: "heading",text: "Principales causes des rejets AutoLiq en 2026" },
+    { type: "heading",text: "1. Pics de marge autour des annonces économiques" },
+    { type: "paragraph",html: "Tradovate relève temporairement les marges intraday avant les publications économiques importantes, elle a évoqué des hausses allant jusqu'à 4&times; ses taux standard, et les maintient élevées jusqu'à ce que la volatilité retombe. Le multiple exact varie selon le produit et l'événement ; consultez donc toujours le barème de marges actuel de Tradovate. Si vous détenez une position lorsque ce saut survient et que votre compte ne peut pas couvrir la nouvelle exigence, le moteur de risque peut placer le compte en auto-liquidation et rejeter tout nouvel ordre." },
+    { type: "heading",text: "2. Tomber sur la transition vers la marge initiale à la clôture de la session" },
+    { type: "paragraph",html: "Les taux de marge intraday s'appliquent généralement de l'ouverture du produit jusqu'à <strong class='text-white'>15 minutes avant la clôture de la session</strong>, moment où la <strong class='text-white'>marge initiale</strong> plus élevée est exigée pour les positions conservées pendant la nuit. Un compte parfaitement à l'aise en marge intraday peut soudain se retrouver à court lors de cette transition, la même fenêtre de fin d'après-midi où ces rejets AutoLiq se regroupent." },
+    { type: "heading",text: "3. Accords de données non signés et paramètres de risque déclenchés" },
+    { type: "paragraph",html: "Les rejets d'ordres remontent fréquemment à des <strong class='text-white'>accords de données de marché ou de bourse non signés</strong>. Lorsque ces accords manquent, les données en temps réel et les droits d'accès tombent, et la plateforme affiche l'échec sous forme de rejets de paramètres de risque et de type &ldquo;no quote&rdquo; qui peuvent accompagner ou imiter un état AutoLiq. Signer les accords en attente règle la moitié du problème liée aux droits d'accès." },
+    { type: "heading",text: "4. Paramètres de risque ou limites de la prop firm déjà dépassés" },
+    { type: "paragraph",html: "Une <strong class='text-white'>taille Max Position, une limite de perte quotidienne ou un seuil d'auto-liquidation</strong> configurés, qu'ils soient les vôtres ou fixés par votre prop firm, peut faire basculer le compte en liquidation seule. Sur les comptes d'évaluation et financés, ces limites sont contrôlées par la firme, et une fois dépassées, le compte rejette les nouveaux ordres d'ouverture jusqu'à la session suivante ou une réinitialisation." },
+    { type: "heading",text: "5. Un événement de risque ou de maintenance côté plateforme" },
+    { type: "paragraph",html: "Parfois, la vague d'AutoLiq n'a rien à voir avec votre compte. Lorsque le même rejet frappe de nombreux comptes à la seconde près, au moins une partie de l'épisode est un <strong class='text-white'>événement à l'échelle de la plateforme</strong> lié à un changement de marge dû aux actualités et au changement de session, et non à un défaut d'un compte individuel. Dans ces cas, attendre la fin de l'événement et ouvrir un ticket est généralement la seule vraie solution." },
+    { type: "heading",text: "Comment corriger les rejets AutoLiq 50000.0% : pas à pas" },
+    { type: "heading",text: "Corriger les accords de données et les paramètres de risque" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez la zone des accords", html: "Ouvrez les paramètres de votre compte Tradovate et rendez-vous dans la zone des <strong class='text-white'>accords</strong> de données de marché / de bourse." },
+        { title: "Signez tous les accords en attente", html: "Signez au minimum les accords de données pour non-professionnels afin que les droits d'accès en temps réel soient actifs." },
+        { title: "Confirmez vos paramètres de risque", html: "Ouvrez <strong class='text-white'>Risk Settings</strong> et vérifiez que votre Max Position, vos limites de perte quotidienne/hebdomadaire et tout seuil d'auto-liquidation sont réglés là où vous l'attendez, et non accidentellement à zéro ou à une valeur minuscule." },
+        { title: "Vérifiez auprès de votre firme le cas échéant", html: "Sur un compte d'évaluation ou financé d'une prop firm, rappelez-vous que vous ne pouvez généralement pas modifier cela vous-même, contactez la firme pour confirmer que le compte n'est pas en liquidation seule." },
+      ],
+    },
+    { type: "heading",text: "Conserver un coussin de marge pendant les pics" },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifiez la marge disponible avant de trader", html: "Vérifiez la <strong class='text-white'>marge disponible/excédentaire</strong> de votre compte par rapport à la position que vous souhaitez ouvrir." },
+        { title: "Gardez un coussin", html: "Gardez un coussin bien au-dessus de l'exigence de marge initiale, car les exigences peuvent changer sans préavis et la firme peut liquider avec ou sans avertissement." },
+        { title: "Réduisez la taille pour les fenêtres d'actualités", html: "Si vous devez conserver une position pendant une fenêtre d'actualités, réduisez la taille pour que la marge relevée (actualités) reste couverte, ou restez simplement à plat jusqu'à ce que les marges se normalisent." },
+      ],
+    },
+    { type: "heading",text: "Trader autour de la clôture de session et des actualités" },
+    {
+      type: "steps",
+      items: [
+        { title: "Identifiez la fenêtre de clôture de session", html: "Identifiez la <strong class='text-white'>clôture de session</strong> du produit et la fenêtre d'environ 15 minutes qui la précède, pendant laquelle la marge initiale prend le relais (pour de nombreux futures CME, la réinitialisation quotidienne tombe vers 17 h Central)." },
+        { title: "Clôturez ou conservez assez de marge", html: "Soit vous clôturez avant cette transition, soit vous vous assurez de détenir assez de marge pour l'exigence overnight/initiale." },
+        { title: "Évitez d'ouvrir dans les fenêtres de marge relevée", html: "Autour des publications économiques programmées, n'ouvrez pas de nouvelles positions dans la fenêtre de marge relevée ; attendez que la plateforme rétablisse la marge intraday normale." },
+        { title: "Ouvrez un ticket si cela persiste à plat", html: "Si le rejet persiste alors que vous êtes à plat et dans les horaires normaux, capturez le texte exact du rejet et <strong class='text-white'>ouvrez un ticket de support</strong>, un AutoLiq simultané sur plusieurs comptes est un événement de la plateforme, pas votre configuration." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Erreur","Signification","Solution"], rows: [
+      ["AutoLiq 50000.0%","Le compte est en auto-liquidation (ou à sa limite) ; les nouveaux ordres d'ouverture sont bloqués","Confirmez que vous êtes à plat/en liquidation seule, reconstituez un coussin de marge, attendez la fin de l'événement, puis ré-entrez"],
+      ["Order Rejected: Risk Parameters","Une limite de risque ou un contrôle de droits d'accès a échoué","Signez les accords de données et vérifiez les paramètres Max Position / limite de perte"],
+      ["No Quote Available","Abonnement de données ou droits d'accès manquants","Abonnez-vous aux données de la bourse et signez l'accord pour non-professionnels"],
+      ["Liquidation Only","Compte limité aux ordres de clôture après un dépassement de limite","Attendez la prochaine session/semaine ou demandez à la firme de réinitialiser le compte"],
+      ["Insufficient Margin","La marge libre est inférieure à l'exigence (souvent après un pic lié aux actualités/à la clôture de session)","Réduisez la quantité ou ajoutez des fonds pour que la marge excédentaire couvre l'exigence"],
+    ] },
+    { type: "heading",text: "Prévenir cela avec PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade se place entre vos alertes TradingView et Tradovate, de sorte qu'un ordre erroné ou mal synchronisé ne frappe jamais aveuglément le moteur de risque :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Filtres de droits d'accès et de risque</strong>, respecte l'état des accords de données de votre compte et ses limites de risque, de sorte que les ordres qui déclencheraient un rejet de paramètres de risque ou AutoLiq sont interceptés tôt.",
+        "<strong class='text-white'>Validation quantité / symbole</strong>, bloque les ordres qui dépasseraient les plafonds de position avant même leur envoi.",
+        "<strong class='text-white'>Acheminement tenant compte de la session</strong>, vous contrôlez le moment où les alertes se déclenchent, ce qui vous permet de tenir l'automatisation à l'écart des fenêtres de marge liées aux actualités et à la clôture de session.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, reproduit l'ordre corrigé sur tous les comptes connectés, afin qu'un rejet ne désynchronise pas vos comptes.",
+      ],
+    },
+    { type: "paragraph",html: "Au lieu de découvrir un rejet AutoLiq alors que votre configuration a déjà évolué, vous gardez votre automatisation disciplinée autour des conditions exactes qui le provoquent." },
+  ], it: [
+    { type: "paragraph",html: "Sta operando su futures veloci, ES, NQ, CL, il Suo ingresso parte e viene subito respinto con l'enigmatico rifiuto <strong class='text-white'>&ldquo;AutoLiq 50000.0%&rdquo;</strong>. Sembra che la piattaforma abbia appena cancellato il Suo vantaggio. Ecco la parte rassicurante: quel messaggio non è un errore casuale. È il motore di rischio che Le dice che il conto è in auto-liquidazione, o pericolosamente vicino ad essa, e che quindi rifiuta di farLe accumulare altro rischio. E il tempismo conta più di ogni altra cosa. Questi rifiuti si concentrano attorno alla chiusura giornaliera della sessione e ai picchi di margine legati alle notizie, e una volta che lo sa, la soluzione diventa ovvia. Di seguito vedremo che cosa significa davvero l'errore, che cosa lo causa e come eliminarlo rapidamente, oltre a come instradare i Suoi alert tramite PickMyTrade eviti che questi rifiuti si mangino silenziosamente le Sue esecuzioni." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per i rifiuti d'ordine AutoLiq",
+      items: [
+        "<strong class='text-white'>Verifichi se è flat o in sola liquidazione.</strong> Se il conto è in auto-liquidazione, i nuovi ordini di apertura sono bloccati per progetto.",
+        "<strong class='text-white'>Firmi tutti gli accordi richiesti sui dati di mercato e sulla borsa.</strong> Gli accordi sui dati non firmati generano a cascata errori sui parametri di rischio e sulle quotazioni che emergono come rifiuti.",
+        "<strong class='text-white'>Confermi le Sue impostazioni di rischio.</strong> Potrebbe essere scattato un Max Position, un limite di perdita giornaliera o una soglia di auto-liquidazione.",
+        "<strong class='text-white'>Tenga d'occhio l'orologio attorno alla chiusura della sessione.</strong> Il margine intraday termina circa 15 minuti prima della chiusura, quando scatta il margine iniziale più elevato.",
+        "<strong class='text-white'>Eviti di mantenere posizioni durante notizie importanti.</strong> Tradovate alza nettamente i margini intraday prima delle principali pubblicazioni economiche, il che può spingere un conto in liquidazione.",
+        "<strong class='text-white'>Mantenga un cuscinetto di margine.</strong> I requisiti di margine possono cambiare senza preavviso, e la società può liquidare con o senza avviso.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significa «AutoLiq 50000.0%»" },
+    { type: "paragraph",html: "&ldquo;AutoLiq&rdquo; è l'abbreviazione di <strong class='text-white'>auto-liquidazione</strong>. Quando Tradovate associa questo motivo a un ordine respinto, Le sta dicendo che l'ordine è stato rifiutato perché il conto è soggetto a una condizione di liquidazione automatica, non per un normale errore di instradamento. In parole semplici: la piattaforma ritiene che il Suo conto non soddisfi più il requisito di margine, quindi invece di accettare una nuova posizione cerca di <em>ridurre</em> il rischio. Non Le permetterà di aggravare il problema." },
+    { type: "paragraph",html: "Quel vistoso <strong class='text-white'>&ldquo;50000.0%&rdquo;</strong> è un valore di rischio generato dal sistema e mostrato nel motivo del rifiuto. Riflette un rapporto interno margine/rischio che il motore segnala quando un conto è profondamente in uno stato di liquidazione. Lo consideri il modo in cui la piattaforma dice &ldquo;il rischio è fuori scala&rdquo;, non un numero che Lei imposta o può regolare direttamente. Tradovate non pubblica la formula esatta dietro questo valore specifico, quindi tratti la percentuale come un'<em>etichetta di sintomo</em>, non come un'impostazione." },
+    { type: "paragraph",html: "Ecco lo schema da imprimersi in mente: questo rifiuto si concentra quasi sempre attorno a due eventi, la <strong class='text-white'>chiusura/reset giornaliero della sessione</strong> e le <strong class='text-white'>principali notizie economiche</strong>. Tende a scattare proprio quando la sessione cambia, o quando la volatilità sale e Tradovate alza i margini per una grande pubblicazione. Ciò coincide esattamente con la politica sui margini pubblicata da Tradovate, ed è per questo che la soluzione riguarda il <em>tempismo e il margine</em>, non il reinvio dell'ordine." },
+    { type: "heading",text: "Cause principali dei rifiuti AutoLiq nel 2026" },
+    { type: "heading",text: "1. Picchi di margine attorno alle notizie economiche" },
+    { type: "paragraph",html: "Tradovate alza temporaneamente i margini intraday prima delle principali pubblicazioni economiche, ha citato aumenti fino a 4&times; le tariffe standard, e li mantiene elevati finché la volatilità non si calma. Il multiplo esatto varia in base al prodotto e all'evento, quindi verifichi sempre la tabella dei margini attuale di Tradovate. Se detiene una posizione quando arriva quel salto e il Suo conto non riesce a coprire il nuovo requisito, il motore di rischio può portare il conto in auto-liquidazione e respingere qualsiasi nuovo ordine." },
+    { type: "heading",text: "2. Capitare nella transizione al margine iniziale alla chiusura della sessione" },
+    { type: "paragraph",html: "Le tariffe del margine intraday in genere vanno dall'apertura del prodotto fino a <strong class='text-white'>15 minuti prima della chiusura della sessione</strong>, quando per le posizioni mantenute overnight è richiesto il <strong class='text-white'>margine iniziale</strong> più elevato. Un conto perfettamente a proprio agio con il margine intraday può improvvisamente trovarsi a corto in questa transizione, la stessa finestra del tardo pomeriggio in cui questi rifiuti AutoLiq si concentrano." },
+    { type: "heading",text: "3. Accordi sui dati non firmati e parametri di rischio scattati" },
+    { type: "paragraph",html: "I rifiuti degli ordini risalgono spesso ad <strong class='text-white'>accordi sui dati di mercato o sulla borsa non firmati</strong>. Quando questi accordi mancano, i dati in tempo reale e le autorizzazioni si interrompono, e la piattaforma mostra l'errore come rifiuti di parametri di rischio e di tipo &ldquo;no quote&rdquo; che possono accompagnare o mascherare uno stato AutoLiq. Firmare gli accordi in sospeso risolve la metà del problema legata alle autorizzazioni." },
+    { type: "heading",text: "4. Impostazioni di rischio o limiti della prop firm già superati" },
+    { type: "paragraph",html: "Una <strong class='text-white'>dimensione Max Position, un limite di perdita giornaliera o una soglia di auto-liquidazione</strong> configurati, sia Suoi sia impostati dalla Sua prop firm, possono far passare il conto in sola liquidazione. Sui conti di valutazione e finanziati questi limiti sono controllati dalla società e, una volta superati, il conto respinge i nuovi ordini di apertura fino alla sessione successiva o a un reset." },
+    { type: "heading",text: "5. Un evento di rischio o di manutenzione lato piattaforma" },
+    { type: "paragraph",html: "A volte l'ondata di AutoLiq non riguarda affatto il Suo conto. Quando lo stesso rifiuto colpisce molti conti nello stesso identico secondo, almeno una parte di quell'episodio è un <strong class='text-white'>evento a livello di piattaforma</strong> legato a una variazione di margine dovuta alle notizie e al cambio di sessione, non un difetto del singolo conto. In questi casi, attendere la fine dell'evento e aprire un ticket è di solito l'unica vera soluzione." },
+    { type: "heading",text: "Come risolvere i rifiuti AutoLiq 50000.0%: passo dopo passo" },
+    { type: "heading",text: "Correggere gli accordi sui dati e i parametri di rischio" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra l'area degli accordi", html: "Apra le impostazioni del Suo conto Tradovate e vada all'area degli <strong class='text-white'>accordi</strong> sui dati di mercato / sulla borsa." },
+        { title: "Firmi tutti gli accordi in sospeso", html: "Firmi almeno gli accordi sui dati per non professionisti, in modo che le autorizzazioni in tempo reale siano attive." },
+        { title: "Confermi le Sue impostazioni di rischio", html: "Apra <strong class='text-white'>Risk Settings</strong> e verifichi che Max Position, i limiti di perdita giornaliera/settimanale e qualsiasi soglia di auto-liquidazione siano impostati dove si aspetta, non accidentalmente a zero o a un valore minuscolo." },
+        { title: "Verifichi con la Sua società, se applicabile", html: "Su un conto di valutazione o finanziato di una prop firm, ricordi che di solito non può modificare questi valori da solo, contatti la società per confermare che il conto non sia in sola liquidazione." },
+      ],
+    },
+    { type: "heading",text: "Mantenere un cuscinetto di margine durante i picchi" },
+    {
+      type: "steps",
+      items: [
+        { title: "Verifichi il margine disponibile prima di operare", html: "Controlli il <strong class='text-white'>margine disponibile/in eccesso</strong> del Suo conto rispetto alla posizione che vuole aprire." },
+        { title: "Mantenga un cuscinetto", html: "Mantenga un cuscinetto ben al di sopra del requisito di margine iniziale, perché i requisiti possono cambiare senza preavviso e la società può liquidare con o senza avviso." },
+        { title: "Riduca la dimensione per le finestre di notizie", html: "Se deve mantenere la posizione durante una finestra di notizie, riduca la dimensione in modo che il margine elevato (da notizie) sia comunque coperto, oppure resti flat finché i margini non si normalizzano." },
+      ],
+    },
+    { type: "heading",text: "Operare attorno alla chiusura della sessione e alle notizie" },
+    {
+      type: "steps",
+      items: [
+        { title: "Individui la finestra di chiusura della sessione", html: "Individui la <strong class='text-white'>chiusura della sessione</strong> del prodotto e la finestra di circa 15 minuti che la precede, in cui subentra il margine iniziale (per molti futures CME il reset giornaliero cade intorno alle 17:00 Central)." },
+        { title: "Chiuda le posizioni o mantenga margine sufficiente", html: "Chiuda le posizioni prima di quella transizione oppure si assicuri di detenere margine sufficiente per il requisito overnight/iniziale." },
+        { title: "Eviti di aprire nelle finestre a margine elevato", html: "In prossimità delle pubblicazioni economiche programmate, non apra nuove posizioni nella finestra a margine elevato; attenda che la piattaforma ripristini il normale margine intraday." },
+        { title: "Apra un ticket se persiste da flat", html: "Se il rifiuto persiste mentre è flat e in orari normali, catturi il testo esatto del rifiuto e <strong class='text-white'>apra un ticket di supporto</strong>, un AutoLiq simultaneo su più conti è un evento della piattaforma, non la Sua configurazione." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Errore","Significato","Soluzione"], rows: [
+      ["AutoLiq 50000.0%","Il conto è in auto-liquidazione (o al limite); i nuovi ordini di apertura sono bloccati","Confermi di essere flat/in sola liquidazione, ripristini un cuscinetto di margine, attenda la fine dell'evento, poi rientri"],
+      ["Order Rejected: Risk Parameters","Un limite di rischio o un controllo delle autorizzazioni non è stato superato","Firmi gli accordi sui dati e confermi le impostazioni di Max Position / limite di perdita"],
+      ["No Quote Available","Abbonamento ai dati o autorizzazione mancante","Si abboni ai dati della borsa e firmi l'accordo per non professionisti"],
+      ["Liquidation Only","Conto limitato agli ordini di chiusura dopo il superamento di un limite","Attenda la sessione/settimana successiva o chieda alla società di resettare il conto"],
+      ["Insufficient Margin","Il margine libero è inferiore al requisito (spesso dopo un picco da notizie/chiusura di sessione)","Riduca la quantità o aggiunga fondi in modo che il margine in eccesso copra il requisito"],
+    ] },
+    { type: "heading",text: "Lo prevenga con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade si colloca tra i Suoi alert di TradingView e Tradovate, così un ordine errato o fuori tempo non colpisce mai alla cieca il motore di rischio:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Filtri di autorizzazione e di rischio</strong>, rispetta lo stato degli accordi sui dati del Suo conto e i limiti di rischio, così gli ordini che farebbero scattare un rifiuto di parametri di rischio o AutoLiq vengono intercettati in anticipo.",
+        "<strong class='text-white'>Validazione quantità / simbolo</strong>, blocca gli ordini che supererebbero i limiti di posizione prima ancora che vengano inviati.",
+        "<strong class='text-white'>Instradamento consapevole della sessione</strong>, è Lei a controllare quando scattano gli alert, così può tenere l'automazione fuori dalle finestre di margine di notizie e chiusura di sessione.",
+        "<strong class='text-white'>Sincronizzazione multi-conto</strong>, replica l'ordine corretto su tutti i conti collegati, così un rifiuto non lascia i Suoi conti non allineati.",
+      ],
+    },
+    { type: "paragraph",html: "Invece di scoprire un rifiuto AutoLiq quando la Sua configurazione si è già mossa, mantiene la Sua automazione disciplinata attorno alle condizioni esatte che lo provocano." },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Handeln Sie ohne Ablehnungen", es: "Opere sin rechazos", fr: "Tradez sans rejets", it: "Operi senza rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and trade rejection-free.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, verbinden Sie noch heute Ihre Alerts und handeln Sie ohne Ablehnungen.", es: "Comience su prueba gratuita de 7 días, conecte sus alertas hoy mismo y opere sin rechazos.", fr: "Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et tradez sans rejets.", it: "Inizi la prova gratuita di 7 giorni, colleghi oggi stesso i Suoi alert e operi senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does \"AutoLiq\" mean in Tradovate?", a: "AutoLiq is short for auto-liquidation. Attached to a rejected order, it means the account is under an automatic liquidation condition and the platform is refusing new opening orders while it reduces risk." },
+    { q: "What is the \"50000.0%\" number in the rejection?", a: "It's a system-generated risk figure the engine displays when an account is deep into a liquidation state. Tradovate doesn't publish the exact formula, so treat it as a symptom label rather than a setting you can change." },
+    { q: "Why did my order get rejected right before the session closed?", a: "Intraday margin generally ends about 15 minutes before the session close, when the higher initial margin is required for overnight positions. That transition can leave an account short of margin and trigger the rejection." },
+    { q: "Does economic news cause AutoLiq rejections?", a: "Yes. Tradovate raises intraday margins sharply (it has cited up to several times its standard rates) ahead of key economic releases. Holding through that spike without enough margin can push the account into auto-liquidation." },
+    { q: "Everyone got the same AutoLiq error at once, is it my account?", a: "Probably not. When the identical rejection hits many traders at the same second, it points to a platform-wide margin or session event. Capture the reject text and file a support ticket rather than changing your setup." },
+    { q: "I'm on a prop-firm account, can I fix this myself?", a: "Often no. On evaluation and funded accounts the firm controls risk limits, market data, and liquidation thresholds. Contact the firm to confirm the account isn't in liquidation-only and that data is enabled." },
+    { q: "Will re-submitting the same order work?", a: "Not while the account is in an auto-liquidation state, it will keep rejecting. Fix the underlying condition (margin buffer, agreements, or wait out the event) first." },
+    { q: "Is there a fee when the account gets auto-liquidated?", a: "Tradovate can charge a per-event liquidation fee (commonly cited at $25 for a first violation and $50 after), and requirements and fees can change, check Tradovate's current policy." },
+  ], de: [
+    { q: "Was bedeutet „AutoLiq“ in Tradovate?", a: "AutoLiq steht für Auto-Liquidation. Bei einer abgelehnten Order bedeutet es, dass für das Konto eine automatische Liquidationsbedingung gilt und die Plattform neue eröffnende Orders verweigert, während sie das Risiko reduziert." },
+    { q: "Was ist die Zahl „50000.0%“ in der Ablehnung?", a: "Es ist eine vom System erzeugte Risikokennzahl, die die Engine anzeigt, wenn ein Konto tief in einem Liquidationszustand steckt. Tradovate veröffentlicht die genaue Formel nicht, betrachten Sie sie daher als Symptombezeichnung und nicht als Einstellung, die Sie ändern können." },
+    { q: "Warum wurde meine Order kurz vor Sitzungsende abgelehnt?", a: "Die Intraday-Margin endet in der Regel etwa 15 Minuten vor dem Sitzungsschluss, wenn für Übernachtpositionen die höhere Initial Margin verlangt wird. Dieser Übergang kann dazu führen, dass dem Konto Margin fehlt und die Ablehnung ausgelöst wird." },
+    { q: "Verursachen Wirtschaftsnachrichten AutoLiq-Ablehnungen?", a: "Ja. Tradovate erhöht die Intraday-Margins vor wichtigen Wirtschaftsdaten deutlich (nach eigenen Angaben auf ein Mehrfaches der Standardsätze). Wer durch diese Spitze hindurch ohne ausreichende Margin hält, kann das Konto in die Auto-Liquidation treiben." },
+    { q: "Alle haben gleichzeitig denselben AutoLiq-Fehler erhalten, liegt es an meinem Konto?", a: "Wahrscheinlich nicht. Wenn dieselbe Ablehnung viele Trader in derselben Sekunde trifft, deutet das auf ein plattformweites Margin- oder Sitzungsereignis hin. Halten Sie den Ablehnungstext fest und eröffnen Sie ein Support-Ticket, statt Ihr Setup zu ändern." },
+    { q: "Ich habe ein Prop-Firm-Konto, kann ich das selbst beheben?", a: "Oft nicht. Bei Evaluierungs- und finanzierten Konten kontrolliert die Firma die Risikolimits, die Marktdaten und die Liquidationsschwellen. Wenden Sie sich an die Firma, um zu bestätigen, dass das Konto nicht im Modus Liquidation Only ist und die Daten aktiviert sind." },
+    { q: "Funktioniert es, dieselbe Order erneut zu senden?", a: "Nicht, solange sich das Konto in einem Auto-Liquidationszustand befindet, sie wird weiter abgelehnt. Beheben Sie zuerst die zugrunde liegende Ursache (Margin-Puffer, Vereinbarungen oder das Abwarten des Ereignisses)." },
+    { q: "Fällt eine Gebühr an, wenn das Konto automatisch liquidiert wird?", a: "Tradovate kann eine Liquidationsgebühr pro Ereignis erheben (üblicherweise genannt werden 25 $ beim ersten Verstoß und 50 $ danach); Anforderungen und Gebühren können sich ändern, prüfen Sie die aktuelle Richtlinie von Tradovate." },
+  ], es: [
+    { q: "¿Qué significa «AutoLiq» en Tradovate?", a: "AutoLiq es la abreviatura de autoliquidación. Asociado a una orden rechazada, significa que la cuenta está bajo una condición de liquidación automática y la plataforma rechaza nuevas órdenes de apertura mientras reduce el riesgo." },
+    { q: "¿Qué es el número «50000.0%» del rechazo?", a: "Es una cifra de riesgo generada por el sistema que el motor muestra cuando una cuenta está muy avanzada en un estado de liquidación. Tradovate no publica la fórmula exacta, así que trátelo como la etiqueta de un síntoma y no como un ajuste que usted pueda cambiar." },
+    { q: "¿Por qué se rechazó mi orden justo antes del cierre de la sesión?", a: "El margen intradía generalmente termina unos 15 minutos antes del cierre de la sesión, cuando se exige el margen inicial más alto para las posiciones mantenidas durante la noche. Esa transición puede dejar a la cuenta corta de margen y desencadenar el rechazo." },
+    { q: "¿Las noticias económicas provocan rechazos AutoLiq?", a: "Sí. Tradovate eleva los márgenes intradía de forma acusada (ha llegado a citar varias veces sus tarifas estándar) antes de publicaciones económicas clave. Mantener posiciones durante ese pico sin margen suficiente puede llevar la cuenta a la autoliquidación." },
+    { q: "Todos recibieron el mismo error AutoLiq a la vez, ¿es mi cuenta?", a: "Probablemente no. Cuando el mismo rechazo afecta a muchos traders en el mismo segundo, apunta a un evento de margen o de sesión de toda la plataforma. Capture el texto del rechazo y abra un ticket de soporte en lugar de cambiar su configuración." },
+    { q: "Tengo una cuenta de prop firm, ¿puedo solucionarlo yo mismo?", a: "A menudo no. En las cuentas de evaluación y financiadas, la firma controla los límites de riesgo, los datos de mercado y los umbrales de liquidación. Contacte con la firma para confirmar que la cuenta no está en modo solo liquidación y que los datos están habilitados." },
+    { q: "¿Funcionará reenviar la misma orden?", a: "No mientras la cuenta esté en estado de autoliquidación; seguirá siendo rechazada. Solucione primero la condición de fondo (colchón de margen, acuerdos o esperar a que pase el evento)." },
+    { q: "¿Hay alguna comisión cuando la cuenta se autoliquida?", a: "Tradovate puede cobrar una comisión de liquidación por evento (comúnmente se cita 25 $ por una primera infracción y 50 $ después); los requisitos y las comisiones pueden cambiar, consulte la política vigente de Tradovate." },
+  ], fr: [
+    { q: "Que signifie « AutoLiq » dans Tradovate ?", a: "AutoLiq est l'abréviation d'auto-liquidation. Associé à un ordre rejeté, il signifie que le compte est soumis à une condition de liquidation automatique et que la plateforme refuse les nouveaux ordres d'ouverture pendant qu'elle réduit le risque." },
+    { q: "Que représente le chiffre « 50000.0% » dans le rejet ?", a: "C'est une valeur de risque générée par le système que le moteur affiche lorsqu'un compte est profondément engagé dans un état de liquidation. Tradovate ne publie pas la formule exacte ; considérez-la donc comme l'étiquette d'un symptôme et non comme un paramètre que vous pouvez modifier." },
+    { q: "Pourquoi mon ordre a-t-il été rejeté juste avant la clôture de la session ?", a: "La marge intraday prend généralement fin environ 15 minutes avant la clôture de la session, lorsque la marge initiale plus élevée est exigée pour les positions conservées pendant la nuit. Cette transition peut laisser un compte à court de marge et déclencher le rejet." },
+    { q: "Les actualités économiques provoquent-elles des rejets AutoLiq ?", a: "Oui. Tradovate relève fortement les marges intraday (elle a évoqué jusqu'à plusieurs fois ses taux standard) avant les publications économiques importantes. Conserver une position pendant ce pic sans marge suffisante peut précipiter le compte en auto-liquidation." },
+    { q: "Tout le monde a reçu la même erreur AutoLiq en même temps, est-ce mon compte ?", a: "Probablement pas. Lorsque le même rejet touche de nombreux traders à la même seconde, cela indique un événement de marge ou de session à l'échelle de la plateforme. Capturez le texte du rejet et ouvrez un ticket de support plutôt que de modifier votre configuration." },
+    { q: "Je suis sur un compte de prop firm, puis-je le corriger moi-même ?", a: "Souvent non. Sur les comptes d'évaluation et financés, la firme contrôle les limites de risque, les données de marché et les seuils de liquidation. Contactez la firme pour confirmer que le compte n'est pas en liquidation seule et que les données sont activées." },
+    { q: "Renvoyer le même ordre fonctionnera-t-il ?", a: "Pas tant que le compte est en état d'auto-liquidation : il continuera d'être rejeté. Corrigez d'abord la condition sous-jacente (coussin de marge, accords, ou attente de la fin de l'événement)." },
+    { q: "Des frais s'appliquent-ils lorsque le compte est auto-liquidé ?", a: "Tradovate peut facturer des frais de liquidation par événement (généralement cités à 25 $ pour une première infraction puis 50 $) ; les exigences et les frais peuvent changer, consultez la politique actuelle de Tradovate." },
+  ], it: [
+    { q: "Che cosa significa «AutoLiq» in Tradovate?", a: "AutoLiq è l'abbreviazione di auto-liquidazione. Associato a un ordine respinto, significa che il conto è soggetto a una condizione di liquidazione automatica e che la piattaforma rifiuta nuovi ordini di apertura mentre riduce il rischio." },
+    { q: "Che cos'è il numero «50000.0%» nel rifiuto?", a: "È un valore di rischio generato dal sistema che il motore mostra quando un conto è profondamente in uno stato di liquidazione. Tradovate non pubblica la formula esatta, quindi lo consideri come l'etichetta di un sintomo e non come un'impostazione che può modificare." },
+    { q: "Perché il mio ordine è stato respinto poco prima della chiusura della sessione?", a: "Il margine intraday termina in genere circa 15 minuti prima della chiusura della sessione, quando per le posizioni mantenute overnight è richiesto il margine iniziale più elevato. Questa transizione può lasciare un conto a corto di margine e far scattare il rifiuto." },
+    { q: "Le notizie economiche causano rifiuti AutoLiq?", a: "Sì. Tradovate alza nettamente i margini intraday (ha citato multipli delle tariffe standard) prima delle principali pubblicazioni economiche. Mantenere le posizioni durante quel picco senza margine sufficiente può spingere il conto in auto-liquidazione." },
+    { q: "Tutti hanno ricevuto lo stesso errore AutoLiq contemporaneamente, è il mio conto?", a: "Probabilmente no. Quando lo stesso rifiuto colpisce molti trader nello stesso secondo, indica un evento di margine o di sessione a livello di piattaforma. Catturi il testo del rifiuto e apra un ticket di supporto invece di modificare la Sua configurazione." },
+    { q: "Ho un conto di una prop firm, posso risolverlo da solo?", a: "Spesso no. Sui conti di valutazione e finanziati la società controlla i limiti di rischio, i dati di mercato e le soglie di liquidazione. Contatti la società per confermare che il conto non sia in sola liquidazione e che i dati siano abilitati." },
+    { q: "Reinviare lo stesso ordine funzionerà?", a: "Non finché il conto è in stato di auto-liquidazione: continuerà a essere respinto. Risolva prima la condizione di fondo (cuscinetto di margine, accordi, o attesa della fine dell'evento)." },
+    { q: "C'è una commissione quando il conto viene auto-liquidato?", a: "Tradovate può addebitare una commissione di liquidazione per evento (comunemente citati 25 $ per una prima violazione e 50 $ successivamente); requisiti e commissioni possono cambiare, verifichi la politica attuale di Tradovate." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Ähnliche Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von dieser Gesellschaft unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit. Bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Dokumentation der Plattform, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins strictement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante, non affiliée à Tradovate, Inc., ni approuvée ou parrainée par celle-ci. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente finalità educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

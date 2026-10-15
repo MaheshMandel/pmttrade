@@ -1,0 +1,534 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "orders-not-filling-ghost-orders-outage";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Orders Not Filling / Ghost Orders in Outage";
+const META_DESCRIPTION =
+  "Tradovate orders not filling in an outage? Stop new entries, flatten via the trade desk, and reconcile ghost orders before they fill against you.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Orders werden nicht ausgeführt / Geisterorders bei Ausfall", es: "Órdenes de Tradovate que no se ejecutan / órdenes fantasma durante una caída", fr: "Ordres Tradovate non exécutés / ordres fantômes lors d'une panne", it: "Ordini Tradovate non eseguiti / ordini fantasma durante un'interruzione" },
+  dek: { en: "Price trades right through your order and nothing fills. During an outage, Tradovate orders can stall, vanish, and turn into ghost orders that fill minutes later. Here's how to stay safe.", de: "Der Kurs läuft mitten durch Ihre Order, und nichts wird ausgeführt. Bei einem Ausfall können Tradovate-Orders hängen bleiben, verschwinden und zu Geisterorders werden, die Minuten später ausgeführt werden. So bleiben Sie sicher.", es: "El precio atraviesa su orden y no se ejecuta nada. Durante una caída, las órdenes de Tradovate pueden quedarse bloqueadas, desaparecer y convertirse en órdenes fantasma que se ejecutan minutos después. Así se mantiene a salvo.", fr: "Le prix traverse votre ordre et rien ne s'exécute. Lors d'une panne, les ordres Tradovate peuvent se bloquer, disparaître et devenir des ordres fantômes qui s'exécutent quelques minutes plus tard. Voici comment rester en sécurité.", it: "Il prezzo attraversa il suo ordine e non viene eseguito nulla. Durante un'interruzione, gli ordini Tradovate possono bloccarsi, sparire e trasformarsi in ordini fantasma che vengono eseguiti minuti dopo. Ecco come restare al sicuro." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "When ES or NQ are ripping and your Tradovate order just sits there while price trades clean through it, you're not imagining things. During a platform outage or a data-feed drop, Tradovate orders can stop filling, stop cancelling, and, worst of all, turn into <strong class='text-white'>ghost orders</strong> that quietly fill minutes later, long after you thought you were flat. Picture hitting cancel on orders you can no longer see on screen, then watching 15 contracts fill anyway and erase a big chunk of the account in seconds. That's the exact spiral this guide is built to stop. Below, you'll get why Tradovate orders stop filling, what a ghost order actually is, and how to halt new entries, reconcile your positions, and flatten safely in 2026, plus how a routing layer like PickMyTrade keeps you out of the duplicate-order mess in the first place." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Tradovate Orders Not Filling",
+      items: [
+        "<strong class='text-white'>Stop sending new entries immediately.</strong> Every extra click during a freeze can become a ghost fill once the feed recovers.",
+        "<strong class='text-white'>Check the Tradovate service status page.</strong> Confirm whether this is a Tradovate-side outage (status.tradovate.com) before you troubleshoot your own setup.",
+        "<strong class='text-white'>Don't spam cancel or resend.</strong> Duplicate orders queued during lag can all fill at once when the connection returns.",
+        "<strong class='text-white'>Reconcile Positions against Orders.</strong> A clean Orders panel does not prove you're flat; the Positions panel is the source of truth.",
+        "<strong class='text-white'>Keep a backup way to flatten.</strong> Tradovate's Emergency Trade Desk phone line can close positions when the platform itself cannot.",
+        "<strong class='text-white'>Screenshot everything.</strong> Order IDs and timestamps matter if you later need to dispute a ghost fill.",
+      ],
+    },
+    { type: "heading", text: "What \"Orders Not Filling\" and \"Ghost Orders\" Really Mean" },
+    { type: "paragraph", html: "&ldquo;Orders not filling&rdquo; is what you see when price crosses a limit, a stop, or even a market order and nothing executes. Tradovate holds your working orders on its own servers and forwards them to the exchange for matching. When the pipe between Tradovate and the exchange (or its market-data vendor) is disrupted, order responses stop coming back. So on your screen the order looks like it's still working, still pending, or has simply vanished, even though the platform has lost its real-time view of what the exchange is actually doing." },
+    { type: "paragraph", html: "A <strong class='text-white'>ghost order</strong> is the dangerous flip side of that same problem. It's an order that <em>appears</em> cancelled or gone from your interface but is actually still live server-side, so it can fill minutes later and hand you a position you thought you had closed. That's the trap: the cancel commands look like they did nothing, the orders disappear from view, and then a batch of contracts fills anyway." },
+    { type: "paragraph", html: "Tradovate's own order-status vocabulary hints at when this is happening. If an order shows a <strong class='text-white'>&ldquo;Pending New&rdquo;</strong> style status, meaning, in Tradovate's words, that <em>order responses are not being received from the exchange</em>, that's your signal to stop and contact support to confirm the true state, not to keep clicking." },
+    { type: "heading", text: "Top Causes of Orders Not Filling and Ghost Orders in 2026" },
+    { type: "heading", text: "1. A Tradovate-Side Outage or Market-Data Drop" },
+    { type: "paragraph", html: "The most common cause isn't your setup at all, it's a disruption on Tradovate's side. Stops that won't fill and exit buttons that do nothing usually trace back to a data-feed drop, and a CQG data drop is a familiar culprit, that support later fixes on their end. When the feed is down, matching and order responses stall for everyone, so no amount of re-clicking will help." },
+    { type: "heading", text: "2. Your Own Internet or Device Dropping" },
+    { type: "paragraph", html: "Here's the crucial distinction: if <em>your</em> internet or device drops, your working orders do not disappear. Tradovate keeps stop, limit, and bracket orders on its servers, so they keep working at the exchange even while you're offline. The mistake most traders make is panicking and re-submitting the same order from a phone or a second tab, which stacks duplicates that all fill when you reconnect." },
+    { type: "heading", text: "3. Cancels That Never Registered" },
+    { type: "paragraph", html: "During an outage the cancel request may never reach the exchange, yet the order can quietly clear from your grid. You're left believing you're flat while a live order sits on the book. When it fills, it looks like a &ldquo;ghost&rdquo;, an execution with no visible parent order." },
+    { type: "heading", text: "4. Duplicate Orders from Spamming the Button" },
+    { type: "paragraph", html: "When fills lag, the instinct is to click &ldquo;Buy Mkt&rdquo; or &ldquo;Exit at Market&rdquo; again and again. Each click can queue another order. When the connection catches up, they can all execute at once, click to exit a short during a lag spike and you can end up filled <em>long</em> on multiple contracts seconds later. Repeated resubmits and reconnects also burn through request limits, which can trigger rate-limit rejections that make the freeze worse." },
+    { type: "heading", text: "5. Prop-Firm Data or Entitlement Gaps" },
+    { type: "paragraph", html: "On evaluation and funded accounts, market data and order entitlements are controlled by the prop firm, not by you. If the firm's data feed hiccups or an entitlement lapses during volatility, you can see the same &ldquo;not filling&rdquo; behavior even when Tradovate's core platform is healthy. The fix is the same: treat the freeze as broker-side, manage risk with a backup connection, and remember that limits and data rules vary by firm and account size, so check your firm's current rules." },
+    { type: "heading", text: "How to Fix Orders Not Filling: Step-by-Step" },
+    { type: "heading", text: "Stop New Entries and Confirm It's an Outage" },
+    {
+      type: "steps",
+      items: [
+        { title: "Stop placing and cancelling orders", html: "Freeze your hands, not just the platform." },
+        { title: "Check the service status page", html: "Open Tradovate's service status page (status.tradovate.com) to see whether an incident is already reported." },
+        { title: "Treat every order as unconfirmed", html: "If an outage is confirmed, treat every order on your screen as <em>possibly inaccurate</em> until the feed is restored." },
+      ],
+    },
+    { type: "heading", text: "Reconcile Positions Before You Trust the Screen" },
+    { type: "paragraph", html: "Once your connection is back, verify what you actually hold before doing anything else. An empty Orders panel does <strong class='text-white'>not</strong> mean you're flat." },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the Positions panel", html: "Read your true net position per contract." },
+        { title: "Open the Orders panel", html: "Check for working or &ldquo;pending&rdquo; orders that shouldn't be there." },
+        { title: "Compare the two", html: "If the Positions panel shows contracts you didn't intend to hold, a ghost order filled, act on the position, not on the stale order view." },
+      ],
+    },
+    { type: "heading", text: "Cancel Working Orders Explicitly, Then Flatten" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cancel every remaining working order", html: "In the Orders panel, cancel every remaining working order individually, or use the account-level cancel-all control, and watch each one confirm as cancelled." },
+        { title: "Flatten deliberately", html: "If you're holding an unwanted position from a ghost fill, flatten it deliberately with a single opposite market order, don't tap the exit button repeatedly." },
+        { title: "Re-check the Positions panel", html: "Confirm you're genuinely flat before you walk away or re-enter." },
+      ],
+    },
+    { type: "heading", text: "Use the Emergency Trade Desk When the Platform Won't Respond" },
+    { type: "paragraph", html: "If the interface is frozen and you can't exit, Tradovate maintains an Emergency Trade Desk that can flatten positions and cancel working orders by phone. At the time of writing it's reachable at <strong class='text-white'>312-423-2234</strong> (and by email at orders@ninjatrader.com), staffed around the clock from Sunday afternoon through Friday afternoon Central Time, for live Tradovate brokerage accounts. Verify the current number and hours on Tradovate's official contact page before you need them, and save the number in your phone now, not mid-outage." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom / Status", "What It Means", "Fix"],
+      rows: [
+        ["&ldquo;Pending New&rdquo; (no response from exchange)", "Tradovate is not receiving order responses from the exchange", "Do not resend; contact support/Trade Desk to confirm the order's true state"],
+        ["Price trades through, no fill", "Data-feed drop or outage; matching not reaching the exchange", "Stop new entries; check the status page; call the Trade Desk if urgent"],
+        ["Order vanishes from grid, position changes later", "Cancel never registered; order still live server-side (ghost order)", "Reconcile Positions vs Orders after reconnect; flatten the position explicitly"],
+        ["&ldquo;Exit at Market&rdquo; button does nothing", "Platform cannot reach the exchange during the outage", "Flatten via the Emergency Trade Desk phone line"],
+        ["Working order can't be cancelled or modified", "Order queue frozen during the outage", "Once connected, flatten with one opposite market order, or call the Trade Desk"],
+        ["Duplicate fills after repeated clicks", "Multiple identical orders queued during lag all executed", "Cancel duplicates immediately; stop spamming; prefer market execution"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade can't end a Tradovate outage, but it removes the human behavior that turns an outage into a blown account, the panicked re-clicking that creates ghost and duplicate orders. It links your TradingView alerts straight to Tradovate and controls how those orders reach the platform:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Controlled Order Routing</strong>, sends one clean order per alert instead of hammering the platform when fills lag.",
+        "<strong class='text-white'>Position-Aware Logic</strong>, checks your live Tradovate position before acting, so a stale screen doesn't trigger an accidental double entry.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, pushes the same corrected exit across every linked account in a single action.",
+        "<strong class='text-white'>Rate-Limit-Safe Delivery</strong>, spaces order flow so reconnect storms don't pile up into ghost or duplicate fills.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Wenn ES oder NQ laufen und Ihre Tradovate-Order einfach stehen bleibt, während der Kurs glatt hindurchläuft, bilden Sie sich nichts ein. Bei einem Plattformausfall oder einem Abbruch des Datenfeeds können Tradovate-Orders aufhören, ausgeführt oder storniert zu werden, und, am schlimmsten, zu <strong class='text-white'>Geisterorders</strong> werden, die still und leise Minuten später ausgeführt werden, lange nachdem Sie dachten, Sie seien flat. Stellen Sie sich vor, Sie stornieren Orders, die Sie auf dem Bildschirm nicht mehr sehen, und beobachten dann, wie trotzdem 15 Kontrakte ausgeführt werden und in Sekunden einen großen Teil des Kontos vernichten. Genau diese Abwärtsspirale soll dieser Leitfaden verhindern. Unten erfahren Sie, warum Tradovate-Orders nicht mehr ausgeführt werden, was eine Geisterorder tatsächlich ist und wie Sie 2026 neue Einstiege stoppen, Ihre Positionen abgleichen und sicher glattstellen, plus wie eine Routing-Schicht wie PickMyTrade Sie von vornherein aus dem Chaos doppelter Orders heraushält." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste bei nicht ausgeführten Tradovate-Orders",
+      items: [
+        "<strong class='text-white'>Senden Sie sofort keine neuen Einstiege mehr.</strong> Jeder zusätzliche Klick während eines Einfrierens kann zu einer Geister-Ausführung werden, sobald der Feed wieder läuft.",
+        "<strong class='text-white'>Prüfen Sie die Tradovate-Statusseite.</strong> Bestätigen Sie, ob es sich um einen Ausfall auf Tradovate-Seite handelt (status.tradovate.com), bevor Sie Ihr eigenes Setup untersuchen.",
+        "<strong class='text-white'>Stornieren oder senden Sie nicht wiederholt.</strong> Während der Verzögerung eingereihte Duplikate können alle auf einmal ausgeführt werden, wenn die Verbindung zurückkehrt.",
+        "<strong class='text-white'>Gleichen Sie Positions mit Orders ab.</strong> Ein leeres Orders-Panel beweist nicht, dass Sie flat sind; das Positions-Panel ist die maßgebliche Quelle.",
+        "<strong class='text-white'>Halten Sie einen Backup-Weg zum Glattstellen bereit.</strong> Die Telefonleitung des Emergency Trade Desk von Tradovate kann Positionen schließen, wenn die Plattform selbst es nicht kann.",
+        "<strong class='text-white'>Machen Sie von allem Screenshots.</strong> Order-IDs und Zeitstempel sind wichtig, falls Sie später eine Geister-Ausführung anfechten müssen.",
+      ],
+    },
+    { type: "heading",text: "Was „Orders werden nicht ausgeführt“ und „Geisterorders“ wirklich bedeuten" },
+    { type: "paragraph",html: "&bdquo;Orders werden nicht ausgeführt&ldquo; bezeichnet den Fall, dass der Kurs ein Limit, einen Stop oder sogar eine Market-Order kreuzt und nichts ausgeführt wird. Tradovate hält Ihre aktiven Orders auf eigenen Servern und leitet sie zum Matching an die Börse weiter. Wenn die Verbindung zwischen Tradovate und der Börse (oder ihrem Marktdatenanbieter) gestört ist, kommen keine Order-Antworten mehr zurück. Auf Ihrem Bildschirm sieht die Order dann so aus, als wäre sie noch aktiv, noch ausstehend oder einfach verschwunden, obwohl die Plattform den Echtzeit-Überblick darüber verloren hat, was die Börse tatsächlich tut." },
+    { type: "paragraph",html: "Eine <strong class='text-white'>Geisterorder</strong> ist die gefährliche Kehrseite desselben Problems. Es ist eine Order, die in Ihrer Oberfläche storniert oder verschwunden <em>erscheint</em>, serverseitig aber weiterhin aktiv ist und daher Minuten später ausgeführt werden kann und Ihnen eine Position beschert, die Sie für geschlossen hielten. Das ist die Falle: Die Stornierungsbefehle scheinen nichts zu bewirken, die Orders verschwinden aus der Ansicht, und dann wird trotzdem ein Paket Kontrakte ausgeführt." },
+    { type: "paragraph",html: "Das Status-Vokabular von Tradovate selbst deutet an, wann das passiert. Zeigt eine Order einen Status im Stil von <strong class='text-white'>&bdquo;Pending New&ldquo;</strong>, was nach Tradovates eigenen Worten bedeutet, dass <em>keine Order-Antworten von der Börse empfangen werden</em>, ist das Ihr Signal, anzuhalten und den Support zu kontaktieren, um den tatsächlichen Zustand zu klären, statt weiter zu klicken." },
+    { type: "heading",text: "Häufigste Ursachen für nicht ausgeführte Orders und Geisterorders 2026" },
+    { type: "heading",text: "1. Ein Ausfall auf Tradovate-Seite oder ein Abbruch der Marktdaten" },
+    { type: "paragraph",html: "Die häufigste Ursache liegt gar nicht an Ihrem Setup, sondern an einer Störung auf Tradovate-Seite. Stops, die nicht ausgeführt werden, und Exit-Buttons, die nichts bewirken, gehen meist auf einen Abbruch des Datenfeeds zurück; ein CQG-Datenabbruch ist ein bekannter Übeltäter, den der Support später auf seiner Seite behebt. Ist der Feed down, stocken Matching und Order-Antworten für alle, sodass wiederholtes Klicken nichts bringt." },
+    { type: "heading",text: "2. Ihr eigenes Internet oder Gerät fällt aus" },
+    { type: "paragraph",html: "Hier die entscheidende Unterscheidung: Wenn <em>Ihr</em> Internet oder Gerät ausfällt, verschwinden Ihre aktiven Orders nicht. Tradovate hält Stop-, Limit- und Bracket-Orders auf seinen Servern, sodass sie an der Börse weiterlaufen, auch wenn Sie offline sind. Der Fehler, den die meisten Trader machen, ist Panik und das erneute Senden derselben Order vom Handy oder aus einem zweiten Tab, wodurch Duplikate entstehen, die alle ausgeführt werden, sobald Sie wieder verbunden sind." },
+    { type: "heading",text: "3. Stornierungen, die nie registriert wurden" },
+    { type: "paragraph",html: "Bei einem Ausfall erreicht die Stornierungsanfrage die Börse möglicherweise nie, die Order kann aber dennoch still aus Ihrem Raster verschwinden. Sie glauben, flat zu sein, während eine aktive Order im Orderbuch liegt. Wird sie ausgeführt, wirkt sie wie ein &bdquo;Geist&ldquo;, eine Ausführung ohne sichtbare übergeordnete Order." },
+    { type: "heading",text: "4. Doppelte Orders durch wiederholtes Klicken" },
+    { type: "paragraph",html: "Wenn Ausführungen hinterherhinken, ist der Instinkt, immer wieder auf &bdquo;Buy Mkt&ldquo; oder &bdquo;Exit at Market&ldquo; zu klicken. Jeder Klick kann eine weitere Order einreihen. Holt die Verbindung auf, können alle auf einmal ausgeführt werden: Klicken Sie während einer Verzögerungsspitze, um einen Short zu verlassen, können Sie Sekunden später mit mehreren Kontrakten <em>long</em> ausgeführt sein. Wiederholtes erneutes Senden und Neuverbinden verbraucht zudem Anfragelimits, was Ratenlimit-Ablehnungen auslösen kann, die das Einfrieren verschlimmern." },
+    { type: "heading",text: "5. Lücken bei Daten oder Berechtigungen der Prop-Firma" },
+    { type: "paragraph",html: "Bei Evaluierungs- und Funded-Konten werden Marktdaten und Order-Berechtigungen von der Prop-Firma kontrolliert, nicht von Ihnen. Wenn der Datenfeed der Firma bei Volatilität stockt oder eine Berechtigung ausläuft, können Sie dasselbe &bdquo;Nicht ausgeführt&ldquo;-Verhalten sehen, selbst wenn die Kernplattform von Tradovate gesund ist. Die Lösung ist dieselbe: Behandeln Sie das Einfrieren als brokerseitig, steuern Sie das Risiko mit einer Backup-Verbindung und denken Sie daran, dass Limits und Datenregeln je nach Firma und Kontogröße variieren, prüfen Sie also die aktuellen Regeln Ihrer Firma." },
+    { type: "heading",text: "So beheben Sie nicht ausgeführte Orders: Schritt für Schritt" },
+    { type: "heading",text: "Neue Einstiege stoppen und den Ausfall bestätigen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Platzieren und stornieren Sie keine Orders mehr", html: "Halten Sie Ihre Hände still, nicht nur die Plattform." },
+        { title: "Prüfen Sie die Statusseite des Dienstes", html: "Öffnen Sie die Statusseite von Tradovate (status.tradovate.com), um zu sehen, ob bereits ein Vorfall gemeldet ist." },
+        { title: "Behandeln Sie jede Order als unbestätigt", html: "Ist ein Ausfall bestätigt, behandeln Sie jede Order auf Ihrem Bildschirm als <em>möglicherweise ungenau</em>, bis der Feed wiederhergestellt ist." },
+      ],
+    },
+    { type: "heading",text: "Positionen abgleichen, bevor Sie dem Bildschirm vertrauen" },
+    { type: "paragraph",html: "Sobald Ihre Verbindung wieder steht, prüfen Sie, was Sie tatsächlich halten, bevor Sie irgendetwas anderes tun. Ein leeres Orders-Panel bedeutet <strong class='text-white'>nicht</strong>, dass Sie flat sind." },
+    {
+      type: "steps",
+      items: [
+        { title: "Öffnen Sie das Positions-Panel", html: "Lesen Sie Ihre tatsächliche Netto-Position je Kontrakt ab." },
+        { title: "Öffnen Sie das Orders-Panel", html: "Suchen Sie nach aktiven oder &bdquo;ausstehenden&ldquo; Orders, die dort nicht sein sollten." },
+        { title: "Vergleichen Sie beide", html: "Zeigt das Positions-Panel Kontrakte, die Sie nicht halten wollten, wurde eine Geisterorder ausgeführt. Handeln Sie anhand der Position, nicht anhand der veralteten Order-Ansicht." },
+      ],
+    },
+    { type: "heading",text: "Aktive Orders gezielt stornieren, dann glattstellen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Stornieren Sie jede verbleibende aktive Order", html: "Stornieren Sie im Orders-Panel jede verbleibende aktive Order einzeln oder nutzen Sie die Alle-stornieren-Funktion auf Kontoebene, und beobachten Sie, wie jede einzelne als storniert bestätigt wird." },
+        { title: "Stellen Sie gezielt glatt", html: "Halten Sie nach einer Geister-Ausführung eine ungewollte Position, stellen Sie sie gezielt mit einer einzigen Gegen-Market-Order glatt und tippen Sie nicht wiederholt auf den Exit-Button." },
+        { title: "Prüfen Sie das Positions-Panel erneut", html: "Vergewissern Sie sich, dass Sie wirklich flat sind, bevor Sie weggehen oder neu einsteigen." },
+      ],
+    },
+    { type: "heading",text: "Den Emergency Trade Desk nutzen, wenn die Plattform nicht reagiert" },
+    { type: "paragraph",html: "Ist die Oberfläche eingefroren und Sie können nicht aussteigen, unterhält Tradovate einen Emergency Trade Desk, der Positionen glattstellen und aktive Orders telefonisch stornieren kann. Zum Zeitpunkt der Erstellung ist er unter <strong class='text-white'>312-423-2234</strong> (und per E-Mail unter orders@ninjatrader.com) erreichbar, rund um die Uhr besetzt von Sonntagnachmittag bis Freitagnachmittag Central Time, für Live-Tradovate-Brokerage-Konten. Prüfen Sie die aktuelle Nummer und die Zeiten auf der offiziellen Kontaktseite von Tradovate, bevor Sie sie brauchen, und speichern Sie die Nummer jetzt in Ihrem Telefon, nicht mitten im Ausfall." },
+    { type: "heading",text: "Fehlerbehebungstabelle" },
+    { type: "table", headers: ["Symptom / Status","Bedeutung","Lösung"], rows: [
+      ["&bdquo;Pending New&ldquo; (keine Antwort von der Börse)","Tradovate empfängt keine Order-Antworten von der Börse","Nicht erneut senden; Support/Trade Desk kontaktieren, um den tatsächlichen Zustand der Order zu klären"],
+      ["Kurs läuft durch, keine Ausführung","Abbruch des Datenfeeds oder Ausfall; Matching erreicht die Börse nicht","Neue Einstiege stoppen; Statusseite prüfen; bei Dringlichkeit den Trade Desk anrufen"],
+      ["Order verschwindet aus dem Raster, Position ändert sich später","Stornierung nie registriert; Order serverseitig weiterhin aktiv (Geisterorder)","Nach dem Wiederverbinden Positions mit Orders abgleichen; Position gezielt glattstellen"],
+      ["Button &bdquo;Exit at Market&ldquo; bewirkt nichts","Die Plattform erreicht die Börse während des Ausfalls nicht","Über die Telefonleitung des Emergency Trade Desk glattstellen"],
+      ["Aktive Order lässt sich nicht stornieren oder ändern","Order-Warteschlange während des Ausfalls eingefroren","Nach der Verbindung mit einer Gegen-Market-Order glattstellen oder den Trade Desk anrufen"],
+      ["Doppelte Ausführungen nach wiederholten Klicks","Mehrere identische Orders wurden während der Verzögerung eingereiht und alle ausgeführt","Duplikate sofort stornieren; nicht mehr wiederholt klicken; Market-Ausführung bevorzugen"],
+    ] },
+    { type: "heading",text: "Mit PickMyTrade vorbeugen" },
+    { type: "paragraph",html: "PickMyTrade kann einen Tradovate-Ausfall nicht beenden, beseitigt aber das menschliche Verhalten, das aus einem Ausfall ein ruiniertes Konto macht: das panische Wiederholungsklicken, das Geister- und Duplikat-Orders erzeugt. Es verbindet Ihre TradingView-Alerts direkt mit Tradovate und steuert, wie diese Orders die Plattform erreichen:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Kontrolliertes Order-Routing</strong>, sendet eine saubere Order pro Alert, statt die Plattform zu bombardieren, wenn Ausführungen hinterherhinken.",
+        "<strong class='text-white'>Positionsbewusste Logik</strong>, prüft Ihre aktuelle Tradovate-Position, bevor sie handelt, sodass ein veralteter Bildschirm keinen versehentlichen doppelten Einstieg auslöst.",
+        "<strong class='text-white'>Multi-Account-Synchronisierung</strong>, überträgt denselben korrigierten Exit mit einer einzigen Aktion auf alle verknüpften Konten.",
+        "<strong class='text-white'>Ratenlimit-sichere Zustellung</strong>, verteilt den Order-Fluss, damit Wiederverbindungsstürme nicht zu Geister- oder Duplikat-Ausführungen anwachsen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Cuando ES o NQ se disparan y su orden de Tradovate se queda parada mientras el precio la atraviesa limpiamente, no lo está imaginando. Durante una caída de la plataforma o una pérdida del feed de datos, las órdenes de Tradovate pueden dejar de ejecutarse, dejar de cancelarse y, lo peor de todo, convertirse en <strong class='text-white'>órdenes fantasma</strong> que se ejecutan silenciosamente minutos después, mucho después de que usted creyera estar fuera del mercado. Imagine pulsar cancelar en órdenes que ya no ve en pantalla y luego ver cómo se ejecutan igualmente 15 contratos y borran una buena parte de la cuenta en segundos. Esa es exactamente la espiral que esta guía busca frenar. A continuación verá por qué las órdenes de Tradovate dejan de ejecutarse, qué es realmente una orden fantasma y cómo detener nuevas entradas, conciliar sus posiciones y cerrar con seguridad en 2026, además de cómo una capa de enrutamiento como PickMyTrade le evita desde el principio el lío de las órdenes duplicadas." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para órdenes de Tradovate que no se ejecutan",
+      items: [
+        "<strong class='text-white'>Deje de enviar nuevas entradas de inmediato.</strong> Cada clic extra durante un bloqueo puede convertirse en una ejecución fantasma cuando se recupere el feed.",
+        "<strong class='text-white'>Revise la página de estado de Tradovate.</strong> Confirme si se trata de una caída por parte de Tradovate (status.tradovate.com) antes de investigar su propia configuración.",
+        "<strong class='text-white'>No cancele ni reenvíe de forma compulsiva.</strong> Los duplicados puestos en cola durante el retraso pueden ejecutarse todos a la vez cuando vuelva la conexión.",
+        "<strong class='text-white'>Concilie Positions con Orders.</strong> Un panel Orders vacío no demuestra que esté fuera del mercado; el panel Positions es la fuente de la verdad.",
+        "<strong class='text-white'>Tenga una vía de respaldo para cerrar.</strong> La línea telefónica del Emergency Trade Desk de Tradovate puede cerrar posiciones cuando la propia plataforma no puede.",
+        "<strong class='text-white'>Haga capturas de pantalla de todo.</strong> Los ID de orden y las marcas de tiempo importan si más adelante necesita impugnar una ejecución fantasma.",
+      ],
+    },
+    { type: "heading",text: "Qué significan realmente «órdenes sin ejecutar» y «órdenes fantasma»" },
+    { type: "paragraph",html: "&laquo;Órdenes sin ejecutar&raquo; es lo que ve cuando el precio cruza un límite, un stop o incluso una orden de mercado y no se ejecuta nada. Tradovate mantiene sus órdenes activas en sus propios servidores y las reenvía a la bolsa para su casamiento. Cuando se interrumpe el canal entre Tradovate y la bolsa (o su proveedor de datos de mercado), las respuestas de las órdenes dejan de volver. Así, en su pantalla la orden parece seguir activa, seguir pendiente o simplemente haber desaparecido, aunque la plataforma haya perdido su visión en tiempo real de lo que la bolsa está haciendo realmente." },
+    { type: "paragraph",html: "Una <strong class='text-white'>orden fantasma</strong> es la cara peligrosa del mismo problema. Es una orden que <em>parece</em> cancelada o desaparecida en su interfaz, pero que en realidad sigue activa en el servidor, por lo que puede ejecutarse minutos después y entregarle una posición que creía cerrada. Esa es la trampa: los comandos de cancelación parecen no hacer nada, las órdenes desaparecen de la vista y, aun así, se ejecuta un lote de contratos." },
+    { type: "paragraph",html: "El propio vocabulario de estados de Tradovate indica cuándo ocurre esto. Si una orden muestra un estado del tipo <strong class='text-white'>&laquo;Pending New&raquo;</strong>, que según Tradovate significa que <em>no se están recibiendo respuestas de la bolsa para las órdenes</em>, esa es su señal para detenerse y contactar con el soporte y confirmar el estado real, no para seguir haciendo clic." },
+    { type: "heading",text: "Principales causas de órdenes sin ejecutar y órdenes fantasma en 2026" },
+    { type: "heading",text: "1. Una caída por parte de Tradovate o una pérdida de datos de mercado" },
+    { type: "paragraph",html: "La causa más común no es su configuración en absoluto, sino una interrupción por parte de Tradovate. Los stops que no se ejecutan y los botones de salida que no hacen nada suelen deberse a una caída del feed de datos, y una caída de datos de CQG es un culpable habitual que el soporte corrige después por su parte. Cuando el feed está caído, el casamiento y las respuestas de las órdenes se detienen para todos, así que no sirve de nada volver a hacer clic." },
+    { type: "heading",text: "2. Su propio internet o dispositivo se cae" },
+    { type: "paragraph",html: "Aquí está la distinción crucial: si se cae <em>su</em> internet o dispositivo, sus órdenes activas no desaparecen. Tradovate mantiene las órdenes stop, limit y bracket en sus servidores, de modo que siguen funcionando en la bolsa aunque usted esté desconectado. El error que cometen la mayoría de los traders es entrar en pánico y volver a enviar la misma orden desde el móvil o desde una segunda pestaña, lo que acumula duplicados que se ejecutan todos al reconectarse." },
+    { type: "heading",text: "3. Cancelaciones que nunca se registraron" },
+    { type: "paragraph",html: "Durante una caída, la solicitud de cancelación puede no llegar nunca a la bolsa y, sin embargo, la orden puede desaparecer silenciosamente de su cuadrícula. Usted cree estar fuera del mercado mientras una orden activa permanece en el libro. Cuando se ejecuta, parece un &laquo;fantasma&raquo;, una ejecución sin orden madre visible." },
+    { type: "heading",text: "4. Órdenes duplicadas por pulsar el botón repetidamente" },
+    { type: "paragraph",html: "Cuando las ejecuciones se retrasan, el instinto es hacer clic una y otra vez en &laquo;Buy Mkt&raquo; o &laquo;Exit at Market&raquo;. Cada clic puede poner en cola otra orden. Cuando la conexión se pone al día, pueden ejecutarse todas a la vez: si hace clic para salir de un corto durante un pico de retraso, puede acabar ejecutado en <em>largo</em> con varios contratos segundos después. Los reenvíos y reconexiones repetidos también consumen los límites de solicitudes, lo que puede provocar rechazos por límite de frecuencia que empeoran el bloqueo." },
+    { type: "heading",text: "5. Lagunas de datos o permisos en la prop firm" },
+    { type: "paragraph",html: "En cuentas de evaluación y fondeadas, los datos de mercado y los permisos de órdenes los controla la prop firm, no usted. Si el feed de datos de la firma falla o caduca un permiso durante la volatilidad, puede ver el mismo comportamiento de &laquo;no se ejecuta&raquo; incluso con la plataforma principal de Tradovate sana. La solución es la misma: trate el bloqueo como un problema del broker, gestione el riesgo con una conexión de respaldo y recuerde que los límites y las reglas de datos varían según la firma y el tamaño de la cuenta, así que consulte las reglas vigentes de su firma." },
+    { type: "heading",text: "Cómo solucionar las órdenes que no se ejecutan: paso a paso" },
+    { type: "heading",text: "Detenga las nuevas entradas y confirme que es una caída" },
+    {
+      type: "steps",
+      items: [
+        { title: "Deje de colocar y cancelar órdenes", html: "Detenga sus manos, no solo la plataforma." },
+        { title: "Revise la página de estado del servicio", html: "Abra la página de estado del servicio de Tradovate (status.tradovate.com) para ver si ya hay una incidencia reportada." },
+        { title: "Trate cada orden como no confirmada", html: "Si se confirma una caída, trate cada orden en su pantalla como <em>posiblemente inexacta</em> hasta que se restablezca el feed." },
+      ],
+    },
+    { type: "heading",text: "Concilie las posiciones antes de fiarse de la pantalla" },
+    { type: "paragraph",html: "Una vez restablecida su conexión, verifique lo que realmente tiene antes de hacer cualquier otra cosa. Un panel Orders vacío <strong class='text-white'>no</strong> significa que esté fuera del mercado." },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra el panel Positions", html: "Lea su posición neta real por contrato." },
+        { title: "Abra el panel Orders", html: "Busque órdenes activas o &laquo;pendientes&raquo; que no deberían estar ahí." },
+        { title: "Compare ambos", html: "Si el panel Positions muestra contratos que no pretendía mantener, se ejecutó una orden fantasma: actúe sobre la posición, no sobre la vista obsoleta de órdenes." },
+      ],
+    },
+    { type: "heading",text: "Cancele las órdenes activas de forma explícita y luego cierre" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cancele cada orden activa restante", html: "En el panel Orders, cancele individualmente cada orden activa restante, o use el control de cancelar todo a nivel de cuenta, y observe que cada una se confirme como cancelada." },
+        { title: "Cierre de forma deliberada", html: "Si mantiene una posición no deseada por una ejecución fantasma, ciérrela deliberadamente con una única orden de mercado contraria; no pulse el botón de salida repetidamente." },
+        { title: "Vuelva a revisar el panel Positions", html: "Confirme que realmente está fuera del mercado antes de marcharse o volver a entrar." },
+      ],
+    },
+    { type: "heading",text: "Use el Emergency Trade Desk cuando la plataforma no responda" },
+    { type: "paragraph",html: "Si la interfaz está congelada y no puede salir, Tradovate mantiene un Emergency Trade Desk que puede cerrar posiciones y cancelar órdenes activas por teléfono. En el momento de redactar esto, está disponible en el <strong class='text-white'>312-423-2234</strong> (y por correo en orders@ninjatrader.com), con atención ininterrumpida desde la tarde del domingo hasta la tarde del viernes, hora central, para cuentas de corretaje reales de Tradovate. Verifique el número y los horarios vigentes en la página oficial de contacto de Tradovate antes de necesitarlos y guarde el número en su teléfono ahora, no en plena caída." },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma / estado","Qué significa","Solución"], rows: [
+      ["&laquo;Pending New&raquo; (sin respuesta de la bolsa)","Tradovate no está recibiendo respuestas de órdenes de la bolsa","No reenvíe; contacte con el soporte/Trade Desk para confirmar el estado real de la orden"],
+      ["El precio atraviesa, sin ejecución","Caída del feed de datos o interrupción; el casamiento no llega a la bolsa","Detenga nuevas entradas; revise la página de estado; llame al Trade Desk si es urgente"],
+      ["La orden desaparece de la cuadrícula, la posición cambia después","La cancelación nunca se registró; la orden sigue activa en el servidor (orden fantasma)","Concilie Positions con Orders tras reconectar; cierre la posición explícitamente"],
+      ["El botón &laquo;Exit at Market&raquo; no hace nada","La plataforma no puede alcanzar la bolsa durante la caída","Cierre a través de la línea telefónica del Emergency Trade Desk"],
+      ["Una orden activa no se puede cancelar ni modificar","Cola de órdenes congelada durante la caída","Una vez conectado, cierre con una orden de mercado contraria o llame al Trade Desk"],
+      ["Ejecuciones duplicadas tras clics repetidos","Varias órdenes idénticas puestas en cola durante el retraso se ejecutaron todas","Cancele los duplicados de inmediato; deje de pulsar repetidamente; prefiera la ejecución a mercado"],
+    ] },
+    { type: "heading",text: "Evítelo con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade no puede poner fin a una caída de Tradovate, pero elimina el comportamiento humano que convierte una caída en una cuenta arruinada: los clics repetidos de pánico que crean órdenes fantasma y duplicadas. Vincula sus alertas de TradingView directamente con Tradovate y controla cómo esas órdenes llegan a la plataforma:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Enrutamiento controlado de órdenes</strong>, envía una orden limpia por alerta en lugar de bombardear la plataforma cuando las ejecuciones se retrasan.",
+        "<strong class='text-white'>Lógica consciente de la posición</strong>, comprueba su posición real en Tradovate antes de actuar, de modo que una pantalla obsoleta no provoque una doble entrada accidental.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, aplica la misma salida corregida en todas las cuentas vinculadas con una sola acción.",
+        "<strong class='text-white'>Entrega segura frente a límites de frecuencia</strong>, espacia el flujo de órdenes para que las tormentas de reconexión no se acumulen en ejecuciones fantasma o duplicadas.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Quand ES ou NQ s'envolent et que votre ordre Tradovate reste immobile alors que le prix le traverse sans encombre, vous ne rêvez pas. Lors d'une panne de plateforme ou d'une coupure du flux de données, les ordres Tradovate peuvent cesser de s'exécuter, cesser de s'annuler et, pire encore, devenir des <strong class='text-white'>ordres fantômes</strong> qui s'exécutent discrètement quelques minutes plus tard, bien après que vous vous croyiez à plat. Imaginez annuler des ordres que vous ne voyez plus à l'écran, puis voir 15 contrats s'exécuter malgré tout et effacer une grande partie du compte en quelques secondes. C'est exactement cette spirale que ce guide veut empêcher. Vous verrez ci-dessous pourquoi les ordres Tradovate cessent de s'exécuter, ce qu'est réellement un ordre fantôme, et comment stopper les nouvelles entrées, rapprocher vos positions et clôturer en toute sécurité en 2026, ainsi que comment une couche d'acheminement comme PickMyTrade vous tient d'emblée à l'écart du chaos des ordres en double." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour les ordres Tradovate non exécutés",
+      items: [
+        "<strong class='text-white'>Cessez immédiatement d'envoyer de nouvelles entrées.</strong> Chaque clic supplémentaire pendant un blocage peut devenir une exécution fantôme dès que le flux reprend.",
+        "<strong class='text-white'>Consultez la page d'état de Tradovate.</strong> Confirmez s'il s'agit d'une panne côté Tradovate (status.tradovate.com) avant de dépanner votre propre configuration.",
+        "<strong class='text-white'>N'enchaînez pas annulations et renvois.</strong> Les doublons mis en file d'attente pendant le décalage peuvent tous s'exécuter d'un coup au retour de la connexion.",
+        "<strong class='text-white'>Rapprochez Positions et Orders.</strong> Un panneau Orders vide ne prouve pas que vous êtes à plat ; le panneau Positions fait foi.",
+        "<strong class='text-white'>Gardez un moyen de secours pour clôturer.</strong> La ligne téléphonique de l'Emergency Trade Desk de Tradovate peut fermer des positions quand la plateforme elle-même ne le peut pas.",
+        "<strong class='text-white'>Faites des captures d'écran de tout.</strong> Les identifiants d'ordre et les horodatages comptent si vous devez ensuite contester une exécution fantôme.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifient vraiment « ordres non exécutés » et « ordres fantômes »" },
+    { type: "paragraph",html: "&laquo; Ordres non exécutés &raquo; décrit ce que vous voyez lorsque le prix franchit une limite, un stop ou même un ordre au marché sans que rien ne s'exécute. Tradovate conserve vos ordres actifs sur ses propres serveurs et les transmet à la bourse pour l'appariement. Lorsque le canal entre Tradovate et la bourse (ou son fournisseur de données de marché) est perturbé, les réponses d'ordres cessent de revenir. À l'écran, l'ordre semble donc toujours actif, toujours en attente ou tout simplement disparu, alors même que la plateforme a perdu sa vision en temps réel de ce que la bourse fait réellement." },
+    { type: "paragraph",html: "Un <strong class='text-white'>ordre fantôme</strong> est l'envers dangereux du même problème. C'est un ordre qui <em>semble</em> annulé ou disparu de votre interface mais qui est en réalité toujours actif côté serveur, de sorte qu'il peut s'exécuter quelques minutes plus tard et vous donner une position que vous pensiez fermée. Voilà le piège : les commandes d'annulation semblent sans effet, les ordres disparaissent de la vue, puis un lot de contrats s'exécute malgré tout." },
+    { type: "paragraph",html: "Le vocabulaire de statuts de Tradovate lui-même indique quand cela se produit. Si un ordre affiche un statut du type <strong class='text-white'>&laquo; Pending New &raquo;</strong>, ce qui signifie, selon les termes de Tradovate, que <em>les réponses d'ordres ne sont pas reçues de la bourse</em>, c'est votre signal pour vous arrêter et contacter le support afin de confirmer l'état réel, et non pour continuer à cliquer." },
+    { type: "heading",text: "Principales causes d'ordres non exécutés et d'ordres fantômes en 2026" },
+    { type: "heading",text: "1. Une panne côté Tradovate ou une coupure des données de marché" },
+    { type: "paragraph",html: "La cause la plus courante n'est pas du tout votre configuration, mais une perturbation du côté de Tradovate. Les stops qui ne s'exécutent pas et les boutons de sortie qui ne font rien remontent généralement à une coupure du flux de données, et une coupure des données CQG est un coupable bien connu, que le support corrige ensuite de son côté. Quand le flux est coupé, l'appariement et les réponses d'ordres s'arrêtent pour tout le monde ; cliquer encore ne servira donc à rien." },
+    { type: "heading",text: "2. Votre propre connexion internet ou appareil qui lâche" },
+    { type: "paragraph",html: "Voici la distinction cruciale : si <em>votre</em> connexion internet ou votre appareil tombe, vos ordres actifs ne disparaissent pas. Tradovate conserve les ordres stop, limit et bracket sur ses serveurs, de sorte qu'ils continuent de fonctionner à la bourse même lorsque vous êtes hors ligne. L'erreur que commettent la plupart des traders est de paniquer et de renvoyer le même ordre depuis un téléphone ou un second onglet, ce qui empile des doublons qui s'exécutent tous à la reconnexion." },
+    { type: "heading",text: "3. Des annulations qui n'ont jamais été enregistrées" },
+    { type: "paragraph",html: "Lors d'une panne, la demande d'annulation peut ne jamais atteindre la bourse, alors que l'ordre peut discrètement disparaître de votre grille. Vous vous croyez à plat alors qu'un ordre actif repose dans le carnet. Quand il s'exécute, il ressemble à un &laquo; fantôme &raquo;, une exécution sans ordre parent visible." },
+    { type: "heading",text: "4. Des ordres en double à force de marteler le bouton" },
+    { type: "paragraph",html: "Quand les exécutions traînent, l'instinct est de cliquer encore et encore sur &laquo; Buy Mkt &raquo; ou &laquo; Exit at Market &raquo;. Chaque clic peut mettre un autre ordre en file d'attente. Lorsque la connexion rattrape son retard, ils peuvent tous s'exécuter d'un coup : cliquez pour sortir d'un short pendant un pic de latence et vous pouvez vous retrouver exécuté <em>long</em> sur plusieurs contrats quelques secondes plus tard. Les renvois et reconnexions répétés consomment aussi les limites de requêtes, ce qui peut déclencher des rejets pour dépassement de débit et aggraver le blocage." },
+    { type: "heading",text: "5. Des lacunes de données ou de droits côté prop firm" },
+    { type: "paragraph",html: "Sur les comptes d'évaluation et financés, les données de marché et les droits d'ordres sont contrôlés par la prop firm, pas par vous. Si le flux de données de la firme flanche ou si un droit expire en pleine volatilité, vous pouvez constater le même comportement de &laquo; non-exécution &raquo; même quand la plateforme principale de Tradovate est saine. La solution est la même : considérez le blocage comme côté broker, gérez le risque avec une connexion de secours, et rappelez-vous que les limites et les règles de données varient selon la firme et la taille du compte ; vérifiez donc les règles actuelles de votre firme." },
+    { type: "heading",text: "Comment résoudre les ordres non exécutés : pas à pas" },
+    { type: "heading",text: "Stoppez les nouvelles entrées et confirmez qu'il s'agit d'une panne" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cessez de placer et d'annuler des ordres", html: "Figez vos mains, pas seulement la plateforme." },
+        { title: "Consultez la page d'état du service", html: "Ouvrez la page d'état du service de Tradovate (status.tradovate.com) pour voir si un incident est déjà signalé." },
+        { title: "Considérez chaque ordre comme non confirmé", html: "Si une panne est confirmée, considérez chaque ordre affiché à l'écran comme <em>possiblement inexact</em> jusqu'au rétablissement du flux." },
+      ],
+    },
+    { type: "heading",text: "Rapprochez les positions avant de vous fier à l'écran" },
+    { type: "paragraph",html: "Une fois votre connexion rétablie, vérifiez ce que vous détenez réellement avant toute autre action. Un panneau Orders vide ne signifie <strong class='text-white'>pas</strong> que vous êtes à plat." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez le panneau Positions", html: "Lisez votre position nette réelle par contrat." },
+        { title: "Ouvrez le panneau Orders", html: "Recherchez les ordres actifs ou &laquo; en attente &raquo; qui ne devraient pas s'y trouver." },
+        { title: "Comparez les deux", html: "Si le panneau Positions affiche des contrats que vous ne comptiez pas détenir, un ordre fantôme s'est exécuté : agissez sur la position, pas sur la vue obsolète des ordres." },
+      ],
+    },
+    { type: "heading",text: "Annulez explicitement les ordres actifs, puis clôturez" },
+    {
+      type: "steps",
+      items: [
+        { title: "Annulez chaque ordre actif restant", html: "Dans le panneau Orders, annulez individuellement chaque ordre actif restant, ou utilisez la commande d'annulation globale du compte, et observez la confirmation de chacun comme annulé." },
+        { title: "Clôturez délibérément", html: "Si vous détenez une position non désirée à la suite d'une exécution fantôme, clôturez-la délibérément avec un seul ordre au marché opposé ; ne tapotez pas le bouton de sortie à répétition." },
+        { title: "Revérifiez le panneau Positions", html: "Confirmez que vous êtes réellement à plat avant de vous éloigner ou de ré-entrer." },
+      ],
+    },
+    { type: "heading",text: "Utilisez l'Emergency Trade Desk quand la plateforme ne répond plus" },
+    { type: "paragraph",html: "Si l'interface est figée et que vous ne pouvez pas sortir, Tradovate dispose d'un Emergency Trade Desk qui peut clôturer des positions et annuler des ordres actifs par téléphone. Au moment de la rédaction, il est joignable au <strong class='text-white'>312-423-2234</strong> (et par e-mail à orders@ninjatrader.com), avec une permanence continue du dimanche après-midi au vendredi après-midi, heure centrale, pour les comptes de courtage Tradovate réels. Vérifiez le numéro et les horaires actuels sur la page de contact officielle de Tradovate avant d'en avoir besoin, et enregistrez le numéro dans votre téléphone dès maintenant, pas en pleine panne." },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme / statut","Ce que cela signifie","Solution"], rows: [
+      ["&laquo; Pending New &raquo; (aucune réponse de la bourse)","Tradovate ne reçoit pas de réponses d'ordres de la bourse","Ne renvoyez pas ; contactez le support/Trade Desk pour confirmer l'état réel de l'ordre"],
+      ["Le prix traverse, pas d'exécution","Coupure du flux de données ou panne ; l'appariement n'atteint pas la bourse","Stoppez les nouvelles entrées ; consultez la page d'état ; appelez le Trade Desk si c'est urgent"],
+      ["L'ordre disparaît de la grille, la position change plus tard","L'annulation n'a jamais été enregistrée ; l'ordre est toujours actif côté serveur (ordre fantôme)","Rapprochez Positions et Orders après la reconnexion ; clôturez explicitement la position"],
+      ["Le bouton &laquo; Exit at Market &raquo; ne fait rien","La plateforme ne peut pas joindre la bourse pendant la panne","Clôturez via la ligne téléphonique de l'Emergency Trade Desk"],
+      ["Un ordre actif ne peut être ni annulé ni modifié","File d'ordres figée pendant la panne","Une fois connecté, clôturez avec un ordre au marché opposé ou appelez le Trade Desk"],
+      ["Exécutions en double après des clics répétés","Plusieurs ordres identiques mis en file d'attente pendant le décalage se sont tous exécutés","Annulez immédiatement les doublons ; cessez de marteler ; privilégiez l'exécution au marché"],
+    ] },
+    { type: "heading",text: "Prévenir cela avec PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade ne peut pas mettre fin à une panne de Tradovate, mais il supprime le comportement humain qui transforme une panne en compte ruiné : les clics répétés de panique qui créent des ordres fantômes et en double. Il relie vos alertes TradingView directement à Tradovate et contrôle la manière dont ces ordres parviennent à la plateforme :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Acheminement d'ordres contrôlé</strong>, envoie un seul ordre propre par alerte au lieu de bombarder la plateforme quand les exécutions traînent.",
+        "<strong class='text-white'>Logique tenant compte de la position</strong>, vérifie votre position Tradovate en direct avant d'agir, de sorte qu'un écran obsolète ne déclenche pas une double entrée accidentelle.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, applique la même sortie corrigée à tous les comptes liés en une seule action.",
+        "<strong class='text-white'>Livraison respectueuse des limites de débit</strong>, espace le flux d'ordres afin que les rafales de reconnexion ne s'accumulent pas en exécutions fantômes ou en double.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Quando ES o NQ volano e il suo ordine Tradovate resta fermo mentre il prezzo lo attraversa senza ostacoli, non se lo sta immaginando. Durante un'interruzione della piattaforma o un calo del feed dati, gli ordini Tradovate possono smettere di essere eseguiti, smettere di essere annullati e, cosa peggiore, trasformarsi in <strong class='text-white'>ordini fantasma</strong> che vengono eseguiti silenziosamente minuti dopo, molto tempo dopo che Lei pensava di essere flat. Immagini di premere annulla su ordini che non vede più a schermo, e poi di vedere comunque eseguiti 15 contratti che cancellano in pochi secondi una bella fetta del conto. È esattamente la spirale che questa guida vuole fermare. Di seguito vedrà perché gli ordini Tradovate smettono di essere eseguiti, che cos'è davvero un ordine fantasma e come bloccare nuove entrate, riconciliare le posizioni e chiudere in sicurezza nel 2026, oltre a come un livello di instradamento come PickMyTrade la tiene fuori fin dall'inizio dal caos degli ordini duplicati." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per gli ordini Tradovate non eseguiti",
+      items: [
+        "<strong class='text-white'>Smetta subito di inviare nuove entrate.</strong> Ogni clic in più durante un blocco può diventare un'esecuzione fantasma una volta che il feed si riprende.",
+        "<strong class='text-white'>Controlli la pagina di stato di Tradovate.</strong> Confermi se si tratta di un'interruzione lato Tradovate (status.tradovate.com) prima di risolvere problemi della sua configurazione.",
+        "<strong class='text-white'>Non tempesti di annullamenti o reinvii.</strong> I duplicati messi in coda durante il ritardo possono essere eseguiti tutti insieme al ritorno della connessione.",
+        "<strong class='text-white'>Riconcili Positions con Orders.</strong> Un pannello Orders pulito non prova che sia flat; il pannello Positions è la fonte della verità.",
+        "<strong class='text-white'>Tenga un modo di riserva per chiudere.</strong> La linea telefonica dell'Emergency Trade Desk di Tradovate può chiudere le posizioni quando la piattaforma stessa non può.",
+        "<strong class='text-white'>Faccia screenshot di tutto.</strong> ID degli ordini e orari contano se in seguito dovrà contestare un'esecuzione fantasma.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significano davvero «ordini non eseguiti» e «ordini fantasma»" },
+    { type: "paragraph",html: "&laquo;Ordini non eseguiti&raquo; è ciò che vede quando il prezzo attraversa un limit, uno stop o perfino un ordine a mercato e non viene eseguito nulla. Tradovate mantiene i suoi ordini attivi sui propri server e li inoltra alla borsa per l'abbinamento. Quando il canale tra Tradovate e la borsa (o il suo fornitore di dati di mercato) viene interrotto, le risposte degli ordini smettono di tornare. Quindi a schermo l'ordine sembra ancora attivo, ancora in sospeso o semplicemente sparito, anche se la piattaforma ha perso la visione in tempo reale di ciò che la borsa sta realmente facendo." },
+    { type: "paragraph",html: "Un <strong class='text-white'>ordine fantasma</strong> è il lato pericoloso dello stesso problema. È un ordine che <em>sembra</em> annullato o sparito dalla sua interfaccia, ma in realtà è ancora attivo lato server, quindi può essere eseguito minuti dopo e consegnarle una posizione che riteneva chiusa. Questa è la trappola: i comandi di annullamento sembrano non fare nulla, gli ordini spariscono dalla vista e poi un blocco di contratti viene eseguito comunque." },
+    { type: "paragraph",html: "Il vocabolario degli stati di Tradovate stesso suggerisce quando ciò accade. Se un ordine mostra uno stato del tipo <strong class='text-white'>&laquo;Pending New&raquo;</strong>, che nelle parole di Tradovate significa che <em>le risposte degli ordini non vengono ricevute dalla borsa</em>, quello è il segnale per fermarsi e contattare il supporto per confermare lo stato reale, non per continuare a cliccare." },
+    { type: "heading",text: "Principali cause di ordini non eseguiti e ordini fantasma nel 2026" },
+    { type: "heading",text: "1. Un'interruzione lato Tradovate o un calo dei dati di mercato" },
+    { type: "paragraph",html: "La causa più comune non è affatto la sua configurazione, ma un disservizio lato Tradovate. Gli stop che non vengono eseguiti e i pulsanti di uscita che non fanno nulla risalgono di solito a un calo del feed dati, e un calo dei dati CQG è un colpevole noto, che il supporto risolve poi dal proprio lato. Quando il feed è giù, l'abbinamento e le risposte degli ordini si bloccano per tutti, quindi cliccare di nuovo non servirà a nulla." },
+    { type: "heading",text: "2. Cade la sua connessione internet o il suo dispositivo" },
+    { type: "paragraph",html: "Ecco la distinzione cruciale: se cade <em>la sua</em> connessione internet o il suo dispositivo, i suoi ordini attivi non spariscono. Tradovate mantiene gli ordini stop, limit e bracket sui propri server, quindi continuano a funzionare in borsa anche mentre Lei è offline. L'errore che la maggior parte dei trader commette è andare nel panico e reinviare lo stesso ordine dal telefono o da una seconda scheda, accumulando duplicati che vengono tutti eseguiti alla riconnessione." },
+    { type: "heading",text: "3. Annullamenti che non sono mai stati registrati" },
+    { type: "paragraph",html: "Durante un'interruzione la richiesta di annullamento può non raggiungere mai la borsa, eppure l'ordine può sparire silenziosamente dalla sua griglia. Lei crede di essere flat mentre un ordine attivo resta nel book. Quando viene eseguito, sembra un &laquo;fantasma&raquo;, un'esecuzione senza un ordine padre visibile." },
+    { type: "heading",text: "4. Ordini duplicati per aver martellato il pulsante" },
+    { type: "paragraph",html: "Quando le esecuzioni sono in ritardo, l'istinto è cliccare ancora e ancora su &laquo;Buy Mkt&raquo; o &laquo;Exit at Market&raquo;. Ogni clic può mettere in coda un altro ordine. Quando la connessione recupera, possono essere eseguiti tutti insieme: se clicca per uscire da uno short durante un picco di latenza, può ritrovarsi eseguito <em>long</em> su più contratti pochi secondi dopo. Reinvii e riconnessioni ripetuti consumano inoltre i limiti di richieste, il che può innescare rifiuti per limite di frequenza che peggiorano il blocco." },
+    { type: "heading",text: "5. Lacune di dati o autorizzazioni della prop firm" },
+    { type: "paragraph",html: "Sui conti di valutazione e finanziati, i dati di mercato e le autorizzazioni agli ordini sono controllati dalla prop firm, non da Lei. Se il feed dati della firm ha un intoppo o un'autorizzazione scade durante la volatilità, può vedere lo stesso comportamento di &laquo;non eseguito&raquo; anche quando la piattaforma principale di Tradovate è sana. La soluzione è la stessa: consideri il blocco come lato broker, gestisca il rischio con una connessione di riserva e ricordi che limiti e regole sui dati variano in base alla firm e alla dimensione del conto, quindi verifichi le regole attuali della sua firm." },
+    { type: "heading",text: "Come risolvere gli ordini non eseguiti: passo dopo passo" },
+    { type: "heading",text: "Fermi le nuove entrate e confermi che si tratta di un'interruzione" },
+    {
+      type: "steps",
+      items: [
+        { title: "Smetta di inserire e annullare ordini", html: "Fermi le sue mani, non solo la piattaforma." },
+        { title: "Controlli la pagina di stato del servizio", html: "Apra la pagina di stato del servizio di Tradovate (status.tradovate.com) per vedere se è già stato segnalato un incidente." },
+        { title: "Consideri ogni ordine come non confermato", html: "Se l'interruzione è confermata, consideri ogni ordine sul suo schermo come <em>possibilmente inesatto</em> finché il feed non viene ripristinato." },
+      ],
+    },
+    { type: "heading",text: "Riconcili le posizioni prima di fidarsi dello schermo" },
+    { type: "paragraph",html: "Una volta tornata la connessione, verifichi che cosa detiene realmente prima di fare qualsiasi altra cosa. Un pannello Orders vuoto <strong class='text-white'>non</strong> significa che sia flat." },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra il pannello Positions", html: "Legga la sua reale posizione netta per contratto." },
+        { title: "Apra il pannello Orders", html: "Cerchi ordini attivi o &laquo;in sospeso&raquo; che non dovrebbero esserci." },
+        { title: "Confronti i due", html: "Se il pannello Positions mostra contratti che non intendeva detenere, un ordine fantasma è stato eseguito: agisca sulla posizione, non sulla vista obsoleta degli ordini." },
+      ],
+    },
+    { type: "heading",text: "Annulli esplicitamente gli ordini attivi, poi chiuda" },
+    {
+      type: "steps",
+      items: [
+        { title: "Annulli ogni ordine attivo rimasto", html: "Nel pannello Orders, annulli singolarmente ogni ordine attivo rimasto, oppure usi il controllo di annullamento totale a livello di conto, e osservi che ciascuno venga confermato come annullato." },
+        { title: "Chiuda in modo deliberato", html: "Se detiene una posizione indesiderata a causa di un'esecuzione fantasma, la chiuda deliberatamente con un unico ordine a mercato opposto; non tocchi ripetutamente il pulsante di uscita." },
+        { title: "Ricontrolli il pannello Positions", html: "Confermi di essere davvero flat prima di allontanarsi o rientrare." },
+      ],
+    },
+    { type: "heading",text: "Usi l'Emergency Trade Desk quando la piattaforma non risponde" },
+    { type: "paragraph",html: "Se l'interfaccia è bloccata e non riesce a uscire, Tradovate dispone di un Emergency Trade Desk che può chiudere posizioni e annullare ordini attivi per telefono. Al momento della stesura è raggiungibile al <strong class='text-white'>312-423-2234</strong> (e via e-mail a orders@ninjatrader.com), presidiato in modo continuativo dal pomeriggio di domenica al pomeriggio di venerdì, ora centrale, per i conti di brokerage Tradovate reali. Verifichi il numero e gli orari attuali sulla pagina dei contatti ufficiale di Tradovate prima di averne bisogno e salvi il numero nel telefono adesso, non nel mezzo di un'interruzione." },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo / stato","Che cosa significa","Soluzione"], rows: [
+      ["&laquo;Pending New&raquo; (nessuna risposta dalla borsa)","Tradovate non riceve risposte sugli ordini dalla borsa","Non reinvii; contatti il supporto/Trade Desk per confermare lo stato reale dell'ordine"],
+      ["Il prezzo attraversa, nessuna esecuzione","Calo del feed dati o interruzione; l'abbinamento non raggiunge la borsa","Fermi le nuove entrate; controlli la pagina di stato; chiami il Trade Desk se urgente"],
+      ["L'ordine sparisce dalla griglia, la posizione cambia dopo","L'annullamento non è mai stato registrato; l'ordine è ancora attivo lato server (ordine fantasma)","Riconcili Positions con Orders dopo la riconnessione; chiuda esplicitamente la posizione"],
+      ["Il pulsante &laquo;Exit at Market&raquo; non fa nulla","La piattaforma non riesce a raggiungere la borsa durante l'interruzione","Chiuda tramite la linea telefonica dell'Emergency Trade Desk"],
+      ["Un ordine attivo non può essere annullato o modificato","Coda degli ordini bloccata durante l'interruzione","Una volta connesso, chiuda con un ordine a mercato opposto o chiami il Trade Desk"],
+      ["Esecuzioni duplicate dopo clic ripetuti","Più ordini identici messi in coda durante il ritardo sono stati tutti eseguiti","Annulli subito i duplicati; smetta di martellare; preferisca l'esecuzione a mercato"],
+    ] },
+    { type: "heading",text: "Prevenga tutto questo con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade non può porre fine a un'interruzione di Tradovate, ma elimina il comportamento umano che trasforma un'interruzione in un conto distrutto: i clic ripetuti dettati dal panico che creano ordini fantasma e duplicati. Collega i suoi alert di TradingView direttamente a Tradovate e controlla il modo in cui quegli ordini raggiungono la piattaforma:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Instradamento controllato degli ordini</strong>, invia un solo ordine pulito per alert invece di bombardare la piattaforma quando le esecuzioni sono in ritardo.",
+        "<strong class='text-white'>Logica consapevole della posizione</strong>, verifica la sua posizione Tradovate in tempo reale prima di agire, così che uno schermo obsoleto non provochi un doppio ingresso accidentale.",
+        "<strong class='text-white'>Sincronizzazione multi-conto</strong>, applica la stessa uscita corretta a tutti i conti collegati con un'unica azione.",
+        "<strong class='text-white'>Consegna sicura rispetto ai limiti di frequenza</strong>, distanzia il flusso di ordini in modo che le tempeste di riconnessione non si accumulino in esecuzioni fantasma o duplicate.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Ghost Orders Before They Start", de: "Stoppen Sie Geisterorders, bevor sie entstehen", es: "Detenga las órdenes fantasma antes de que empiecen", fr: "Arrêtez les ordres fantômes avant qu'ils ne commencent", it: "Fermi gli ordini fantasma prima che nascano" },
+  ctaText: { en: "Start your free 7-day trial, route your alerts cleanly and stop ghost orders before they start.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, leiten Sie Ihre Alerts sauber weiter und stoppen Sie Geisterorders, bevor sie entstehen.", es: "Comience su prueba gratuita de 7 días, enrute sus alertas de forma limpia y detenga las órdenes fantasma antes de que empiecen.", fr: "Commencez votre essai gratuit de 7 jours, acheminez vos alertes proprement et arrêtez les ordres fantômes avant qu'ils ne commencent.", it: "Inizi la prova gratuita di 7 giorni, instradi i suoi alert in modo pulito e fermi gli ordini fantasma prima che nascano." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why did my Tradovate order not fill even though price traded right through it?", a: "Almost always a Tradovate-side outage or market-data drop. Your order was working, but order responses from the exchange stopped coming back, so it neither filled nor updated on screen. Check the service status page before assuming your setup is broken." },
+    { q: "What exactly is a ghost order?", a: "An order that looks cancelled or gone from your interface but is still live on Tradovate's servers. It can fill minutes later and give you a position you thought you had closed, which is why you must reconcile the Positions panel after any outage." },
+    { q: "If my internet drops, are my Tradovate stop and limit orders still active?", a: "Yes. Tradovate holds working orders server-side, so stops, limits, and brackets keep working at the exchange even while you are offline. Reconnect and check first, and do not blindly re-submit or you may stack duplicates." },
+    { q: "How do I flatten a position when the platform is frozen?", a: "Call Tradovate's Emergency Trade Desk (312-423-2234 at the time of writing; confirm the current number on Tradovate's contact page). They can flatten positions and cancel working orders for live brokerage accounts when you cannot reach the interface yourself." },
+    { q: "How can I tell whether my cancel actually went through?", a: "Watch each order confirm as Canceled in the Orders panel, then cross-check the Positions panel. During an outage a cancel can appear to do nothing and still leave a live order behind, so trust the position, not the order grid." },
+    { q: "Does \"Pending New\" mean my order was placed?", a: "Not confidently. Tradovate uses that status to indicate it is not receiving order responses from the exchange. Rather than resending, stop and contact support to confirm the real state of the order." },
+    { q: "Should I resend an order that seems stuck?", a: "No. Resending during lag is the number-one cause of duplicate and ghost fills, and the extra requests can trip rate limits that deepen the freeze. Wait, confirm the outage, and reconcile before acting." },
+    { q: "Can a prop-firm outage cause the same ghost-order problem?", a: "Yes. On evaluation and funded accounts, data and entitlements are firm-controlled, so a firm-side disruption can produce the same non-filling and ghost behavior. Keep a backup connection and follow your firm's current outage rules." },
+  ], de: [
+    { q: "Warum wurde meine Tradovate-Order nicht ausgeführt, obwohl der Kurs mitten hindurchgelaufen ist?", a: "Fast immer liegt es an einem Ausfall auf Tradovate-Seite oder an einem Abbruch der Marktdaten. Ihre Order war aktiv, aber die Order-Antworten der Börse kamen nicht mehr zurück, sodass sie weder ausgeführt noch auf dem Bildschirm aktualisiert wurde. Prüfen Sie die Statusseite des Dienstes, bevor Sie davon ausgehen, dass Ihr Setup defekt ist." },
+    { q: "Was genau ist eine Geisterorder?", a: "Eine Order, die in Ihrer Oberfläche storniert oder verschwunden aussieht, auf den Tradovate-Servern aber weiterhin aktiv ist. Sie kann Minuten später ausgeführt werden und Ihnen eine Position bescheren, die Sie für geschlossen hielten. Deshalb müssen Sie nach jedem Ausfall das Positions-Panel abgleichen." },
+    { q: "Bleiben meine Tradovate-Stop- und Limit-Orders aktiv, wenn mein Internet ausfällt?", a: "Ja. Tradovate hält aktive Orders serverseitig, sodass Stops, Limits und Brackets an der Börse weiterlaufen, auch wenn Sie offline sind. Verbinden Sie sich wieder und prüfen Sie zuerst; senden Sie nicht blind erneut, sonst entstehen möglicherweise Duplikate." },
+    { q: "Wie schließe ich eine Position, wenn die Plattform eingefroren ist?", a: "Rufen Sie den Emergency Trade Desk von Tradovate an (312-423-2234 zum Zeitpunkt der Erstellung; bestätigen Sie die aktuelle Nummer auf der Kontaktseite von Tradovate). Dort können für Live-Brokerage-Konten Positionen glattgestellt und aktive Orders storniert werden, wenn Sie die Oberfläche selbst nicht erreichen." },
+    { q: "Woran erkenne ich, ob meine Stornierung tatsächlich durchgegangen ist?", a: "Beobachten Sie, wie jede Order im Orders-Panel als Canceled bestätigt wird, und gleichen Sie anschließend das Positions-Panel ab. Bei einem Ausfall kann eine Stornierung scheinbar wirkungslos bleiben und dennoch eine aktive Order zurücklassen. Vertrauen Sie daher der Position, nicht dem Order-Raster." },
+    { q: "Bedeutet \"Pending New\", dass meine Order platziert wurde?", a: "Nicht mit Sicherheit. Tradovate verwendet diesen Status, um anzuzeigen, dass keine Order-Antworten von der Börse eingehen. Senden Sie nicht erneut, sondern halten Sie an und kontaktieren Sie den Support, um den tatsächlichen Zustand der Order zu klären." },
+    { q: "Sollte ich eine scheinbar hängende Order erneut senden?", a: "Nein. Erneutes Senden bei Verzögerungen ist die häufigste Ursache für doppelte und Geister-Ausführungen, und die zusätzlichen Anfragen können Ratenlimits auslösen, die das Einfrieren verschlimmern. Warten Sie, bestätigen Sie den Ausfall und gleichen Sie ab, bevor Sie handeln." },
+    { q: "Kann der Ausfall eines Prop-Firms dasselbe Geisterorder-Problem verursachen?", a: "Ja. Bei Evaluierungs- und Funded-Konten werden Daten und Berechtigungen von der Firma gesteuert, sodass eine Störung auf Firmenseite dasselbe Verhalten mit nicht ausgeführten und Geisterorders hervorrufen kann. Halten Sie eine Backup-Verbindung bereit und befolgen Sie die aktuellen Ausfallregeln Ihrer Firma." },
+  ], es: [
+    { q: "¿Por qué no se ejecutó mi orden de Tradovate aunque el precio la atravesó?", a: "Casi siempre se debe a una caída por parte de Tradovate o a una pérdida de datos de mercado. Su orden estaba activa, pero dejaron de llegar las respuestas de la bolsa, por lo que ni se ejecutó ni se actualizó en pantalla. Revise la página de estado del servicio antes de suponer que su configuración está rota." },
+    { q: "¿Qué es exactamente una orden fantasma?", a: "Una orden que en su interfaz parece cancelada o desaparecida, pero que sigue activa en los servidores de Tradovate. Puede ejecutarse minutos después y dejarle una posición que creía cerrada, por lo que debe conciliar el panel Positions después de cualquier caída." },
+    { q: "Si se cae mi internet, ¿siguen activas mis órdenes stop y limit de Tradovate?", a: "Sí. Tradovate mantiene las órdenes activas en el servidor, de modo que los stops, límites y brackets siguen funcionando en la bolsa aunque usted esté desconectado. Vuelva a conectarse y verifique primero; no reenvíe a ciegas o podría acumular duplicados." },
+    { q: "¿Cómo cierro una posición cuando la plataforma está congelada?", a: "Llame al Emergency Trade Desk de Tradovate (312-423-2234 en el momento de redactar esto; confirme el número actual en la página de contacto de Tradovate). Pueden cerrar posiciones y cancelar órdenes activas en cuentas de corretaje reales cuando usted no puede acceder a la interfaz." },
+    { q: "¿Cómo sé si mi cancelación realmente se procesó?", a: "Observe que cada orden se confirme como Canceled en el panel Orders y luego contraste con el panel Positions. Durante una caída, una cancelación puede parecer no hacer nada y aun así dejar una orden activa, así que confíe en la posición, no en la cuadrícula de órdenes." },
+    { q: "¿\"Pending New\" significa que mi orden fue colocada?", a: "No con seguridad. Tradovate usa ese estado para indicar que no está recibiendo respuestas de la bolsa. En lugar de reenviar, deténgase y contacte con el soporte para confirmar el estado real de la orden." },
+    { q: "¿Debo reenviar una orden que parece atascada?", a: "No. Reenviar durante el retraso es la causa número uno de ejecuciones duplicadas y fantasma, y las solicitudes adicionales pueden activar límites de frecuencia que agravan el bloqueo. Espere, confirme la caída y concilie antes de actuar." },
+    { q: "¿Puede una caída de la prop firm causar el mismo problema de órdenes fantasma?", a: "Sí. En cuentas de evaluación y fondeadas, los datos y los permisos los controla la firma, por lo que una interrupción por parte de la firma puede producir el mismo comportamiento de órdenes sin ejecutar y fantasma. Mantenga una conexión de respaldo y siga las reglas vigentes de su firma ante caídas." },
+  ], fr: [
+    { q: "Pourquoi mon ordre Tradovate ne s'est-il pas exécuté alors que le prix l'a traversé ?", a: "Presque toujours à cause d'une panne côté Tradovate ou d'une coupure des données de marché. Votre ordre était actif, mais les réponses de la bourse ont cessé de revenir, de sorte qu'il ne s'est ni exécuté ni mis à jour à l'écran. Consultez la page d'état du service avant de supposer que votre configuration est défaillante." },
+    { q: "Qu'est-ce exactement qu'un ordre fantôme ?", a: "Un ordre qui semble annulé ou disparu de votre interface, mais qui reste actif sur les serveurs de Tradovate. Il peut s'exécuter quelques minutes plus tard et vous laisser une position que vous pensiez fermée, c'est pourquoi vous devez rapprocher le panneau Positions après toute panne." },
+    { q: "Si ma connexion internet tombe, mes ordres stop et limit Tradovate restent-ils actifs ?", a: "Oui. Tradovate conserve les ordres actifs côté serveur, de sorte que les stops, limites et brackets continuent de fonctionner à la bourse même lorsque vous êtes hors ligne. Reconnectez-vous et vérifiez d'abord ; ne renvoyez pas à l'aveugle, sous peine d'empiler des doublons." },
+    { q: "Comment clôturer une position lorsque la plateforme est figée ?", a: "Appelez l'Emergency Trade Desk de Tradovate (312-423-2234 au moment de la rédaction ; confirmez le numéro actuel sur la page de contact de Tradovate). Ils peuvent clôturer des positions et annuler des ordres actifs pour les comptes de courtage réels lorsque vous ne pouvez pas accéder à l'interface vous-même." },
+    { q: "Comment savoir si mon annulation a bien été prise en compte ?", a: "Surveillez la confirmation de chaque ordre en Canceled dans le panneau Orders, puis recoupez avec le panneau Positions. Lors d'une panne, une annulation peut sembler sans effet tout en laissant un ordre actif derrière elle ; fiez-vous donc à la position, pas à la grille d'ordres." },
+    { q: "« Pending New » signifie-t-il que mon ordre a été placé ?", a: "Pas avec certitude. Tradovate utilise ce statut pour indiquer qu'il ne reçoit pas de réponses d'ordres de la bourse. Plutôt que de renvoyer, arrêtez-vous et contactez le support pour confirmer l'état réel de l'ordre." },
+    { q: "Dois-je renvoyer un ordre qui semble bloqué ?", a: "Non. Renvoyer pendant un décalage est la cause numéro un des exécutions en double et fantômes, et les requêtes supplémentaires peuvent déclencher des limites de débit qui aggravent le blocage. Attendez, confirmez la panne et rapprochez avant d'agir." },
+    { q: "Une panne chez la prop firm peut-elle causer le même problème d'ordres fantômes ?", a: "Oui. Sur les comptes d'évaluation et financés, les données et les droits sont contrôlés par la firme ; une perturbation de son côté peut donc produire les mêmes ordres non exécutés et fantômes. Gardez une connexion de secours et suivez les règles de panne actuelles de votre firme." },
+  ], it: [
+    { q: "Perché il mio ordine Tradovate non è stato eseguito anche se il prezzo lo ha attraversato?", a: "Quasi sempre si tratta di un'interruzione lato Tradovate o di un calo dei dati di mercato. Il suo ordine era attivo, ma le risposte della borsa hanno smesso di tornare indietro, quindi non è stato né eseguito né aggiornato a schermo. Controlli la pagina di stato del servizio prima di presumere che la sua configurazione sia guasta." },
+    { q: "Che cos'è esattamente un ordine fantasma?", a: "Un ordine che nella sua interfaccia sembra annullato o sparito, ma che è ancora attivo sui server di Tradovate. Può essere eseguito minuti dopo e darle una posizione che riteneva chiusa, ed è per questo che deve riconciliare il pannello Positions dopo qualsiasi interruzione." },
+    { q: "Se cade la mia connessione internet, i miei ordini stop e limit su Tradovate restano attivi?", a: "Sì. Tradovate mantiene gli ordini attivi lato server, quindi stop, limit e bracket continuano a funzionare in borsa anche mentre Lei è offline. Si riconnetta e verifichi prima; non reinvii alla cieca, altrimenti potrebbe accumulare duplicati." },
+    { q: "Come chiudo una posizione quando la piattaforma è bloccata?", a: "Chiami l'Emergency Trade Desk di Tradovate (312-423-2234 al momento della stesura; confermi il numero attuale sulla pagina dei contatti di Tradovate). Possono chiudere posizioni e annullare ordini attivi per i conti di brokerage reali quando Lei non riesce a raggiungere l'interfaccia." },
+    { q: "Come faccio a sapere se il mio annullamento è andato a buon fine?", a: "Osservi che ogni ordine venga confermato come Canceled nel pannello Orders, quindi verifichi incrociando con il pannello Positions. Durante un'interruzione un annullamento può sembrare non fare nulla e lasciare comunque un ordine attivo, perciò si fidi della posizione, non della griglia degli ordini." },
+    { q: "\"Pending New\" significa che il mio ordine è stato inserito?", a: "Non con certezza. Tradovate usa questo stato per indicare che non sta ricevendo risposte sugli ordini dalla borsa. Invece di reinviare, si fermi e contatti il supporto per confermare lo stato reale dell'ordine." },
+    { q: "Devo reinviare un ordine che sembra bloccato?", a: "No. Reinviare durante il ritardo è la causa numero uno di esecuzioni duplicate e fantasma, e le richieste aggiuntive possono far scattare limiti di frequenza che aggravano il blocco. Attenda, confermi l'interruzione e riconcili prima di agire." },
+    { q: "Un'interruzione della prop firm può causare lo stesso problema di ordini fantasma?", a: "Sì. Sui conti di valutazione e finanziati, dati e autorizzazioni sono controllati dalla firm, quindi un disservizio lato firm può produrre lo stesso comportamento di ordini non eseguiti e fantasma. Mantenga una connessione di riserva e segua le regole attuali della sua firm in caso di interruzione." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von dieser weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas registradas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que confirme siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par celle-ci. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent au fil du temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, perciò confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

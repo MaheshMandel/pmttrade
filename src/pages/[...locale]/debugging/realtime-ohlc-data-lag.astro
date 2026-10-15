@@ -1,0 +1,609 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "realtime-ohlc-data-lag";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Real-Time & OHLC Data Lagging ~3-4s";
+const META_DESCRIPTION =
+  "Tradovate real-time and OHLC data lagging 3-4 seconds? Learn why the delay is usually a clock or feed artifact and how to verify timing before you panic.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate Echtzeit- & OHLC-Daten mit ~3-4 s Verzögerung", es: "Datos en tiempo real y OHLC de Tradovate con retraso de ~3-4 s", fr: "Données temps réel et OHLC Tradovate avec un décalage de ~3-4 s", it: "Dati in tempo reale e OHLC di Tradovate con ritardo di ~3-4 s" },
+  dek: { en: "Your Tradovate chart ticks over a few seconds behind what you expected. Most of the time there's nothing broken, here's how to verify the timing and find the real cause when there is one.", de: "Ihr Tradovate-Chart tickt einige Sekunden später, als Sie erwartet haben. Meist ist nichts defekt – hier erfahren Sie, wie Sie das Timing überprüfen und die tatsächliche Ursache finden, falls es eine gibt.", es: "Su gráfico de Tradovate avanza unos segundos por detrás de lo que esperaba. La mayoría de las veces no hay nada roto: aquí le explicamos cómo verificar la sincronización y encontrar la causa real cuando la hay.", fr: "Votre graphique Tradovate avance quelques secondes derrière ce que vous attendiez. La plupart du temps, rien n'est cassé : voici comment vérifier le timing et trouver la vraie cause lorsqu'il y en a une.", it: "Il Suo grafico Tradovate avanza qualche secondo dietro rispetto a quanto si aspettava. Nella maggior parte dei casi non c'è nulla di rotto: ecco come verificare la tempistica e trovare la vera causa quando c'è." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You're scalping ES or NQ, your Tradovate chart ticks over, and the print lands three or four seconds later than you expected, so your first move is to tear your settings apart hunting for whatever broke the feed. Here's the catch: most of the time, there's nothing to find. A small 3-4 second lag on a Tradovate feed is common, and the &ldquo;delay&rdquo; you're measuring is usually an artifact of <em>how</em> you're measuring it, not a feed that's genuinely broken. It shows up two ways that are really the same story: <code>md</code> and <code>chart</code> messages landing about 3-4 seconds behind the Tradovate clock, and minute candles that finish forming 2-3 seconds before the countdown timer resets. Different screen, same root cause." },
+    { type: "paragraph", html: "This guide walks you through validating the timing first, isolating the real cause second, and knowing when a lag is actually worth escalating to support. And if you automate through PickMyTrade, here's the good news up front: a cosmetic few-second lag on your chart never touches when your automated order fires. More on that below." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Tradovate Data Lag",
+      items: [
+        "<strong class='text-white'>Measure against a trusted clock, not your PC clock.</strong> A drifting local clock makes a healthy feed look seconds late when it isn't.",
+        "<strong class='text-white'>Sync your system time.</strong> On Windows, turn on <em>Set time automatically</em>, then <em>Sync now</em>; re-check after 24 hours, since clocks drift back out.",
+        "<strong class='text-white'>Keep the Tradovate tab in the foreground.</strong> Background browser tabs get throttled and can appear to stall or lag.",
+        "<strong class='text-white'>Whitelist Tradovate in your antivirus.</strong> An antivirus &ldquo;mining protection&rdquo; mode can throttle the stream and cause severe lag.",
+        "<strong class='text-white'>Check your connection.</strong> Wi-Fi, VPNs, and congested networks add visible latency on top of any feed delay.",
+        "<strong class='text-white'>Expect a few seconds either way.</strong> A small, steady lag is normal behavior, not automatically a fault.",
+      ],
+    },
+    { type: "heading", text: "What a “3-4 Second Data Lag” in Tradovate Actually Means" },
+    { type: "paragraph", html: "The first thing to get straight: most &ldquo;delay&rdquo; reports are really <em>timestamp-comparison</em> reports. You measure lag by comparing the timestamp inside a Tradovate message (or the last painted candle) against your own computer's clock. If those two clocks disagree, the feed looks delayed by exactly the amount your clock is wrong, even when the data itself is arriving right on time. A consistent 3-4 second offset that won't go away often traces back to the PC clock: sync it against an atomic-clock reference and it drifts back out of sync within 24 hours. Move to a machine with correct time and the &ldquo;lag&rdquo; vanishes." },
+    { type: "paragraph", html: "The second thing to get straight: a truly tiny end-to-end delay is normal for any hosted futures feed. Data travels from the exchange, through an upstream market-data provider, into Tradovate's servers, across the internet to your browser or app, and finally onto the screen. Every hop adds milliseconds. A few seconds of cumulative, <em>steady</em> delay sits well within the range this feed has shown for years, and it isn't evidence of a broken configuration." },
+    { type: "paragraph", html: "Where it stops being normal is when the lag is large (tens of seconds to minutes), <em>growing</em> over a session, or paired with wrong values, closing prices that don't match, or bars that freeze entirely. That pattern points to a stale subscription, a throttled process, or an outage, and those are the cases worth actively fixing." },
+    { type: "heading", text: "Top Causes of Tradovate Data Lag in 2026" },
+    { type: "heading", text: "1. Your local clock has drifted" },
+    { type: "paragraph", html: "This is the most common false alarm. Windows and macOS clocks quietly drift, and even a machine you synced yesterday can be several seconds off today. Because you're benchmarking the feed against that clock, a drifted clock manufactures a &ldquo;delay&rdquo; that lives entirely on your desk. Rule this out first, before you touch anything else." },
+    { type: "heading", text: "2. Browser tab throttling" },
+    { type: "paragraph", html: "Modern browsers deliberately throttle background tabs to save power. If Tradovate Web is sitting behind another tab or minimized, its WebSocket updates and timers can slow down, so the chart appears to stall and then jump when you click back to it. Background-tab throttling is a prime suspect any time chart data looks delayed on the web app." },
+    { type: "heading", text: "3. Antivirus or “mining protection” throttling the stream" },
+    { type: "paragraph", html: "Some security suites police high-frequency network traffic aggressively. Running Norton with a &ldquo;BTC mining&rdquo; protection option left enabled has produced significant data delay on the live feed. Any antivirus feature that inspects or rate-limits the live data socket can cause the same symptom. Product names and setting labels vary, so check the current option in your own AV." },
+    { type: "heading", text: "4. Network latency, Wi-Fi, and VPNs" },
+    { type: "paragraph", html: "Every layer between you and Tradovate adds delay. Wi-Fi with interference, a VPN routing you through a distant server, or a congested home network all pile latency on top of the feed. It's also why the lag can look worse at the cash open, when everyone's platform is hammering the same servers at once." },
+    { type: "heading", text: "5. A stale subscription or shared upstream feed" },
+    { type: "paragraph", html: "For API and bridge users, a chart subscription that's been open for hours can quietly fall behind, delays commonly appear only after roughly two hours of continuous operation. Separately, Tradovate shares an upstream market-data provider with other platforms, so a brief hiccup at that provider can surface as near-identical lag across several brokers at the same time. If the delay shows up everywhere at once, the cause is upstream, not your setup." },
+    { type: "heading", text: "How to Fix Tradovate Data Lag: Step-by-Step" },
+    { type: "heading", text: "Fixing a Local Clock That Has Drifted" },
+    { type: "paragraph", html: "Rule out the most common cause before touching anything else:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Enable automatic time sync", html: "Open your operating system's date and time settings. On Windows, turn on <strong class='text-white'>Set time automatically</strong>, then click <strong class='text-white'>Sync now</strong>." },
+        { title: "Confirm the sync result", html: "Note the result, Windows shows the last successful sync time." },
+        { title: "Re-measure against a trusted reference", html: "Re-measure the lag against a known-good reference (a phone showing network time, or a public &ldquo;atomic clock&rdquo; web page), not your PC clock." },
+        { title: "Re-sync regularly", html: "Because clocks drift back out within a day, re-sync regularly if you rely on tight timing." },
+      ],
+    },
+    { type: "heading", text: "Fixing Browser Throttling and a Stale Subscription" },
+    { type: "paragraph", html: "If the clock is clean and the chart still lags on the web app:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Keep the tab in the foreground", html: "Bring the Tradovate tab to the <strong class='text-white'>foreground</strong> and keep it there, don't leave it minimized behind other windows." },
+        { title: "Refresh the browser tab", html: "<strong class='text-white'>Refresh</strong> the browser tab (F5 / Ctrl+R) to tear down and rebuild the data connection from scratch." },
+        { title: "Restart the desktop or mobile app", html: "On the <strong class='text-white'>desktop app</strong>, close and reopen it, then sign back in; on <strong class='text-white'>mobile</strong>, force-close and relaunch." },
+        { title: "Re-subscribe on a schedule (API/bridge)", html: "<strong class='text-white'>API / bridge users:</strong> monitor your bar timestamps and re-subscribe when the latest bar drifts more than a minute or two from current time, restart the subscription whenever the bar time isn't within about two minutes of now. A quote stream can also be more responsive than a chart stream for real-time reads." },
+      ],
+    },
+    { type: "heading", text: "Fixing Antivirus Throttling" },
+    { type: "paragraph", html: "If lag persists on a healthy clock and connection, suspect security software:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Find the throttling feature", html: "Open your antivirus/security suite and look for any feature that throttles or inspects background/high-frequency network traffic (labels like &ldquo;mining protection,&rdquo; &ldquo;background app management,&rdquo; or &ldquo;network inspection&rdquo; vary by product)." },
+        { title: "Allow-list Tradovate or disable it", html: "Add the Tradovate desktop app and/or your browser to the allow-list, or disable the specific throttling feature." },
+        { title: "Restart and re-measure", html: "Restart Tradovate and re-measure. This is the exact class of fix for the &ldquo;BTC mining&rdquo; antivirus option that causes significant delay." },
+      ],
+    },
+    { type: "heading", text: "Fixing Network Latency and Connection Drops" },
+    { type: "paragraph", html: "Give the feed the cleanest path you can:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Prefer a wired connection", html: "Prefer a <strong class='text-white'>wired connection</strong> over Wi-Fi where possible, and disable any <strong class='text-white'>VPN</strong> that isn't required." },
+        { title: "Reduce bandwidth contention", html: "Close bandwidth-heavy apps and extra chart tabs during active trading to reduce contention." },
+        { title: "Watch the connection indicator", html: "Watch Tradovate's connection/status indicator, if it shows reconnecting or a data-feed warning, the lag is a connection problem, not a settings problem." },
+      ],
+    },
+    { type: "heading", text: "Knowing When to Escalate to Support" },
+    { type: "paragraph", html: "A <em>steady</em> few-second offset that traces to your clock or network is expected and doesn't need a ticket. Escalate when the lag is large, keeps growing through the session, or comes with wrong closing prices or frozen bars, and when you've already ruled out the clock, browser, antivirus, and connection. Contact Tradovate support (or your prop firm, if it owns the account) with concrete detail: the symbol, the measured delay, your platform, and the timestamps you compared. That evidence is what lets them separate a real feed fault from a local timing artifact." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Likely Meaning", "Fix"],
+      rows: [
+        ["<code>md</code>/<code>chart</code> messages ~3-4s behind the clock", "Local PC clock has drifted", "Sync system time; re-measure against a trusted clock"],
+        ["Minute candle completes a few seconds before the timer resets", "Small, steady end-to-end feed delay (normal)", "Confirm timing vs. a trusted clock; expect a few seconds"],
+        ["Chart stalls, then jumps when you click back to the tab", "Browser throttling a background tab", "Keep the Tradovate tab in the foreground; refresh"],
+        ["Severe delay only with a specific antivirus running", "Security suite throttling the data socket", "Whitelist Tradovate / disable the throttling feature"],
+        ["Delay grows after 1-2 hours of an open API stream", "Stale chart subscription", "Re-subscribe when bars drift &gt;2 min from now"],
+        ["Identical lag across Tradovate and other platforms at once", "Upstream shared-feed hiccup", "Wait it out; report to support if it persists"],
+      ],
+    },
+    { type: "heading", text: "Prevent This With PickMyTrade" },
+    { type: "paragraph", html: "A laggy chart is a <em>display</em> problem, but it becomes a <em>trading</em> problem the moment you assume the delay means your orders are late too. PickMyTrade keeps your execution off that critical path:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Alert-Driven Execution</strong>, orders fire from your TradingView alert logic, not from what your Tradovate chart has finished painting, so a few seconds of screen lag never delays the fill.",
+        "<strong class='text-white'>Timestamped Order Logs</strong>, every routed order is logged, so you can verify the actual fire time instead of eyeballing a cosmetic chart delay.",
+        "<strong class='text-white'>Connection-Resilient Routing</strong>, routing runs server-side, independent of your desktop's clock drift or a throttled browser tab.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, the same signal reaches every linked account at once, with no per-screen lag between them.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie scalpen ES oder NQ, Ihr Tradovate-Chart tickt, und der Print erscheint drei oder vier Sekunden später als erwartet. Ihr erster Impuls ist, Ihre Einstellungen auseinanderzunehmen, um herauszufinden, was den Feed kaputt gemacht hat. Doch das Problem ist: Meistens gibt es nichts zu finden. Eine kleine Verzögerung von 3-4 Sekunden bei einem Tradovate-Feed ist üblich, und die &ldquo;Verzögerung&rdquo;, die Sie messen, ist meist ein Artefakt dessen, <em>wie</em> Sie messen, und kein wirklich defekter Feed. Sie zeigt sich auf zwei Arten, die eigentlich dieselbe Geschichte sind: <code>md</code>- und <code>chart</code>-Nachrichten, die etwa 3-4 Sekunden hinter der Tradovate-Uhr eintreffen, und Minutenkerzen, die 2-3 Sekunden vor dem Zurücksetzen des Countdown-Timers fertig gebildet sind. Anderer Bildschirm, gleiche Ursache." },
+    { type: "paragraph",html: "Diese Anleitung führt Sie dadurch, zuerst das Timing zu validieren, danach die tatsächliche Ursache einzugrenzen und zu erkennen, wann sich eine Verzögerung wirklich für eine Eskalation an den Support lohnt. Und wenn Sie über PickMyTrade automatisieren, vorab die gute Nachricht: Ein kosmetischer Lag von wenigen Sekunden im Chart hat nie Einfluss darauf, wann Ihre automatisierte Order ausgelöst wird. Mehr dazu weiter unten." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste bei Tradovate-Datenverzögerung",
+      items: [
+        "<strong class='text-white'>Messen Sie gegen eine verlässliche Uhr, nicht gegen Ihre PC-Uhr.</strong> Eine abdriftende lokale Uhr lässt einen gesunden Feed um Sekunden verspätet erscheinen, obwohl er es nicht ist.",
+        "<strong class='text-white'>Synchronisieren Sie Ihre Systemzeit.</strong> Aktivieren Sie unter Windows <em>Set time automatically</em> und klicken Sie dann auf <em>Sync now</em>; prüfen Sie nach 24 Stunden erneut, da Uhren wieder abdriften.",
+        "<strong class='text-white'>Halten Sie den Tradovate-Tab im Vordergrund.</strong> Browser-Tabs im Hintergrund werden gedrosselt und können stocken oder verzögert wirken.",
+        "<strong class='text-white'>Setzen Sie Tradovate in Ihrem Antivirenprogramm auf die Whitelist.</strong> Ein &ldquo;Mining-Schutz&rdquo;-Modus kann den Stream drosseln und starken Lag verursachen.",
+        "<strong class='text-white'>Prüfen Sie Ihre Verbindung.</strong> WLAN, VPNs und überlastete Netzwerke fügen zusätzlich zu jeder Feed-Verzögerung sichtbare Latenz hinzu.",
+        "<strong class='text-white'>Rechnen Sie mit einigen Sekunden in beide Richtungen.</strong> Ein kleiner, gleichmäßiger Lag ist normales Verhalten und nicht automatisch ein Fehler.",
+      ],
+    },
+    { type: "heading",text: "Was eine „Datenverzögerung von 3-4 Sekunden“ in Tradovate tatsächlich bedeutet" },
+    { type: "paragraph",html: "Zuerst sollten Sie festhalten: Die meisten &ldquo;Verzögerungs&rdquo;-Meldungen sind in Wirklichkeit <em>Zeitstempel-Vergleichs</em>-Meldungen. Sie messen den Lag, indem Sie den Zeitstempel in einer Tradovate-Nachricht (oder die zuletzt gezeichnete Kerze) mit der Uhr Ihres eigenen Computers vergleichen. Weichen diese beiden Uhren voneinander ab, erscheint der Feed genau um den Betrag verzögert, um den Ihre Uhr falsch geht – auch wenn die Daten pünktlich eintreffen. Ein konstanter Versatz von 3-4 Sekunden, der nicht verschwindet, lässt sich oft auf die PC-Uhr zurückführen: Synchronisieren Sie sie mit einer Atomuhr-Referenz, und sie driftet innerhalb von 24 Stunden wieder auseinander. Wechseln Sie auf einen Rechner mit korrekter Zeit, und der &ldquo;Lag&rdquo; verschwindet." },
+    { type: "paragraph",html: "Zweitens: Eine wirklich winzige Ende-zu-Ende-Verzögerung ist bei jedem gehosteten Futures-Feed normal. Die Daten laufen von der Börse über einen vorgelagerten Marktdatenanbieter in die Server von Tradovate, über das Internet in Ihren Browser oder Ihre App und schließlich auf den Bildschirm. Jede Station fügt Millisekunden hinzu. Eine kumulierte, <em>gleichmäßige</em> Verzögerung von wenigen Sekunden liegt weit innerhalb dessen, was dieser Feed seit Jahren zeigt, und ist kein Beleg für eine fehlerhafte Konfiguration." },
+    { type: "paragraph",html: "Nicht mehr normal wird es, wenn der Lag groß ist (zehn Sekunden bis Minuten), im Verlauf einer Sitzung <em>wächst</em> oder mit falschen Werten, nicht passenden Schlusskursen oder komplett eingefrorenen Bars einhergeht. Dieses Muster deutet auf ein veraltetes Abonnement, einen gedrosselten Prozess oder einen Ausfall hin – und genau diese Fälle lohnt es sich aktiv zu beheben." },
+    { type: "heading",text: "Häufigste Ursachen für Tradovate-Datenverzögerung 2026" },
+    { type: "heading",text: "1. Ihre lokale Uhr ist abgedriftet" },
+    { type: "paragraph",html: "Dies ist der häufigste Fehlalarm. Windows- und macOS-Uhren driften unbemerkt, und selbst ein Rechner, den Sie gestern synchronisiert haben, kann heute mehrere Sekunden danebenliegen. Da Sie den Feed an dieser Uhr messen, erzeugt eine abgedriftete Uhr eine &ldquo;Verzögerung&rdquo;, die ausschließlich an Ihrem Schreibtisch entsteht. Schließen Sie das zuerst aus, bevor Sie irgendetwas anderes anfassen." },
+    { type: "heading",text: "2. Drosselung von Browser-Tabs" },
+    { type: "paragraph",html: "Moderne Browser drosseln Hintergrund-Tabs gezielt, um Energie zu sparen. Liegt Tradovate Web hinter einem anderen Tab oder ist minimiert, können seine WebSocket-Updates und Timer langsamer werden, sodass der Chart stockt und dann springt, wenn Sie zurückklicken. Die Drosselung von Hintergrund-Tabs ist immer dann ein Hauptverdächtiger, wenn Chartdaten in der Web-App verzögert wirken." },
+    { type: "heading",text: "3. Antivirus oder „Mining-Schutz“ drosselt den Stream" },
+    { type: "paragraph",html: "Manche Sicherheitssuiten überwachen hochfrequenten Netzwerkverkehr sehr aggressiv. Der Betrieb von Norton mit aktivierter &ldquo;BTC-Mining&rdquo;-Schutzoption hat bereits zu erheblicher Datenverzögerung im Live-Feed geführt. Jede Antivirenfunktion, die den Live-Daten-Socket prüft oder in der Rate begrenzt, kann dasselbe Symptom auslösen. Produktnamen und Einstellungsbezeichnungen variieren, prüfen Sie daher die aktuelle Option in Ihrem eigenen Antivirenprogramm." },
+    { type: "heading",text: "4. Netzwerklatenz, WLAN und VPNs" },
+    { type: "paragraph",html: "Jede Schicht zwischen Ihnen und Tradovate fügt Verzögerung hinzu. WLAN mit Störungen, ein VPN, das Sie über einen weit entfernten Server leitet, oder ein überlastetes Heimnetzwerk addieren Latenz zum Feed. Das ist auch der Grund, warum der Lag bei der Kassaeröffnung schlimmer wirken kann, wenn alle Plattformen gleichzeitig dieselben Server beanspruchen." },
+    { type: "heading",text: "5. Ein veraltetes Abonnement oder ein gemeinsam genutzter Upstream-Feed" },
+    { type: "paragraph",html: "Bei API- und Bridge-Nutzern kann ein stundenlang geöffnetes Chart-Abonnement unbemerkt zurückfallen; Verzögerungen treten häufig erst nach etwa zwei Stunden Dauerbetrieb auf. Außerdem teilt sich Tradovate einen vorgelagerten Marktdatenanbieter mit anderen Plattformen, sodass ein kurzer Aussetzer bei diesem Anbieter als nahezu identischer Lag bei mehreren Brokern gleichzeitig sichtbar werden kann. Tritt die Verzögerung überall gleichzeitig auf, liegt die Ursache upstream und nicht in Ihrem Setup." },
+    { type: "heading",text: "So beheben Sie die Tradovate-Datenverzögerung: Schritt für Schritt" },
+    { type: "heading",text: "Eine abgedriftete lokale Uhr korrigieren" },
+    { type: "paragraph",html: "Schließen Sie die häufigste Ursache aus, bevor Sie etwas anderes anfassen:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Automatische Zeitsynchronisierung aktivieren", html: "Öffnen Sie die Datums- und Uhrzeiteinstellungen Ihres Betriebssystems. Aktivieren Sie unter Windows <strong class='text-white'>Set time automatically</strong> und klicken Sie dann auf <strong class='text-white'>Sync now</strong>." },
+        { title: "Ergebnis der Synchronisierung bestätigen", html: "Beachten Sie das Ergebnis – Windows zeigt den Zeitpunkt der letzten erfolgreichen Synchronisierung an." },
+        { title: "Erneut gegen eine verlässliche Referenz messen", html: "Messen Sie den Lag erneut gegen eine verlässliche Referenz (ein Smartphone mit Netzwerkzeit oder eine öffentliche &ldquo;Atomuhr&rdquo;-Webseite), nicht gegen Ihre PC-Uhr." },
+        { title: "Regelmäßig neu synchronisieren", html: "Da Uhren innerhalb eines Tages wieder abdriften, synchronisieren Sie regelmäßig neu, wenn Sie auf präzises Timing angewiesen sind." },
+      ],
+    },
+    { type: "heading",text: "Browser-Drosselung und veraltetes Abonnement beheben" },
+    { type: "paragraph",html: "Wenn die Uhr in Ordnung ist und der Chart in der Web-App trotzdem verzögert:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Tab im Vordergrund halten", html: "Holen Sie den Tradovate-Tab in den <strong class='text-white'>Vordergrund</strong> und lassen Sie ihn dort – lassen Sie ihn nicht minimiert hinter anderen Fenstern." },
+        { title: "Browser-Tab aktualisieren", html: "<strong class='text-white'>Aktualisieren</strong> Sie den Browser-Tab (F5 / Strg+R), um die Datenverbindung komplett abzubauen und neu aufzubauen." },
+        { title: "Desktop- oder Mobile-App neu starten", html: "Schließen Sie die <strong class='text-white'>Desktop-App</strong> und öffnen Sie sie erneut, melden Sie sich wieder an; erzwingen Sie auf dem <strong class='text-white'>Mobilgerät</strong> das Beenden der App und starten Sie sie neu." },
+        { title: "Nach Zeitplan neu abonnieren (API/Bridge)", html: "<strong class='text-white'>API-/Bridge-Nutzer:</strong> Überwachen Sie Ihre Bar-Zeitstempel und abonnieren Sie neu, wenn die letzte Bar mehr als ein bis zwei Minuten von der aktuellen Zeit abweicht; starten Sie das Abonnement neu, sobald die Bar-Zeit nicht innerhalb von etwa zwei Minuten der aktuellen Zeit liegt. Ein Quote-Stream kann für Echtzeit-Abfragen außerdem reaktionsschneller sein als ein Chart-Stream." },
+      ],
+    },
+    { type: "heading",text: "Antivirus-Drosselung beheben" },
+    { type: "paragraph",html: "Bleibt der Lag trotz gesunder Uhr und Verbindung bestehen, verdächtigen Sie die Sicherheitssoftware:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Die drosselnde Funktion finden", html: "Öffnen Sie Ihr Antivirenprogramm bzw. Ihre Sicherheitssuite und suchen Sie nach einer Funktion, die Hintergrund- bzw. hochfrequenten Netzwerkverkehr drosselt oder prüft (Bezeichnungen wie &ldquo;Mining-Schutz&rdquo;, &ldquo;Hintergrund-App-Verwaltung&rdquo; oder &ldquo;Netzwerkprüfung&rdquo; variieren je nach Produkt)." },
+        { title: "Tradovate auf die Positivliste setzen oder deaktivieren", html: "Fügen Sie die Tradovate-Desktop-App und/oder Ihren Browser der Positivliste hinzu oder deaktivieren Sie die konkrete Drosselungsfunktion." },
+        { title: "Neu starten und erneut messen", html: "Starten Sie Tradovate neu und messen Sie erneut. Genau diese Art von Lösung greift bei der &ldquo;BTC-Mining&rdquo;-Antivirenoption, die erhebliche Verzögerung verursacht." },
+      ],
+    },
+    { type: "heading",text: "Netzwerklatenz und Verbindungsabbrüche beheben" },
+    { type: "paragraph",html: "Geben Sie dem Feed den saubersten Weg, den Sie bieten können:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Kabelverbindung bevorzugen", html: "Bevorzugen Sie nach Möglichkeit eine <strong class='text-white'>Kabelverbindung</strong> gegenüber WLAN und deaktivieren Sie jedes <strong class='text-white'>VPN</strong>, das nicht erforderlich ist." },
+        { title: "Bandbreitenkonkurrenz verringern", html: "Schließen Sie bandbreitenintensive Apps und zusätzliche Chart-Tabs während des aktiven Handels, um Konkurrenz um die Bandbreite zu verringern." },
+        { title: "Verbindungsanzeige beobachten", html: "Beobachten Sie die Verbindungs-/Statusanzeige von Tradovate – zeigt sie „Reconnecting“ oder eine Datenfeed-Warnung, ist der Lag ein Verbindungsproblem und kein Einstellungsproblem." },
+      ],
+    },
+    { type: "heading",text: "Wann Sie an den Support eskalieren sollten" },
+    { type: "paragraph",html: "Ein <em>gleichmäßiger</em> Versatz von wenigen Sekunden, der auf Ihre Uhr oder Ihr Netzwerk zurückgeht, ist zu erwarten und erfordert kein Ticket. Eskalieren Sie, wenn der Lag groß ist, im Verlauf der Sitzung weiter wächst oder mit falschen Schlusskursen oder eingefrorenen Bars einhergeht – und wenn Sie Uhr, Browser, Antivirenprogramm und Verbindung bereits ausgeschlossen haben. Wenden Sie sich mit konkreten Angaben an den Tradovate-Support (oder an Ihre Prop-Firma, falls ihr das Konto gehört): das Symbol, die gemessene Verzögerung, Ihre Plattform und die verglichenen Zeitstempel. Diese Belege ermöglichen es dem Support, einen echten Feed-Fehler von einem lokalen Timing-Artefakt zu unterscheiden." },
+    { type: "heading",text: "Fehlerbehebungstabelle" },
+    { type: "table", headers: ["Symptom","Wahrscheinliche Bedeutung","Lösung"], rows: [
+      ["<code>md</code>-/<code>chart</code>-Nachrichten ~3-4 s hinter der Uhr","Lokale PC-Uhr ist abgedriftet","Systemzeit synchronisieren; erneut gegen eine verlässliche Uhr messen"],
+      ["Minutenkerze ist einige Sekunden vor dem Zurücksetzen des Timers fertig","Kleine, gleichmäßige Ende-zu-Ende-Feed-Verzögerung (normal)","Timing gegen eine verlässliche Uhr bestätigen; einige Sekunden einkalkulieren"],
+      ["Chart stockt und springt, wenn Sie zum Tab zurückklicken","Browser drosselt einen Hintergrund-Tab","Tradovate-Tab im Vordergrund halten; aktualisieren"],
+      ["Starke Verzögerung nur bei laufendem bestimmtem Antivirenprogramm","Sicherheitssuite drosselt den Daten-Socket","Tradovate auf die Whitelist setzen / Drosselungsfunktion deaktivieren"],
+      ["Verzögerung wächst nach 1-2 Stunden eines offenen API-Streams","Veraltetes Chart-Abonnement","Neu abonnieren, wenn Bars &gt;2 Min. von der aktuellen Zeit abweichen"],
+      ["Identischer Lag bei Tradovate und anderen Plattformen gleichzeitig","Aussetzer im gemeinsam genutzten Upstream-Feed","Abwarten; dem Support melden, falls es anhält"],
+    ] },
+    { type: "heading",text: "Vorbeugen mit PickMyTrade" },
+    { type: "paragraph",html: "Ein träger Chart ist ein <em>Anzeige</em>problem, wird aber in dem Moment zu einem <em>Trading</em>problem, in dem Sie annehmen, die Verzögerung bedeute, dass auch Ihre Orders verspätet sind. PickMyTrade hält Ihre Ausführung aus diesem kritischen Pfad heraus:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Alert-gesteuerte Ausführung</strong> – Orders werden aus Ihrer TradingView-Alert-Logik ausgelöst, nicht aus dem, was Ihr Tradovate-Chart gerade fertig gezeichnet hat; einige Sekunden Bildschirm-Lag verzögern also nie die Ausführung.",
+        "<strong class='text-white'>Order-Logs mit Zeitstempel</strong> – jede weitergeleitete Order wird protokolliert, sodass Sie den tatsächlichen Auslösezeitpunkt überprüfen können, statt eine kosmetische Chart-Verzögerung nach Augenmaß zu beurteilen.",
+        "<strong class='text-white'>Verbindungsrobustes Routing</strong> – das Routing läuft serverseitig, unabhängig von der Uhrabweichung Ihres Desktops oder einem gedrosselten Browser-Tab.",
+        "<strong class='text-white'>Multi-Account-Synchronisierung</strong> – dasselbe Signal erreicht alle verknüpften Konten gleichzeitig, ohne Lag pro Bildschirm zwischen ihnen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Está haciendo scalping en ES o NQ, su gráfico de Tradovate avanza y el precio llega tres o cuatro segundos más tarde de lo esperado, así que su primer impulso es desmontar toda su configuración buscando lo que rompió el feed. Aquí está el detalle: la mayoría de las veces no hay nada que encontrar. Un pequeño retraso de 3-4 segundos en un feed de Tradovate es habitual, y el &ldquo;retraso&rdquo; que está midiendo suele ser un artefacto de <em>cómo</em> lo mide, no un feed realmente roto. Se manifiesta de dos maneras que en realidad son la misma historia: mensajes <code>md</code> y <code>chart</code> que llegan unos 3-4 segundos por detrás del reloj de Tradovate, y velas de un minuto que terminan de formarse 2-3 segundos antes de que se reinicie el temporizador de cuenta atrás. Pantalla distinta, misma causa raíz." },
+    { type: "paragraph",html: "Esta guía le lleva a validar primero la sincronización, aislar después la causa real y saber cuándo un retraso merece de verdad escalarse a soporte. Y si automatiza con PickMyTrade, la buena noticia por adelantado: un retraso cosmético de unos segundos en su gráfico nunca afecta al momento en que se lanza su orden automatizada. Más sobre esto más abajo." },
+    {
+      type: "checklist",
+      heading: "Lista de comprobación rápida para el retraso de datos de Tradovate",
+      items: [
+        "<strong class='text-white'>Mida con un reloj de confianza, no con el reloj de su PC.</strong> Un reloj local desajustado hace que un feed sano parezca tardar segundos cuando no es así.",
+        "<strong class='text-white'>Sincronice la hora del sistema.</strong> En Windows, active <em>Set time automatically</em> y luego <em>Sync now</em>; vuelva a comprobarlo tras 24 horas, ya que los relojes vuelven a desajustarse.",
+        "<strong class='text-white'>Mantenga la pestaña de Tradovate en primer plano.</strong> Las pestañas del navegador en segundo plano se limitan y pueden parecer detenidas o con lag.",
+        "<strong class='text-white'>Añada Tradovate a las excepciones de su antivirus.</strong> Un modo de &ldquo;protección contra minería&rdquo; puede limitar el flujo y causar un lag severo.",
+        "<strong class='text-white'>Revise su conexión.</strong> El Wi-Fi, las VPN y las redes congestionadas añaden latencia visible sobre cualquier retraso del feed.",
+        "<strong class='text-white'>Espere unos segundos en uno u otro sentido.</strong> Un lag pequeño y constante es un comportamiento normal, no necesariamente un fallo.",
+      ],
+    },
+    { type: "heading",text: "Qué significa realmente un «retraso de datos de 3-4 segundos» en Tradovate" },
+    { type: "paragraph",html: "Lo primero que hay que tener claro: la mayoría de los informes de &ldquo;retraso&rdquo; son en realidad informes de <em>comparación de marcas de tiempo</em>. Usted mide el lag comparando la marca de tiempo dentro de un mensaje de Tradovate (o la última vela dibujada) con el reloj de su propio ordenador. Si esos dos relojes discrepan, el feed parece retrasado exactamente en la cantidad en que su reloj está equivocado, incluso cuando los datos llegan puntuales. Un desfase constante de 3-4 segundos que no desaparece suele deberse al reloj del PC: sincronícelo con una referencia de reloj atómico y se vuelve a desajustar en 24 horas. Pásese a una máquina con la hora correcta y el &ldquo;lag&rdquo; desaparece." },
+    { type: "paragraph",html: "Lo segundo: un retraso de extremo a extremo realmente diminuto es normal en cualquier feed de futuros alojado. Los datos viajan desde el mercado, pasan por un proveedor de datos ascendente, llegan a los servidores de Tradovate, cruzan internet hasta su navegador o aplicación y por fin aparecen en pantalla. Cada salto añade milisegundos. Unos segundos de retraso acumulado y <em>constante</em> están dentro del rango que este feed ha mostrado durante años y no son prueba de una configuración rota." },
+    { type: "paragraph",html: "Deja de ser normal cuando el lag es grande (decenas de segundos a minutos), <em>crece</em> a lo largo de la sesión o va acompañado de valores erróneos, precios de cierre que no coinciden o barras que se congelan por completo. Ese patrón apunta a una suscripción obsoleta, un proceso limitado o una caída, y esos son los casos que merece la pena corregir activamente." },
+    { type: "heading",text: "Principales causas del retraso de datos de Tradovate en 2026" },
+    { type: "heading",text: "1. Su reloj local se ha desajustado" },
+    { type: "paragraph",html: "Esta es la falsa alarma más común. Los relojes de Windows y macOS se desvían silenciosamente, e incluso una máquina que sincronizó ayer puede estar varios segundos desfasada hoy. Como usted compara el feed con ese reloj, un reloj desajustado fabrica un &ldquo;retraso&rdquo; que vive por completo en su escritorio. Descarte esto primero, antes de tocar cualquier otra cosa." },
+    { type: "heading",text: "2. Limitación de pestañas del navegador" },
+    { type: "paragraph",html: "Los navegadores modernos limitan deliberadamente las pestañas en segundo plano para ahorrar energía. Si Tradovate Web está detrás de otra pestaña o minimizado, sus actualizaciones WebSocket y temporizadores pueden ralentizarse, de modo que el gráfico parece detenerse y luego salta al volver a hacer clic. La limitación de pestañas en segundo plano es un sospechoso principal siempre que los datos del gráfico parezcan retrasados en la aplicación web." },
+    { type: "heading",text: "3. Antivirus o «protección contra minería» limitando el flujo" },
+    { type: "paragraph",html: "Algunas suites de seguridad vigilan de forma agresiva el tráfico de red de alta frecuencia. Ejecutar Norton con una opción de protección contra &ldquo;minería de BTC&rdquo; activada ha producido un retraso de datos significativo en el feed en vivo. Cualquier función antivirus que inspeccione o limite la tasa del socket de datos en vivo puede causar el mismo síntoma. Los nombres de producto y las etiquetas de ajustes varían, así que revise la opción actual en su propio antivirus." },
+    { type: "heading",text: "4. Latencia de red, Wi-Fi y VPN" },
+    { type: "paragraph",html: "Cada capa entre usted y Tradovate añade retraso. Un Wi-Fi con interferencias, una VPN que le enruta por un servidor lejano o una red doméstica congestionada suman latencia al feed. También es la razón por la que el lag puede verse peor en la apertura del mercado de contado, cuando todas las plataformas golpean los mismos servidores a la vez." },
+    { type: "heading",text: "5. Una suscripción obsoleta o un feed ascendente compartido" },
+    { type: "paragraph",html: "Para usuarios de API y puentes, una suscripción de gráfico abierta durante horas puede quedarse atrás silenciosamente; los retrasos suelen aparecer solo después de unas dos horas de funcionamiento continuo. Por otra parte, Tradovate comparte un proveedor de datos de mercado ascendente con otras plataformas, por lo que un fallo breve en ese proveedor puede aparecer como un lag casi idéntico en varios brokers al mismo tiempo. Si el retraso aparece en todas partes a la vez, la causa es ascendente, no su configuración." },
+    { type: "heading",text: "Cómo solucionar el retraso de datos de Tradovate: paso a paso" },
+    { type: "heading",text: "Corregir un reloj local desajustado" },
+    { type: "paragraph",html: "Descarte la causa más común antes de tocar cualquier otra cosa:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Active la sincronización horaria automática", html: "Abra los ajustes de fecha y hora de su sistema operativo. En Windows, active <strong class='text-white'>Set time automatically</strong> y luego haga clic en <strong class='text-white'>Sync now</strong>." },
+        { title: "Confirme el resultado de la sincronización", html: "Anote el resultado; Windows muestra la hora de la última sincronización correcta." },
+        { title: "Vuelva a medir con una referencia fiable", html: "Vuelva a medir el lag con una referencia fiable (un teléfono que muestre la hora de red o una página web pública de &ldquo;reloj atómico&rdquo;), no con el reloj de su PC." },
+        { title: "Sincronice con regularidad", html: "Como los relojes se desajustan de nuevo en un día, vuelva a sincronizar con regularidad si depende de una sincronización precisa." },
+      ],
+    },
+    { type: "heading",text: "Corregir la limitación del navegador y una suscripción obsoleta" },
+    { type: "paragraph",html: "Si el reloj está bien y el gráfico sigue con lag en la aplicación web:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Mantenga la pestaña en primer plano", html: "Traiga la pestaña de Tradovate al <strong class='text-white'>primer plano</strong> y manténgala ahí; no la deje minimizada detrás de otras ventanas." },
+        { title: "Actualice la pestaña del navegador", html: "<strong class='text-white'>Actualice</strong> la pestaña del navegador (F5 / Ctrl+R) para desmontar y reconstruir la conexión de datos desde cero." },
+        { title: "Reinicie la aplicación de escritorio o móvil", html: "En la <strong class='text-white'>aplicación de escritorio</strong>, ciérrela y vuelva a abrirla e inicie sesión de nuevo; en el <strong class='text-white'>móvil</strong>, fuerce el cierre y vuelva a abrirla." },
+        { title: "Vuelva a suscribirse de forma programada (API/puente)", html: "<strong class='text-white'>Usuarios de API / puente:</strong> supervise las marcas de tiempo de sus barras y vuelva a suscribirse cuando la última barra se desvíe más de uno o dos minutos de la hora actual; reinicie la suscripción siempre que la hora de la barra no esté dentro de unos dos minutos de la hora actual. Un flujo de cotizaciones también puede responder mejor que un flujo de gráfico para lecturas en tiempo real." },
+      ],
+    },
+    { type: "heading",text: "Corregir la limitación del antivirus" },
+    { type: "paragraph",html: "Si el lag persiste con un reloj y una conexión sanos, sospeche del software de seguridad:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Encuentre la función que limita", html: "Abra su antivirus o suite de seguridad y busque cualquier función que limite o inspeccione el tráfico de red en segundo plano o de alta frecuencia (etiquetas como &ldquo;protección contra minería&rdquo;, &ldquo;gestión de aplicaciones en segundo plano&rdquo; o &ldquo;inspección de red&rdquo; varían según el producto)." },
+        { title: "Añada Tradovate a excepciones o desactívelo", html: "Añada la aplicación de escritorio de Tradovate y/o su navegador a la lista de excepciones, o desactive la función de limitación concreta." },
+        { title: "Reinicie y vuelva a medir", html: "Reinicie Tradovate y vuelva a medir. Este es exactamente el tipo de solución para la opción de antivirus de &ldquo;minería de BTC&rdquo; que causa un retraso significativo." },
+      ],
+    },
+    { type: "heading",text: "Corregir la latencia de red y las caídas de conexión" },
+    { type: "paragraph",html: "Dé al feed el camino más limpio posible:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Prefiera una conexión por cable", html: "Prefiera una <strong class='text-white'>conexión por cable</strong> frente al Wi-Fi siempre que sea posible y desactive cualquier <strong class='text-white'>VPN</strong> que no sea necesaria." },
+        { title: "Reduzca la competencia por el ancho de banda", html: "Cierre las aplicaciones que consumen mucho ancho de banda y las pestañas de gráficos adicionales durante el trading activo para reducir la competencia por el ancho de banda." },
+        { title: "Observe el indicador de conexión", html: "Observe el indicador de conexión/estado de Tradovate; si muestra reconexión o una advertencia del feed de datos, el lag es un problema de conexión, no de ajustes." },
+      ],
+    },
+    { type: "heading",text: "Cuándo escalar al soporte" },
+    { type: "paragraph",html: "Un desfase <em>constante</em> de unos segundos que se debe a su reloj o a su red es lo esperado y no necesita un ticket. Escale cuando el lag sea grande, siga creciendo durante la sesión o venga acompañado de precios de cierre erróneos o barras congeladas, y cuando ya haya descartado el reloj, el navegador, el antivirus y la conexión. Contacte con el soporte de Tradovate (o con su firma de prop trading, si es la propietaria de la cuenta) con detalles concretos: el símbolo, el retraso medido, su plataforma y las marcas de tiempo que comparó. Esa evidencia es lo que les permite distinguir un fallo real del feed de un artefacto de sincronización local." },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma","Significado probable","Solución"], rows: [
+      ["Mensajes <code>md</code>/<code>chart</code> ~3-4 s por detrás del reloj","El reloj local del PC se ha desajustado","Sincronice la hora del sistema; vuelva a medir con un reloj de confianza"],
+      ["La vela de un minuto se completa unos segundos antes de que se reinicie el temporizador","Pequeño retraso constante de extremo a extremo del feed (normal)","Confirme la sincronización con un reloj de confianza; espere unos segundos"],
+      ["El gráfico se detiene y salta al volver a la pestaña","El navegador limita una pestaña en segundo plano","Mantenga la pestaña de Tradovate en primer plano; actualice"],
+      ["Retraso severo solo con un antivirus concreto en ejecución","La suite de seguridad limita el socket de datos","Añada Tradovate a excepciones / desactive la función de limitación"],
+      ["El retraso crece tras 1-2 horas de un flujo de API abierto","Suscripción de gráfico obsoleta","Vuelva a suscribirse cuando las barras se desvíen &gt;2 min de la hora actual"],
+      ["Lag idéntico en Tradovate y otras plataformas a la vez","Fallo del feed ascendente compartido","Espere; repórtelo al soporte si persiste"],
+    ] },
+    { type: "heading",text: "Evite esto con PickMyTrade" },
+    { type: "paragraph",html: "Un gráfico con lag es un problema de <em>visualización</em>, pero se convierte en un problema de <em>trading</em> en el momento en que supone que el retraso significa que sus órdenes también van tarde. PickMyTrade mantiene su ejecución fuera de ese camino crítico:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ejecución impulsada por alertas</strong>: las órdenes se lanzan desde la lógica de su alerta de TradingView, no desde lo que su gráfico de Tradovate haya terminado de dibujar, por lo que unos segundos de lag en pantalla nunca retrasan la ejecución.",
+        "<strong class='text-white'>Registros de órdenes con marca de tiempo</strong>: cada orden enrutada queda registrada, así que puede verificar la hora real de disparo en lugar de juzgar a ojo un retraso cosmético del gráfico.",
+        "<strong class='text-white'>Enrutamiento resistente a la conexión</strong>: el enrutamiento se ejecuta en el servidor, independiente de la deriva del reloj de su escritorio o de una pestaña del navegador limitada.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>: la misma señal llega a todas las cuentas vinculadas a la vez, sin lag por pantalla entre ellas.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous scalpez l'ES ou le NQ, votre graphique Tradovate avance, et le print arrive trois ou quatre secondes plus tard que prévu ; votre premier réflexe est donc de démonter vos réglages à la recherche de ce qui a cassé le flux. Voici le hic : la plupart du temps, il n'y a rien à trouver. Un petit décalage de 3-4 secondes sur un flux Tradovate est courant, et le &ldquo;retard&rdquo; que vous mesurez est généralement un artefact de <em>la façon</em> dont vous le mesurez, et non d'un flux réellement défaillant. Il se manifeste de deux façons qui sont en réalité la même histoire : des messages <code>md</code> et <code>chart</code> qui arrivent environ 3-4 secondes derrière l'horloge Tradovate, et des bougies à la minute qui finissent de se former 2-3 secondes avant la remise à zéro du compte à rebours. Écran différent, même cause." },
+    { type: "paragraph",html: "Ce guide vous accompagne pour valider d'abord le timing, isoler ensuite la vraie cause, et savoir quand un décalage mérite réellement d'être remonté au support. Et si vous automatisez avec PickMyTrade, voici la bonne nouvelle d'emblée : un lag cosmétique de quelques secondes sur votre graphique n'affecte jamais le moment où votre ordre automatisé est déclenché. Nous y revenons plus bas." },
+    {
+      type: "checklist",
+      heading: "Check-list rapide en cas de retard de données Tradovate",
+      items: [
+        "<strong class='text-white'>Mesurez avec une horloge de confiance, pas avec l'horloge de votre PC.</strong> Une horloge locale qui dérive fait paraître un flux sain en retard de plusieurs secondes alors qu'il ne l'est pas.",
+        "<strong class='text-white'>Synchronisez l'heure système.</strong> Sous Windows, activez <em>Set time automatically</em>, puis <em>Sync now</em> ; revérifiez après 24 heures, car les horloges dérivent de nouveau.",
+        "<strong class='text-white'>Gardez l'onglet Tradovate au premier plan.</strong> Les onglets de navigateur en arrière-plan sont bridés et peuvent sembler figés ou en retard.",
+        "<strong class='text-white'>Ajoutez Tradovate à la liste blanche de votre antivirus.</strong> Un mode de &ldquo;protection contre le minage&rdquo; peut brider le flux et provoquer un lag sévère.",
+        "<strong class='text-white'>Vérifiez votre connexion.</strong> Le Wi-Fi, les VPN et les réseaux saturés ajoutent une latence visible en plus de tout retard du flux.",
+        "<strong class='text-white'>Attendez-vous à quelques secondes dans un sens ou dans l'autre.</strong> Un lag faible et régulier est un comportement normal, pas automatiquement une panne.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie réellement un « décalage de données de 3-4 secondes » sur Tradovate" },
+    { type: "paragraph",html: "Premier point à bien comprendre : la plupart des signalements de &ldquo;retard&rdquo; sont en réalité des signalements de <em>comparaison d'horodatages</em>. Vous mesurez le lag en comparant l'horodatage contenu dans un message Tradovate (ou la dernière bougie dessinée) à l'horloge de votre propre ordinateur. Si ces deux horloges divergent, le flux paraît retardé exactement de l'écart de votre horloge, même lorsque les données arrivent pile à l'heure. Un décalage constant de 3-4 secondes qui ne disparaît pas s'explique souvent par l'horloge du PC : synchronisez-la sur une référence d'horloge atomique et elle dérive de nouveau en moins de 24 heures. Passez sur une machine à l'heure exacte et le &ldquo;lag&rdquo; disparaît." },
+    { type: "paragraph",html: "Deuxième point : un délai de bout en bout vraiment minime est normal pour tout flux de contrats à terme hébergé. Les données circulent de la bourse jusqu'à un fournisseur de données de marché en amont, puis vers les serveurs de Tradovate, à travers internet jusqu'à votre navigateur ou application, et enfin à l'écran. Chaque saut ajoute des millisecondes. Quelques secondes de retard cumulé et <em>régulier</em> restent bien dans la fourchette que ce flux affiche depuis des années et ne prouvent pas une configuration défaillante." },
+    { type: "paragraph",html: "Cela cesse d'être normal lorsque le lag est important (des dizaines de secondes à plusieurs minutes), <em>s'aggrave</em> au fil d'une séance ou s'accompagne de valeurs erronées, de cours de clôture qui ne correspondent pas ou de barres qui se figent complètement. Ce schéma indique un abonnement obsolète, un processus bridé ou une panne, et ce sont les cas qui valent la peine d'être corrigés activement." },
+    { type: "heading",text: "Principales causes du retard de données Tradovate en 2026" },
+    { type: "heading",text: "1. Votre horloge locale a dérivé" },
+    { type: "paragraph",html: "C'est la fausse alerte la plus courante. Les horloges Windows et macOS dérivent discrètement, et même une machine synchronisée hier peut avoir plusieurs secondes d'écart aujourd'hui. Comme vous comparez le flux à cette horloge, une horloge qui a dérivé fabrique un &ldquo;retard&rdquo; qui se trouve entièrement sur votre bureau. Écartez cette piste en premier, avant de toucher à quoi que ce soit d'autre." },
+    { type: "heading",text: "2. Bridage des onglets du navigateur" },
+    { type: "paragraph",html: "Les navigateurs modernes brident volontairement les onglets en arrière-plan pour économiser l'énergie. Si Tradovate Web se trouve derrière un autre onglet ou est réduit, ses mises à jour WebSocket et ses minuteurs peuvent ralentir, de sorte que le graphique semble se figer puis saute lorsque vous revenez dessus. Le bridage des onglets en arrière-plan est un suspect de premier plan chaque fois que les données du graphique semblent retardées dans l'application web." },
+    { type: "heading",text: "3. Un antivirus ou une « protection contre le minage » qui bride le flux" },
+    { type: "paragraph",html: "Certaines suites de sécurité surveillent de façon agressive le trafic réseau haute fréquence. Exécuter Norton avec une option de protection contre le &ldquo;minage de BTC&rdquo; laissée activée a provoqué un retard de données important sur le flux en direct. Toute fonction antivirus qui inspecte ou limite le débit du socket de données en direct peut causer le même symptôme. Les noms de produits et les libellés de paramètres varient ; vérifiez donc l'option actuelle dans votre propre antivirus." },
+    { type: "heading",text: "4. Latence réseau, Wi-Fi et VPN" },
+    { type: "paragraph",html: "Chaque couche entre vous et Tradovate ajoute du retard. Un Wi-Fi perturbé, un VPN qui vous fait passer par un serveur distant ou un réseau domestique saturé empilent de la latence sur le flux. C'est aussi pourquoi le lag peut sembler pire à l'ouverture du marché au comptant, quand toutes les plateformes sollicitent les mêmes serveurs en même temps." },
+    { type: "heading",text: "5. Un abonnement obsolète ou un flux amont partagé" },
+    { type: "paragraph",html: "Pour les utilisateurs d'API et de passerelles, un abonnement de graphique ouvert depuis des heures peut discrètement prendre du retard ; les décalages n'apparaissent souvent qu'après environ deux heures de fonctionnement continu. Par ailleurs, Tradovate partage un fournisseur de données de marché en amont avec d'autres plateformes, si bien qu'un bref incident chez ce fournisseur peut se manifester par un lag quasi identique chez plusieurs courtiers en même temps. Si le retard apparaît partout à la fois, la cause est en amont, pas votre installation." },
+    { type: "heading",text: "Comment corriger le retard de données Tradovate : pas à pas" },
+    { type: "heading",text: "Corriger une horloge locale qui a dérivé" },
+    { type: "paragraph",html: "Écartez la cause la plus courante avant de toucher à quoi que ce soit d'autre :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Activer la synchronisation automatique de l'heure", html: "Ouvrez les paramètres de date et d'heure de votre système d'exploitation. Sous Windows, activez <strong class='text-white'>Set time automatically</strong>, puis cliquez sur <strong class='text-white'>Sync now</strong>." },
+        { title: "Confirmer le résultat de la synchronisation", html: "Notez le résultat : Windows affiche l'heure de la dernière synchronisation réussie." },
+        { title: "Mesurer de nouveau avec une référence fiable", html: "Mesurez de nouveau le lag avec une référence fiable (un téléphone affichant l'heure réseau ou une page web publique d'&ldquo;horloge atomique&rdquo;), et non avec l'horloge de votre PC." },
+        { title: "Resynchroniser régulièrement", html: "Comme les horloges dérivent de nouveau en une journée, resynchronisez régulièrement si vous dépendez d'un timing précis." },
+      ],
+    },
+    { type: "heading",text: "Corriger le bridage du navigateur et un abonnement obsolète" },
+    { type: "paragraph",html: "Si l'horloge est correcte et que le graphique accuse toujours du retard dans l'application web :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Garder l'onglet au premier plan", html: "Amenez l'onglet Tradovate au <strong class='text-white'>premier plan</strong> et gardez-le-y ; ne le laissez pas réduit derrière d'autres fenêtres." },
+        { title: "Actualiser l'onglet du navigateur", html: "<strong class='text-white'>Actualisez</strong> l'onglet du navigateur (F5 / Ctrl+R) pour démonter et reconstruire entièrement la connexion de données." },
+        { title: "Redémarrer l'application de bureau ou mobile", html: "Sur l'<strong class='text-white'>application de bureau</strong>, fermez-la et rouvrez-la, puis reconnectez-vous ; sur <strong class='text-white'>mobile</strong>, forcez la fermeture et relancez l'application." },
+        { title: "Se réabonner selon un calendrier (API/passerelle)", html: "<strong class='text-white'>Utilisateurs d'API / de passerelle :</strong> surveillez les horodatages de vos barres et réabonnez-vous lorsque la dernière barre s'écarte de plus d'une ou deux minutes de l'heure actuelle ; redémarrez l'abonnement chaque fois que l'heure de la barre n'est pas à environ deux minutes de l'heure actuelle. Un flux de cotations peut aussi être plus réactif qu'un flux de graphique pour les lectures en temps réel." },
+      ],
+    },
+    { type: "heading",text: "Corriger le bridage par l'antivirus" },
+    { type: "paragraph",html: "Si le lag persiste avec une horloge et une connexion saines, soupçonnez le logiciel de sécurité :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Trouver la fonction de bridage", html: "Ouvrez votre antivirus ou suite de sécurité et cherchez toute fonction qui bride ou inspecte le trafic réseau en arrière-plan ou haute fréquence (des libellés comme &ldquo;protection contre le minage&rdquo;, &ldquo;gestion des applications en arrière-plan&rdquo; ou &ldquo;inspection réseau&rdquo; varient selon le produit)." },
+        { title: "Autoriser Tradovate ou la désactiver", html: "Ajoutez l'application de bureau Tradovate et/ou votre navigateur à la liste d'autorisation, ou désactivez la fonction de bridage concernée." },
+        { title: "Redémarrer et mesurer de nouveau", html: "Redémarrez Tradovate et mesurez de nouveau. C'est précisément le type de correctif pour l'option antivirus de &ldquo;minage de BTC&rdquo; qui cause un retard important." },
+      ],
+    },
+    { type: "heading",text: "Corriger la latence réseau et les coupures de connexion" },
+    { type: "paragraph",html: "Offrez au flux le chemin le plus propre possible :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Privilégier une connexion filaire", html: "Privilégiez une <strong class='text-white'>connexion filaire</strong> plutôt que le Wi-Fi lorsque c'est possible, et désactivez tout <strong class='text-white'>VPN</strong> qui n'est pas nécessaire." },
+        { title: "Réduire la concurrence sur la bande passante", html: "Fermez les applications gourmandes en bande passante et les onglets de graphiques supplémentaires pendant le trading actif pour réduire la concurrence." },
+        { title: "Surveiller l'indicateur de connexion", html: "Surveillez l'indicateur de connexion/d'état de Tradovate : s'il affiche une reconnexion ou un avertissement du flux de données, le lag est un problème de connexion, pas un problème de réglages." },
+      ],
+    },
+    { type: "heading",text: "Savoir quand contacter le support" },
+    { type: "paragraph",html: "Un décalage <em>régulier</em> de quelques secondes qui s'explique par votre horloge ou votre réseau est attendu et ne nécessite pas de ticket. Remontez le problème lorsque le lag est important, ne cesse de croître au fil de la séance ou s'accompagne de cours de clôture erronés ou de barres figées, et après avoir déjà écarté l'horloge, le navigateur, l'antivirus et la connexion. Contactez le support Tradovate (ou votre société de prop trading, si elle détient le compte) avec des éléments concrets : le symbole, le retard mesuré, votre plateforme et les horodatages comparés. Ces preuves permettent de distinguer une vraie défaillance du flux d'un artefact de timing local." },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme","Signification probable","Solution"], rows: [
+      ["Messages <code>md</code>/<code>chart</code> ~3-4 s derrière l'horloge","L'horloge locale du PC a dérivé","Synchronisez l'heure système ; mesurez de nouveau avec une horloge de confiance"],
+      ["La bougie à la minute se termine quelques secondes avant la remise à zéro du minuteur","Petit retard régulier de bout en bout du flux (normal)","Confirmez le timing avec une horloge de confiance ; attendez-vous à quelques secondes"],
+      ["Le graphique se fige, puis saute quand vous revenez sur l'onglet","Le navigateur bride un onglet en arrière-plan","Gardez l'onglet Tradovate au premier plan ; actualisez"],
+      ["Retard sévère uniquement avec un antivirus précis en cours d'exécution","La suite de sécurité bride le socket de données","Ajoutez Tradovate à la liste blanche / désactivez la fonction de bridage"],
+      ["Le retard s'aggrave après 1-2 heures de flux API ouvert","Abonnement de graphique obsolète","Réabonnez-vous lorsque les barres s'écartent de &gt;2 min de l'heure actuelle"],
+      ["Lag identique sur Tradovate et d'autres plateformes en même temps","Incident du flux amont partagé","Patientez ; signalez au support si cela persiste"],
+    ] },
+    { type: "heading",text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph",html: "Un graphique qui lague est un problème d'<em>affichage</em>, mais il devient un problème de <em>trading</em> dès que vous supposez que le retard signifie que vos ordres aussi sont en retard. PickMyTrade garde votre exécution en dehors de ce chemin critique :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Exécution pilotée par les alertes</strong> : les ordres partent de la logique de votre alerte TradingView, et non de ce que votre graphique Tradovate a fini de dessiner ; quelques secondes de lag à l'écran ne retardent donc jamais l'exécution.",
+        "<strong class='text-white'>Journaux d'ordres horodatés</strong> : chaque ordre routé est enregistré, ce qui vous permet de vérifier l'heure réelle de déclenchement au lieu d'estimer à l'œil un retard cosmétique du graphique.",
+        "<strong class='text-white'>Routage résilient à la connexion</strong> : le routage s'exécute côté serveur, indépendamment de la dérive d'horloge de votre poste ou d'un onglet de navigateur bridé.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong> : le même signal atteint tous les comptes liés en même temps, sans lag par écran entre eux.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Sta facendo scalping su ES o NQ, il Suo grafico Tradovate avanza e il print arriva tre o quattro secondi dopo rispetto a quanto si aspettava, quindi la Sua prima mossa è smontare le impostazioni alla ricerca di ciò che ha rotto il feed. Ecco il punto: nella maggior parte dei casi non c'è nulla da trovare. Un piccolo ritardo di 3-4 secondi su un feed Tradovate è comune, e il &ldquo;ritardo&rdquo; che sta misurando è di solito un artefatto di <em>come</em> lo misura, non di un feed realmente guasto. Si presenta in due modi che in realtà sono la stessa storia: messaggi <code>md</code> e <code>chart</code> che arrivano circa 3-4 secondi dopo l'orologio di Tradovate, e candele a un minuto che finiscono di formarsi 2-3 secondi prima che il timer del conto alla rovescia si azzeri. Schermata diversa, stessa causa." },
+    { type: "paragraph",html: "Questa guida La accompagna nel validare prima la tempistica, isolare poi la causa reale e capire quando un ritardo vale davvero la pena di essere segnalato al supporto. E se automatizza tramite PickMyTrade, ecco subito la buona notizia: un lag cosmetico di qualche secondo sul grafico non tocca mai il momento in cui parte il Suo ordine automatizzato. Ne parliamo meglio più avanti." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per il ritardo dei dati di Tradovate",
+      items: [
+        "<strong class='text-white'>Misuri con un orologio affidabile, non con l'orologio del PC.</strong> Un orologio locale alla deriva fa sembrare in ritardo di secondi un feed sano quando non lo è.",
+        "<strong class='text-white'>Sincronizzi l'ora di sistema.</strong> Su Windows attivi <em>Set time automatically</em>, quindi <em>Sync now</em>; ricontrolli dopo 24 ore, poiché gli orologi tornano a sfasarsi.",
+        "<strong class='text-white'>Tenga la scheda di Tradovate in primo piano.</strong> Le schede del browser in background vengono limitate e possono sembrare bloccate o in ritardo.",
+        "<strong class='text-white'>Inserisca Tradovate nella whitelist dell'antivirus.</strong> Una modalità di &ldquo;protezione dal mining&rdquo; può limitare lo stream e causare un lag grave.",
+        "<strong class='text-white'>Controlli la connessione.</strong> Wi-Fi, VPN e reti congestionate aggiungono latenza visibile oltre a qualsiasi ritardo del feed.",
+        "<strong class='text-white'>Si aspetti qualche secondo in un senso o nell'altro.</strong> Un lag piccolo e costante è un comportamento normale, non automaticamente un guasto.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa davvero un «ritardo dei dati di 3-4 secondi» in Tradovate" },
+    { type: "paragraph",html: "La prima cosa da chiarire: la maggior parte delle segnalazioni di &ldquo;ritardo&rdquo; sono in realtà segnalazioni di <em>confronto tra timestamp</em>. Il lag viene misurato confrontando il timestamp all'interno di un messaggio Tradovate (o l'ultima candela disegnata) con l'orologio del Suo computer. Se i due orologi non concordano, il feed appare in ritardo esattamente della quantità di cui il Suo orologio è sbagliato, anche quando i dati arrivano puntuali. Uno scarto costante di 3-4 secondi che non scompare risale spesso all'orologio del PC: lo sincronizzi con un riferimento di orologio atomico e andrà di nuovo fuori sincrono entro 24 ore. Passi a una macchina con l'ora corretta e il &ldquo;lag&rdquo; svanisce." },
+    { type: "paragraph",html: "La seconda cosa: un ritardo end-to-end davvero minimo è normale per qualsiasi feed di futures in hosting. I dati viaggiano dalla borsa, attraverso un fornitore di dati di mercato a monte, nei server di Tradovate, attraverso internet fino al Suo browser o alla Sua app e infine sullo schermo. Ogni passaggio aggiunge millisecondi. Qualche secondo di ritardo cumulativo e <em>costante</em> rientra ampiamente nell'intervallo che questo feed mostra da anni e non è prova di una configurazione sbagliata." },
+    { type: "paragraph",html: "Smette di essere normale quando il lag è grande (da decine di secondi a minuti), <em>cresce</em> nel corso di una sessione o è accompagnato da valori errati, prezzi di chiusura che non coincidono o barre che si bloccano del tutto. Questo schema indica una sottoscrizione obsoleta, un processo limitato o un'interruzione, e sono i casi che vale la pena di risolvere attivamente." },
+    { type: "heading",text: "Principali cause del ritardo dei dati di Tradovate nel 2026" },
+    { type: "heading",text: "1. Il Suo orologio locale è andato alla deriva" },
+    { type: "paragraph",html: "È il falso allarme più comune. Gli orologi di Windows e macOS vanno silenziosamente alla deriva e anche una macchina sincronizzata ieri può oggi essere sfasata di diversi secondi. Poiché misura il feed rispetto a quell'orologio, un orologio alla deriva fabbrica un &ldquo;ritardo&rdquo; che vive interamente sulla Sua scrivania. Escluda prima questa causa, prima di toccare qualsiasi altra cosa." },
+    { type: "heading",text: "2. Limitazione delle schede del browser" },
+    { type: "paragraph",html: "I browser moderni limitano deliberatamente le schede in background per risparmiare energia. Se Tradovate Web si trova dietro un'altra scheda o è ridotto a icona, i suoi aggiornamenti WebSocket e i timer possono rallentare, quindi il grafico sembra bloccarsi e poi salta quando ci clicca di nuovo. La limitazione delle schede in background è un sospettato principale ogni volta che i dati del grafico sembrano in ritardo nell'app web." },
+    { type: "heading",text: "3. Antivirus o «protezione dal mining» che limita lo stream" },
+    { type: "paragraph",html: "Alcune suite di sicurezza controllano in modo aggressivo il traffico di rete ad alta frequenza. L'esecuzione di Norton con un'opzione di protezione dal &ldquo;mining di BTC&rdquo; lasciata attiva ha prodotto un ritardo dei dati significativo sul feed in tempo reale. Qualsiasi funzione antivirus che ispeziona o limita la velocità del socket dei dati in tempo reale può causare lo stesso sintomo. I nomi dei prodotti e le etichette delle impostazioni variano, quindi verifichi l'opzione attuale nel Suo antivirus." },
+    { type: "heading",text: "4. Latenza di rete, Wi-Fi e VPN" },
+    { type: "paragraph",html: "Ogni livello tra Lei e Tradovate aggiunge ritardo. Un Wi-Fi con interferenze, una VPN che La instrada attraverso un server lontano o una rete domestica congestionata sommano latenza al feed. È anche il motivo per cui il lag può sembrare peggiore all'apertura del mercato cash, quando tutte le piattaforme stressano gli stessi server contemporaneamente." },
+    { type: "heading",text: "5. Una sottoscrizione obsoleta o un feed a monte condiviso" },
+    { type: "paragraph",html: "Per gli utenti di API e bridge, una sottoscrizione di grafico aperta da ore può restare silenziosamente indietro; i ritardi compaiono spesso solo dopo circa due ore di funzionamento continuo. Inoltre, Tradovate condivide un fornitore di dati di mercato a monte con altre piattaforme, quindi un breve intoppo presso quel fornitore può manifestarsi come un lag quasi identico su più broker nello stesso momento. Se il ritardo compare ovunque contemporaneamente, la causa è a monte, non la Sua configurazione." },
+    { type: "heading",text: "Come risolvere il ritardo dei dati di Tradovate: passo dopo passo" },
+    { type: "heading",text: "Correggere un orologio locale andato alla deriva" },
+    { type: "paragraph",html: "Escluda la causa più comune prima di toccare qualsiasi altra cosa:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Attivare la sincronizzazione automatica dell'ora", html: "Apra le impostazioni di data e ora del Suo sistema operativo. Su Windows attivi <strong class='text-white'>Set time automatically</strong>, quindi faccia clic su <strong class='text-white'>Sync now</strong>." },
+        { title: "Confermare il risultato della sincronizzazione", html: "Prenda nota del risultato: Windows mostra l'ora dell'ultima sincronizzazione riuscita." },
+        { title: "Misurare di nuovo con un riferimento affidabile", html: "Misuri di nuovo il lag con un riferimento affidabile (uno smartphone che mostra l'ora di rete o una pagina web pubblica di &ldquo;orologio atomico&rdquo;), non con l'orologio del PC." },
+        { title: "Risincronizzare regolarmente", html: "Poiché gli orologi tornano a sfasarsi nel giro di un giorno, risincronizzi regolarmente se dipende da una tempistica precisa." },
+      ],
+    },
+    { type: "heading",text: "Correggere la limitazione del browser e una sottoscrizione obsoleta" },
+    { type: "paragraph",html: "Se l'orologio è a posto e il grafico è comunque in ritardo nell'app web:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Tenere la scheda in primo piano", html: "Porti la scheda di Tradovate in <strong class='text-white'>primo piano</strong> e la lasci lì: non la lasci ridotta a icona dietro altre finestre." },
+        { title: "Aggiornare la scheda del browser", html: "<strong class='text-white'>Aggiorni</strong> la scheda del browser (F5 / Ctrl+R) per smontare e ricostruire da zero la connessione dati." },
+        { title: "Riavviare l'app desktop o mobile", html: "Sull'<strong class='text-white'>app desktop</strong> la chiuda e la riapra, quindi acceda di nuovo; su <strong class='text-white'>mobile</strong> forzi la chiusura e la riavvii." },
+        { title: "Iscriversi di nuovo a intervalli (API/bridge)", html: "<strong class='text-white'>Utenti di API / bridge:</strong> monitori i timestamp delle barre e si iscriva di nuovo quando l'ultima barra si discosta di oltre uno o due minuti dall'ora corrente; riavvii la sottoscrizione ogni volta che l'orario della barra non rientra in circa due minuti dall'ora attuale. Per le letture in tempo reale, uno stream di quotazioni può inoltre essere più reattivo di uno stream di grafico." },
+      ],
+    },
+    { type: "heading",text: "Correggere la limitazione dell'antivirus" },
+    { type: "paragraph",html: "Se il lag persiste con un orologio e una connessione sani, sospetti il software di sicurezza:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Trovare la funzione che limita", html: "Apra l'antivirus o la suite di sicurezza e cerchi qualsiasi funzione che limiti o ispezioni il traffico di rete in background o ad alta frequenza (etichette come &ldquo;protezione dal mining&rdquo;, &ldquo;gestione delle app in background&rdquo; o &ldquo;ispezione di rete&rdquo; variano a seconda del prodotto)." },
+        { title: "Inserire Tradovate nell'elenco consentiti o disattivarla", html: "Aggiunga l'app desktop di Tradovate e/o il Suo browser all'elenco consentiti, oppure disattivi la specifica funzione di limitazione." },
+        { title: "Riavviare e misurare di nuovo", html: "Riavvii Tradovate e misuri di nuovo. È esattamente il tipo di soluzione per l'opzione antivirus di &ldquo;mining di BTC&rdquo; che causa un ritardo significativo." },
+      ],
+    },
+    { type: "heading",text: "Correggere la latenza di rete e le cadute di connessione" },
+    { type: "paragraph",html: "Dia al feed il percorso più pulito possibile:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Preferire una connessione cablata", html: "Preferisca una <strong class='text-white'>connessione cablata</strong> al Wi-Fi quando possibile e disattivi qualsiasi <strong class='text-white'>VPN</strong> non necessaria." },
+        { title: "Ridurre la competizione per la banda", html: "Chiuda le app che consumano molta banda e le schede di grafici aggiuntive durante il trading attivo per ridurre la competizione per la banda." },
+        { title: "Osservare l'indicatore di connessione", html: "Osservi l'indicatore di connessione/stato di Tradovate: se mostra una riconnessione o un avviso del feed dati, il lag è un problema di connessione, non di impostazioni." },
+      ],
+    },
+    { type: "heading",text: "Quando rivolgersi al supporto" },
+    { type: "paragraph",html: "Uno scarto <em>costante</em> di qualche secondo riconducibile all'orologio o alla rete è previsto e non richiede un ticket. Si rivolga al supporto quando il lag è grande, continua a crescere nel corso della sessione o è accompagnato da prezzi di chiusura errati o barre congelate, e dopo aver già escluso orologio, browser, antivirus e connessione. Contatti il supporto di Tradovate (o la Sua prop firm, se è proprietaria del conto) con dettagli concreti: il simbolo, il ritardo misurato, la Sua piattaforma e i timestamp confrontati. Queste prove permettono di distinguere un vero guasto del feed da un artefatto di tempistica locale." },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo","Significato probabile","Soluzione"], rows: [
+      ["Messaggi <code>md</code>/<code>chart</code> ~3-4 s dietro l'orologio","L'orologio locale del PC è andato alla deriva","Sincronizzi l'ora di sistema; misuri di nuovo con un orologio affidabile"],
+      ["La candela a un minuto si completa qualche secondo prima che il timer si azzeri","Piccolo ritardo end-to-end costante del feed (normale)","Confermi la tempistica con un orologio affidabile; si aspetti qualche secondo"],
+      ["Il grafico si blocca, poi salta quando torna alla scheda","Il browser limita una scheda in background","Tenga la scheda di Tradovate in primo piano; aggiorni"],
+      ["Ritardo grave solo con uno specifico antivirus in esecuzione","La suite di sicurezza limita il socket dei dati","Inserisca Tradovate nella whitelist / disattivi la funzione di limitazione"],
+      ["Il ritardo cresce dopo 1-2 ore di stream API aperto","Sottoscrizione di grafico obsoleta","Si iscriva di nuovo quando le barre si discostano di &gt;2 min dall'ora corrente"],
+      ["Lag identico su Tradovate e altre piattaforme nello stesso momento","Intoppo del feed a monte condiviso","Attenda; lo segnali al supporto se persiste"],
+    ] },
+    { type: "heading",text: "Prevenga tutto questo con PickMyTrade" },
+    { type: "paragraph",html: "Un grafico in ritardo è un problema di <em>visualizzazione</em>, ma diventa un problema di <em>trading</em> nel momento in cui presume che il ritardo significhi che anche i Suoi ordini sono in ritardo. PickMyTrade tiene la Sua esecuzione fuori da quel percorso critico:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Esecuzione guidata dagli alert</strong>: gli ordini partono dalla logica del Suo alert di TradingView, non da ciò che il Suo grafico Tradovate ha finito di disegnare, quindi qualche secondo di lag sullo schermo non ritarda mai l'esecuzione.",
+        "<strong class='text-white'>Log degli ordini con timestamp</strong>: ogni ordine instradato viene registrato, così può verificare l'orario effettivo di invio invece di valutare a occhio un ritardo cosmetico del grafico.",
+        "<strong class='text-white'>Routing resiliente alla connessione</strong>: il routing viene eseguito lato server, indipendentemente dalla deriva dell'orologio del Suo desktop o da una scheda del browser limitata.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>: lo stesso segnale raggiunge tutti i conti collegati contemporaneamente, senza lag per schermata tra di essi.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Handeln ohne Ablehnungen", es: "Opere sin rechazos", fr: "Tradez sans rejet", it: "Faccia trading senza rifiuti" },
+  ctaText: { en: "PickMyTrade fires orders from your alert logic, not from a chart render, so a few seconds of screen lag never delays a fill.", de: "PickMyTrade löst Orders aus Ihrer Alert-Logik aus, nicht aus einem Chart-Rendering – ein paar Sekunden Bildschirmverzögerung verzögern also nie eine Ausführung.", es: "PickMyTrade lanza las órdenes desde la lógica de sus alertas, no desde el renderizado de un gráfico, así que unos segundos de retraso en pantalla nunca retrasan una ejecución.", fr: "PickMyTrade déclenche les ordres à partir de la logique de vos alertes, et non d'un rendu de graphique : quelques secondes de décalage à l'écran ne retardent donc jamais une exécution.", it: "PickMyTrade invia gli ordini dalla logica dei Suoi alert, non dal rendering di un grafico, quindi qualche secondo di ritardo sullo schermo non ritarda mai un'esecuzione." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Is a 3-4 second data lag in Tradovate normal?", a: "A small, steady delay of a few seconds is normal for a hosted futures feed and usually isn't a fault. Most 3-4 second “lag” reports turn out to be a drifted local PC clock making an on-time feed look late. Verify against a trusted clock before assuming your data is broken." },
+    { q: "Why does my Tradovate chart look delayed even though everything is configured correctly?", a: "Because “delay” is normally measured by comparing a Tradovate timestamp against your computer's clock. If your clock has drifted, which happens within a day even after syncing, the feed appears delayed by exactly the amount your clock is off, with no misconfiguration involved." },
+    { q: "How do I actually confirm whether the feed is late or my clock is wrong?", a: "Compare the Tradovate timestamp against a known-good reference, a phone showing network time or a public atomic-clock page, rather than your PC clock. If the feed matches the trusted reference, your data is fine and your local clock was the culprit." },
+    { q: "My OHLC data via the API keeps falling behind after a couple of hours. What fixes it?", a: "A long-lived chart subscription can go stale. Monitor your bar timestamps and re-subscribe whenever the latest bar drifts more than a minute or two from the current time; restart the subscription when the bar time isn't within about two minutes of now. A quote stream can also read more responsively than a chart stream." },
+    { q: "Could my antivirus be causing the delay?", a: "Yes. An antivirus “mining protection” mode can throttle the data stream and cause significant delay. Whitelist the Tradovate app and your browser, or disable the specific feature that inspects high-frequency network traffic, then re-test." },
+    { q: "Everyone on multiple platforms is lagging at the same time, is that Tradovate's fault?", a: "Probably not specifically. Tradovate shares an upstream market-data provider with other platforms, so a brief hiccup upstream can surface as near-identical lag everywhere at once. When the lag appears across several brokers simultaneously, it's an upstream issue, not your local setup, wait it out and report it if it persists." },
+    { q: "Does a laggy chart mean my orders or automated trades are executing late?", a: "No. Chart lag is a display-side symptom; it doesn't govern order routing. If you automate through PickMyTrade, execution runs off your TradingView alerts on the server side, so a few seconds of chart lag never delays or blocks the fill." },
+    { q: "When should I open a support ticket instead of troubleshooting myself?", a: "When the delay is large, keeps growing, or comes with wrong prices or frozen bars, and only after you've ruled out your clock, browser, antivirus, and network. Bring the symbol, measured delay, platform, and the timestamps you compared." },
+  ], de: [
+    { q: "Ist eine Datenverzögerung von 3-4 Sekunden in Tradovate normal?", a: "Eine kleine, gleichmäßige Verzögerung von einigen Sekunden ist bei einem gehosteten Futures-Datenfeed normal und in der Regel kein Fehler. Die meisten Meldungen über 3-4 Sekunden „Lag“ stellen sich als eine abgedriftete lokale PC-Uhr heraus, die einen pünktlichen Feed verspätet erscheinen lässt. Prüfen Sie gegen eine verlässliche Uhr, bevor Sie annehmen, Ihre Daten seien defekt." },
+    { q: "Warum wirkt mein Tradovate-Chart verzögert, obwohl alles korrekt konfiguriert ist?", a: "Weil die „Verzögerung“ normalerweise durch den Vergleich eines Tradovate-Zeitstempels mit der Uhr Ihres Computers gemessen wird. Ist Ihre Uhr abgedriftet – was selbst nach einer Synchronisierung innerhalb eines Tages passiert –, erscheint der Feed genau um die Abweichung Ihrer Uhr verzögert, ganz ohne Fehlkonfiguration." },
+    { q: "Wie stelle ich fest, ob der Feed verspätet ist oder meine Uhr falsch geht?", a: "Vergleichen Sie den Tradovate-Zeitstempel mit einer zuverlässigen Referenz – einem Smartphone mit Netzwerkzeit oder einer öffentlichen Atomuhr-Seite – statt mit Ihrer PC-Uhr. Stimmt der Feed mit der verlässlichen Referenz überein, sind Ihre Daten in Ordnung und Ihre lokale Uhr war die Ursache." },
+    { q: "Meine OHLC-Daten über die API fallen nach ein paar Stunden zurück. Was hilft?", a: "Ein lange bestehendes Chart-Abonnement kann veralten. Überwachen Sie Ihre Bar-Zeitstempel und abonnieren Sie neu, sobald die letzte Bar mehr als ein bis zwei Minuten von der aktuellen Zeit abweicht; starten Sie das Abonnement neu, wenn die Bar-Zeit nicht innerhalb von etwa zwei Minuten der aktuellen Zeit liegt. Ein Quote-Stream kann zudem reaktionsschneller wirken als ein Chart-Stream." },
+    { q: "Könnte mein Antivirenprogramm die Verzögerung verursachen?", a: "Ja. Ein „Mining-Schutz“-Modus des Antivirenprogramms kann den Datenstrom drosseln und zu erheblicher Verzögerung führen. Setzen Sie die Tradovate-App und Ihren Browser auf die Whitelist oder deaktivieren Sie die konkrete Funktion, die hochfrequenten Netzwerkverkehr prüft, und testen Sie dann erneut." },
+    { q: "Alle auf mehreren Plattformen haben gleichzeitig Lag – ist das Tradovates Schuld?", a: "Wahrscheinlich nicht speziell. Tradovate teilt sich einen vorgelagerten Marktdatenanbieter mit anderen Plattformen, sodass ein kurzer Aussetzer dort als nahezu identischer Lag überall gleichzeitig auftreten kann. Wenn die Verzögerung bei mehreren Brokern gleichzeitig auftritt, liegt das Problem upstream und nicht in Ihrem lokalen Setup – warten Sie ab und melden Sie es, falls es anhält." },
+    { q: "Bedeutet ein träger Chart, dass meine Orders oder automatisierten Trades verspätet ausgeführt werden?", a: "Nein. Chart-Lag ist ein Symptom auf der Anzeigeseite; er steuert nicht das Order-Routing. Wenn Sie über PickMyTrade automatisieren, läuft die Ausführung serverseitig auf Basis Ihrer TradingView-Alerts, sodass einige Sekunden Chart-Lag die Ausführung weder verzögern noch blockieren." },
+    { q: "Wann sollte ich ein Support-Ticket öffnen, statt selbst zu beheben?", a: "Wenn die Verzögerung groß ist, weiter wächst oder mit falschen Kursen oder eingefrorenen Bars einhergeht – und erst, nachdem Sie Ihre Uhr, Ihren Browser, Ihr Antivirenprogramm und Ihr Netzwerk ausgeschlossen haben. Halten Sie Symbol, gemessene Verzögerung, Plattform und die verglichenen Zeitstempel bereit." },
+  ], es: [
+    { q: "¿Es normal un retraso de datos de 3-4 segundos en Tradovate?", a: "Un retraso pequeño y constante de unos segundos es normal en un feed de futuros alojado y normalmente no es un fallo. La mayoría de los informes de «lag» de 3-4 segundos resultan ser un reloj local del PC desajustado que hace que un feed puntual parezca tardío. Verifique con un reloj de confianza antes de asumir que sus datos están rotos." },
+    { q: "¿Por qué mi gráfico de Tradovate parece retrasado aunque todo esté bien configurado?", a: "Porque el «retraso» normalmente se mide comparando una marca de tiempo de Tradovate con el reloj de su ordenador. Si su reloj se ha desajustado, algo que ocurre en un día incluso después de sincronizarlo, el feed parece retrasado exactamente la cantidad que su reloj está desviado, sin ninguna mala configuración." },
+    { q: "¿Cómo confirmo si el feed va tarde o si mi reloj está mal?", a: "Compare la marca de tiempo de Tradovate con una referencia fiable, un teléfono que muestre la hora de red o una página pública de reloj atómico, en lugar de con el reloj de su PC. Si el feed coincide con la referencia fiable, sus datos están bien y el culpable era su reloj local." },
+    { q: "Mis datos OHLC por API se quedan atrás después de un par de horas. ¿Qué lo soluciona?", a: "Una suscripción de gráfico de larga duración puede quedarse obsoleta. Supervise las marcas de tiempo de sus barras y vuelva a suscribirse cuando la última barra se desvíe más de uno o dos minutos de la hora actual; reinicie la suscripción cuando la hora de la barra no esté dentro de unos dos minutos de la hora actual. Un flujo de cotizaciones también puede responder mejor que un flujo de gráfico." },
+    { q: "¿Podría mi antivirus estar causando el retraso?", a: "Sí. Un modo de «protección contra minería» del antivirus puede limitar el flujo de datos y causar un retraso importante. Añada la aplicación de Tradovate y su navegador a la lista de excepciones, o desactive la función concreta que inspecciona el tráfico de red de alta frecuencia, y vuelva a probar." },
+    { q: "Todos en varias plataformas tienen lag a la vez, ¿es culpa de Tradovate?", a: "Probablemente no específicamente. Tradovate comparte un proveedor de datos de mercado ascendente con otras plataformas, por lo que un fallo breve en origen puede aparecer como un lag casi idéntico en todas a la vez. Cuando el retraso aparece en varios brokers simultáneamente, es un problema ascendente y no de su configuración local; espere y repórtelo si persiste." },
+    { q: "¿Un gráfico con lag significa que mis órdenes u operaciones automatizadas se ejecutan tarde?", a: "No. El lag del gráfico es un síntoma del lado de la visualización; no gobierna el enrutamiento de órdenes. Si automatiza con PickMyTrade, la ejecución se realiza en el servidor a partir de sus alertas de TradingView, por lo que unos segundos de lag en el gráfico nunca retrasan ni bloquean la ejecución." },
+    { q: "¿Cuándo debo abrir un ticket de soporte en lugar de solucionarlo yo mismo?", a: "Cuando el retraso es grande, sigue creciendo o viene acompañado de precios erróneos o barras congeladas, y solo después de haber descartado su reloj, navegador, antivirus y red. Lleve el símbolo, el retraso medido, la plataforma y las marcas de tiempo que comparó." },
+  ], fr: [
+    { q: "Un décalage de données de 3-4 secondes est-il normal sur Tradovate ?", a: "Un petit retard régulier de quelques secondes est normal pour un flux de contrats à terme hébergé et n'est généralement pas une panne. La plupart des signalements de « lag » de 3-4 secondes s'avèrent être une horloge locale du PC qui a dérivé, faisant paraître en retard un flux pourtant à l'heure. Vérifiez avec une horloge de confiance avant de supposer que vos données sont défaillantes." },
+    { q: "Pourquoi mon graphique Tradovate semble-t-il en retard alors que tout est correctement configuré ?", a: "Parce que le « retard » se mesure normalement en comparant un horodatage Tradovate à l'horloge de votre ordinateur. Si votre horloge a dérivé, ce qui arrive en une journée même après synchronisation, le flux paraît retardé exactement de l'écart de votre horloge, sans aucune erreur de configuration." },
+    { q: "Comment confirmer si le flux est en retard ou si mon horloge est fausse ?", a: "Comparez l'horodatage Tradovate à une référence fiable, un téléphone affichant l'heure réseau ou une page publique d'horloge atomique, plutôt qu'à l'horloge de votre PC. Si le flux correspond à la référence fiable, vos données sont correctes et votre horloge locale était en cause." },
+    { q: "Mes données OHLC via l'API prennent du retard après quelques heures. Qu'est-ce qui règle le problème ?", a: "Un abonnement de graphique de longue durée peut devenir obsolète. Surveillez les horodatages de vos barres et réabonnez-vous dès que la dernière barre s'écarte de plus d'une ou deux minutes de l'heure actuelle ; redémarrez l'abonnement lorsque l'heure de la barre n'est pas à environ deux minutes de l'heure actuelle. Un flux de cotations peut aussi être plus réactif qu'un flux de graphique." },
+    { q: "Mon antivirus pourrait-il causer le retard ?", a: "Oui. Un mode de « protection contre le minage » de l'antivirus peut brider le flux de données et provoquer un retard important. Ajoutez l'application Tradovate et votre navigateur à la liste blanche, ou désactivez la fonction précise qui inspecte le trafic réseau haute fréquence, puis refaites un test." },
+    { q: "Tout le monde sur plusieurs plateformes a du lag en même temps, est-ce la faute de Tradovate ?", a: "Probablement pas spécifiquement. Tradovate partage un fournisseur de données de marché en amont avec d'autres plateformes, si bien qu'un bref incident en amont peut se manifester par un lag quasi identique partout à la fois. Lorsque le retard apparaît simultanément chez plusieurs courtiers, il s'agit d'un problème en amont et non de votre configuration locale : patientez et signalez-le s'il persiste." },
+    { q: "Un graphique qui lague signifie-t-il que mes ordres ou trades automatisés sont exécutés en retard ?", a: "Non. Le lag du graphique est un symptôme côté affichage ; il ne régit pas le routage des ordres. Si vous automatisez avec PickMyTrade, l'exécution s'effectue côté serveur à partir de vos alertes TradingView, de sorte que quelques secondes de lag du graphique ne retardent ni ne bloquent jamais l'exécution." },
+    { q: "Quand dois-je ouvrir un ticket de support plutôt que de dépanner moi-même ?", a: "Lorsque le retard est important, ne cesse de croître ou s'accompagne de prix erronés ou de barres figées, et seulement après avoir écarté votre horloge, votre navigateur, votre antivirus et votre réseau. Munissez-vous du symbole, du retard mesuré, de la plateforme et des horodatages comparés." },
+  ], it: [
+    { q: "Un ritardo dei dati di 3-4 secondi in Tradovate è normale?", a: "Un piccolo ritardo costante di qualche secondo è normale per un feed di futures in hosting e di solito non è un guasto. La maggior parte delle segnalazioni di «lag» di 3-4 secondi si rivela un orologio locale del PC andato alla deriva, che fa sembrare in ritardo un feed puntuale. Verifichi con un orologio affidabile prima di presumere che i Suoi dati siano guasti." },
+    { q: "Perché il mio grafico Tradovate sembra in ritardo anche se è tutto configurato correttamente?", a: "Perché il «ritardo» viene normalmente misurato confrontando un timestamp di Tradovate con l'orologio del Suo computer. Se il Suo orologio è andato alla deriva, cosa che accade nel giro di un giorno anche dopo la sincronizzazione, il feed appare in ritardo esattamente della differenza del Suo orologio, senza alcuna errata configurazione." },
+    { q: "Come confermo se il feed è in ritardo o se il mio orologio è sbagliato?", a: "Confronti il timestamp di Tradovate con un riferimento affidabile, uno smartphone che mostra l'ora di rete o una pagina pubblica di orologio atomico, anziché con l'orologio del Suo PC. Se il feed coincide con il riferimento affidabile, i Suoi dati sono a posto e il colpevole era l'orologio locale." },
+    { q: "I miei dati OHLC via API restano indietro dopo un paio d'ore. Cosa risolve?", a: "Una sottoscrizione di grafico di lunga durata può diventare obsoleta. Monitori i timestamp delle barre e si iscriva di nuovo quando l'ultima barra si discosta di oltre uno o due minuti dall'ora corrente; riavvii la sottoscrizione quando l'orario della barra non rientra in circa due minuti dall'ora attuale. Anche uno stream di quotazioni può risultare più reattivo di uno stream di grafico." },
+    { q: "Il mio antivirus potrebbe causare il ritardo?", a: "Sì. Una modalità di «protezione dal mining» dell'antivirus può limitare il flusso dei dati e causare un ritardo significativo. Inserisca l'app Tradovate e il Suo browser nella whitelist, oppure disattivi la funzione specifica che ispeziona il traffico di rete ad alta frequenza, quindi riprovi." },
+    { q: "Tutti su più piattaforme hanno lag nello stesso momento, è colpa di Tradovate?", a: "Probabilmente non in modo specifico. Tradovate condivide un fornitore di dati di mercato a monte con altre piattaforme, quindi un breve intoppo a monte può manifestarsi come un lag quasi identico ovunque nello stesso momento. Quando il ritardo compare su più broker contemporaneamente, si tratta di un problema a monte e non della Sua configurazione locale: attenda e lo segnali se persiste." },
+    { q: "Un grafico in ritardo significa che i miei ordini o le operazioni automatizzate vengono eseguiti in ritardo?", a: "No. Il lag del grafico è un sintomo lato visualizzazione; non governa il routing degli ordini. Se automatizza tramite PickMyTrade, l'esecuzione avviene lato server a partire dai Suoi alert di TradingView, quindi qualche secondo di lag del grafico non ritarda né blocca mai l'esecuzione." },
+    { q: "Quando devo aprire un ticket di supporto invece di risolvere da solo?", a: "Quando il ritardo è grande, continua a crescere o è accompagnato da prezzi errati o barre congelate, e solo dopo aver escluso orologio, browser, antivirus e rete. Porti con sé il simbolo, il ritardo misurato, la piattaforma e i timestamp che ha confrontato." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Weitere Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von dieser weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque substantiel de perte et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par celle-ci. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha scopi esclusivamente educativi e informativi e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura corrente nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

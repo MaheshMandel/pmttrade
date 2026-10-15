@@ -1,0 +1,499 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "topstep-orders-rejected-limit-vs-market";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Topstep Tradovate: Market Orders Rejected as Limit";
+const META_DESCRIPTION =
+  "Market orders getting rejected as limit orders on a Topstep Tradovate account? Learn what causes this sync fault and the fastest way to fix it.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Topstep Tradovate: Market-Orders als Limit abgelehnt", es: "Topstep Tradovate: órdenes a mercado rechazadas como límite", fr: "Topstep Tradovate : ordres au marché rejetés comme ordres à cours limité", it: "Topstep Tradovate: ordini a mercato rifiutati come ordini limite" },
+  dek: { en: "You click buy at market on your Topstep-funded Tradovate account and it bounces back rejected as a limit order you never placed. Here's the known sync fault behind it, and how to clear it in order.", de: "Sie klicken auf Ihrem von Topstep finanzierten Tradovate-Konto auf Kauf zum Marktpreis, und die Order kommt als Limit-Order abgelehnt zurück, die Sie nie platziert haben. Hier ist der bekannte Synchronisationsfehler dahinter und wie Sie ihn der Reihe nach beheben.", es: "Hace clic en comprar a mercado en su cuenta de Tradovate financiada por Topstep y la orden rebota rechazada como una orden límite que nunca colocó. Aquí está el fallo de sincronización conocido que lo causa y cómo resolverlo en orden.", fr: "Vous cliquez sur acheter au marché sur votre compte Tradovate financé par Topstep et l'ordre revient rejeté comme un ordre à cours limité que vous n'avez jamais passé. Voici le défaut de synchronisation connu qui en est la cause, et comment le corriger dans l'ordre.", it: "Clicca su acquista a mercato sul suo conto Tradovate finanziato da Topstep e l'ordine torna indietro rifiutato come ordine limite che non ha mai inserito. Ecco il noto difetto di sincronizzazione che ne è la causa e come risolverlo, in ordine." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-10",
+  blocks: { en: [
+    { type: "paragraph", html: "You click buy at market on your Topstep-funded Tradovate account, and the order snaps right back rejected, with a message about a <strong class='text-white'>limit</strong> order you never placed. Click it again, same thing. You're staring at the DOM thinking, &ldquo;I hit market, not limit,&rdquo; while the move you wanted runs off without you. It's a maddening one because the platform seems to be arguing with you about what you just did." },
+    { type: "paragraph", html: "Here's the short version: this is a known fault on the Topstep&ndash;Tradovate connection, not a mistake on your end. When the firm's risk layer and Tradovate's order engine drift out of sync, a normal market order can bounce back mislabeled as a rejected limit. Force a fresh sync, and if that doesn't clear it, hand Topstep support the exact order details. This guide walks through why it happens and what to do, in order." },
+    { type: "quote", html: "<strong class='text-white'>Short answer:</strong> A market order on CME futures is really a market order <em>with protection</em>, it rides on a limit-price cap under the hood. When your Topstep account is out of sync with Tradovate, that protected order can reject and surface as a &ldquo;limit&rdquo; rejection. Re-sync by logging out and back in; if it persists, it's server-side, so contact Topstep support with your Order IDs." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist",
+      items: [
+        "<strong class='text-white'>Read the actual reject reason</strong>, open the rejected order and check whether it truly says the order was treated as a limit, versus a risk block, margin, or hours rejection that just looks similar.",
+        "<strong class='text-white'>Force a re-sync</strong>, log fully out of Tradovate, close the app or tab, then log back in so the account re-handshakes with the firm's risk gateway.",
+        "<strong class='text-white'>Try a marketable limit as a stopgap</strong>, place a limit a few ticks through the market to get filled while you sort out the market-order path.",
+        "<strong class='text-white'>Confirm you're not in a restricted state</strong>, a hit loss limit, closed session, or position-size cap can also reject orders. Those rules vary by firm and account size.",
+        "<strong class='text-white'>Check the contract</strong>, make sure you're on the active front-month, not an expired or continuous symbol.",
+        "<strong class='text-white'>Escalate with Order IDs</strong>, if a clean re-login doesn't fix it, send Topstep support the rejected Order IDs, timestamps and contract so they can reset the sync.",
+      ],
+    },
+    { type: "heading", text: "What's Actually Happening" },
+    { type: "paragraph", html: "Two things are colliding here, and understanding both makes the fix obvious." },
+    { type: "paragraph", html: "First, the mechanics of a futures market order. Unlike a stock, a market order on a CME product doesn't just fill at any price, the exchange wraps it in a <strong class='text-white'>protection band</strong>. Behind the scenes it's sent as a marketable limit order capped a set distance from price, shielding you from getting filled deep into a thin book during a spike. If the order can't fully fill inside that band, the remainder can convert into a resting limit at the protection price. That's why a &ldquo;market&rdquo; click can legitimately involve a limit price at all." },
+    { type: "paragraph", html: "Second, the extra layer on a prop account. On a Topstep-funded account, your order doesn't go straight from Tradovate to the exchange. It passes through the firm's risk gateway, which checks it against your account rules before it's allowed out. Tradovate's order engine and that risk layer have to agree, tick for tick, on what you're sending. When they drift out of sync, after a reconnect, a session hiccup, or a platform-side glitch, the protected market order can get garbled in the handoff and thrown back to you as a rejected limit order. You clicked market; the routing between the two systems is what turned it into a mislabeled reject." },
+    { type: "paragraph", html: "This is not an obscure edge case. Topstep has openly acknowledged awareness of issues on the Tradovate connection and asked affected traders to contact support so the team can keep track. That's your tell that when a clean re-login doesn't fix it, the fault is on the integration, and the resolution runs through their support desk, not through anything you can toggle in your own settings." },
+    { type: "heading", text: "Rule Out the Look-Alikes First" },
+    { type: "paragraph", html: "Before you assume it's the sync fault, rule out states that reject orders for a different reason. These all bounce orders and get mistaken for the market-versus-limit glitch:" },
+    { type: "heading", text: "You've hit a loss limit" },
+    { type: "paragraph", html: "If your account has tripped its maximum loss limit or daily loss limit, the firm auto-liquidates and rejects new orders for the rest of the trading day. The exact thresholds vary by firm and account size, so check your current rules. This reject is a hard stop, not a sync problem, no amount of re-logging will clear it until the next session." },
+    { type: "heading", text: "You're outside permitted trading hours" },
+    { type: "paragraph", html: "Orders placed outside the instrument's session, during the daily maintenance break, or against your firm's own trading window get rejected. If it's late afternoon or the weekend, confirm the market is actually open before blaming the order type." },
+    { type: "heading", text: "You're over a position or contract cap" },
+    { type: "paragraph", html: "Adding beyond your account's maximum position size or per-order contract cap rejects the order. Those limits vary by firm and plan, reduce size and retry." },
+    { type: "heading", text: "The subscription or account state is inactive" },
+    { type: "paragraph", html: "A cancelled, expired or past-due subscription, or an evaluation that isn't fully activated, will block orders. During a CME velocity-logic event, a brief exchange-side pause when a market moves too fast, orders can also reject momentarily." },
+    { type: "paragraph", html: "If none of those apply and you genuinely clicked market only to get a limit rejection, you're in the sync-fault territory this guide is built for. Move on to the fix." },
+    { type: "heading", text: "How to Fix It: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirm the order was really treated as a limit", html: "Open the <strong class='text-white'>Orders</strong> panel and click the rejected order to read the full detail. You're checking two things: that the order type or reason actually points to a limit-price problem, and that it isn't one of the look-alikes above. Note the exact reject text, you'll want it if you have to escalate, and reading it carefully keeps you from solving the wrong problem." },
+        { title: "Verify your order ticket is set to Market", html: "It sounds obvious, but confirm the order type selector in your entry ticket, ATM template, or hotkey is set to <strong class='text-white'>Market</strong> and not a leftover limit configuration from a previous trade. A saved bracket or a mis-set hotkey can quietly submit limit orders while you think you're at market. If the ticket itself is fine and you're still getting limit rejections on a market click, the mismatch is between your account and Tradovate, continue to the re-sync." },
+      ],
+    },
+    {
+      type: "steps",
+      items: [
+        { title: "Force a fresh sync with a full re-login", html: "This clears the most common version of the glitch. Log out of Tradovate completely, close the desktop app or browser tab, and log back in. On web, clearing the cache or opening a fresh private/incognito window forces a clean handshake with the firm's risk gateway and drops any stale session that was misrouting your orders. Give it a moment to fully connect, then place a small test market order to confirm the path is healthy before you trade size." },
+      ],
+    },
+    {
+      type: "steps",
+      items: [
+        { title: "Use a marketable limit as a stopgap", html: "If you need in or out <em>right now</em> and market orders keep bouncing, place a limit a few ticks through price, a buy limit above the offer, a sell limit below the bid. It fills like a market order but sidesteps the broken path. Keep it tight so you don't overpay, and treat it as a bridge, not a fix." },
+        { title: "Escalate to Topstep support if it persists", html: "If a clean re-login and re-sync doesn't clear it, the fault is server-side and only the firm can reset it. Grab the details from your <strong class='text-white'>Orders</strong> or Reports view and send them in. The single most important item is the <strong class='text-white'>Order ID</strong> for each rejected order, Order IDs and Trade IDs are different, and support needs the Order ID to pull the exact reject on their end." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["What you're seeing", "Likely cause", "What to do"],
+      rows: [
+        ["Market click rejects as a &ldquo;limit&rdquo; order", "Account out of sync with Tradovate's order engine", "Full log out and back in to re-sync; if it persists, contact support with Order IDs"],
+        ["Market order partially fills, remainder rests as a limit", "Normal CME market-with-protection behavior", "Expected, the unfilled part sits at the protection price; cancel or work it"],
+        ["All new orders rejected for the day", "Loss limit or daily loss limit hit (auto-liquidation)", "Done for the session; thresholds vary by firm and account size"],
+        ["Rejected outside session or during a break", "Market closed or maintenance window", "Wait for the session to reopen; confirm the instrument's hours"],
+        ["Rejected when adding size", "Position-size or contract cap exceeded", "Reduce quantity; check your firm's current limits"],
+        ["Brief reject during a fast move", "CME velocity-logic event", "Wait a moment and retry once the exchange pause clears"],
+      ],
+    },
+    { type: "heading", text: "A Note on Legacy vs. Newer Topstep Platforms" },
+    { type: "paragraph", html: "Worth knowing: Topstep moved new Trading Combine purchases onto its own TopstepX platform in mid-2025, pulling Tradovate, NinjaTrader, TradingView and Quantower for new signups. If you're still on a Tradovate-linked Topstep account, you're on the legacy connection, exactly the path where these sync mismatches surface. It doesn't change the fix, but it's why the firm treats the Tradovate integration as a known, tracked issue. When you contact support, mention which platform you're placing orders from." },
+    { type: "heading", text: "Stop Losing Entries to a Broker-Side Glitch" },
+    { type: "paragraph", html: "When your order path is the weak link, take manual clicking out of the equation and route clean, validated orders instead. If TradingView is the brain behind your Topstep trades, PickMyTrade is the wiring that carries each signal through, with a few things working in your favor:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Explicit order types</strong>, each order is sent with its type defined in the payload, so there's no ambiguity about market versus limit at the moment of routing.",
+        "<strong class='text-white'>Symbol and quantity validation</strong>, catches wrong-contract, expired or malformed symbols before they're routed, so a bad order never masquerades as something else.",
+        "<strong class='text-white'>Multi-account sync</strong>, mirrors a valid order across every linked account in one step instead of clicking them out one at a time.",
+        "<strong class='text-white'>Reconnect-aware routing</strong>, spaces out flow on reconnects so a burst of alerts doesn't pile up and bounce.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie klicken auf Ihrem von Topstep finanzierten Tradovate-Konto auf Kauf zum Marktpreis, und die Order springt sofort abgelehnt zurück, mit einer Meldung über eine <strong class='text-white'>Limit</strong>-Order, die Sie nie platziert haben. Sie klicken erneut, dasselbe. Sie starren auf das DOM und denken &ldquo;Ich habe Market geklickt, nicht Limit&rdquo;, während die gewünschte Bewegung ohne Sie davonläuft. Das ist besonders ärgerlich, weil die Plattform scheinbar mit Ihnen darüber streitet, was Sie gerade getan haben." },
+    { type: "paragraph",html: "Die Kurzfassung: Das ist ein bekannter Fehler in der Topstep&ndash;Tradovate-Verbindung, kein Fehler Ihrerseits. Wenn die Risikoschicht der Firma und die Order-Engine von Tradovate aus dem Takt geraten, kann eine normale Market-Order falsch beschriftet als abgelehnte Limit-Order zurückkommen. Erzwingen Sie eine frische Synchronisation, und wenn das nicht hilft, übergeben Sie dem Topstep-Support die genauen Orderdetails. Dieser Leitfaden zeigt der Reihe nach, warum das passiert und was zu tun ist." },
+    { type: "quote",html: "<strong class='text-white'>Kurzantwort:</strong> Eine Market-Order an CME-Futures ist eigentlich eine Market-Order <em>mit Schutz</em>, sie läuft im Hintergrund über eine Limit-Preisobergrenze. Ist Ihr Topstep-Konto nicht mit Tradovate synchron, kann diese geschützte Order abgelehnt werden und als &ldquo;Limit&rdquo;-Ablehnung erscheinen. Synchronisieren Sie neu, indem Sie sich ab- und wieder anmelden; besteht das Problem weiter, liegt es serverseitig, wenden Sie sich dann mit Ihren Order-IDs an den Topstep-Support." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste",
+      items: [
+        "<strong class='text-white'>Den tatsächlichen Ablehnungsgrund lesen</strong>, öffnen Sie die abgelehnte Order und prüfen Sie, ob wirklich steht, dass sie als Limit behandelt wurde, oder ob es sich um eine ähnlich aussehende Ablehnung wegen Risikosperre, Margin oder Handelszeiten handelt.",
+        "<strong class='text-white'>Eine Neusynchronisation erzwingen</strong>, melden Sie sich vollständig von Tradovate ab, schließen Sie die App bzw. den Tab und melden Sie sich wieder an, damit das Konto erneut einen Handshake mit dem Risk-Gateway der Firma durchführt.",
+        "<strong class='text-white'>Eine marktfähige Limit-Order als Notlösung nutzen</strong>, platzieren Sie ein Limit einige Ticks über den Markt hinaus, um gefüllt zu werden, während Sie den Market-Order-Pfad klären.",
+        "<strong class='text-white'>Prüfen, ob Sie in einem eingeschränkten Zustand sind</strong>, ein erreichtes Verlustlimit, eine geschlossene Sitzung oder eine Positionsgrößen-Obergrenze kann ebenfalls Orders ablehnen. Diese Regeln unterscheiden sich je nach Firma und Kontogröße.",
+        "<strong class='text-white'>Den Kontrakt prüfen</strong>, stellen Sie sicher, dass Sie sich auf dem aktiven Front-Month befinden, nicht auf einem abgelaufenen oder fortlaufenden Symbol.",
+        "<strong class='text-white'>Mit Order-IDs eskalieren</strong>, behebt eine saubere Neuanmeldung das Problem nicht, senden Sie dem Topstep-Support die abgelehnten Order-IDs, Zeitstempel und den Kontrakt, damit er die Synchronisation zurücksetzen kann.",
+      ],
+    },
+    { type: "heading",text: "Was tatsächlich passiert" },
+    { type: "paragraph",html: "Hier kollidieren zwei Dinge, und wer beide versteht, sieht die Lösung sofort." },
+    { type: "paragraph",html: "Erstens die Mechanik einer Futures-Market-Order. Anders als bei einer Aktie füllt eine Market-Order bei einem CME-Produkt nicht einfach zu jedem Preis; die Börse umhüllt sie mit einem <strong class='text-white'>Schutzband</strong>. Im Hintergrund wird sie als marktfähige Limit-Order gesendet, die in einem festgelegten Abstand zum Preis gedeckelt ist und Sie davor schützt, bei einem Spike tief in ein dünnes Orderbuch gefüllt zu werden. Kann die Order innerhalb dieses Bands nicht vollständig gefüllt werden, kann der Rest als stehende Limit-Order zum Schutzpreis weiterlaufen. Deshalb kann bei einem &ldquo;Market&rdquo;-Klick durchaus ein Limit-Preis im Spiel sein." },
+    { type: "paragraph",html: "Zweitens die zusätzliche Schicht bei einem Prop-Konto. Bei einem von Topstep finanzierten Konto geht Ihre Order nicht direkt von Tradovate zur Börse. Sie läuft über das Risk-Gateway der Firma, das sie anhand Ihrer Kontoregeln prüft, bevor sie hinausgelassen wird. Die Order-Engine von Tradovate und diese Risikoschicht müssen sich Tick für Tick darüber einig sein, was Sie senden. Geraten sie aus dem Takt, etwa nach einem Reconnect, einem Sitzungsaussetzer oder einem plattformseitigen Fehler, kann die geschützte Market-Order bei der Übergabe verfälscht und als abgelehnte Limit-Order an Sie zurückgeworfen werden. Sie haben Market geklickt; das Routing zwischen den beiden Systemen hat daraus eine falsch beschriftete Ablehnung gemacht." },
+    { type: "paragraph",html: "Das ist kein obskurer Randfall. Topstep hat offen bestätigt, dass ihm Probleme mit der Tradovate-Anbindung bekannt sind, und betroffene Trader gebeten, den Support zu kontaktieren, damit das Team sie nachverfolgen kann. Das ist Ihr Hinweis: Behebt eine saubere Neuanmeldung das Problem nicht, liegt der Fehler in der Integration, und die Lösung läuft über deren Support, nicht über etwas, das Sie in Ihren eigenen Einstellungen umschalten können." },
+    { type: "heading",text: "Zuerst Ähnliches ausschließen" },
+    { type: "paragraph",html: "Bevor Sie von einem Synchronisationsfehler ausgehen, schließen Sie Zustände aus, die Orders aus anderen Gründen ablehnen. Sie alle weisen Orders ab und werden mit dem Market-gegen-Limit-Fehler verwechselt:" },
+    { type: "heading",text: "Sie haben ein Verlustlimit erreicht" },
+    { type: "paragraph",html: "Hat Ihr Konto sein maximales Verlustlimit oder tägliches Verlustlimit ausgelöst, liquidiert die Firma automatisch und lehnt für den Rest des Handelstags neue Orders ab. Die genauen Schwellen unterscheiden sich je nach Firma und Kontogröße, prüfen Sie daher Ihre aktuellen Regeln. Diese Ablehnung ist ein harter Stopp, kein Synchronisationsproblem; kein noch so häufiges Neuanmelden behebt sie bis zur nächsten Sitzung." },
+    { type: "heading",text: "Sie sind außerhalb der erlaubten Handelszeiten" },
+    { type: "paragraph",html: "Orders außerhalb der Sitzung des Instruments, während der täglichen Wartungspause oder gegen das eigene Handelsfenster Ihrer Firma werden abgelehnt. Ist es später Nachmittag oder Wochenende, vergewissern Sie sich, dass der Markt tatsächlich geöffnet ist, bevor Sie dem Ordertyp die Schuld geben." },
+    { type: "heading",text: "Sie überschreiten eine Positions- oder Kontraktobergrenze" },
+    { type: "paragraph",html: "Eine Order, die über die maximale Positionsgröße Ihres Kontos oder die Kontraktobergrenze pro Order hinausgeht, wird abgelehnt. Diese Limits unterscheiden sich je nach Firma und Plan; reduzieren Sie die Größe und versuchen Sie es erneut." },
+    { type: "heading",text: "Das Abonnement oder der Kontostatus ist inaktiv" },
+    { type: "paragraph",html: "Ein gekündigtes, abgelaufenes oder überfälliges Abonnement oder eine nicht vollständig aktivierte Evaluierung blockiert Orders. Bei einem CME-Velocity-Logic-Ereignis, einer kurzen börsenseitigen Pause, wenn sich ein Markt zu schnell bewegt, können Orders ebenfalls kurzzeitig abgelehnt werden." },
+    { type: "paragraph",html: "Trifft nichts davon zu und Sie haben tatsächlich Market geklickt und erhalten dennoch eine Limit-Ablehnung, befinden Sie sich im Bereich des Synchronisationsfehlers, für den dieser Leitfaden gedacht ist. Weiter zur Lösung." },
+    { type: "heading",text: "So beheben Sie es: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Bestätigen, dass die Order wirklich als Limit behandelt wurde", html: "Öffnen Sie das Panel <strong class='text-white'>Orders</strong> und klicken Sie auf die abgelehnte Order, um die vollständigen Details zu lesen. Sie prüfen zwei Dinge: ob der Ordertyp oder der Grund tatsächlich auf ein Limit-Preis-Problem hindeutet und ob es sich nicht um eine der oben genannten ähnlich aussehenden Ablehnungen handelt. Notieren Sie den genauen Ablehnungstext, Sie brauchen ihn, falls Sie eskalieren müssen, und sorgfältiges Lesen bewahrt Sie davor, das falsche Problem zu lösen." },
+        { title: "Prüfen, ob Ihr Order-Ticket auf Market steht", html: "Es klingt selbstverständlich, aber vergewissern Sie sich, dass die Ordertyp-Auswahl in Ihrem Order-Ticket, ATM-Template oder Hotkey auf <strong class='text-white'>Market</strong> gestellt ist und nicht auf einer übrig gebliebenen Limit-Konfiguration eines vorherigen Trades. Ein gespeichertes Bracket oder ein falsch belegter Hotkey kann unbemerkt Limit-Orders senden, während Sie glauben, zum Marktpreis zu handeln. Ist das Ticket selbst in Ordnung und Sie erhalten bei einem Market-Klick trotzdem Limit-Ablehnungen, liegt die Abweichung zwischen Ihrem Konto und Tradovate, fahren Sie mit der Neusynchronisation fort." },
+      ],
+    },
+    {
+      type: "steps",
+      items: [
+        { title: "Mit einer vollständigen Neuanmeldung eine frische Synchronisation erzwingen", html: "Das behebt die häufigste Variante des Fehlers. Melden Sie sich vollständig von Tradovate ab, schließen Sie die Desktop-App oder den Browser-Tab und melden Sie sich wieder an. Im Web erzwingt das Leeren des Caches oder das Öffnen eines neuen privaten/Inkognito-Fensters einen sauberen Handshake mit dem Risk-Gateway der Firma und verwirft jede veraltete Sitzung, die Ihre Orders falsch geroutet hat. Warten Sie, bis die Verbindung vollständig steht, und platzieren Sie dann eine kleine Test-Market-Order, um zu bestätigen, dass der Pfad gesund ist, bevor Sie mit Größe handeln." },
+      ],
+    },
+    {
+      type: "steps",
+      items: [
+        { title: "Eine marktfähige Limit-Order als Notlösung nutzen", html: "Wenn Sie <em>jetzt sofort</em> rein oder raus müssen und Market-Orders weiter abprallen, platzieren Sie ein Limit einige Ticks über dem Preis, ein Kauf-Limit über dem Ask, ein Verkaufs-Limit unter dem Bid. Es füllt wie eine Market-Order, umgeht aber den defekten Pfad. Halten Sie es eng, damit Sie nicht zu viel zahlen, und betrachten Sie es als Brücke, nicht als Lösung." },
+        { title: "An den Topstep-Support eskalieren, wenn es bestehen bleibt", html: "Behebt eine saubere Neuanmeldung mit Neusynchronisation das Problem nicht, liegt der Fehler serverseitig, und nur die Firma kann ihn zurücksetzen. Holen Sie die Details aus Ihrer Ansicht <strong class='text-white'>Orders</strong> oder Berichte und senden Sie sie ein. Das Wichtigste ist die <strong class='text-white'>Order-ID</strong> jeder abgelehnten Order, Order-IDs und Trade-IDs sind verschieden, und der Support braucht die Order-ID, um die genaue Ablehnung auf seiner Seite abzurufen." },
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Was Sie sehen","Wahrscheinliche Ursache","Was zu tun ist"], rows: [
+      ["Market-Klick wird als &ldquo;Limit&rdquo;-Order abgelehnt","Konto nicht synchron mit der Order-Engine von Tradovate","Vollständig ab- und wieder anmelden, um neu zu synchronisieren; bei Fortbestehen den Support mit Order-IDs kontaktieren"],
+      ["Market-Order wird teilweise gefüllt, der Rest steht als Limit","Normales CME-Verhalten bei Market-Orders mit Schutz","Erwartet, der ungefüllte Teil liegt am Schutzpreis; stornieren oder bearbeiten"],
+      ["Alle neuen Orders für den Tag abgelehnt","Verlustlimit oder tägliches Verlustlimit erreicht (Auto-Liquidation)","Für die Sitzung erledigt; Schwellen unterscheiden sich je nach Firma und Kontogröße"],
+      ["Ablehnung außerhalb der Sitzung oder während einer Pause","Markt geschlossen oder Wartungsfenster","Auf die Wiedereröffnung der Sitzung warten; Handelszeiten des Instruments prüfen"],
+      ["Ablehnung beim Aufstocken der Größe","Positionsgrößen- oder Kontraktobergrenze überschritten","Menge reduzieren; aktuelle Limits Ihrer Firma prüfen"],
+      ["Kurze Ablehnung bei schneller Bewegung","CME-Velocity-Logic-Ereignis","Einen Moment warten und erneut versuchen, sobald die Börsenpause endet"],
+    ] },
+    { type: "heading",text: "Ein Hinweis zu älteren vs. neueren Topstep-Plattformen" },
+    { type: "paragraph",html: "Wissenswert: Topstep hat neue Trading-Combine-Käufe Mitte 2025 auf die eigene Plattform TopstepX verlagert und Tradovate, NinjaTrader, TradingView und Quantower für Neuanmeldungen entfernt. Wenn Sie noch ein mit Tradovate verknüpftes Topstep-Konto nutzen, befinden Sie sich auf der älteren Verbindung, genau dem Pfad, auf dem diese Synchronisationsabweichungen auftreten. Das ändert nichts an der Lösung, erklärt aber, warum die Firma die Tradovate-Integration als bekanntes, nachverfolgtes Problem behandelt. Nennen Sie dem Support bei Ihrer Kontaktaufnahme, von welcher Plattform aus Sie Orders platzieren." },
+    { type: "heading",text: "Verlieren Sie keine Einstiege mehr durch einen Fehler auf Broker-Seite" },
+    { type: "paragraph",html: "Wenn Ihr Orderpfad das schwache Glied ist, nehmen Sie das manuelle Klicken aus der Gleichung und routen Sie stattdessen saubere, validierte Orders. Wenn TradingView das Gehirn hinter Ihren Topstep-Trades ist, ist PickMyTrade die Verdrahtung, die jedes Signal durchreicht, mit einigen Vorteilen für Sie:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Explizite Ordertypen</strong>, jede Order wird mit ihrem im Payload definierten Typ gesendet, sodass es im Moment des Routings keine Mehrdeutigkeit zwischen Market und Limit gibt.",
+        "<strong class='text-white'>Symbol- und Mengenvalidierung</strong>, erkennt falsche, abgelaufene oder fehlerhafte Symbole vor dem Routing, sodass eine fehlerhafte Order sich nie als etwas anderes ausgibt.",
+        "<strong class='text-white'>Multi-Account-Sync</strong>, spiegelt eine gültige Order in einem Schritt auf alle verknüpften Konten, statt sie einzeln anzuklicken.",
+        "<strong class='text-white'>Reconnect-bewusstes Routing</strong>, taktet den Orderfluss bei Reconnects, damit sich ein Schwall von Alerts nicht staut und abprallt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Hace clic en comprar a mercado en su cuenta de Tradovate financiada por Topstep y la orden vuelve rechazada de inmediato, con un mensaje sobre una orden <strong class='text-white'>límite</strong> que nunca colocó. Lo intenta otra vez, igual. Mira el DOM pensando &ldquo;pulsé mercado, no límite&rdquo;, mientras el movimiento que quería se escapa sin usted. Es especialmente exasperante porque la plataforma parece discutir con usted sobre lo que acaba de hacer." },
+    { type: "paragraph",html: "La versión corta: es un fallo conocido de la conexión Topstep&ndash;Tradovate, no un error suyo. Cuando la capa de riesgo de la firma y el motor de órdenes de Tradovate se desincronizan, una orden a mercado normal puede volver mal etiquetada como límite rechazada. Fuerce una sincronización nueva y, si no se resuelve, entregue a soporte de Topstep los detalles exactos de la orden. Esta guía explica por qué ocurre y qué hacer, en orden." },
+    { type: "quote",html: "<strong class='text-white'>Respuesta corta:</strong> una orden a mercado en futuros de CME es en realidad una orden a mercado <em>con protección</em>, que internamente va con un tope de precio límite. Cuando su cuenta de Topstep está desincronizada con Tradovate, esa orden protegida puede rechazarse y aparecer como un rechazo de &ldquo;límite&rdquo;. Resincronice cerrando sesión y volviendo a entrar; si persiste, es del lado del servidor, así que contacte con soporte de Topstep con sus Order IDs." },
+    {
+      type: "checklist",
+      heading: "Lista rápida",
+      items: [
+        "<strong class='text-white'>Lea el motivo real del rechazo</strong>, abra la orden rechazada y compruebe si realmente indica que se trató como límite, o si es un bloqueo de riesgo, de margen o de horario que solo se le parece.",
+        "<strong class='text-white'>Fuerce una resincronización</strong>, cierre sesión por completo en Tradovate, cierre la aplicación o pestaña y vuelva a iniciar sesión para que la cuenta rehaga el handshake con la pasarela de riesgo de la firma.",
+        "<strong class='text-white'>Pruebe una orden límite ejecutable como solución provisional</strong>, coloque un límite unos ticks por encima del mercado para ejecutarse mientras resuelve la ruta de órdenes a mercado.",
+        "<strong class='text-white'>Confirme que no está en un estado restringido</strong>, un límite de pérdida alcanzado, una sesión cerrada o un tope de tamaño de posición también pueden rechazar órdenes. Esas reglas varían según la firma y el tamaño de la cuenta.",
+        "<strong class='text-white'>Revise el contrato</strong>, asegúrese de estar en el mes frontal activo, no en un símbolo vencido o continuo.",
+        "<strong class='text-white'>Escale con los Order IDs</strong>, si un inicio de sesión limpio no lo arregla, envíe a soporte de Topstep los Order IDs rechazados, las marcas de tiempo y el contrato para que puedan restablecer la sincronización.",
+      ],
+    },
+    { type: "heading",text: "Lo que realmente está ocurriendo" },
+    { type: "paragraph",html: "Aquí chocan dos cosas, y entender ambas hace obvia la solución." },
+    { type: "paragraph",html: "Primero, la mecánica de una orden a mercado de futuros. A diferencia de una acción, una orden a mercado en un producto de CME no se ejecuta simplemente a cualquier precio; el mercado la envuelve en una <strong class='text-white'>banda de protección</strong>. Internamente se envía como una orden límite ejecutable con un tope a cierta distancia del precio, que le protege de ejecutarse muy adentro de un libro fino durante un pico. Si la orden no puede ejecutarse por completo dentro de esa banda, el resto puede convertirse en una orden límite en reposo al precio de protección. Por eso un clic en &ldquo;mercado&rdquo; puede involucrar legítimamente un precio límite." },
+    { type: "paragraph",html: "Segundo, la capa adicional de una cuenta de prop firm. En una cuenta financiada por Topstep, su orden no va directamente de Tradovate al mercado. Pasa por la pasarela de riesgo de la firma, que la comprueba contra las reglas de su cuenta antes de dejarla salir. El motor de órdenes de Tradovate y esa capa de riesgo deben coincidir, tick a tick, en lo que usted envía. Cuando se desincronizan, tras una reconexión, un fallo de sesión o un problema de la plataforma, la orden a mercado protegida puede distorsionarse en el traspaso y devolverle un rechazo como orden límite. Usted pulsó mercado; el enrutamiento entre los dos sistemas fue lo que lo convirtió en un rechazo mal etiquetado." },
+    { type: "paragraph",html: "No es un caso extremo oscuro. Topstep ha reconocido abiertamente que conoce problemas con la conexión de Tradovate y ha pedido a los traders afectados que contacten con soporte para que el equipo pueda hacer seguimiento. Esa es su señal: cuando un inicio de sesión limpio no lo arregla, el fallo está en la integración y la resolución pasa por su servicio de soporte, no por nada que pueda cambiar en su propia configuración." },
+    { type: "heading",text: "Descarte primero los casos parecidos" },
+    { type: "paragraph",html: "Antes de asumir que es el fallo de sincronización, descarte estados que rechazan órdenes por otro motivo. Todos hacen rebotar órdenes y se confunden con el fallo de mercado frente a límite:" },
+    { type: "heading",text: "Ha alcanzado un límite de pérdida" },
+    { type: "paragraph",html: "Si su cuenta ha activado su límite máximo de pérdida o su límite de pérdida diaria, la firma liquida automáticamente y rechaza las órdenes nuevas durante el resto del día de negociación. Los umbrales exactos varían según la firma y el tamaño de la cuenta, así que consulte sus reglas actuales. Este rechazo es una parada total, no un problema de sincronización; ningún número de inicios de sesión lo resolverá hasta la siguiente sesión." },
+    { type: "heading",text: "Está fuera del horario de negociación permitido" },
+    { type: "paragraph",html: "Las órdenes colocadas fuera de la sesión del instrumento, durante la pausa de mantenimiento diaria o contra la ventana de negociación propia de su firma se rechazan. Si es a última hora de la tarde o fin de semana, confirme que el mercado está realmente abierto antes de culpar al tipo de orden." },
+    { type: "heading",text: "Supera un tope de posición o de contratos" },
+    { type: "paragraph",html: "Añadir por encima del tamaño máximo de posición de su cuenta o del tope de contratos por orden rechaza la orden. Esos límites varían según la firma y el plan; reduzca el tamaño y vuelva a intentarlo." },
+    { type: "heading",text: "La suscripción o el estado de la cuenta está inactivo" },
+    { type: "paragraph",html: "Una suscripción cancelada, vencida o con pago pendiente, o una evaluación que no está completamente activada, bloqueará las órdenes. Durante un evento de Velocity Logic de CME, una breve pausa del mercado cuando este se mueve demasiado rápido, las órdenes también pueden rechazarse momentáneamente." },
+    { type: "paragraph",html: "Si nada de eso aplica y de verdad pulsó mercado y obtuvo un rechazo de límite, está en el territorio del fallo de sincronización para el que se creó esta guía. Pase a la solución." },
+    { type: "heading",text: "Cómo solucionarlo: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirme que la orden realmente se trató como límite", html: "Abra el panel <strong class='text-white'>Orders</strong> y haga clic en la orden rechazada para leer el detalle completo. Está comprobando dos cosas: que el tipo de orden o el motivo apunte realmente a un problema de precio límite, y que no sea uno de los casos parecidos anteriores. Anote el texto exacto del rechazo, lo necesitará si tiene que escalar, y leerlo con atención evita que resuelva el problema equivocado." },
+        { title: "Verifique que su ticket de órdenes esté en Market", html: "Parece obvio, pero confirme que el selector de tipo de orden de su ticket de entrada, plantilla ATM o atajo de teclado esté en <strong class='text-white'>Market</strong> y no en una configuración límite sobrante de una operación anterior. Un bracket guardado o un atajo mal configurado puede enviar órdenes límite sin que se dé cuenta mientras cree que está a mercado. Si el ticket está bien y aun así recibe rechazos de límite con un clic en mercado, la discrepancia está entre su cuenta y Tradovate; continúe con la resincronización." },
+      ],
+    },
+    {
+      type: "steps",
+      items: [
+        { title: "Fuerce una sincronización nueva con un reinicio de sesión completo", html: "Esto resuelve la versión más común del fallo. Cierre sesión por completo en Tradovate, cierre la aplicación de escritorio o la pestaña del navegador y vuelva a iniciar sesión. En la web, borrar la caché o abrir una ventana privada/incógnito nueva fuerza un handshake limpio con la pasarela de riesgo de la firma y descarta cualquier sesión obsoleta que enrutaba mal sus órdenes. Espere a que se conecte del todo y luego coloque una pequeña orden a mercado de prueba para confirmar que la ruta está sana antes de operar con tamaño." },
+      ],
+    },
+    {
+      type: "steps",
+      items: [
+        { title: "Use una orden límite ejecutable como solución provisional", html: "Si necesita entrar o salir <em>ahora mismo</em> y las órdenes a mercado siguen rebotando, coloque un límite unos ticks por encima del precio, un límite de compra por encima del ask, un límite de venta por debajo del bid. Se ejecuta como una orden a mercado pero evita la ruta averiada. Manténgalo ajustado para no pagar de más y trátelo como un puente, no como una solución." },
+        { title: "Escale a soporte de Topstep si persiste", html: "Si un inicio de sesión limpio y la resincronización no lo resuelven, el fallo está en el servidor y solo la firma puede restablecerlo. Obtenga los detalles de su vista de <strong class='text-white'>Orders</strong> o de informes y envíelos. El dato más importante es el <strong class='text-white'>Order ID</strong> de cada orden rechazada, los Order IDs y los Trade IDs son distintos, y soporte necesita el Order ID para extraer el rechazo exacto de su lado." },
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Lo que ve","Causa probable","Qué hacer"], rows: [
+      ["El clic en mercado se rechaza como orden &ldquo;límite&rdquo;","Cuenta desincronizada con el motor de órdenes de Tradovate","Cierre sesión por completo y vuelva a entrar para resincronizar; si persiste, contacte con soporte con los Order IDs"],
+      ["La orden a mercado se ejecuta parcialmente y el resto queda como límite","Comportamiento normal de CME de orden a mercado con protección","Es lo esperado, la parte no ejecutada queda en el precio de protección; cancélela o gestiónela"],
+      ["Todas las órdenes nuevas rechazadas durante el día","Límite de pérdida o límite de pérdida diaria alcanzado (autoliquidación)","Terminó la sesión; los umbrales varían según la firma y el tamaño de la cuenta"],
+      ["Rechazo fuera de sesión o durante una pausa","Mercado cerrado o ventana de mantenimiento","Espere a que se reabra la sesión; confirme el horario del instrumento"],
+      ["Rechazo al añadir tamaño","Tope de tamaño de posición o de contratos superado","Reduzca la cantidad; consulte los límites vigentes de su firma"],
+      ["Rechazo breve durante un movimiento rápido","Evento de Velocity Logic de CME","Espere un momento y reintente una vez que termine la pausa del mercado"],
+    ] },
+    { type: "heading",text: "Una nota sobre las plataformas Topstep antiguas y las nuevas" },
+    { type: "paragraph",html: "Conviene saber: Topstep trasladó las nuevas compras de Trading Combine a su propia plataforma TopstepX a mediados de 2025 y retiró Tradovate, NinjaTrader, TradingView y Quantower para los nuevos registros. Si todavía está en una cuenta de Topstep vinculada a Tradovate, está en la conexión heredada, justo la ruta en la que aparecen estas discrepancias de sincronización. No cambia la solución, pero explica por qué la firma trata la integración con Tradovate como un problema conocido y en seguimiento. Cuando contacte con soporte, indique desde qué plataforma coloca sus órdenes." },
+    { type: "heading",text: "Deje de perder entradas por un fallo del lado del bróker" },
+    { type: "paragraph",html: "Cuando su ruta de órdenes es el eslabón débil, saque de la ecuación el clic manual y enrute órdenes limpias y validadas. Si TradingView es el cerebro de sus operaciones en Topstep, PickMyTrade es el cableado que lleva cada señal, con varias cosas a su favor:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Tipos de orden explícitos</strong>, cada orden se envía con su tipo definido en el payload, así que no hay ambigüedad entre mercado y límite en el momento del enrutamiento.",
+        "<strong class='text-white'>Validación de símbolo y cantidad</strong>, detecta contratos equivocados, símbolos vencidos o mal formados antes de enrutarlos, de modo que una orden defectuosa nunca se hace pasar por otra cosa.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replica una orden válida en todas las cuentas vinculadas en un solo paso en lugar de hacer clic en cada una.",
+        "<strong class='text-white'>Enrutamiento consciente de reconexiones</strong>, espacia el flujo en las reconexiones para que una ráfaga de alertas no se acumule y rebote.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous cliquez sur acheter au marché sur votre compte Tradovate financé par Topstep et l'ordre revient aussitôt rejeté, avec un message à propos d'un ordre à cours <strong class='text-white'>limité</strong> que vous n'avez jamais passé. Vous recliquez, même résultat. Vous fixez le DOM en vous disant &ldquo;j'ai cliqué sur marché, pas sur limite&rdquo;, pendant que le mouvement que vous vouliez s'enfuit sans vous. C'est exaspérant, car la plateforme semble discuter avec vous de ce que vous venez de faire." },
+    { type: "paragraph",html: "La version courte : il s'agit d'un défaut connu de la connexion Topstep&ndash;Tradovate, pas d'une erreur de votre part. Quand la couche de risque de la société et le moteur d'ordres de Tradovate se désynchronisent, un ordre au marché normal peut revenir mal étiqueté comme rejet d'ordre à cours limité. Forcez une nouvelle synchronisation et, si cela ne règle rien, transmettez au support Topstep les détails exacts de l'ordre. Ce guide explique pourquoi cela arrive et quoi faire, dans l'ordre." },
+    { type: "quote",html: "<strong class='text-white'>Réponse courte :</strong> un ordre au marché sur les contrats à terme CME est en réalité un ordre au marché <em>avec protection</em> ; il repose sur un plafond de prix limite en coulisses. Lorsque votre compte Topstep est désynchronisé de Tradovate, cet ordre protégé peut être rejeté et apparaître comme un rejet de &ldquo;limite&rdquo;. Resynchronisez en vous déconnectant puis en vous reconnectant ; si le problème persiste, il est côté serveur, contactez donc le support Topstep avec vos Order IDs." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide",
+      items: [
+        "<strong class='text-white'>Lisez le véritable motif du rejet</strong>, ouvrez l'ordre rejeté et vérifiez s'il indique réellement que l'ordre a été traité comme limite, ou s'il s'agit d'un blocage de risque, de marge ou d'horaires qui y ressemble seulement.",
+        "<strong class='text-white'>Forcez une resynchronisation</strong>, déconnectez-vous complètement de Tradovate, fermez l'application ou l'onglet, puis reconnectez-vous afin que le compte refasse un handshake avec la passerelle de risque de la société.",
+        "<strong class='text-white'>Essayez un ordre à cours limité exécutable en palliatif</strong>, placez une limite quelques ticks au-delà du marché pour être exécuté pendant que vous réglez le chemin des ordres au marché.",
+        "<strong class='text-white'>Vérifiez que vous n'êtes pas dans un état restreint</strong>, une limite de perte atteinte, une séance fermée ou un plafond de taille de position peuvent aussi rejeter des ordres. Ces règles varient selon la société et la taille du compte.",
+        "<strong class='text-white'>Vérifiez le contrat</strong>, assurez-vous d'être sur le mois de front actif, pas sur un symbole expiré ou continu.",
+        "<strong class='text-white'>Escaladez avec les Order IDs</strong>, si une reconnexion propre ne règle rien, envoyez au support Topstep les Order IDs rejetés, les horodatages et le contrat afin qu'il puisse réinitialiser la synchronisation.",
+      ],
+    },
+    { type: "heading",text: "Ce qui se passe réellement" },
+    { type: "paragraph",html: "Deux éléments entrent en collision ici, et comprendre les deux rend la solution évidente." },
+    { type: "paragraph",html: "D'abord, la mécanique d'un ordre au marché sur contrats à terme. Contrairement à une action, un ordre au marché sur un produit CME ne s'exécute pas simplement à n'importe quel prix ; la bourse l'enveloppe dans une <strong class='text-white'>bande de protection</strong>. En coulisses, il est envoyé comme un ordre à cours limité exécutable plafonné à une certaine distance du prix, ce qui vous évite d'être exécuté très profondément dans un carnet mince lors d'un pic. Si l'ordre ne peut pas être entièrement exécuté dans cette bande, le reliquat peut se transformer en ordre à cours limité en attente au prix de protection. C'est pourquoi un clic sur &ldquo;marché&rdquo; peut légitimement faire intervenir un prix limite." },
+    { type: "paragraph",html: "Ensuite, la couche supplémentaire d'un compte de prop firm. Sur un compte financé par Topstep, votre ordre ne va pas directement de Tradovate à la bourse. Il passe par la passerelle de risque de la société, qui le vérifie par rapport aux règles de votre compte avant de le laisser sortir. Le moteur d'ordres de Tradovate et cette couche de risque doivent s'accorder, tick pour tick, sur ce que vous envoyez. Quand ils se désynchronisent, après une reconnexion, un incident de session ou un défaut côté plateforme, l'ordre au marché protégé peut être altéré lors du transfert et vous revenir comme un ordre à cours limité rejeté. Vous avez cliqué sur marché ; c'est le routage entre les deux systèmes qui l'a transformé en rejet mal étiqueté." },
+    { type: "paragraph",html: "Ce n'est pas un cas marginal obscur. Topstep a ouvertement reconnu avoir connaissance de problèmes sur la connexion Tradovate et a demandé aux traders concernés de contacter le support afin que l'équipe puisse en assurer le suivi. C'est votre indice : quand une reconnexion propre ne règle rien, le défaut vient de l'intégration et la résolution passe par leur service d'assistance, pas par un réglage que vous pourriez modifier vous-même." },
+    { type: "heading",text: "Écartez d'abord les cas similaires" },
+    { type: "paragraph",html: "Avant de conclure à un défaut de synchronisation, écartez les états qui rejettent des ordres pour une autre raison. Tous font rebondir des ordres et sont confondus avec le défaut marché-contre-limite :" },
+    { type: "heading",text: "Vous avez atteint une limite de perte" },
+    { type: "paragraph",html: "Si votre compte a déclenché sa limite de perte maximale ou sa limite de perte quotidienne, la société liquide automatiquement et rejette les nouveaux ordres pour le reste de la journée de trading. Les seuils exacts varient selon la société et la taille du compte ; vérifiez donc vos règles actuelles. Ce rejet est un arrêt net, pas un problème de synchronisation ; aucune reconnexion ne le lèvera avant la séance suivante." },
+    { type: "heading",text: "Vous êtes hors des heures de trading autorisées" },
+    { type: "paragraph",html: "Les ordres passés hors de la séance de l'instrument, pendant la pause de maintenance quotidienne ou en dehors de la fenêtre de trading propre à votre société sont rejetés. S'il est tard dans l'après-midi ou si c'est le week-end, vérifiez que le marché est réellement ouvert avant d'incriminer le type d'ordre." },
+    { type: "heading",text: "Vous dépassez un plafond de position ou de contrats" },
+    { type: "paragraph",html: "Ajouter au-delà de la taille de position maximale de votre compte ou du plafond de contrats par ordre fait rejeter l'ordre. Ces limites varient selon la société et le plan ; réduisez la taille et réessayez." },
+    { type: "heading",text: "L'abonnement ou l'état du compte est inactif" },
+    { type: "paragraph",html: "Un abonnement annulé, expiré ou en retard de paiement, ou une évaluation qui n'est pas entièrement activée, bloquera les ordres. Lors d'un événement de Velocity Logic du CME, une brève pause côté bourse lorsqu'un marché bouge trop vite, les ordres peuvent aussi être rejetés momentanément." },
+    { type: "paragraph",html: "Si rien de tout cela ne s'applique et que vous avez réellement cliqué sur marché pour recevoir un rejet de limite, vous êtes dans le territoire du défaut de synchronisation pour lequel ce guide a été conçu. Passez à la correction." },
+    { type: "heading",text: "Comment le corriger : pas à pas" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirmez que l'ordre a réellement été traité comme limite", html: "Ouvrez le panneau <strong class='text-white'>Orders</strong> et cliquez sur l'ordre rejeté pour lire le détail complet. Vous vérifiez deux choses : que le type d'ordre ou le motif indique bien un problème de prix limite, et qu'il ne s'agit pas de l'un des cas similaires ci-dessus. Notez le texte exact du rejet, vous en aurez besoin si vous devez escalader, et le lire attentivement vous évite de résoudre le mauvais problème." },
+        { title: "Vérifiez que votre ticket d'ordre est réglé sur Market", html: "Cela paraît évident, mais vérifiez que le sélecteur de type d'ordre de votre ticket d'entrée, de votre modèle ATM ou de votre raccourci clavier est réglé sur <strong class='text-white'>Market</strong> et non sur une configuration limite résiduelle d'un trade précédent. Un bracket enregistré ou un raccourci mal configuré peut envoyer discrètement des ordres à cours limité alors que vous pensez être au marché. Si le ticket est correct et que vous recevez quand même des rejets de limite sur un clic marché, l'écart se situe entre votre compte et Tradovate ; passez à la resynchronisation." },
+      ],
+    },
+    {
+      type: "steps",
+      items: [
+        { title: "Forcez une nouvelle synchronisation par une reconnexion complète", html: "Cela règle la version la plus courante du défaut. Déconnectez-vous complètement de Tradovate, fermez l'application de bureau ou l'onglet du navigateur, puis reconnectez-vous. Sur le web, vider le cache ou ouvrir une nouvelle fenêtre privée/incognito force un handshake propre avec la passerelle de risque de la société et élimine toute session obsolète qui routait mal vos ordres. Laissez le temps à la connexion de s'établir complètement, puis passez un petit ordre au marché de test pour confirmer que le chemin est sain avant de trader en taille." },
+      ],
+    },
+    {
+      type: "steps",
+      items: [
+        { title: "Utilisez un ordre à cours limité exécutable en palliatif", html: "Si vous devez entrer ou sortir <em>tout de suite</em> et que les ordres au marché continuent de rebondir, placez une limite quelques ticks au-delà du prix, une limite d'achat au-dessus de l'offre, une limite de vente en dessous de la demande. Elle s'exécute comme un ordre au marché mais contourne le chemin défaillant. Gardez-la serrée pour ne pas payer trop cher et considérez-la comme un pont, pas comme une solution." },
+        { title: "Escaladez au support Topstep si le problème persiste", html: "Si une reconnexion propre et une resynchronisation ne règlent rien, la panne est côté serveur et seule la société peut la réinitialiser. Récupérez les détails dans votre vue <strong class='text-white'>Orders</strong> ou Rapports et envoyez-les. L'élément le plus important est l'<strong class='text-white'>Order ID</strong> de chaque ordre rejeté, les Order IDs et les Trade IDs sont différents, et le support a besoin de l'Order ID pour retrouver le rejet exact de son côté." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Ce que vous voyez","Cause probable","Que faire"], rows: [
+      ["Un clic sur marché est rejeté comme ordre &ldquo;limite&rdquo;","Compte désynchronisé du moteur d'ordres de Tradovate","Déconnexion puis reconnexion complètes pour resynchroniser ; si le problème persiste, contactez le support avec les Order IDs"],
+      ["L'ordre au marché est exécuté partiellement, le reliquat reste en limite","Comportement normal du CME : ordre au marché avec protection","Attendu, la partie non exécutée reste au prix de protection ; annulez-la ou gérez-la"],
+      ["Tous les nouveaux ordres rejetés pour la journée","Limite de perte ou limite de perte quotidienne atteinte (auto-liquidation)","Terminé pour la séance ; les seuils varient selon la société et la taille du compte"],
+      ["Rejet hors séance ou pendant une pause","Marché fermé ou fenêtre de maintenance","Attendez la réouverture de la séance ; vérifiez les horaires de l'instrument"],
+      ["Rejet lors d'un ajout de taille","Plafond de taille de position ou de contrats dépassé","Réduisez la quantité ; vérifiez les limites actuelles de votre société"],
+      ["Bref rejet pendant un mouvement rapide","Événement de Velocity Logic du CME","Attendez un instant et réessayez une fois la pause de la bourse levée"],
+    ] },
+    { type: "heading",text: "Une note sur les plateformes Topstep anciennes et récentes" },
+    { type: "paragraph",html: "À savoir : Topstep a basculé les nouveaux achats de Trading Combine vers sa propre plateforme TopstepX à la mi-2025, retirant Tradovate, NinjaTrader, TradingView et Quantower pour les nouvelles inscriptions. Si vous êtes encore sur un compte Topstep lié à Tradovate, vous êtes sur la connexion historique, précisément le chemin sur lequel ces désynchronisations apparaissent. Cela ne change pas la solution, mais explique pourquoi la société traite l'intégration Tradovate comme un problème connu et suivi. Lorsque vous contactez le support, indiquez depuis quelle plateforme vous passez vos ordres." },
+    { type: "heading",text: "Cessez de perdre des entrées à cause d'un défaut côté courtier" },
+    { type: "paragraph",html: "Quand votre chemin d'ordres est le maillon faible, retirez le clic manuel de l'équation et acheminez des ordres propres et validés. Si TradingView est le cerveau de vos trades Topstep, PickMyTrade est le câblage qui transporte chaque signal, avec plusieurs atouts en votre faveur :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Types d'ordre explicites</strong>, chaque ordre est envoyé avec son type défini dans la charge utile, il n'y a donc aucune ambiguïté entre marché et limite au moment du routage.",
+        "<strong class='text-white'>Validation du symbole et de la quantité</strong>, détecte les contrats erronés, les symboles expirés ou mal formés avant leur routage, afin qu'un mauvais ordre ne se fasse jamais passer pour autre chose.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, réplique un ordre valide sur tous les comptes liés en une seule étape au lieu de cliquer sur chacun.",
+        "<strong class='text-white'>Routage conscient des reconnexions</strong>, espace le flux lors des reconnexions afin qu'une rafale d'alertes ne s'accumule pas et ne rebondisse pas.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Clicca su acquista a mercato sul suo conto Tradovate finanziato da Topstep e l'ordine torna subito indietro rifiutato, con un messaggio su un ordine <strong class='text-white'>limite</strong> che non ha mai inserito. Clicca di nuovo, stesso risultato. Fissa il DOM pensando &ldquo;ho cliccato mercato, non limite&rdquo;, mentre il movimento che voleva corre via senza di lei. È esasperante perché la piattaforma sembra discutere con lei su ciò che ha appena fatto." },
+    { type: "paragraph",html: "In sintesi: è un difetto noto della connessione Topstep&ndash;Tradovate, non un errore da parte sua. Quando il livello di rischio della società e il motore di ordini di Tradovate si desincronizzano, un normale ordine a mercato può tornare indietro erroneamente etichettato come limite rifiutato. Forzi una sincronizzazione nuova e, se non risolve, fornisca al supporto Topstep i dettagli esatti dell'ordine. Questa guida spiega perché succede e cosa fare, in ordine." },
+    { type: "quote",html: "<strong class='text-white'>Risposta breve:</strong> un ordine a mercato sui futures CME è in realtà un ordine a mercato <em>con protezione</em>, viaggia su un tetto di prezzo limite sotto il cofano. Quando il suo conto Topstep è desincronizzato da Tradovate, quell'ordine protetto può essere rifiutato e comparire come rifiuto di &ldquo;limite&rdquo;. Si risincronizzi uscendo e riaccedendo; se persiste, è lato server, quindi contatti il supporto Topstep con i suoi Order ID." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida",
+      items: [
+        "<strong class='text-white'>Legga l'effettivo motivo del rifiuto</strong>, apra l'ordine rifiutato e verifichi se indica davvero che è stato trattato come limite, oppure se si tratta di un blocco di rischio, margine o orario che gli somiglia soltanto.",
+        "<strong class='text-white'>Forzi una risincronizzazione</strong>, esca completamente da Tradovate, chiuda l'app o la scheda, poi riaccede in modo che il conto rifaccia l'handshake con il gateway di rischio della società.",
+        "<strong class='text-white'>Provi un ordine limite eseguibile come soluzione tampone</strong>, inserisca un limite qualche tick oltre il mercato per farsi eseguire mentre risolve il percorso degli ordini a mercato.",
+        "<strong class='text-white'>Verifichi di non trovarsi in uno stato di restrizione</strong>, un limite di perdita raggiunto, una sessione chiusa o un tetto alla dimensione della posizione possono rifiutare ordini. Queste regole variano in base alla società e alla dimensione del conto.",
+        "<strong class='text-white'>Controlli il contratto</strong>, si assicuri di essere sul mese frontale attivo, non su un simbolo scaduto o continuo.",
+        "<strong class='text-white'>Esegua l'escalation con gli Order ID</strong>, se un nuovo accesso pulito non risolve, invii al supporto Topstep gli Order ID rifiutati, i timestamp e il contratto in modo che possano reimpostare la sincronizzazione.",
+      ],
+    },
+    { type: "heading",text: "Cosa sta realmente accadendo" },
+    { type: "paragraph",html: "Qui si scontrano due cose e, capendole entrambe, la soluzione diventa ovvia." },
+    { type: "paragraph",html: "Primo, la meccanica di un ordine a mercato sui futures. A differenza di un'azione, un ordine a mercato su un prodotto CME non si esegue semplicemente a qualsiasi prezzo; la borsa lo avvolge in una <strong class='text-white'>banda di protezione</strong>. Dietro le quinte viene inviato come ordine limite eseguibile con un tetto a una certa distanza dal prezzo, che la protegge dall'essere eseguita in profondità in un book sottile durante uno spike. Se l'ordine non può essere eseguito per intero entro quella banda, il residuo può convertirsi in un ordine limite in attesa al prezzo di protezione. Ecco perché un clic su &ldquo;mercato&rdquo; può legittimamente coinvolgere un prezzo limite." },
+    { type: "paragraph",html: "Secondo, il livello aggiuntivo di un conto prop. Su un conto finanziato da Topstep il suo ordine non va direttamente da Tradovate alla borsa. Passa attraverso il gateway di rischio della società, che lo verifica rispetto alle regole del suo conto prima di lasciarlo uscire. Il motore di ordini di Tradovate e quel livello di rischio devono concordare, tick per tick, su ciò che sta inviando. Quando si desincronizzano, dopo una riconnessione, un intoppo di sessione o un difetto lato piattaforma, l'ordine a mercato protetto può essere alterato nel passaggio e restituito come ordine limite rifiutato. Lei ha cliccato mercato; è stato l'instradamento tra i due sistemi a trasformarlo in un rifiuto etichettato male." },
+    { type: "paragraph",html: "Non è un caso limite oscuro. Topstep ha riconosciuto apertamente di essere a conoscenza di problemi sulla connessione con Tradovate e ha chiesto ai trader interessati di contattare il supporto in modo che il team possa tenerne traccia. È il suo indizio: quando un nuovo accesso pulito non risolve, il guasto è nell'integrazione e la risoluzione passa dal loro supporto, non da qualcosa che può cambiare nelle sue impostazioni." },
+    { type: "heading",text: "Escluda prima i casi simili" },
+    { type: "paragraph",html: "Prima di presumere che si tratti del difetto di sincronizzazione, escluda gli stati che rifiutano gli ordini per un motivo diverso. Tutti respingono ordini e vengono scambiati per il problema mercato-contro-limite:" },
+    { type: "heading",text: "Ha raggiunto un limite di perdita" },
+    { type: "paragraph",html: "Se il suo conto ha attivato il limite massimo di perdita o il limite di perdita giornaliero, la società liquida automaticamente e rifiuta i nuovi ordini per il resto della giornata di trading. Le soglie esatte variano in base alla società e alla dimensione del conto, quindi controlli le sue regole attuali. Questo rifiuto è uno stop netto, non un problema di sincronizzazione; nessun numero di nuovi accessi lo risolverà fino alla sessione successiva." },
+    { type: "heading",text: "È fuori dagli orari di trading consentiti" },
+    { type: "paragraph",html: "Gli ordini inseriti fuori dalla sessione dello strumento, durante la pausa di manutenzione giornaliera o contro la finestra di trading della sua società vengono rifiutati. Se è tardo pomeriggio o weekend, verifichi che il mercato sia effettivamente aperto prima di dare la colpa al tipo di ordine." },
+    { type: "heading",text: "Supera un tetto di posizione o di contratti" },
+    { type: "paragraph",html: "Aggiungere oltre la dimensione massima di posizione del conto o il tetto di contratti per ordine fa rifiutare l'ordine. Questi limiti variano in base alla società e al piano; riduca la dimensione e riprovi." },
+    { type: "heading",text: "L'abbonamento o lo stato del conto è inattivo" },
+    { type: "paragraph",html: "Un abbonamento annullato, scaduto o con pagamento in ritardo, o una valutazione non completamente attivata, bloccherà gli ordini. Durante un evento di Velocity Logic del CME, una breve pausa lato borsa quando un mercato si muove troppo velocemente, gli ordini possono essere rifiutati anche momentaneamente." },
+    { type: "paragraph",html: "Se nulla di tutto ciò si applica e ha davvero cliccato su mercato ottenendo un rifiuto di limite, si trova nel territorio del difetto di sincronizzazione per cui è stata scritta questa guida. Passi alla soluzione." },
+    { type: "heading",text: "Come risolvere: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confermi che l'ordine sia stato davvero trattato come limite", html: "Apra il pannello <strong class='text-white'>Orders</strong> e clicchi sull'ordine rifiutato per leggere il dettaglio completo. Sta verificando due cose: che il tipo di ordine o il motivo indichi davvero un problema di prezzo limite e che non sia uno dei casi simili indicati sopra. Annoti il testo esatto del rifiuto, le servirà se dovrà fare l'escalation, e leggerlo con attenzione evita di risolvere il problema sbagliato." },
+        { title: "Verifichi che il ticket dell'ordine sia impostato su Market", html: "Sembra ovvio, ma confermi che il selettore del tipo di ordine nel suo ticket di ingresso, nel template ATM o nell'hotkey sia impostato su <strong class='text-white'>Market</strong> e non su una configurazione limite residua di un trade precedente. Un bracket salvato o un hotkey impostato male può inviare silenziosamente ordini limite mentre lei crede di essere a mercato. Se il ticket è corretto e riceve comunque rifiuti di limite con un clic su mercato, la discrepanza è tra il suo conto e Tradovate; prosegua con la risincronizzazione." },
+      ],
+    },
+    {
+      type: "steps",
+      items: [
+        { title: "Forzi una sincronizzazione nuova con un accesso completo", html: "Questo risolve la versione più comune del difetto. Esca completamente da Tradovate, chiuda l'app desktop o la scheda del browser e riaccede. Sul web, svuotare la cache o aprire una nuova finestra privata/in incognito forza un handshake pulito con il gateway di rischio della società ed elimina qualsiasi sessione obsoleta che instradava male i suoi ordini. Attenda che la connessione sia completa, poi inserisca un piccolo ordine di prova a mercato per confermare che il percorso sia sano prima di operare con dimensione." },
+      ],
+    },
+    {
+      type: "steps",
+      items: [
+        { title: "Usi un ordine limite eseguibile come soluzione tampone", html: "Se deve entrare o uscire <em>subito</em> e gli ordini a mercato continuano a rimbalzare, inserisca un limite qualche tick oltre il prezzo, un limite di acquisto sopra l'offerta, un limite di vendita sotto il bid. Si esegue come un ordine a mercato ma aggira il percorso guasto. Lo tenga stretto per non pagare troppo e lo consideri un ponte, non una soluzione." },
+        { title: "Esegua l'escalation al supporto Topstep se persiste", html: "Se un nuovo accesso pulito e la risincronizzazione non risolvono, il guasto è lato server e solo la società può reimpostarlo. Recuperi i dettagli dalla vista <strong class='text-white'>Orders</strong> o Report e li invii. L'elemento più importante è l'<strong class='text-white'>Order ID</strong> di ogni ordine rifiutato, gli Order ID e i Trade ID sono diversi e il supporto ha bisogno dell'Order ID per recuperare il rifiuto esatto dalla sua parte." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Cosa vede","Causa probabile","Cosa fare"], rows: [
+      ["Il clic su mercato viene rifiutato come ordine &ldquo;limite&rdquo;","Conto desincronizzato dal motore di ordini di Tradovate","Uscire e riaccedere completamente per risincronizzare; se persiste, contattare il supporto con gli Order ID"],
+      ["L'ordine a mercato si esegue parzialmente e il residuo resta come limite","Normale comportamento CME dell'ordine a mercato con protezione","Previsto, la parte non eseguita resta al prezzo di protezione; la annulli o la gestisca"],
+      ["Tutti i nuovi ordini rifiutati per la giornata","Limite di perdita o limite di perdita giornaliero raggiunto (auto-liquidazione)","Ha finito per la sessione; le soglie variano in base alla società e alla dimensione del conto"],
+      ["Rifiuto fuori sessione o durante una pausa","Mercato chiuso o finestra di manutenzione","Attenda la riapertura della sessione; verifichi gli orari dello strumento"],
+      ["Rifiuto quando si aumenta la dimensione","Superato il tetto di dimensione della posizione o di contratti","Riduca la quantità; verifichi i limiti attuali della sua società"],
+      ["Breve rifiuto durante un movimento rapido","Evento di Velocity Logic del CME","Attenda un momento e riprovi quando la pausa della borsa è terminata"],
+    ] },
+    { type: "heading",text: "Una nota sulle piattaforme Topstep storiche e su quelle più recenti" },
+    { type: "paragraph",html: "Da sapere: Topstep ha spostato i nuovi acquisti di Trading Combine sulla propria piattaforma TopstepX a metà 2025, ritirando Tradovate, NinjaTrader, TradingView e Quantower per le nuove iscrizioni. Se è ancora su un conto Topstep collegato a Tradovate, è sulla connessione storica, esattamente il percorso su cui compaiono queste discrepanze di sincronizzazione. Non cambia la soluzione, ma spiega perché la società tratta l'integrazione con Tradovate come un problema noto e tracciato. Quando contatta il supporto, indichi da quale piattaforma inserisce gli ordini." },
+    { type: "heading",text: "Smetta di perdere ingressi per un difetto lato broker" },
+    { type: "paragraph",html: "Quando il percorso dell'ordine è l'anello debole, tolga dall'equazione il clic manuale e instradi ordini puliti e validati. Se TradingView è il cervello dei suoi trade su Topstep, PickMyTrade è il cablaggio che porta ogni segnale, con alcuni vantaggi a suo favore:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Tipi di ordine espliciti</strong>, ogni ordine viene inviato con il proprio tipo definito nel payload, quindi non c'è ambiguità tra mercato e limite al momento dell'instradamento.",
+        "<strong class='text-white'>Validazione di simbolo e quantità</strong>, intercetta contratti sbagliati, simboli scaduti o malformati prima dell'instradamento, così un ordine errato non si spaccia mai per qualcos'altro.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replica un ordine valido su tutti i conti collegati in un solo passaggio invece di cliccarli uno alla volta.",
+        "<strong class='text-white'>Instradamento consapevole delle riconnessioni</strong>, distanzia il flusso alle riconnessioni in modo che una raffica di alert non si accumuli e rimbalzi.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Automate Your Topstep Entries", de: "Automatisieren Sie Ihre Topstep-Einstiege", es: "Automatice sus entradas en Topstep", fr: "Automatisez vos entrées Topstep", it: "Automatizzi i suoi ingressi su Topstep" },
+  ctaText: { en: "Start your free trial, automate your Topstep entries and stop fighting the order ticket.", de: "Starten Sie Ihre kostenlose Testphase, automatisieren Sie Ihre Topstep-Einstiege und hören Sie auf, mit dem Order-Ticket zu kämpfen.", es: "Comience su prueba gratuita, automatice sus entradas en Topstep y deje de pelear con el ticket de órdenes.", fr: "Commencez votre essai gratuit, automatisez vos entrées Topstep et cessez de vous battre avec le ticket d'ordre.", it: "Inizi la prova gratuita, automatizzi i suoi ingressi su Topstep e smetta di lottare con il ticket dell'ordine." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does Tradovate say I placed a limit order when I clicked market?", a: "On CME futures, a market order is submitted with a built-in protection band, so under the hood it behaves like a marketable limit order capped at the protection price. When a Topstep-linked account is out of sync with Tradovate, that protected order can bounce back tagged as a rejected limit order even though you clicked market. The order type didn't change on your side; the routing layer mishandled it." },
+    { q: "Is this a Topstep problem or a Tradovate problem?", a: "It usually sits in the integration between the two. Topstep's risk gateway and Tradovate's order engine have to agree on every order, and when they fall out of sync your orders reject. Topstep has publicly acknowledged awareness of issues on the Tradovate connection and asks affected traders to email support so they can track it, which tells you the fix often lives on their side, not yours." },
+    { q: "What should I send Topstep support?", a: "Send the Order IDs of the rejected orders (not the Trade IDs, which are different), the exact timestamps with your time zone, the contract you were trading, the platform you placed from, and a short description of what you clicked versus what got rejected. If they ask for it, capture a HAR file from your browser session. Order IDs let them pull the exact reject on their end." },
+    { q: "Can I keep trading while it's being fixed?", a: "Sometimes. Try placing a plain limit order a few ticks through the market to get filled, restart the platform and log back in to force a fresh sync, or switch to a different connection if you have one. If entries and exits are unreliable, the safest move is to flatten and stand down until the sync is confirmed healthy rather than fight a broken order path." },
+    { q: "Will restarting the platform fix it?", a: "Often it helps. Logging fully out and back in, clearing the browser cache, or opening the platform in a private/incognito window forces the account to re-handshake with Tradovate and can clear a stale session that's misrouting orders. If a clean re-login and re-sync doesn't fix it, the fault is server-side and you'll need Topstep to resolve it." },
+    { q: "Does this only happen on prop accounts?", a: "The order-type mismatch itself is rooted in how CME handles market orders with protection, so it can surface on any Tradovate account. But the sync-fault version, where a genuine market click rejects as a limit order, shows up most on prop and evaluation accounts, because there's an extra firm-side risk layer sitting between you and the exchange that has to stay in lockstep with Tradovate." },
+  ], de: [
+    { q: "Warum zeigt Tradovate an, ich hätte eine Limit-Order platziert, obwohl ich Market geklickt habe?", a: "Bei CME-Futures wird eine Market-Order mit einem eingebauten Schutzband übermittelt und verhält sich im Hintergrund wie eine marktfähige Limit-Order, die am Schutzpreis gedeckelt ist. Ist ein mit Topstep verknüpftes Konto nicht mit Tradovate synchron, kann diese geschützte Order als abgelehnte Limit-Order zurückkommen, obwohl Sie Market geklickt haben. Der Ordertyp hat sich auf Ihrer Seite nicht geändert; die Routing-Schicht hat ihn falsch behandelt." },
+    { q: "Ist das ein Topstep-Problem oder ein Tradovate-Problem?", a: "Meist liegt es in der Integration zwischen beiden. Das Risk-Gateway von Topstep und die Order-Engine von Tradovate müssen sich bei jeder Order einig sein, und wenn sie aus dem Takt geraten, werden Ihre Orders abgelehnt. Topstep hat öffentlich bestätigt, dass ihm Probleme mit der Tradovate-Anbindung bekannt sind, und bittet betroffene Trader, dem Support zu schreiben, damit diese nachverfolgt werden können. Das zeigt, dass die Lösung oft auf deren Seite liegt, nicht auf Ihrer." },
+    { q: "Was sollte ich an den Topstep-Support senden?", a: "Senden Sie die Order-IDs der abgelehnten Orders (nicht die Trade-IDs, die sich unterscheiden), die genauen Zeitstempel mit Ihrer Zeitzone, den gehandelten Kontrakt, die Plattform, von der Sie die Order platziert haben, und eine kurze Beschreibung dessen, was Sie geklickt haben und was abgelehnt wurde. Falls gewünscht, erfassen Sie eine HAR-Datei Ihrer Browser-Sitzung. Mit den Order-IDs kann der Support die genaue Ablehnung auf seiner Seite abrufen." },
+    { q: "Kann ich weiterhandeln, während es behoben wird?", a: "Manchmal. Versuchen Sie, eine einfache Limit-Order einige Ticks über den Markt hinaus zu platzieren, um gefüllt zu werden, starten Sie die Plattform neu und melden Sie sich erneut an, um eine frische Synchronisation zu erzwingen, oder wechseln Sie zu einer anderen Verbindung, falls vorhanden. Sind Ein- und Ausstiege unzuverlässig, ist es am sichersten, Positionen glattzustellen und abzuwarten, bis die Synchronisation als gesund bestätigt ist, statt gegen einen defekten Orderpfad anzukämpfen." },
+    { q: "Behebt ein Neustart der Plattform das Problem?", a: "Oft hilft es. Ein vollständiges Abmelden und erneutes Anmelden, das Leeren des Browser-Caches oder das Öffnen der Plattform in einem privaten/Inkognito-Fenster zwingt das Konto zu einem neuen Handshake mit Tradovate und kann eine veraltete Sitzung beseitigen, die Orders falsch routet. Behebt eine saubere Neuanmeldung mit Neusynchronisation das Problem nicht, liegt der Fehler serverseitig, und Topstep muss ihn beheben." },
+    { q: "Passiert das nur bei Prop-Konten?", a: "Die Abweichung beim Ordertyp selbst liegt darin begründet, wie die CME Market-Orders mit Schutz behandelt, sodass sie bei jedem Tradovate-Konto auftreten kann. Die Variante mit Synchronisationsfehler, bei der ein echter Market-Klick als Limit-Order abgelehnt wird, zeigt sich jedoch am häufigsten bei Prop- und Evaluierungskonten, weil sich zwischen Ihnen und der Börse eine zusätzliche firmenseitige Risikoschicht befindet, die mit Tradovate im Gleichschritt bleiben muss." },
+  ], es: [
+    { q: "¿Por qué Tradovate dice que coloqué una orden límite cuando hice clic en mercado?", a: "En los futuros de CME, una orden a mercado se envía con una banda de protección integrada, por lo que internamente se comporta como una orden límite ejecutable limitada al precio de protección. Cuando una cuenta vinculada a Topstep está desincronizada con Tradovate, esa orden protegida puede rebotar etiquetada como orden límite rechazada aunque haya hecho clic en mercado. El tipo de orden no cambió de su lado; la capa de enrutamiento lo gestionó mal." },
+    { q: "¿Es un problema de Topstep o de Tradovate?", a: "Normalmente está en la integración entre ambos. La pasarela de riesgo de Topstep y el motor de órdenes de Tradovate tienen que coincidir en cada orden, y cuando se desincronizan sus órdenes se rechazan. Topstep ha reconocido públicamente que conoce problemas con la conexión de Tradovate y pide a los traders afectados que escriban a soporte para poder hacer seguimiento, lo que indica que la solución suele estar de su lado, no del suyo." },
+    { q: "¿Qué debo enviar al soporte de Topstep?", a: "Envíe los Order IDs de las órdenes rechazadas (no los Trade IDs, que son distintos), las marcas de tiempo exactas con su zona horaria, el contrato que operaba, la plataforma desde la que colocó la orden y una breve descripción de lo que pulsó frente a lo que se rechazó. Si se lo piden, capture un archivo HAR de su sesión del navegador. Los Order IDs les permiten extraer el rechazo exacto de su lado." },
+    { q: "¿Puedo seguir operando mientras se arregla?", a: "A veces. Pruebe a colocar una orden límite simple unos ticks por encima del mercado para que se ejecute, reinicie la plataforma e inicie sesión de nuevo para forzar una sincronización nueva, o cambie a otra conexión si dispone de una. Si las entradas y salidas no son fiables, lo más seguro es cerrar posiciones y esperar a que se confirme que la sincronización vuelve a estar sana en lugar de pelear con una ruta de órdenes rota." },
+    { q: "¿Reiniciar la plataforma lo soluciona?", a: "A menudo ayuda. Cerrar sesión por completo y volver a entrar, borrar la caché del navegador o abrir la plataforma en una ventana privada/incógnito obliga a la cuenta a rehacer el handshake con Tradovate y puede eliminar una sesión obsoleta que enruta mal las órdenes. Si un inicio de sesión limpio y la resincronización no lo arreglan, el fallo está en el servidor y necesitará que Topstep lo resuelva." },
+    { q: "¿Esto solo ocurre en cuentas de prop firms?", a: "La discrepancia del tipo de orden se origina en cómo CME gestiona las órdenes a mercado con protección, por lo que puede aparecer en cualquier cuenta de Tradovate. Pero la versión con fallo de sincronización, en la que un clic genuino en mercado se rechaza como orden límite, aparece sobre todo en cuentas de prop firms y de evaluación, porque hay una capa de riesgo adicional de la firma entre usted y el mercado que debe mantenerse en sintonía con Tradovate." },
+  ], fr: [
+    { q: "Pourquoi Tradovate indique-t-il que j'ai passé un ordre à cours limité alors que j'ai cliqué sur marché ?", a: "Sur les contrats à terme CME, un ordre au marché est soumis avec une bande de protection intégrée ; en interne, il se comporte donc comme un ordre à cours limité exécutable plafonné au prix de protection. Lorsqu'un compte lié à Topstep est désynchronisé de Tradovate, cet ordre protégé peut revenir étiqueté comme ordre à cours limité rejeté même si vous avez cliqué sur marché. Le type d'ordre n'a pas changé de votre côté ; c'est la couche de routage qui l'a mal traité." },
+    { q: "S'agit-il d'un problème Topstep ou d'un problème Tradovate ?", a: "Il se situe généralement dans l'intégration entre les deux. La passerelle de risque de Topstep et le moteur d'ordres de Tradovate doivent s'accorder sur chaque ordre, et lorsqu'ils se désynchronisent, vos ordres sont rejetés. Topstep a publiquement reconnu avoir connaissance de problèmes sur la connexion Tradovate et demande aux traders concernés d'écrire au support pour pouvoir les suivre, ce qui indique que la correction se trouve souvent de leur côté, pas du vôtre." },
+    { q: "Que dois-je envoyer au support Topstep ?", a: "Envoyez les Order IDs des ordres rejetés (pas les Trade IDs, qui sont différents), les horodatages exacts avec votre fuseau horaire, le contrat que vous tradiez, la plateforme depuis laquelle vous avez passé l'ordre et une courte description de ce que vous avez cliqué par rapport à ce qui a été rejeté. Si on vous le demande, capturez un fichier HAR de votre session de navigateur. Les Order IDs leur permettent de retrouver le rejet exact de leur côté." },
+    { q: "Puis-je continuer à trader pendant la correction ?", a: "Parfois. Essayez de placer un simple ordre à cours limité quelques ticks au-delà du marché pour être exécuté, redémarrez la plateforme et reconnectez-vous pour forcer une nouvelle synchronisation, ou passez à une autre connexion si vous en avez une. Si les entrées et les sorties ne sont pas fiables, le plus sûr est de clôturer vos positions et d'attendre que la synchronisation soit confirmée saine plutôt que de lutter contre un chemin d'ordres défaillant." },
+    { q: "Redémarrer la plateforme règle-t-il le problème ?", a: "Souvent, cela aide. Vous déconnecter complètement puis vous reconnecter, vider le cache du navigateur ou ouvrir la plateforme dans une fenêtre privée/incognito force le compte à refaire un handshake avec Tradovate et peut éliminer une session obsolète qui route mal les ordres. Si une reconnexion propre et une resynchronisation ne règlent rien, la panne est côté serveur et il faudra que Topstep la résolve." },
+    { q: "Cela n'arrive-t-il que sur les comptes de prop firm ?", a: "L'écart de type d'ordre lui-même tient à la façon dont le CME traite les ordres au marché avec protection ; il peut donc survenir sur n'importe quel compte Tradovate. Mais la version avec défaut de synchronisation, où un véritable clic sur marché est rejeté comme ordre à cours limité, apparaît surtout sur les comptes de prop firm et d'évaluation, car une couche de risque supplémentaire côté société se trouve entre vous et la bourse et doit rester en phase avec Tradovate." },
+  ], it: [
+    { q: "Perché Tradovate dice che ho inserito un ordine limite quando ho cliccato su mercato?", a: "Sui futures CME un ordine a mercato viene inviato con una banda di protezione integrata, quindi internamente si comporta come un ordine limite eseguibile con un tetto al prezzo di protezione. Quando un conto collegato a Topstep è desincronizzato da Tradovate, quell'ordine protetto può tornare indietro etichettato come ordine limite rifiutato anche se ha cliccato su mercato. Il tipo di ordine non è cambiato da parte sua; lo ha gestito male il livello di instradamento." },
+    { q: "È un problema di Topstep o di Tradovate?", a: "Di solito si trova nell'integrazione tra i due. Il gateway di rischio di Topstep e il motore di ordini di Tradovate devono concordare su ogni ordine e, quando si desincronizzano, i suoi ordini vengono rifiutati. Topstep ha riconosciuto pubblicamente di essere a conoscenza di problemi sulla connessione con Tradovate e chiede ai trader interessati di scrivere al supporto per poterli tracciare, il che indica che la correzione spesso è dalla loro parte, non dalla sua." },
+    { q: "Cosa devo inviare al supporto Topstep?", a: "Invii gli Order ID degli ordini rifiutati (non i Trade ID, che sono diversi), i timestamp esatti con il suo fuso orario, il contratto che stava operando, la piattaforma da cui ha inserito l'ordine e una breve descrizione di ciò che ha cliccato rispetto a ciò che è stato rifiutato. Se lo richiedono, acquisisca un file HAR della sua sessione del browser. Gli Order ID permettono loro di recuperare il rifiuto esatto dalla loro parte." },
+    { q: "Posso continuare a operare mentre viene risolto?", a: "A volte. Provi a inserire un semplice ordine limite qualche tick oltre il mercato per farsi eseguire, riavvii la piattaforma e acceda di nuovo per forzare una sincronizzazione nuova, oppure passi a un'altra connessione se ne ha una. Se ingressi e uscite non sono affidabili, la mossa più sicura è chiudere le posizioni e fermarsi finché la sincronizzazione non è confermata sana, invece di lottare con un percorso degli ordini rotto." },
+    { q: "Riavviare la piattaforma risolve il problema?", a: "Spesso aiuta. Uscire completamente e riaccedere, svuotare la cache del browser o aprire la piattaforma in una finestra privata/in incognito costringe il conto a rifare l'handshake con Tradovate e può eliminare una sessione obsoleta che instrada male gli ordini. Se un nuovo accesso pulito e la risincronizzazione non risolvono, il guasto è lato server e dovrà risolverlo Topstep." },
+    { q: "Succede solo sui conti prop?", a: "La discrepanza sul tipo di ordine in sé nasce da come il CME gestisce gli ordini a mercato con protezione, quindi può comparire su qualsiasi conto Tradovate. Ma la versione con guasto di sincronizzazione, in cui un vero clic su mercato viene rifiutato come ordine limite, compare soprattutto sui conti prop e di valutazione, perché tra lei e la borsa c'è un livello di rischio aggiuntivo della società che deve restare allineato con Tradovate." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von dieser weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit. Prüfen Sie daher vor jeder Handlung stets den aktuellen Ablauf in der offiziellen Plattformdokumentation.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né da essa approvata o sponsorizzata. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, perciò confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-10",
+  dateModified: "2026-07-10",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

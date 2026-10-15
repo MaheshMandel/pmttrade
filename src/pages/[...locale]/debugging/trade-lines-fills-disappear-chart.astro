@@ -1,0 +1,564 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "trade-lines-fills-disappear-chart";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Trade Lines & Fills Disappear From Chart";
+const META_DESCRIPTION =
+  "Tradovate trade lines and fills disappearing from the chart? Switch off the legacy chart to restore order lines and find where past fills go.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate: Orderlinien und Fills verschwinden aus dem Chart", es: "Tradovate: las líneas de operaciones y ejecuciones desaparecen del gráfico", fr: "Tradovate : les lignes de trades et les exécutions disparaissent du graphique", it: "Tradovate: le linee dei trade e le esecuzioni scompaiono dal grafico" },
+  dek: { en: "One session your bracket, entry marker, and last-trade-price line are visible on the chart; the next login they're gone. Here's how to tell a legacy-chart display bug from normal end-of-day fill clearing, and fix each one.", de: "In einer Sitzung sind Ihr Bracket, die Einstiegsmarkierung und die Linie des letzten Handelspreises im Chart sichtbar; beim nächsten Login sind sie weg. So unterscheiden Sie einen Darstellungsfehler des Legacy-Charts von der normalen Bereinigung der Fills am Tagesende und beheben beides.", es: "En una sesión su bracket, la marca de entrada y la línea del último precio operado están visibles en el gráfico; en el siguiente inicio de sesión han desaparecido. Así distingue un fallo de visualización del gráfico heredado de la limpieza normal de ejecuciones al final del día, y cómo arreglar cada uno.", fr: "Lors d'une séance, votre bracket, votre marqueur d'entrée et la ligne du dernier prix sont visibles sur le graphique ; à la connexion suivante, ils ont disparu. Voici comment distinguer un défaut d'affichage du graphique hérité de l'effacement normal des exécutions en fin de journée, et corriger chacun.", it: "In una sessione il suo bracket, il marcatore di ingresso e la linea dell'ultimo prezzo sono visibili sul grafico; al login successivo sono spariti. Ecco come distinguere un difetto di visualizzazione del grafico legacy dalla normale cancellazione delle esecuzioni a fine giornata, e correggere ciascuno." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You're managing a live futures position on ES or NQ, and your working stop and target are supposed to sit right there on the chart as horizontal order lines. Then they vanish. One session your bracket, your entry marker, and the last-trade-price line are all visible; the next login they're gone, and yesterday's fills are nowhere to be found. It feels like data loss. In practice, it almost always traces back to two very different causes that get mixed up with each other: live order lines dropping off the legacy chart, and historical fill markers clearing at the end of the day by design. Figure out which one you're looking at and the fix takes seconds. Better still, when your brackets are managed off-platform by an automation layer like PickMyTrade, a disappearing chart line never puts your risk in doubt." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Missing Trade Lines & Fills",
+      items: [
+        "<strong class='text-white'>You're on the legacy chart</strong>, swap it for the newer standard Chart module. Order lines render reliably there when they won't on legacy.",
+        "<strong class='text-white'>&ldquo;Show order lines&rdquo; is toggled off</strong>, open the chart settings and re-enable order / working-order line display.",
+        "<strong class='text-white'>Chart trading is disabled</strong>, turn it on so live orders draw on the chart and stay draggable.",
+        "<strong class='text-white'>You're hunting for yesterday's fills</strong>, the chart is current-day only. Those markers clear after the trading day, so pull them from the Orders/Fills or account report instead.",
+        "<strong class='text-white'>Wrong symbol or account is loaded</strong>, confirm the chart's contract and linked account match the position you expect to see.",
+        "<strong class='text-white'>Stale session after a device switch</strong>, refresh, or log out and back in, so the chart re-subscribes to your live order state.",
+      ],
+    },
+    { type: "heading", text: "What “Trade Lines & Fills Disappeared” Means" },
+    { type: "paragraph", html: "There's no single error dialog for this. Tradovate doesn't pop a message; the lines and markers just stop appearing. That silence is exactly why it's confusing, so it helps to split the symptom into its two real forms." },
+    { type: "paragraph", html: "The first is <strong class='text-white'>live order lines going missing</strong>. Your resting stop, limit, and target orders, plus the last-trade-price line, should draw as horizontal lines on the active chart while they're working. When they disappear even though the orders are still live in the Orders panel, you're looking at a chart-display problem, not an order problem. Your orders are safe on Tradovate's servers; the chart just isn't drawing them." },
+    { type: "paragraph", html: "The second is <strong class='text-white'>historical fill markers clearing</strong>. Tradovate plots your entry and exit fills as markers on the chart for the current trading day. Once the day completes, those markers disappear. That's current, expected behavior, not a glitch. The platform doesn't render previous-day trades on the chart, so if you came back the next morning to review yesterday's entries, there's nothing there to find. Telling these two apart is the whole game: one is fixed by changing your chart, the other by changing where you look for the data." },
+    { type: "heading", text: "Top Causes of Disappearing Trade Lines & Fills in 2026" },
+    { type: "heading", text: "1. You're using the legacy chart" },
+    { type: "paragraph", html: "This is the number-one cause of working-order lines vanishing. Tradovate ships both an older <strong class='text-white'>legacy chart</strong> and a newer <strong class='text-white'>standard Chart</strong> module, and the legacy version carries long-standing display defects: order lines fail to render, and even the horizontal last-trade-price line can drop off despite the relevant settings being switched on. You can check every toggle, autofit, &ldquo;order lines,&rdquo; all of it, and see no change, right up until you move off the legacy chart. If your lines won't show no matter what you click, assume the legacy chart first." },
+    { type: "heading", text: "2. The order-line toggle or chart trading is switched off" },
+    { type: "paragraph", html: "On a healthy standard chart, order lines can still be hidden if the display option for them is turned off, or if chart trading isn't enabled for that chart. Chart trading is what lets orders draw as draggable lines directly on the price axis; with it off, you'll see fewer on-chart order controls. Rule this out before you blame anything deeper." },
+    { type: "heading", text: "3. Historical fills clear at end of day (by design)" },
+    { type: "paragraph", html: "If the missing items are <em>past</em> trades rather than <em>live</em> orders, nothing is broken. Tradovate only shows order and fill markers for the current trading day; once the day is complete, those markers disappear from the chart. The behavior is consistent every session, markers plot while you're trading and are gone afterward, and retaining previous-day orders and fills on the chart remains an open feature request. To review historical trades, you use the reports, not the chart." },
+    { type: "heading", text: "4. Session or state desync after a device switch or data drop" },
+    { type: "paragraph", html: "Order lines are tied to your live session's view of working orders. Switch devices, come back hours later, or ride out a brief market-data hiccup, and the chart can fail to re-subscribe to that order state, leaving lines that were there earlier simply not redrawn. A refresh usually forces them back." },
+    { type: "heading", text: "How to Fix Disappearing Trade Lines & Fills: Step-by-Step" },
+    { type: "heading", text: "Fixing the legacy chart (the main fix)" },
+    {
+      type: "list",
+      items: [
+        "Look at the chart module you're trading from and work out whether it's the older legacy chart or the newer standard Chart. The legacy version is a separate module type from the standard Chart.",
+        "Open a new <strong class='text-white'>Chart</strong> module (the newer, non-legacy chart) and load the same symbol and account.",
+        "Confirm your working orders now draw as horizontal order lines on the new chart. This is the reliable outcome, order lines that refuse to appear on the legacy chart show up correctly on the newer one.",
+        "Once the standard chart behaves, make it your default and retire the legacy chart from your workspace so the problem doesn't come back.",
+      ],
+    },
+    { type: "heading", text: "Turning order lines and chart trading back on" },
+    {
+      type: "list",
+      items: [
+        "Open the chart's settings (the gear / settings control on the chart).",
+        "Enable the option that displays <strong class='text-white'>order lines</strong> / working orders on the chart.",
+        "Make sure <strong class='text-white'>chart trading</strong> is enabled for that chart so live orders render and stay draggable.",
+        "Place or move a test order in the simulation account and confirm the line appears and tracks the price level. If it only works after you also switch off the legacy chart, that's expected, the toggle alone often isn't enough on legacy.",
+      ],
+    },
+    { type: "heading", text: "Recovering past-day fills from reports" },
+    {
+      type: "list",
+      items: [
+        "Because the chart won't show previous days, open your <strong class='text-white'>Orders/Fills</strong> report or the account <strong class='text-white'>reports</strong> section instead.",
+        "Filter by the date range you want to review to pull the entries and exits that have cleared from the chart.",
+        "Export or note the fills you need for journaling, taxes, or dispute purposes. This is the durable record, whereas the chart markers are only a same-day convenience.",
+      ],
+    },
+    { type: "heading", text: "Refreshing a desynced session" },
+    {
+      type: "list",
+      items: [
+        "If lines were showing earlier and dropped after a device switch or a brief data interruption, refresh the platform (or log out and back in).",
+        "Re-open the chart and confirm the working-order lines redraw once the session re-subscribes to your live order state.",
+        "If you're logged in on more than one device, close the extra sessions. Competing sessions can leave one view out of sync.",
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Meaning", "Fix"],
+      rows: [
+        ["&ldquo;Order lines no longer showing up&rdquo;", "You're on the legacy chart, which fails to draw them", "Switch to the newer standard Chart module"],
+        ["&ldquo;Last trade price line disappeared&rdquo;", "Known legacy-chart display defect", "Move to the standard chart; don't rely on legacy"],
+        ["Orders live in the panel but no chart lines", "Display/toggle or chart-trading issue on that chart", "Enable order lines + chart trading, or switch charts"],
+        ["&ldquo;Trade entries and exits disappear after some hours&rdquo;", "Current-day-only markers clearing at EOD (by design)", "Review past fills in the Orders/Fills or account report"],
+        ["Yesterday's trades missing from chart", "Tradovate doesn't plot previous-day trades", "Use reports for historical review, not the chart"],
+        ["Lines gone after switching devices", "Session state desync", "Refresh / re-log; close duplicate sessions"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "Chart lines are a convenience, not a safety net, so the real fix is to stop depending on them to know your risk. PickMyTrade links your TradingView alerts straight to Tradovate and manages the orders for you, natively:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Server-Side Bracket Management</strong>, your stop and target live on PickMyTrade's engine, so a chart that stops drawing lines never means you've lost track of your protective orders.",
+        "<strong class='text-white'>Automatic Trade Logging</strong>, every entry and exit is recorded off-platform, so an end-of-day chart reset can never erase your trade history.",
+        "<strong class='text-white'>TradingView-Native Execution</strong>, alerts fire from the TradingView chart you already watch, independent of which Tradovate chart module you're using.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, the same managed orders mirror across every connected account, so you're never reconciling mismatched chart states by hand.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie verwalten eine laufende Futures-Position auf ES oder NQ, und Ihr Working-Stop und Ihr Ziel sollen als horizontale Orderlinien genau dort im Chart stehen. Dann verschwinden sie. In einer Sitzung sind Ihr Bracket, Ihre Einstiegsmarkierung und die Linie des letzten Handelspreises sichtbar; beim nächsten Login sind sie weg, und die Fills von gestern sind nirgends zu finden. Es fühlt sich nach Datenverlust an. In der Praxis lässt es sich fast immer auf zwei sehr unterschiedliche Ursachen zurückführen, die oft verwechselt werden: Live-Orderlinien, die im Legacy-Chart verschwinden, und historische Fill-Markierungen, die am Tagesende planmäßig gelöscht werden. Finden Sie heraus, welchen Fall Sie vor sich haben, und die Lösung dauert Sekunden. Noch besser: Werden Ihre Brackets von einer Automatisierungsschicht wie PickMyTrade außerhalb der Plattform verwaltet, stellt eine verschwindende Chart-Linie Ihr Risiko nie in Frage." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste für fehlende Tradelinien und Fills",
+      items: [
+        "<strong class='text-white'>Sie nutzen den Legacy-Chart</strong>, tauschen Sie ihn gegen das neuere Standard-Chart-Modul. Orderlinien werden dort zuverlässig gezeichnet, wo sie im Legacy-Chart nicht erscheinen.",
+        "<strong class='text-white'>&ldquo;Orderlinien anzeigen&rdquo; ist ausgeschaltet</strong>, öffnen Sie die Chart-Einstellungen und aktivieren Sie die Anzeige von Order- bzw. Working-Order-Linien wieder.",
+        "<strong class='text-white'>Chart-Trading ist deaktiviert</strong>, schalten Sie es ein, damit Live-Orders im Chart gezeichnet werden und verschiebbar bleiben.",
+        "<strong class='text-white'>Sie suchen die Fills von gestern</strong>, der Chart zeigt nur den aktuellen Tag. Diese Markierungen verschwinden nach dem Handelstag; holen Sie sie stattdessen aus dem Orders/Fills- oder Kontobericht.",
+        "<strong class='text-white'>Falsches Symbol oder Konto geladen</strong>, prüfen Sie, ob Kontrakt und verknüpftes Konto des Charts zu der Position passen, die Sie erwarten.",
+        "<strong class='text-white'>Veraltete Sitzung nach einem Gerätewechsel</strong>, aktualisieren Sie oder melden Sie sich ab und wieder an, damit der Chart Ihren Live-Orderstatus erneut abonniert.",
+      ],
+    },
+    { type: "heading",text: "Was „Tradelinien und Fills verschwunden“ bedeutet" },
+    { type: "paragraph",html: "Es gibt keinen einzelnen Fehlerdialog dafür. Tradovate zeigt keine Meldung an; die Linien und Markierungen erscheinen einfach nicht mehr. Genau diese Stille macht es verwirrend, daher hilft es, das Symptom in seine zwei tatsächlichen Formen aufzuteilen." },
+    { type: "paragraph",html: "Die erste Form sind <strong class='text-white'>verschwindende Live-Orderlinien</strong>. Ihre stehenden Stop-, Limit- und Zielorders sowie die Linie des letzten Handelspreises sollten als horizontale Linien im aktiven Chart erscheinen, solange sie aktiv sind. Verschwinden sie, obwohl die Orders im Orders-Panel noch live sind, handelt es sich um ein Darstellungsproblem des Charts, nicht um ein Orderproblem. Ihre Orders liegen sicher auf den Servern von Tradovate; der Chart zeichnet sie nur nicht." },
+    { type: "paragraph",html: "Die zweite Form sind <strong class='text-white'>gelöschte historische Fill-Markierungen</strong>. Tradovate zeichnet Ihre Einstiegs- und Ausstiegs-Fills als Markierungen im Chart für den aktuellen Handelstag. Sobald der Tag abgeschlossen ist, verschwinden diese Markierungen. Das ist aktuelles, erwartetes Verhalten, keine Störung. Die Plattform stellt Trades des Vortags nicht im Chart dar; wenn Sie am nächsten Morgen die gestrigen Einstiege prüfen wollten, gibt es dort nichts zu finden. Beides auseinanderzuhalten ist das Entscheidende: Das eine behebt man, indem man den Chart ändert, das andere, indem man anders nach den Daten sucht." },
+    { type: "heading",text: "Die häufigsten Ursachen für verschwindende Tradelinien und Fills 2026" },
+    { type: "heading",text: "1. Sie nutzen den Legacy-Chart" },
+    { type: "paragraph",html: "Das ist die Ursache Nummer eins für verschwindende Working-Order-Linien. Tradovate liefert sowohl einen älteren <strong class='text-white'>Legacy-Chart</strong> als auch ein neueres <strong class='text-white'>Standard-Chart</strong>-Modul, und die Legacy-Version weist seit langem bestehende Darstellungsfehler auf: Orderlinien werden nicht gezeichnet, und sogar die horizontale Linie des letzten Handelspreises kann verschwinden, obwohl die entsprechenden Einstellungen aktiviert sind. Sie können jeden Schalter prüfen, Autofit, &ldquo;Orderlinien&rdquo;, alles, und keine Änderung sehen, bis Sie den Legacy-Chart verlassen. Erscheinen Ihre Linien trotz allem nicht, gehen Sie zuerst vom Legacy-Chart aus." },
+    { type: "heading",text: "2. Der Orderlinien-Schalter oder das Chart-Trading ist ausgeschaltet" },
+    { type: "paragraph",html: "Auch bei einem gesunden Standard-Chart können Orderlinien ausgeblendet sein, wenn die Anzeigeoption dafür ausgeschaltet ist oder das Chart-Trading für diesen Chart nicht aktiviert ist. Chart-Trading ermöglicht es, Orders als verschiebbare Linien direkt auf der Preisachse darzustellen; ist es aus, sehen Sie weniger Order-Steuerelemente im Chart. Schließen Sie das aus, bevor Sie Tieferes vermuten." },
+    { type: "heading",text: "3. Historische Fills werden am Tagesende gelöscht (planmäßig)" },
+    { type: "paragraph",html: "Handelt es sich bei den fehlenden Elementen um <em>vergangene</em> Trades statt um <em>Live</em>-Orders, ist nichts defekt. Tradovate zeigt Order- und Fill-Markierungen nur für den aktuellen Handelstag; sobald der Tag abgeschlossen ist, verschwinden sie aus dem Chart. Das Verhalten ist in jeder Sitzung gleich, die Markierungen werden gezeichnet, solange Sie handeln, und sind danach weg; das Beibehalten von Orders und Fills des Vortags im Chart bleibt ein offener Funktionswunsch. Um historische Trades zu prüfen, nutzen Sie die Berichte, nicht den Chart." },
+    { type: "heading",text: "4. Sitzungs- oder Statusabweichung nach einem Gerätewechsel oder Datenausfall" },
+    { type: "paragraph",html: "Orderlinien sind an die Sicht Ihrer Live-Sitzung auf Working-Orders gebunden. Wechseln Sie das Gerät, kehren Sie nach Stunden zurück oder überstehen einen kurzen Marktdatenausfall, kann der Chart diesen Orderstatus möglicherweise nicht erneut abonnieren, sodass früher vorhandene Linien einfach nicht neu gezeichnet werden. Ein Refresh bringt sie in der Regel zurück." },
+    { type: "heading",text: "So beheben Sie verschwindende Tradelinien und Fills: Schritt für Schritt" },
+    { type: "heading",text: "Den Legacy-Chart beheben (die Hauptlösung)" },
+    {
+      type: "list",
+      items: [
+        "Sehen Sie sich das Chart-Modul an, in dem Sie handeln, und stellen Sie fest, ob es der ältere Legacy-Chart oder der neuere Standard-Chart ist. Die Legacy-Version ist ein eigener Modultyp neben dem Standard-Chart.",
+        "Öffnen Sie ein neues <strong class='text-white'>Chart</strong>-Modul (den neueren Nicht-Legacy-Chart) und laden Sie dasselbe Symbol und Konto.",
+        "Bestätigen Sie, dass Ihre Working-Orders im neuen Chart nun als horizontale Orderlinien gezeichnet werden. Das ist das verlässliche Ergebnis: Orderlinien, die im Legacy-Chart nicht erscheinen, werden im neueren korrekt angezeigt.",
+        "Sobald der Standard-Chart funktioniert, machen Sie ihn zu Ihrem Standard und entfernen Sie den Legacy-Chart aus Ihrem Workspace, damit das Problem nicht wiederkehrt.",
+      ],
+    },
+    { type: "heading",text: "Orderlinien und Chart-Trading wieder einschalten" },
+    {
+      type: "list",
+      items: [
+        "Öffnen Sie die Chart-Einstellungen (das Zahnrad bzw. Einstellungs-Steuerelement im Chart).",
+        "Aktivieren Sie die Option, die <strong class='text-white'>Orderlinien</strong> bzw. Working-Orders im Chart anzeigt.",
+        "Stellen Sie sicher, dass <strong class='text-white'>Chart-Trading</strong> für diesen Chart aktiviert ist, damit Live-Orders gezeichnet werden und verschiebbar bleiben.",
+        "Platzieren oder verschieben Sie im Simulationskonto eine Test-Order und bestätigen Sie, dass die Linie erscheint und dem Preisniveau folgt. Funktioniert es erst, wenn Sie zusätzlich den Legacy-Chart abschalten, ist das erwartet, der Schalter allein reicht im Legacy-Chart oft nicht aus.",
+      ],
+    },
+    { type: "heading",text: "Vergangene Fills aus Berichten wiederherstellen" },
+    {
+      type: "list",
+      items: [
+        "Da der Chart frühere Tage nicht anzeigt, öffnen Sie stattdessen Ihren <strong class='text-white'>Orders/Fills</strong>-Bericht oder den Bereich <strong class='text-white'>Berichte</strong> des Kontos.",
+        "Filtern Sie nach dem Datumsbereich, den Sie prüfen möchten, um die Einstiege und Ausstiege abzurufen, die aus dem Chart verschwunden sind.",
+        "Exportieren oder notieren Sie die benötigten Fills für Journaling, Steuern oder Streitfälle. Das ist die dauerhafte Aufzeichnung, während die Chart-Markierungen nur eine Komfortfunktion für den gleichen Tag sind.",
+      ],
+    },
+    { type: "heading",text: "Eine abgeglittene Sitzung aktualisieren" },
+    {
+      type: "list",
+      items: [
+        "Waren Linien zuvor sichtbar und sind nach einem Gerätewechsel oder einer kurzen Datenunterbrechung verschwunden, aktualisieren Sie die Plattform (oder melden Sie sich ab und wieder an).",
+        "Öffnen Sie den Chart erneut und bestätigen Sie, dass die Working-Order-Linien neu gezeichnet werden, sobald die Sitzung Ihren Live-Orderstatus erneut abonniert.",
+        "Sind Sie auf mehr als einem Gerät angemeldet, schließen Sie die zusätzlichen Sitzungen. Konkurrierende Sitzungen können eine Ansicht aus dem Takt bringen.",
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Symptom","Bedeutung","Lösung"], rows: [
+      ["&ldquo;Orderlinien werden nicht mehr angezeigt&rdquo;","Sie nutzen den Legacy-Chart, der sie nicht zeichnet","Zum neueren Standard-Chart-Modul wechseln"],
+      ["&ldquo;Linie des letzten Handelspreises ist verschwunden&rdquo;","Bekannter Darstellungsfehler des Legacy-Charts","Zum Standard-Chart wechseln; sich nicht auf Legacy verlassen"],
+      ["Orders im Panel live, aber keine Chart-Linien","Anzeige-/Schalterproblem oder Chart-Trading auf diesem Chart","Orderlinien und Chart-Trading aktivieren oder Chart wechseln"],
+      ["&ldquo;Trade-Einstiege und -Ausstiege verschwinden nach einigen Stunden&rdquo;","Markierungen nur für den aktuellen Tag werden am Tagesende gelöscht (planmäßig)","Vergangene Fills im Orders/Fills- oder Kontobericht prüfen"],
+      ["Trades von gestern fehlen im Chart","Tradovate zeichnet keine Trades des Vortags","Berichte für die historische Auswertung nutzen, nicht den Chart"],
+      ["Linien nach Gerätewechsel verschwunden","Abweichung des Sitzungsstatus","Aktualisieren / neu anmelden; doppelte Sitzungen schließen"],
+    ] },
+    { type: "heading",text: "Verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Chart-Linien sind eine Annehmlichkeit, kein Sicherheitsnetz; die eigentliche Lösung ist daher, sich nicht mehr auf sie zu verlassen, um Ihr Risiko zu kennen. PickMyTrade verbindet Ihre TradingView-Alerts direkt mit Tradovate und verwaltet die Orders nativ für Sie:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Serverseitiges Bracket-Management</strong>, Ihr Stop und Ihr Ziel liegen in der Engine von PickMyTrade, sodass ein Chart, der keine Linien mehr zeichnet, nie bedeutet, dass Sie den Überblick über Ihre Schutzorders verloren haben.",
+        "<strong class='text-white'>Automatische Trade-Protokollierung</strong>, jeder Ein- und Ausstieg wird außerhalb der Plattform erfasst, sodass ein Chart-Reset am Tagesende Ihre Trade-Historie nie löschen kann.",
+        "<strong class='text-white'>TradingView-native Ausführung</strong>, Alerts werden aus dem TradingView-Chart ausgelöst, den Sie ohnehin beobachten, unabhängig davon, welches Tradovate-Chart-Modul Sie verwenden.",
+        "<strong class='text-white'>Multi-Account-Sync</strong>, dieselben verwalteten Orders werden auf alle verbundenen Konten gespiegelt, sodass Sie nie abweichende Chart-Zustände von Hand abgleichen müssen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Está gestionando una posición abierta de futuros en ES o NQ, y su stop y su objetivo en curso deberían estar ahí mismo en el gráfico como líneas de órdenes horizontales. Entonces desaparecen. En una sesión su bracket, su marca de entrada y la línea del último precio operado están visibles; en el siguiente inicio de sesión han desaparecido, y las ejecuciones de ayer no están por ninguna parte. Parece una pérdida de datos. En la práctica, casi siempre se debe a dos causas muy distintas que se confunden entre sí: las líneas de órdenes activas que desaparecen del gráfico heredado y las marcas históricas de ejecuciones que se borran al final del día por diseño. Identifique cuál de las dos está viendo y la solución lleva segundos. Mejor aún, cuando sus brackets se gestionan fuera de la plataforma mediante una capa de automatización como PickMyTrade, una línea de gráfico que desaparece nunca pone en duda su riesgo." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para líneas de operaciones y ejecuciones que faltan",
+      items: [
+        "<strong class='text-white'>Está usando el gráfico heredado</strong>, cámbielo por el módulo Chart estándar más nuevo. Las líneas de órdenes se dibujan de forma fiable allí cuando no aparecen en el heredado.",
+        "<strong class='text-white'>&ldquo;Mostrar líneas de órdenes&rdquo; está desactivado</strong>, abra la configuración del gráfico y vuelva a activar la visualización de líneas de órdenes / órdenes en curso.",
+        "<strong class='text-white'>El trading desde el gráfico está desactivado</strong>, actívelo para que las órdenes activas se dibujen en el gráfico y se puedan arrastrar.",
+        "<strong class='text-white'>Está buscando las ejecuciones de ayer</strong>, el gráfico solo muestra el día actual. Esas marcas se borran tras el día de negociación; extráigalas del informe de Orders/Fills o de la cuenta.",
+        "<strong class='text-white'>Hay un símbolo o una cuenta equivocados cargados</strong>, confirme que el contrato del gráfico y la cuenta vinculada coinciden con la posición que espera ver.",
+        "<strong class='text-white'>Sesión obsoleta tras un cambio de dispositivo</strong>, actualice, o cierre sesión y vuelva a iniciarla, para que el gráfico se vuelva a suscribir al estado de sus órdenes activas.",
+      ],
+    },
+    { type: "heading",text: "Qué significa «las líneas y ejecuciones de operaciones desaparecieron»" },
+    { type: "paragraph",html: "No hay un cuadro de error único para esto. Tradovate no muestra ningún mensaje; las líneas y marcas simplemente dejan de aparecer. Ese silencio es precisamente lo que lo hace confuso, así que ayuda dividir el síntoma en sus dos formas reales." },
+    { type: "paragraph",html: "La primera son las <strong class='text-white'>líneas de órdenes activas que desaparecen</strong>. Sus órdenes de stop, límite y objetivo en reposo, además de la línea del último precio operado, deberían dibujarse como líneas horizontales en el gráfico activo mientras estén vigentes. Cuando desaparecen aunque las órdenes sigan activas en el panel Orders, se trata de un problema de visualización del gráfico, no de las órdenes. Sus órdenes están a salvo en los servidores de Tradovate; el gráfico simplemente no las dibuja." },
+    { type: "paragraph",html: "La segunda son las <strong class='text-white'>marcas históricas de ejecuciones que se borran</strong>. Tradovate dibuja sus ejecuciones de entrada y salida como marcas en el gráfico durante el día de negociación actual. Una vez que termina el día, esas marcas desaparecen. Es un comportamiento actual y esperado, no un fallo. La plataforma no dibuja en el gráfico las operaciones del día anterior, así que si volvió a la mañana siguiente para revisar las entradas de ayer, no hay nada que encontrar. Distinguir las dos es la clave: una se arregla cambiando su gráfico, la otra cambiando dónde busca los datos." },
+    { type: "heading",text: "Principales causas de que desaparezcan las líneas de operaciones y las ejecuciones en 2026" },
+    { type: "heading",text: "1. Está usando el gráfico heredado" },
+    { type: "paragraph",html: "Esta es la causa número uno de que desaparezcan las líneas de órdenes en curso. Tradovate incluye tanto un <strong class='text-white'>gráfico heredado</strong> más antiguo como un módulo <strong class='text-white'>Chart estándar</strong> más nuevo, y la versión heredada arrastra defectos de visualización de larga data: las líneas de órdenes no se dibujan e incluso la línea horizontal del último precio operado puede desaparecer pese a tener activados los ajustes correspondientes. Puede revisar todos los interruptores, autoajuste, &ldquo;líneas de órdenes&rdquo;, todo, y no ver cambios, hasta que abandone el gráfico heredado. Si sus líneas no aparecen hagan lo que hagan, sospeche primero del gráfico heredado." },
+    { type: "heading",text: "2. El interruptor de líneas de órdenes o el trading desde el gráfico está desactivado" },
+    { type: "paragraph",html: "En un gráfico estándar sano, las líneas de órdenes aún pueden estar ocultas si la opción de visualización está desactivada o si el trading desde el gráfico no está habilitado para ese gráfico. El trading desde el gráfico es lo que permite dibujar las órdenes como líneas arrastrables directamente sobre el eje de precios; con él desactivado verá menos controles de órdenes en el gráfico. Descarte esto antes de culpar a algo más profundo." },
+    { type: "heading",text: "3. Las ejecuciones históricas se borran al final del día (por diseño)" },
+    { type: "paragraph",html: "Si los elementos que faltan son operaciones <em>pasadas</em> y no órdenes <em>activas</em>, nada está roto. Tradovate solo muestra marcas de órdenes y ejecuciones del día de negociación actual; una vez que termina el día, esas marcas desaparecen del gráfico. El comportamiento es coherente en cada sesión: las marcas se dibujan mientras opera y desaparecen después, y conservar en el gráfico las órdenes y ejecuciones del día anterior sigue siendo una solicitud de función abierta. Para revisar operaciones históricas, use los informes, no el gráfico." },
+    { type: "heading",text: "4. Desincronización de sesión o estado tras un cambio de dispositivo o una caída de datos" },
+    { type: "paragraph",html: "Las líneas de órdenes están ligadas a la vista que tiene su sesión activa de las órdenes en curso. Si cambia de dispositivo, vuelve horas después o atraviesa una breve interrupción de datos de mercado, el gráfico puede no volver a suscribirse a ese estado de órdenes, dejando sin volver a dibujar líneas que estaban antes. Una actualización suele hacerlas volver." },
+    { type: "heading",text: "Cómo solucionar la desaparición de líneas de operaciones y ejecuciones: paso a paso" },
+    { type: "heading",text: "Arreglar el gráfico heredado (la solución principal)" },
+    {
+      type: "list",
+      items: [
+        "Observe el módulo de gráfico desde el que opera y determine si es el gráfico heredado antiguo o el Chart estándar más nuevo. La versión heredada es un tipo de módulo distinto del Chart estándar.",
+        "Abra un nuevo módulo <strong class='text-white'>Chart</strong> (el gráfico más nuevo, no heredado) y cargue el mismo símbolo y cuenta.",
+        "Confirme que sus órdenes en curso ahora se dibujan como líneas de órdenes horizontales en el nuevo gráfico. Este es el resultado fiable: las líneas de órdenes que se niegan a aparecer en el gráfico heredado se muestran correctamente en el nuevo.",
+        "Una vez que el gráfico estándar funcione bien, conviértalo en su predeterminado y retire el gráfico heredado de su espacio de trabajo para que el problema no vuelva.",
+      ],
+    },
+    { type: "heading",text: "Volver a activar las líneas de órdenes y el trading desde el gráfico" },
+    {
+      type: "list",
+      items: [
+        "Abra la configuración del gráfico (el engranaje o control de ajustes del gráfico).",
+        "Active la opción que muestra las <strong class='text-white'>líneas de órdenes</strong> / órdenes en curso en el gráfico.",
+        "Asegúrese de que el <strong class='text-white'>trading desde el gráfico</strong> esté habilitado para ese gráfico para que las órdenes activas se dibujen y se puedan arrastrar.",
+        "Coloque o mueva una orden de prueba en la cuenta de simulación y confirme que la línea aparece y sigue el nivel de precio. Si solo funciona después de desactivar también el gráfico heredado, es lo esperado: el interruptor por sí solo a menudo no basta en el heredado.",
+      ],
+    },
+    { type: "heading",text: "Recuperar ejecuciones de días pasados desde los informes" },
+    {
+      type: "list",
+      items: [
+        "Como el gráfico no muestra días anteriores, abra en su lugar su informe de <strong class='text-white'>Orders/Fills</strong> o la sección de <strong class='text-white'>informes</strong> de la cuenta.",
+        "Filtre por el rango de fechas que quiere revisar para extraer las entradas y salidas que han desaparecido del gráfico.",
+        "Exporte o anote las ejecuciones que necesite para su diario, impuestos o disputas. Este es el registro duradero, mientras que las marcas del gráfico son solo una comodidad del mismo día.",
+      ],
+    },
+    { type: "heading",text: "Actualizar una sesión desincronizada" },
+    {
+      type: "list",
+      items: [
+        "Si las líneas se veían antes y desaparecieron tras un cambio de dispositivo o una breve interrupción de datos, actualice la plataforma (o cierre sesión y vuelva a iniciarla).",
+        "Vuelva a abrir el gráfico y confirme que las líneas de órdenes en curso se vuelven a dibujar cuando la sesión se re-suscribe al estado de sus órdenes activas.",
+        "Si tiene la sesión iniciada en más de un dispositivo, cierre las sesiones adicionales. Las sesiones en competencia pueden dejar una vista desincronizada.",
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma","Significado","Solución"], rows: [
+      ["&ldquo;Las líneas de órdenes ya no aparecen&rdquo;","Está en el gráfico heredado, que no las dibuja","Cambie al módulo Chart estándar más nuevo"],
+      ["&ldquo;La línea del último precio operado desapareció&rdquo;","Defecto de visualización conocido del gráfico heredado","Pase al gráfico estándar; no dependa del heredado"],
+      ["Órdenes activas en el panel pero sin líneas en el gráfico","Problema de visualización/interruptor o de trading desde el gráfico en ese gráfico","Active las líneas de órdenes y el trading desde el gráfico, o cambie de gráfico"],
+      ["&ldquo;Las entradas y salidas de operaciones desaparecen tras unas horas&rdquo;","Las marcas solo del día actual se borran al cierre (por diseño)","Revise las ejecuciones pasadas en el informe de Orders/Fills o de la cuenta"],
+      ["Faltan en el gráfico las operaciones de ayer","Tradovate no dibuja las operaciones del día anterior","Use los informes para la revisión histórica, no el gráfico"],
+      ["Líneas desaparecidas tras cambiar de dispositivo","Desincronización del estado de la sesión","Actualice / vuelva a iniciar sesión; cierre las sesiones duplicadas"],
+    ] },
+    { type: "heading",text: "Evite este problema con PickMyTrade" },
+    { type: "paragraph",html: "Las líneas del gráfico son una comodidad, no una red de seguridad, así que la verdadera solución es dejar de depender de ellas para conocer su riesgo. PickMyTrade vincula sus alertas de TradingView directamente con Tradovate y gestiona las órdenes por usted, de forma nativa:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Gestión de brackets del lado del servidor</strong>, su stop y su objetivo viven en el motor de PickMyTrade, de modo que un gráfico que deja de dibujar líneas nunca significa que haya perdido el control de sus órdenes de protección.",
+        "<strong class='text-white'>Registro automático de operaciones</strong>, cada entrada y salida se registra fuera de la plataforma, de modo que un reinicio del gráfico al final del día nunca puede borrar su historial de operaciones.",
+        "<strong class='text-white'>Ejecución nativa de TradingView</strong>, las alertas se disparan desde el gráfico de TradingView que ya observa, con independencia del módulo de gráfico de Tradovate que use.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, las mismas órdenes gestionadas se replican en todas las cuentas conectadas, así que nunca tiene que conciliar a mano estados de gráfico distintos.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous gérez une position à terme ouverte sur ES ou NQ, et votre stop et votre objectif en cours sont censés figurer sur le graphique sous forme de lignes d'ordres horizontales. Puis ils disparaissent. Lors d'une séance, votre bracket, votre marqueur d'entrée et la ligne du dernier prix sont visibles ; à la connexion suivante, ils ont disparu, et les exécutions d'hier restent introuvables. On dirait une perte de données. En pratique, cela remonte presque toujours à deux causes très différentes que l'on confond : des lignes d'ordres actifs qui disparaissent du graphique hérité, et des marqueurs d'exécutions historiques qui s'effacent en fin de journée par conception. Déterminez de quel cas il s'agit et la correction prend quelques secondes. Mieux encore, lorsque vos brackets sont gérés hors plateforme par une couche d'automatisation comme PickMyTrade, une ligne de graphique qui disparaît ne remet jamais votre risque en question." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide pour les lignes de trades et exécutions manquantes",
+      items: [
+        "<strong class='text-white'>Vous êtes sur le graphique hérité</strong>, remplacez-le par le nouveau module Chart standard. Les lignes d'ordres s'y affichent de façon fiable alors qu'elles n'apparaissent pas sur l'hérité.",
+        "<strong class='text-white'>&ldquo;Afficher les lignes d'ordres&rdquo; est désactivé</strong>, ouvrez les paramètres du graphique et réactivez l'affichage des lignes d'ordres / d'ordres en cours.",
+        "<strong class='text-white'>Le trading depuis le graphique est désactivé</strong>, activez-le pour que les ordres actifs s'affichent sur le graphique et restent déplaçables.",
+        "<strong class='text-white'>Vous cherchez les exécutions d'hier</strong>, le graphique ne couvre que le jour en cours. Ces marqueurs s'effacent après la journée de trading ; récupérez-les dans le rapport Orders/Fills ou du compte.",
+        "<strong class='text-white'>Mauvais symbole ou mauvais compte chargé</strong>, vérifiez que le contrat du graphique et le compte lié correspondent à la position que vous attendez.",
+        "<strong class='text-white'>Session obsolète après un changement d'appareil</strong>, actualisez, ou déconnectez-vous puis reconnectez-vous, afin que le graphique se réabonne à l'état de vos ordres en direct.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « lignes de trades et exécutions disparues »" },
+    { type: "paragraph",html: "Il n'existe pas de boîte de dialogue d'erreur unique pour cela. Tradovate n'affiche aucun message ; les lignes et les marqueurs cessent simplement d'apparaître. C'est précisément ce silence qui prête à confusion ; il est donc utile de scinder le symptôme en ses deux formes réelles." },
+    { type: "paragraph",html: "La première est celle des <strong class='text-white'>lignes d'ordres actifs qui disparaissent</strong>. Vos ordres stop, limite et objectif en attente, ainsi que la ligne du dernier prix, devraient s'afficher sous forme de lignes horizontales sur le graphique actif tant qu'ils sont en cours. Quand elles disparaissent alors que les ordres sont toujours actifs dans le panneau Orders, il s'agit d'un problème d'affichage du graphique, pas d'un problème d'ordres. Vos ordres sont en sécurité sur les serveurs de Tradovate ; le graphique ne les dessine simplement pas." },
+    { type: "paragraph",html: "La seconde est celle des <strong class='text-white'>marqueurs d'exécutions historiques qui s'effacent</strong>. Tradovate trace vos exécutions d'entrée et de sortie comme des marqueurs sur le graphique pour la journée de trading en cours. Une fois la journée terminée, ces marqueurs disparaissent. C'est le comportement actuel et attendu, pas un dysfonctionnement. La plateforme n'affiche pas les trades de la veille sur le graphique ; si vous reveniez le lendemain matin pour examiner les entrées d'hier, il n'y a donc rien à trouver. Distinguer les deux est l'essentiel : l'une se règle en changeant de graphique, l'autre en changeant l'endroit où l'on cherche les données." },
+    { type: "heading",text: "Principales causes de la disparition des lignes de trades et des exécutions en 2026" },
+    { type: "heading",text: "1. Vous utilisez le graphique hérité" },
+    { type: "paragraph",html: "C'est la cause numéro un de la disparition des lignes d'ordres en cours. Tradovate propose à la fois un ancien <strong class='text-white'>graphique hérité</strong> et un nouveau module <strong class='text-white'>Chart standard</strong>, et la version héritée porte des défauts d'affichage de longue date : les lignes d'ordres ne s'affichent pas, et même la ligne horizontale du dernier prix peut disparaître alors que les réglages correspondants sont activés. Vous pouvez vérifier chaque option, ajustement automatique, &ldquo;lignes d'ordres&rdquo;, tout, et ne constater aucun changement, jusqu'à ce que vous quittiez le graphique hérité. Si vos lignes n'apparaissent pas quoi que vous cliquiez, suspectez d'abord le graphique hérité." },
+    { type: "heading",text: "2. L'option des lignes d'ordres ou le trading depuis le graphique est désactivé" },
+    { type: "paragraph",html: "Sur un graphique standard sain, les lignes d'ordres peuvent encore être masquées si l'option d'affichage correspondante est désactivée ou si le trading depuis le graphique n'est pas activé pour ce graphique. C'est le trading depuis le graphique qui permet d'afficher les ordres sous forme de lignes déplaçables directement sur l'axe des prix ; désactivé, vous verrez moins de commandes d'ordres sur le graphique. Écartez cette piste avant d'incriminer quelque chose de plus profond." },
+    { type: "heading",text: "3. Les exécutions historiques s'effacent en fin de journée (par conception)" },
+    { type: "paragraph",html: "Si les éléments manquants sont des trades <em>passés</em> plutôt que des ordres <em>actifs</em>, rien n'est cassé. Tradovate n'affiche les marqueurs d'ordres et d'exécutions que pour la journée de trading en cours ; une fois la journée terminée, ces marqueurs disparaissent du graphique. Le comportement est constant à chaque séance : les marqueurs s'affichent pendant que vous tradez et ont disparu ensuite, et la conservation des ordres et exécutions de la veille sur le graphique reste une demande de fonctionnalité en attente. Pour examiner les trades historiques, utilisez les rapports, pas le graphique." },
+    { type: "heading",text: "4. Désynchronisation de session ou d'état après un changement d'appareil ou une coupure de données" },
+    { type: "paragraph",html: "Les lignes d'ordres sont liées à la vue de votre session en direct sur les ordres en cours. Changez d'appareil, revenez quelques heures plus tard ou traversez une brève interruption de données de marché, et le graphique peut ne pas se réabonner à cet état d'ordres, laissant sans les redessiner des lignes qui étaient là plus tôt. Une actualisation les ramène généralement." },
+    { type: "heading",text: "Comment corriger la disparition des lignes de trades et des exécutions : pas à pas" },
+    { type: "heading",text: "Corriger le graphique hérité (la correction principale)" },
+    {
+      type: "list",
+      items: [
+        "Regardez le module de graphique depuis lequel vous tradez et déterminez s'il s'agit de l'ancien graphique hérité ou du nouveau Chart standard. La version héritée est un type de module distinct du Chart standard.",
+        "Ouvrez un nouveau module <strong class='text-white'>Chart</strong> (le graphique plus récent, non hérité) et chargez le même symbole et le même compte.",
+        "Confirmez que vos ordres en cours s'affichent maintenant sous forme de lignes d'ordres horizontales sur le nouveau graphique. C'est le résultat fiable : les lignes d'ordres qui refusent d'apparaître sur le graphique hérité s'affichent correctement sur le nouveau.",
+        "Une fois le graphique standard opérationnel, faites-en votre graphique par défaut et retirez le graphique hérité de votre espace de travail pour que le problème ne revienne pas.",
+      ],
+    },
+    { type: "heading",text: "Réactiver les lignes d'ordres et le trading depuis le graphique" },
+    {
+      type: "list",
+      items: [
+        "Ouvrez les paramètres du graphique (l'engrenage ou la commande de réglages du graphique).",
+        "Activez l'option qui affiche les <strong class='text-white'>lignes d'ordres</strong> / ordres en cours sur le graphique.",
+        "Assurez-vous que le <strong class='text-white'>trading depuis le graphique</strong> est activé pour ce graphique afin que les ordres actifs s'affichent et restent déplaçables.",
+        "Placez ou déplacez un ordre de test dans le compte de simulation et confirmez que la ligne apparaît et suit le niveau de prix. Si cela ne fonctionne qu'après avoir également désactivé le graphique hérité, c'est normal : l'option seule ne suffit souvent pas sur l'hérité.",
+      ],
+    },
+    { type: "heading",text: "Récupérer les exécutions des jours passés depuis les rapports" },
+    {
+      type: "list",
+      items: [
+        "Comme le graphique n'affiche pas les jours précédents, ouvrez plutôt votre rapport <strong class='text-white'>Orders/Fills</strong> ou la section des <strong class='text-white'>rapports</strong> du compte.",
+        "Filtrez par la plage de dates que vous souhaitez examiner pour retrouver les entrées et sorties qui ont disparu du graphique.",
+        "Exportez ou notez les exécutions dont vous avez besoin pour votre journal, vos impôts ou d'éventuels litiges. C'est le registre durable, alors que les marqueurs du graphique ne sont qu'un confort du jour même.",
+      ],
+    },
+    { type: "heading",text: "Actualiser une session désynchronisée" },
+    {
+      type: "list",
+      items: [
+        "Si les lignes étaient visibles plus tôt et ont disparu après un changement d'appareil ou une brève interruption de données, actualisez la plateforme (ou déconnectez-vous puis reconnectez-vous).",
+        "Rouvrez le graphique et confirmez que les lignes d'ordres en cours se redessinent une fois que la session s'est réabonnée à l'état de vos ordres en direct.",
+        "Si vous êtes connecté sur plusieurs appareils, fermez les sessions supplémentaires. Des sessions concurrentes peuvent laisser une vue désynchronisée.",
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme","Signification","Solution"], rows: [
+      ["&ldquo;Les lignes d'ordres n'apparaissent plus&rdquo;","Vous êtes sur le graphique hérité, qui ne les affiche pas","Passez au nouveau module Chart standard"],
+      ["&ldquo;La ligne du dernier prix a disparu&rdquo;","Défaut d'affichage connu du graphique hérité","Passez au graphique standard ; ne vous appuyez pas sur l'hérité"],
+      ["Ordres actifs dans le panneau mais aucune ligne sur le graphique","Problème d'option d'affichage ou de trading depuis le graphique sur ce graphique","Activez les lignes d'ordres et le trading depuis le graphique, ou changez de graphique"],
+      ["&ldquo;Les entrées et sorties de trades disparaissent après quelques heures&rdquo;","Marqueurs du jour en cours seulement, effacés en fin de journée (par conception)","Consultez les exécutions passées dans le rapport Orders/Fills ou du compte"],
+      ["Les trades d'hier manquent sur le graphique","Tradovate n'affiche pas les trades de la veille","Utilisez les rapports pour la revue historique, pas le graphique"],
+      ["Lignes disparues après un changement d'appareil","Désynchronisation de l'état de session","Actualisez / reconnectez-vous ; fermez les sessions en double"],
+    ] },
+    { type: "heading",text: "Évitez ce problème avec PickMyTrade" },
+    { type: "paragraph",html: "Les lignes de graphique sont un confort, pas un filet de sécurité ; la vraie solution est donc de ne plus compter sur elles pour connaître votre risque. PickMyTrade relie vos alertes TradingView directement à Tradovate et gère les ordres pour vous, de façon native :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Gestion des brackets côté serveur</strong>, votre stop et votre objectif vivent dans le moteur de PickMyTrade ; un graphique qui cesse de tracer des lignes ne signifie donc jamais que vous avez perdu la trace de vos ordres de protection.",
+        "<strong class='text-white'>Journalisation automatique des trades</strong>, chaque entrée et chaque sortie est enregistrée hors plateforme, de sorte qu'une réinitialisation du graphique en fin de journée ne peut jamais effacer votre historique de trades.",
+        "<strong class='text-white'>Exécution native TradingView</strong>, les alertes se déclenchent depuis le graphique TradingView que vous surveillez déjà, indépendamment du module de graphique Tradovate que vous utilisez.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, les mêmes ordres gérés sont répliqués sur tous les comptes connectés, de sorte que vous ne rapprochez jamais à la main des états de graphique divergents.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Sta gestendo una posizione future aperta su ES o NQ e il suo stop e il suo target in corso dovrebbero trovarsi proprio lì sul grafico come linee di ordini orizzontali. Poi svaniscono. In una sessione il suo bracket, il suo marcatore di ingresso e la linea dell'ultimo prezzo sono visibili; al login successivo sono spariti, e le esecuzioni di ieri non si trovano da nessuna parte. Sembra una perdita di dati. In pratica quasi sempre risale a due cause molto diverse che vengono confuse tra loro: le linee degli ordini attivi che scompaiono dal grafico legacy e i marcatori storici delle esecuzioni che si cancellano a fine giornata per design. Capisca quale dei due sta vedendo e la correzione richiede pochi secondi. Meglio ancora, quando i suoi bracket sono gestiti fuori piattaforma da un livello di automazione come PickMyTrade, una linea del grafico che scompare non mette mai in dubbio il suo rischio." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per linee dei trade ed esecuzioni mancanti",
+      items: [
+        "<strong class='text-white'>Sta usando il grafico legacy</strong>, lo sostituisca con il nuovo modulo Chart standard. Le linee degli ordini vi vengono disegnate in modo affidabile quando sul legacy non compaiono.",
+        "<strong class='text-white'>&ldquo;Mostra linee degli ordini&rdquo; è disattivato</strong>, apra le impostazioni del grafico e riattivi la visualizzazione delle linee degli ordini / degli ordini in corso.",
+        "<strong class='text-white'>Il trading dal grafico è disattivato</strong>, lo attivi in modo che gli ordini attivi vengano disegnati sul grafico e restino trascinabili.",
+        "<strong class='text-white'>Sta cercando le esecuzioni di ieri</strong>, il grafico mostra solo il giorno corrente. Quei marcatori si cancellano dopo la giornata di trading; li recuperi invece dal report Orders/Fills o del conto.",
+        "<strong class='text-white'>È caricato un simbolo o un conto sbagliato</strong>, verifichi che il contratto del grafico e il conto collegato corrispondano alla posizione che si aspetta di vedere.",
+        "<strong class='text-white'>Sessione obsoleta dopo un cambio di dispositivo</strong>, aggiorni, oppure esca e riaccede, in modo che il grafico si risottoscriva allo stato dei suoi ordini live.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa «linee dei trade ed esecuzioni scomparse»" },
+    { type: "paragraph",html: "Non esiste un'unica finestra di errore per questo. Tradovate non mostra alcun messaggio; le linee e i marcatori semplicemente smettono di comparire. È proprio quel silenzio a renderlo confuso, quindi aiuta dividere il sintomo nelle sue due forme reali." },
+    { type: "paragraph",html: "La prima sono le <strong class='text-white'>linee degli ordini attivi che scompaiono</strong>. I suoi ordini in attesa di stop, limite e target, oltre alla linea dell'ultimo prezzo, dovrebbero essere disegnati come linee orizzontali sul grafico attivo finché sono in corso. Quando scompaiono pur essendo gli ordini ancora attivi nel pannello Orders, si tratta di un problema di visualizzazione del grafico, non degli ordini. I suoi ordini sono al sicuro sui server di Tradovate; il grafico semplicemente non li disegna." },
+    { type: "paragraph",html: "La seconda sono i <strong class='text-white'>marcatori storici delle esecuzioni che si cancellano</strong>. Tradovate traccia le sue esecuzioni di ingresso e uscita come marcatori sul grafico per la giornata di trading corrente. Una volta conclusa la giornata, quei marcatori scompaiono. È il comportamento attuale e previsto, non un malfunzionamento. La piattaforma non disegna sul grafico i trade del giorno precedente, quindi se è tornato la mattina dopo per rivedere gli ingressi di ieri, non c'è nulla da trovare. Distinguere i due è la chiave: uno si risolve cambiando il grafico, l'altro cambiando il punto in cui cerca i dati." },
+    { type: "heading",text: "Principali cause della scomparsa di linee dei trade ed esecuzioni nel 2026" },
+    { type: "heading",text: "1. Sta usando il grafico legacy" },
+    { type: "paragraph",html: "È la causa numero uno della scomparsa delle linee degli ordini in corso. Tradovate fornisce sia un <strong class='text-white'>grafico legacy</strong> più vecchio sia un nuovo modulo <strong class='text-white'>Chart standard</strong>, e la versione legacy ha difetti di visualizzazione di lunga data: le linee degli ordini non vengono disegnate e persino la linea orizzontale dell'ultimo prezzo può scomparire nonostante le relative impostazioni siano attive. Può controllare ogni opzione, autofit, &ldquo;linee degli ordini&rdquo;, tutto, e non vedere alcun cambiamento, finché non abbandona il grafico legacy. Se le sue linee non compaiono qualunque cosa clicchi, sospetti per prima cosa il grafico legacy." },
+    { type: "heading",text: "2. L'opzione delle linee degli ordini o il trading dal grafico è disattivato" },
+    { type: "paragraph",html: "Su un grafico standard sano, le linee degli ordini possono comunque essere nascoste se l'opzione di visualizzazione è disattivata o se il trading dal grafico non è abilitato per quel grafico. Il trading dal grafico è ciò che permette di disegnare gli ordini come linee trascinabili direttamente sull'asse dei prezzi; se è disattivato, vedrà meno controlli degli ordini sul grafico. Escluda questo prima di dare la colpa a qualcosa di più profondo." },
+    { type: "heading",text: "3. Le esecuzioni storiche si cancellano a fine giornata (per design)" },
+    { type: "paragraph",html: "Se gli elementi mancanti sono trade <em>passati</em> anziché ordini <em>attivi</em>, nulla è rotto. Tradovate mostra i marcatori di ordini ed esecuzioni solo per la giornata di trading corrente; conclusa la giornata, quei marcatori scompaiono dal grafico. Il comportamento è coerente a ogni sessione: i marcatori vengono tracciati mentre opera e sono spariti dopo, e conservare sul grafico ordini ed esecuzioni del giorno precedente resta una richiesta di funzionalità aperta. Per rivedere i trade storici, usi i report, non il grafico." },
+    { type: "heading",text: "4. Desincronizzazione di sessione o di stato dopo un cambio di dispositivo o un'interruzione dei dati" },
+    { type: "paragraph",html: "Le linee degli ordini sono legate alla visione della sua sessione live sugli ordini in corso. Se cambia dispositivo, torna dopo ore o attraversa una breve interruzione dei dati di mercato, il grafico può non risottoscriversi a quello stato degli ordini, lasciando non ridisegnate linee che prima c'erano. Un aggiornamento di solito le riporta." },
+    { type: "heading",text: "Come risolvere la scomparsa di linee dei trade ed esecuzioni: passo dopo passo" },
+    { type: "heading",text: "Correggere il grafico legacy (la correzione principale)" },
+    {
+      type: "list",
+      items: [
+        "Guardi il modulo grafico da cui sta operando e stabilisca se è il vecchio grafico legacy o il nuovo Chart standard. La versione legacy è un tipo di modulo separato dal Chart standard.",
+        "Apra un nuovo modulo <strong class='text-white'>Chart</strong> (il grafico più recente, non legacy) e carichi lo stesso simbolo e lo stesso conto.",
+        "Confermi che i suoi ordini in corso vengano ora disegnati come linee di ordini orizzontali sul nuovo grafico. È il risultato affidabile: le linee degli ordini che non vogliono comparire sul grafico legacy si mostrano correttamente sul nuovo.",
+        "Quando il grafico standard funziona, lo imposti come predefinito e rimuova il grafico legacy dal suo workspace affinché il problema non ritorni.",
+      ],
+    },
+    { type: "heading",text: "Riattivare le linee degli ordini e il trading dal grafico" },
+    {
+      type: "list",
+      items: [
+        "Apra le impostazioni del grafico (l'ingranaggio o il controllo delle impostazioni sul grafico).",
+        "Attivi l'opzione che mostra le <strong class='text-white'>linee degli ordini</strong> / gli ordini in corso sul grafico.",
+        "Si assicuri che il <strong class='text-white'>trading dal grafico</strong> sia abilitato per quel grafico in modo che gli ordini attivi vengano disegnati e restino trascinabili.",
+        "Inserisca o sposti un ordine di prova nel conto di simulazione e confermi che la linea compaia e segua il livello di prezzo. Se funziona solo dopo aver disattivato anche il grafico legacy, è previsto: l'opzione da sola spesso non basta sul legacy.",
+      ],
+    },
+    { type: "heading",text: "Recuperare le esecuzioni dei giorni passati dai report" },
+    {
+      type: "list",
+      items: [
+        "Poiché il grafico non mostra i giorni precedenti, apra invece il suo report <strong class='text-white'>Orders/Fills</strong> o la sezione dei <strong class='text-white'>report</strong> del conto.",
+        "Filtri per l'intervallo di date che vuole rivedere per recuperare gli ingressi e le uscite che sono scomparsi dal grafico.",
+        "Esporti o annoti le esecuzioni che le servono per il diario, le tasse o eventuali contestazioni. Questo è il registro duraturo, mentre i marcatori del grafico sono solo una comodità dello stesso giorno.",
+      ],
+    },
+    { type: "heading",text: "Aggiornare una sessione desincronizzata" },
+    {
+      type: "list",
+      items: [
+        "Se le linee erano visibili prima e sono scomparse dopo un cambio di dispositivo o una breve interruzione dei dati, aggiorni la piattaforma (oppure esca e riaccede).",
+        "Riapra il grafico e confermi che le linee degli ordini in corso vengano ridisegnate una volta che la sessione si è risottoscritta allo stato dei suoi ordini live.",
+        "Se ha eseguito l'accesso su più di un dispositivo, chiuda le sessioni aggiuntive. Sessioni concorrenti possono lasciare una vista desincronizzata.",
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo","Significato","Soluzione"], rows: [
+      ["&ldquo;Le linee degli ordini non compaiono più&rdquo;","Sta usando il grafico legacy, che non le disegna","Passi al nuovo modulo Chart standard"],
+      ["&ldquo;La linea dell'ultimo prezzo è scomparsa&rdquo;","Difetto di visualizzazione noto del grafico legacy","Passi al grafico standard; non si affidi al legacy"],
+      ["Ordini attivi nel pannello ma nessuna linea sul grafico","Problema di opzione di visualizzazione o di trading dal grafico su quel grafico","Attivi le linee degli ordini e il trading dal grafico, oppure cambi grafico"],
+      ["&ldquo;Ingressi e uscite dei trade scompaiono dopo alcune ore&rdquo;","Marcatori solo del giorno corrente cancellati a fine giornata (per design)","Rivedere le esecuzioni passate nel report Orders/Fills o del conto"],
+      ["I trade di ieri mancano dal grafico","Tradovate non disegna i trade del giorno precedente","Usi i report per la revisione storica, non il grafico"],
+      ["Linee scomparse dopo il cambio di dispositivo","Desincronizzazione dello stato della sessione","Aggiorni / riaccede; chiuda le sessioni duplicate"],
+    ] },
+    { type: "heading",text: "Eviti questo problema con PickMyTrade" },
+    { type: "paragraph",html: "Le linee del grafico sono una comodità, non una rete di sicurezza, quindi la vera soluzione è smettere di dipendere da esse per conoscere il suo rischio. PickMyTrade collega direttamente i suoi alert di TradingView a Tradovate e gestisce gli ordini per lei, in modo nativo:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Gestione dei bracket lato server</strong>, il suo stop e il suo target risiedono nel motore di PickMyTrade, quindi un grafico che smette di disegnare le linee non significa mai che ha perso traccia dei suoi ordini di protezione.",
+        "<strong class='text-white'>Registrazione automatica dei trade</strong>, ogni ingresso e uscita viene registrato fuori piattaforma, quindi un reset del grafico a fine giornata non può mai cancellare lo storico dei suoi trade.",
+        "<strong class='text-white'>Esecuzione nativa di TradingView</strong>, gli alert partono dal grafico TradingView che già osserva, indipendentemente dal modulo grafico di Tradovate che sta usando.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, gli stessi ordini gestiti vengono replicati su tutti i conti collegati, quindi non deve mai riconciliare a mano stati del grafico non corrispondenti.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Relying on the Chart for Risk", de: "Verlassen Sie sich nicht auf den Chart für Ihr Risiko", es: "Deje de depender del gráfico para su riesgo", fr: "Ne dépendez plus du graphique pour votre risque", it: "Smetta di affidarsi al grafico per il suo rischio" },
+  ctaText: { en: "Start your free 7-day trial, link alerts today and trade rejection-free.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, verknüpfen Sie noch heute Ihre Alerts und handeln Sie ohne Ablehnungen.", es: "Comience su prueba gratuita de 7 días, vincule sus alertas hoy y opere sin rechazos.", fr: "Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et tradez sans rejet.", it: "Inizi la prova gratuita di 7 giorni, colleghi gli alert oggi stesso e operi senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why did my order lines disappear from the Tradovate chart?", a: "The most common reason is that you're on the legacy chart, which has known defects that stop working-order and last-trade-price lines from rendering. Switching to the newer standard Chart module restores them." },
+    { q: "How do I switch from the legacy chart to the new chart?", a: "Add a new standard Chart module (the non-legacy chart), load the same symbol and account, then set it as your default. The exact menu label can vary by platform version, so confirm the current wording in your workspace, but functionally you're replacing the legacy chart with the newer one." },
+    { q: "Do trade fills stay on the chart after the trading day?", a: "No. Tradovate plots order and fill markers only for the current trading day; after the day completes they disappear from the chart. This is expected behavior, not a bug." },
+    { q: "Where can I see yesterday's fills if they're gone from the chart?", a: "Use your Orders/Fills report or the account reports section and filter by date. That's the durable record of your trades once the same-day chart markers have cleared." },
+    { q: "I enabled \"show order lines\" but they still don't show, why?", a: "On the legacy chart, that toggle often isn't enough on its own. The setting frequently has no effect until you move to the newer standard chart, where the lines then appear correctly." },
+    { q: "Does switching devices make my trade lines disappear?", a: "It can. Order lines follow your live session's view of working orders, and switching devices or returning after a data interruption can leave the chart unsubscribed from that state. A refresh or re-login usually redraws them." },
+    { q: "Is losing historical fill markers a bug I should report?", a: "No, it's the platform's current design. Retaining previous-day orders and fills on the chart is an open feature request, so for now, treat the chart as a same-day view and rely on reports for anything older." },
+    { q: "Can I keep a permanent record of my trades outside Tradovate?", a: "Yes. Routing your trades through PickMyTrade logs every entry and exit off-platform, so your history survives any end-of-day chart reset and stays available for review, journaling, or taxes." },
+  ], de: [
+    { q: "Warum sind meine Orderlinien aus dem Tradovate-Chart verschwunden?", a: "Der häufigste Grund ist, dass Sie den Legacy-Chart verwenden, der bekannte Fehler hat, die verhindern, dass Linien für Working-Orders und den letzten Handelspreis gezeichnet werden. Der Wechsel zum neueren Standard-Chart-Modul stellt sie wieder her." },
+    { q: "Wie wechsle ich vom Legacy-Chart zum neuen Chart?", a: "Fügen Sie ein neues Standard-Chart-Modul (den Nicht-Legacy-Chart) hinzu, laden Sie dasselbe Symbol und Konto und legen Sie es dann als Standard fest. Die genaue Menübezeichnung kann je nach Plattformversion variieren, bestätigen Sie daher den aktuellen Wortlaut in Ihrem Workspace, aber funktional ersetzen Sie den Legacy-Chart durch den neueren." },
+    { q: "Bleiben Trade-Fills nach dem Handelstag im Chart?", a: "Nein. Tradovate zeichnet Order- und Fill-Markierungen nur für den aktuellen Handelstag; nach Abschluss des Tages verschwinden sie aus dem Chart. Das ist erwartetes Verhalten, kein Fehler." },
+    { q: "Wo sehe ich die Fills von gestern, wenn sie aus dem Chart verschwunden sind?", a: "Nutzen Sie Ihren Orders/Fills-Bericht oder den Bereich Kontoberichte und filtern Sie nach Datum. Das ist die dauerhafte Aufzeichnung Ihrer Trades, sobald die Chart-Markierungen des Tages verschwunden sind." },
+    { q: "Ich habe „Orderlinien anzeigen“ aktiviert, aber sie erscheinen trotzdem nicht, warum?", a: "Im Legacy-Chart reicht dieser Schalter oft allein nicht aus. Die Einstellung hat häufig keine Wirkung, bis Sie zum neueren Standard-Chart wechseln, wo die Linien dann korrekt erscheinen." },
+    { q: "Lässt ein Gerätewechsel meine Orderlinien verschwinden?", a: "Das kann passieren. Orderlinien folgen der Sicht Ihrer Live-Sitzung auf Working-Orders, und ein Gerätewechsel oder die Rückkehr nach einer Datenunterbrechung kann dazu führen, dass der Chart diesen Status nicht mehr abonniert. Ein Refresh oder erneutes Einloggen zeichnet sie meist neu." },
+    { q: "Ist der Verlust historischer Fill-Markierungen ein Fehler, den ich melden sollte?", a: "Nein, es ist das aktuelle Design der Plattform. Das Beibehalten von Orders und Fills des Vortags im Chart ist ein offener Funktionswunsch; betrachten Sie den Chart daher vorerst als Tagesansicht und verlassen Sie sich für Älteres auf Berichte." },
+    { q: "Kann ich eine dauerhafte Aufzeichnung meiner Trades außerhalb von Tradovate aufbewahren?", a: "Ja. Wenn Sie Ihre Trades über PickMyTrade routen, wird jeder Ein- und Ausstieg außerhalb der Plattform protokolliert, sodass Ihre Historie jeden Chart-Reset am Tagesende übersteht und für Überprüfung, Journaling oder Steuern verfügbar bleibt." },
+  ], es: [
+    { q: "¿Por qué desaparecieron mis líneas de órdenes del gráfico de Tradovate?", a: "La razón más común es que usa el gráfico heredado (legacy), que tiene defectos conocidos que impiden que se dibujen las líneas de órdenes en curso y del último precio operado. Cambiar al módulo Chart estándar más nuevo las restaura." },
+    { q: "¿Cómo cambio del gráfico heredado al nuevo gráfico?", a: "Añada un nuevo módulo Chart estándar (el gráfico no heredado), cargue el mismo símbolo y cuenta, y luego establézcalo como predeterminado. La etiqueta exacta del menú puede variar según la versión de la plataforma, así que confirme el texto actual en su espacio de trabajo, pero funcionalmente está sustituyendo el gráfico heredado por el nuevo." },
+    { q: "¿Las ejecuciones de operaciones permanecen en el gráfico después del día de negociación?", a: "No. Tradovate dibuja las marcas de órdenes y ejecuciones solo para el día de negociación actual; cuando el día termina, desaparecen del gráfico. Es un comportamiento esperado, no un error." },
+    { q: "¿Dónde puedo ver las ejecuciones de ayer si ya no están en el gráfico?", a: "Use su informe de Orders/Fills o la sección de informes de la cuenta y filtre por fecha. Ese es el registro duradero de sus operaciones una vez que las marcas del gráfico del mismo día han desaparecido." },
+    { q: "Activé «mostrar líneas de órdenes» pero siguen sin aparecer, ¿por qué?", a: "En el gráfico heredado, ese interruptor a menudo no basta por sí solo. El ajuste con frecuencia no tiene efecto hasta que pasa al gráfico estándar más nuevo, donde las líneas aparecen correctamente." },
+    { q: "¿Cambiar de dispositivo hace que mis líneas de operaciones desaparezcan?", a: "Puede ocurrir. Las líneas de órdenes siguen la vista que tiene su sesión activa de las órdenes en curso, y cambiar de dispositivo o volver tras una interrupción de datos puede dejar el gráfico sin suscripción a ese estado. Una actualización o un nuevo inicio de sesión suele volver a dibujarlas." },
+    { q: "¿Perder las marcas históricas de ejecuciones es un error que debería reportar?", a: "No, es el diseño actual de la plataforma. Conservar en el gráfico las órdenes y ejecuciones del día anterior es una solicitud de función abierta, así que por ahora trate el gráfico como una vista del mismo día y confíe en los informes para todo lo más antiguo." },
+    { q: "¿Puedo conservar un registro permanente de mis operaciones fuera de Tradovate?", a: "Sí. Si enruta sus operaciones a través de PickMyTrade, cada entrada y salida se registra fuera de la plataforma, de modo que su historial sobrevive a cualquier reinicio del gráfico al final del día y sigue disponible para revisión, diario de trading o impuestos." },
+  ], fr: [
+    { q: "Pourquoi mes lignes d'ordres ont-elles disparu du graphique Tradovate ?", a: "La raison la plus courante est que vous utilisez le graphique hérité (legacy), qui présente des défauts connus empêchant l'affichage des lignes d'ordres en cours et du dernier prix. Passer au nouveau module Chart standard les rétablit." },
+    { q: "Comment passer du graphique hérité au nouveau graphique ?", a: "Ajoutez un nouveau module Chart standard (le graphique non hérité), chargez le même symbole et le même compte, puis définissez-le par défaut. Le libellé exact du menu peut varier selon la version de la plateforme ; confirmez donc la formulation actuelle dans votre espace de travail, mais fonctionnellement vous remplacez le graphique hérité par le nouveau." },
+    { q: "Les exécutions de trades restent-elles sur le graphique après la journée de trading ?", a: "Non. Tradovate n'affiche les marqueurs d'ordres et d'exécutions que pour la journée de trading en cours ; une fois la journée terminée, ils disparaissent du graphique. C'est un comportement attendu, pas un bogue." },
+    { q: "Où voir les exécutions d'hier si elles ont disparu du graphique ?", a: "Utilisez votre rapport Orders/Fills ou la section des rapports du compte et filtrez par date. C'est le registre durable de vos trades une fois que les marqueurs du graphique du jour ont disparu." },
+    { q: "J'ai activé « afficher les lignes d'ordres » mais elles ne s'affichent toujours pas, pourquoi ?", a: "Sur le graphique hérité, cette option ne suffit souvent pas à elle seule. Le réglage n'a fréquemment aucun effet tant que vous ne passez pas au nouveau graphique standard, où les lignes apparaissent alors correctement." },
+    { q: "Changer d'appareil fait-il disparaître mes lignes de trades ?", a: "Cela peut arriver. Les lignes d'ordres suivent la vue de votre session en direct sur les ordres en cours, et changer d'appareil ou revenir après une interruption de données peut laisser le graphique désabonné de cet état. Une actualisation ou une nouvelle connexion les redessine généralement." },
+    { q: "La perte des marqueurs d'exécutions historiques est-elle un bogue à signaler ?", a: "Non, c'est la conception actuelle de la plateforme. Conserver sur le graphique les ordres et exécutions de la veille est une demande de fonctionnalité en attente ; pour l'instant, considérez donc le graphique comme une vue du jour même et fiez-vous aux rapports pour tout ce qui est plus ancien." },
+    { q: "Puis-je conserver un registre permanent de mes trades en dehors de Tradovate ?", a: "Oui. En routant vos trades via PickMyTrade, chaque entrée et chaque sortie est consignée hors plateforme ; votre historique survit ainsi à toute réinitialisation du graphique en fin de journée et reste disponible pour la revue, le journal de trading ou la fiscalité." },
+  ], it: [
+    { q: "Perché le mie linee degli ordini sono scomparse dal grafico di Tradovate?", a: "Il motivo più comune è che sta usando il grafico legacy, che ha difetti noti che impediscono il disegno delle linee degli ordini in corso e dell'ultimo prezzo. Passare al nuovo modulo Chart standard le ripristina." },
+    { q: "Come passo dal grafico legacy al nuovo grafico?", a: "Aggiunga un nuovo modulo Chart standard (il grafico non legacy), carichi lo stesso simbolo e lo stesso conto, poi lo imposti come predefinito. L'etichetta esatta del menu può variare in base alla versione della piattaforma, quindi confermi la dicitura attuale nel suo workspace, ma funzionalmente sostituisce il grafico legacy con quello nuovo." },
+    { q: "Le esecuzioni dei trade restano sul grafico dopo la giornata di trading?", a: "No. Tradovate disegna i marcatori di ordini ed esecuzioni solo per la giornata di trading corrente; a giornata conclusa scompaiono dal grafico. È un comportamento previsto, non un bug." },
+    { q: "Dove posso vedere le esecuzioni di ieri se non sono più sul grafico?", a: "Usi il suo report Orders/Fills o la sezione dei report del conto e filtri per data. È il registro duraturo dei suoi trade una volta che i marcatori del grafico dello stesso giorno sono scomparsi." },
+    { q: "Ho attivato «mostra linee degli ordini» ma non compaiono ancora, perché?", a: "Sul grafico legacy, quell'opzione spesso non basta da sola. L'impostazione di frequente non ha effetto finché non passa al nuovo grafico standard, dove le linee compaiono correttamente." },
+    { q: "Cambiare dispositivo fa scomparire le mie linee dei trade?", a: "Può succedere. Le linee degli ordini seguono la visione della sua sessione live sugli ordini in corso, e cambiare dispositivo o tornare dopo un'interruzione dei dati può lasciare il grafico non sottoscritto a quello stato. Un aggiornamento o un nuovo accesso di solito le ridisegna." },
+    { q: "La perdita dei marcatori storici delle esecuzioni è un bug da segnalare?", a: "No, è il design attuale della piattaforma. Conservare sul grafico gli ordini e le esecuzioni del giorno precedente è una richiesta di funzionalità aperta, quindi per ora consideri il grafico una vista dello stesso giorno e si affidi ai report per tutto ciò che è più vecchio." },
+    { q: "Posso conservare un registro permanente dei miei trade fuori da Tradovate?", a: "Sì. Instradando i suoi trade tramite PickMyTrade, ogni ingresso e uscita viene registrato fuori dalla piattaforma, così il suo storico sopravvive a qualsiasi reset del grafico a fine giornata e resta disponibile per la revisione, il diario di trading o le tasse." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von dieser weder unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit. Prüfen Sie daher vor jeder Handlung stets den aktuellen Ablauf in der offiziellen Plattformdokumentation.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né da essa approvata o sponsorizzata. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, perciò confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

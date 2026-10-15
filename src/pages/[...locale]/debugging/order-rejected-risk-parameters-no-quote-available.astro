@@ -1,0 +1,519 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "order-rejected-risk-parameters-no-quote-available";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Order Rejected: Risk Parameters / No Quote";
+const META_DESCRIPTION =
+  "Tradovate order rejected: risk parameters or no quote available? Fix unsigned data agreements, dead feeds and risk limits fast and get back to trading.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Order abgelehnt: Risk Parameters / No Quote", es: "Orden rechazada en Tradovate: Risk Parameters / No Quote", fr: "Ordre rejeté sur Tradovate : Risk Parameters / No Quote", it: "Ordine rifiutato su Tradovate: Risk Parameters / No Quote" },
+  dek: { en: "Every order bounces as \"risk parameters\" or \"no quote available\" even though the chart shows a live price. Both almost always trace to the same unprovisioned account state.", de: "Jede Order wird als „risk parameters“ oder „no quote available“ abgelehnt, obwohl der Chart einen Live-Kurs zeigt. Beides geht fast immer auf denselben nicht bereitgestellten Kontozustand zurück.", es: "Todas las órdenes rebotan como «risk parameters» o «no quote available» aunque el gráfico muestre un precio en vivo. Ambos casos casi siempre se deben al mismo estado de cuenta sin aprovisionar.", fr: "Chaque ordre est rejeté avec « risk parameters » ou « no quote available » alors que le graphique affiche un prix en direct. Les deux remontent presque toujours au même état de compte non provisionné.", it: "Ogni ordine viene respinto come «risk parameters» o «no quote available» anche se il grafico mostra un prezzo live. Entrambi risalgono quasi sempre allo stesso stato del conto non predisposto." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "When you're scalping ES or NQ, few things kill your momentum faster than a Tradovate order that bounces straight back as rejected. Two of the most confusing reasons tend to show up together: <strong class='text-white'>&ldquo;risk parameters&rdquo;</strong> and <strong class='text-white'>&ldquo;no quote available.&rdquo;</strong> You watch live quotes tick across the chart, yet every order, market, sell at ask, buy at bid, even a resting stop, comes back rejected for one of those two reasons. Here's the reassuring part: both almost always trace to one of three account states you can fix yourself, an unsigned market-data agreement, a feed that hasn't gone live, or a risk limit. It's rarely a broken platform. Below, we'll walk through each cause and its fix, then show how automating your entries with PickMyTrade heads most of them off before an order is ever sent." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Risk Parameters & No Quote Rejections",
+      items: [
+        "<strong class='text-white'>Read the exact rejection reason first.</strong> Open Orders / Order History and click the rejected order to see whether it says &ldquo;risk parameters&rdquo; or &ldquo;no quote available.&rdquo;",
+        "<strong class='text-white'>Confirm your data feed is live.</strong> Orange or delayed symbol names and empty quote fields mean you're not receiving real-time data, and orders will reject.",
+        "<strong class='text-white'>Sign the Non-Professional Market Data Agreement.</strong> An unsigned agreement blocks real-time data and can cascade into rejections.",
+        "<strong class='text-white'>Check Risk Settings.</strong> A Max Position Size, loss limit, or Products Permitted rule may be blocking the order regardless of your account balance.",
+        "<strong class='text-white'>Verify you're on the current contract month.</strong> An expired or continuous symbol (NQ1!) can produce quote and rejection errors.",
+        "<strong class='text-white'>Watch for platform or clearing incidents.</strong> During a broker or prop-firm data hiccup, these two errors can appear briefly even when your account is fine.",
+      ],
+    },
+    { type: "heading", text: "What \"Risk Parameters\" and \"No Quote Available\" Mean" },
+    { type: "paragraph", html: "A <strong class='text-white'>&ldquo;risk parameters&rdquo;</strong> rejection means the order failed a check inside your account's risk configuration or the entitlements attached to it. That check can be a hard number you set yourself (a Max Position Size or loss limit), a rule a prop firm applied to a funded or evaluation account, or an entitlement gap, for example, the account can't confirm it's licensed to trade or receive data for that instrument. The order never reaches the matching engine because it fails validation first." },
+    { type: "paragraph", html: "A <strong class='text-white'>&ldquo;no quote available&rdquo;</strong> rejection is a different animal. Tradovate couldn't price the order because it didn't have a valid, real-time quote for that contract at that moment. The full message you'll usually see is <strong class='text-white'>&ldquo;No quote available. Please contact support.&rdquo;</strong> It happens when the account isn't subscribed to (or entitled to) live data for the exchange, when the symbol is expired or thinly traded, or during a pre-open or low-liquidity window where no firm quote exists." },
+    { type: "paragraph", html: "The reason these two show up together so often is that they share a single root: your account isn't fully provisioned for real-time market data. When the data agreement is unsigned or the feed is inactive, some orders bounce as &ldquo;no quote available&rdquo; (no price) while others bounce as &ldquo;risk parameters&rdquo; (the entitlement check fails). Fix the data and risk state and you'll usually clear both at once." },
+    { type: "heading", text: "Top Causes of These Rejections" },
+    { type: "heading", text: "1. No Active (or Unsigned) Market-Data Subscription" },
+    { type: "paragraph", html: "Every live Tradovate account needs an active real-time data subscription and a signed data agreement to price orders. If you never subscribed, or you signed up but never finished the <strong class='text-white'>Non-Professional Market Data Agreement</strong>, the platform may show delayed data (symbol names in orange) and reject market orders as &ldquo;no quote available.&rdquo; On the entitlement side, that same gap can surface as &ldquo;risk parameters&rdquo; because the account can't confirm it's cleared to trade the instrument." },
+    { type: "heading", text: "2. The Data Feed Hasn't Activated Yet (or Dropped)" },
+    { type: "paragraph", html: "Even after you subscribe and sign, real-time data isn't instant. Activation commonly takes anywhere from 10 to 90 minutes, and you typically have to log out and back in to pick up the entitlement. Trade inside that window and you'll see delayed quotes and &ldquo;no quote available.&rdquo; Feed connections can also drop during very low-volume periods and need a re-login to come back." },
+    { type: "heading", text: "3. A Risk Limit Is Blocking the Order" },
+    { type: "paragraph", html: "Tradovate's account <strong class='text-white'>Risk Settings</strong> enforce hard caps: Max Position Size, Daily Loss Limit, Weekly Loss Limit, Trailing Max Drawdown, and a <strong class='text-white'>Products Permitted</strong> list. If your order would breach any of these, or the instrument isn't on the permitted list, the order is rejected under &ldquo;risk parameters,&rdquo; no matter how much buying power you have. On prop and evaluation accounts, the firm sets these limits, so you may not have set them yourself." },
+    { type: "heading", text: "4. Expired or Wrong Contract Symbol" },
+    { type: "paragraph", html: "If your chart, alert, or DOM is pointed at an expired contract or a TradingView continuous symbol (say, NQ1! instead of the current NQ month), Tradovate may have no live quote to fill against, that produces &ldquo;no quote available&rdquo;, or it may reject the order and flag the account &ldquo;Liquidation Only.&rdquo; Rolling to the current front-month contract clears it." },
+    { type: "heading", text: "5. A Platform or Clearing-Side Incident" },
+    { type: "paragraph", html: "Once in a while these errors aren't your account at all. During a brief broker or prop-firm (clearing) incident, you can see clusters of &ldquo;no quote available,&rdquo; &ldquo;maximum order quantity,&rdquo; and &ldquo;Trading is temporarily halted&rdquo; rejections, even while Tradovate's own status page shows no general outage. When that's the case, the fix is simple: wait for the incident to clear, then retry." },
+    { type: "heading", text: "How to Fix These Rejections: Step-by-Step" },
+    { type: "heading", text: "Step 1: Read the Exact Rejection Reason" },
+    { type: "paragraph", html: "Don't guess. Log into <strong class='text-white'>trader.tradovate.com</strong>, open the <strong class='text-white'>Orders</strong> or <strong class='text-white'>Order History</strong> panel, find the rejected order, and click it to open the detail. The specific reason (&ldquo;risk parameters&rdquo; versus &ldquo;No quote available. Please contact support.&rdquo;) tells you which branch below to follow. Remember: that reason lives inside Tradovate, not in your charting tool or TradingView." },
+    { type: "heading", text: "Step 2: Fix the Market-Data Side (Handles Most \"No Quote Available\")" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Application Settings", html: "Open the button at the top-right of the Web Trader." },
+        { title: "Subscribe to the exchange", html: "Select the <strong class='text-white'>Subscriptions</strong> tab, scroll to the <strong class='text-white'>Market Data</strong> section, then click <strong class='text-white'>Subscribe</strong> for the exchange you trade (for ES/NQ/MES/MNQ, that's the CME bundle)." },
+        { title: "Sign the Non-Professional Market Data Agreement", html: "Skip it and you may be billed at professional rates and, more to the point, may not receive real-time data at all." },
+        { title: "Wait for activation, then re-login", html: "Wait for activation (about 10&ndash;90 minutes), then log out and back in. Real-time symbols should then display in their normal color with a live bid/ask." },
+      ],
+    },
+    { type: "quote", html: "<strong>Prop / evaluation accounts:</strong> If you're on a funded or eval account (Apex, Topstep, TradeDay, and the like), you often <strong>can't</strong> self-subscribe, only the prop firm can enable or fix the data feed. Sign any agreement they ask for, then contact the firm if data still isn't live after activation." },
+    { type: "heading", text: "Step 3: Fix the Risk Side (Handles Most \"Risk Parameters\")" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Application Settings", html: "Open <strong class='text-white'>Application Settings</strong> and choose the <strong class='text-white'>Accounts</strong> tab." },
+        { title: "Open Risk Settings", html: "Click <strong class='text-white'>Risk Settings</strong> to expand the panel." },
+        { title: "Check Max Position and loss limits", html: "Check <strong class='text-white'>Max Position Size</strong>. If your order quantity exceeds it, either reduce the quantity or raise the limit (on your own account). Do the same for <strong class='text-white'>Daily/Weekly Loss Limit</strong> and <strong class='text-white'>Trailing Max Drawdown</strong> if you've hit them." },
+        { title: "Check Products Permitted", html: "If it's restricted to a list, add the contract you're trading or disable the restriction." },
+        { title: "On a prop account, request the change", html: "On a prop or eval account you usually can't raise these yourself, submit a risk-change request or contact the firm to increase your allowed size." },
+      ],
+    },
+    { type: "heading", text: "Step 4: Confirm the Contract and Retry" },
+    { type: "paragraph", html: "Point your chart, DOM, and any alert at the <strong class='text-white'>current front-month contract</strong>, not an expired or continuous (NQ1!) symbol. Confirm a live bid/ask is showing in the Quotes tab, then resubmit. If everything is provisioned and it still rejects, check for a platform or clearing incident and, if needed, contact support with the order ID and the exact reason you found in Step 1." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error", "Meaning", "Fix"],
+      rows: [
+        ["No quote available. Please contact support.", "No live real-time price for that contract at submit time", "Subscribe to live data, sign the Non-Professional agreement, re-login; confirm a live bid/ask before ordering"],
+        ["Risk parameters", "Order failed an account risk/entitlement check", "Open Application Settings &gt; Accounts &gt; Risk Settings; adjust Max Position, loss limits, or Products Permitted; on prop accounts request a limit change"],
+        ["Your maximum order quantity has been met", "Order size exceeds the account's max position/quantity limit", "Reduce contracts or raise Max Position Size; on prop/eval accounts submit a risk-increase request"],
+        ["Trading is temporarily halted", "Account restriction or a platform/clearing incident, not always an exchange halt", "Check Tradovate status and your account's risk/liquidation state, then retry once it clears"],
+        ["Liquidation Only (contract about to expire)", "Order placed on an expired or continuous contract", "Roll to the current front-month contract, delete old alerts, and re-place on the active symbol"],
+        ["Delayed / orange symbols, empty quotes", "Data feed not yet active or not subscribed", "Subscribe, sign the agreement, wait ~10&ndash;90 min, then log out and back in"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade links your TradingView alerts straight to Tradovate and adds guardrails so fewer orders ever reach a rejection state:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Symbol &amp; Quantity Validation</strong>, checks the contract and size before the order is sent, so expired symbols and oversized quantities are caught early instead of bouncing back.",
+        "<strong class='text-white'>Entitlement &amp; Data-Aware Routing</strong>, designed to route orders through an account that's set up for live trading, cutting down on &ldquo;no quote available&rdquo; surprises from unprovisioned feeds.",
+        "<strong class='text-white'>Risk-Aware Order Handling</strong>, helps you keep alert quantity inside your Tradovate or prop-firm Max Position and product limits, so &ldquo;risk parameters&rdquo; rejections are less likely.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors a corrected, validated order across all connected accounts instead of firing bad orders everywhere at once.",
+      ],
+    },
+    { type: "paragraph", html: "The payoff is fewer manual clicks, fewer stalled entries, and cleaner logs when you do need to debug." },
+  ], de: [
+    { type: "paragraph",html: "Wenn Sie ES oder NQ scalpen, bremsen nur wenige Dinge Ihren Schwung schneller als eine Tradovate-Order, die sofort als abgelehnt zurückkommt. Zwei der verwirrendsten Gründe treten oft gemeinsam auf: <strong class='text-white'>&ldquo;risk parameters&rdquo;</strong> und <strong class='text-white'>&ldquo;no quote available.&rdquo;</strong> Sie sehen, wie Live-Kurse über den Chart laufen, doch jede Order, Market, Verkauf zum Ask, Kauf zum Bid, sogar ein ruhender Stop, kommt aus einem dieser beiden Gründe abgelehnt zurück. Das Beruhigende: Beides lässt sich fast immer auf einen von drei Kontozuständen zurückführen, die Sie selbst beheben können, eine nicht unterzeichnete Marktdatenvereinbarung, ein noch nicht aktiver Feed oder ein Risikolimit. Selten ist die Plattform defekt. Im Folgenden gehen wir jede Ursache und ihre Lösung durch und zeigen dann, wie die Automatisierung Ihrer Einstiege mit PickMyTrade die meisten davon abfängt, bevor eine Order überhaupt gesendet wird." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste bei Risk-Parameters- und No-Quote-Ablehnungen",
+      items: [
+        "<strong class='text-white'>Lesen Sie zuerst den genauen Ablehnungsgrund.</strong> Öffnen Sie Orders / Order History und klicken Sie auf die abgelehnte Order, um zu sehen, ob dort &ldquo;risk parameters&rdquo; oder &ldquo;no quote available&rdquo; steht.",
+        "<strong class='text-white'>Bestätigen Sie, dass Ihr Datenfeed live ist.</strong> Orange oder verzögerte Symbolnamen und leere Quote-Felder bedeuten, dass Sie keine Echtzeitdaten erhalten, und Orders werden abgelehnt.",
+        "<strong class='text-white'>Unterzeichnen Sie die Non-Professional Market Data Agreement.</strong> Eine nicht unterzeichnete Vereinbarung blockiert Echtzeitdaten und kann zu Ablehnungen führen.",
+        "<strong class='text-white'>Prüfen Sie die Risk Settings.</strong> Eine Regel für Max Position Size, ein Verlustlimit oder Products Permitted kann die Order unabhängig von Ihrem Kontostand blockieren.",
+        "<strong class='text-white'>Prüfen Sie, ob Sie den aktuellen Kontraktmonat verwenden.</strong> Ein abgelaufenes oder fortlaufendes Symbol (NQ1!) kann Quote- und Ablehnungsfehler verursachen.",
+        "<strong class='text-white'>Achten Sie auf Plattform- oder Clearing-Störungen.</strong> Bei einem Daten-Aussetzer des Brokers oder der Prop-Firma können diese beiden Fehler kurzzeitig auftreten, selbst wenn mit Ihrem Konto alles in Ordnung ist.",
+      ],
+    },
+    { type: "heading",text: "Was „Risk Parameters“ und „No Quote Available“ bedeuten" },
+    { type: "paragraph",html: "Eine <strong class='text-white'>&ldquo;risk parameters&rdquo;</strong>-Ablehnung bedeutet, dass die Order eine Prüfung innerhalb der Risikokonfiguration Ihres Kontos oder der damit verbundenen Berechtigungen nicht bestanden hat. Diese Prüfung kann eine harte Zahl sein, die Sie selbst gesetzt haben (eine Max Position Size oder ein Verlustlimit), eine Regel, die eine Prop-Firma auf ein Funded- oder Evaluierungskonto angewendet hat, oder eine Berechtigungslücke, zum Beispiel kann das Konto nicht bestätigen, dass es für den Handel oder den Datenempfang dieses Instruments lizenziert ist. Die Order erreicht die Matching-Engine nie, weil sie zuvor die Validierung nicht besteht." },
+    { type: "paragraph",html: "Eine <strong class='text-white'>&ldquo;no quote available&rdquo;</strong>-Ablehnung ist etwas anderes. Tradovate konnte die Order nicht bepreisen, weil es in diesem Moment keine gültige Echtzeit-Quote für diesen Kontrakt hatte. Die vollständige Meldung lautet meist <strong class='text-white'>&ldquo;No quote available. Please contact support.&rdquo;</strong> Sie tritt auf, wenn das Konto Live-Daten für die Börse nicht abonniert hat (oder dazu nicht berechtigt ist), wenn das Symbol abgelaufen oder dünn gehandelt ist, oder in einem Zeitfenster vor Handelsbeginn oder mit geringer Liquidität, in dem keine feste Quote existiert." },
+    { type: "paragraph",html: "Der Grund, warum beide so oft zusammen auftreten, ist eine gemeinsame Wurzel: Ihr Konto ist nicht vollständig für Echtzeit-Marktdaten bereitgestellt. Ist die Datenvereinbarung nicht unterzeichnet oder der Feed inaktiv, werden manche Orders als &ldquo;no quote available&rdquo; abgewiesen (kein Preis), andere als &ldquo;risk parameters&rdquo; (die Berechtigungsprüfung schlägt fehl). Beheben Sie Daten- und Risikozustand, und meist verschwinden beide auf einmal." },
+    { type: "heading",text: "Häufigste Ursachen dieser Ablehnungen" },
+    { type: "heading",text: "1. Kein aktives (oder nicht unterzeichnetes) Marktdaten-Abonnement" },
+    { type: "paragraph",html: "Jedes Live-Konto bei Tradovate benötigt ein aktives Echtzeitdaten-Abonnement und eine unterzeichnete Datenvereinbarung, um Orders zu bepreisen. Haben Sie nie abonniert oder sich angemeldet, aber die <strong class='text-white'>Non-Professional Market Data Agreement</strong> nie abgeschlossen, zeigt die Plattform möglicherweise verzögerte Daten (Symbolnamen in Orange) und lehnt Market-Orders als &ldquo;no quote available.&rdquo; ab. Auf der Berechtigungsseite kann dieselbe Lücke als &ldquo;risk parameters&rdquo; auftreten, weil das Konto nicht bestätigen kann, dass es für den Handel des Instruments freigegeben ist." },
+    { type: "heading",text: "2. Der Datenfeed ist noch nicht aktiviert (oder ausgefallen)" },
+    { type: "paragraph",html: "Selbst nach Abonnement und Unterzeichnung sind Echtzeitdaten nicht sofort verfügbar. Die Aktivierung dauert häufig 10 bis 90 Minuten, und meist müssen Sie sich ab- und wieder anmelden, damit die Berechtigung übernommen wird. Handeln Sie in diesem Fenster, sehen Sie verzögerte Quotes und &ldquo;no quote available.&rdquo; Feed-Verbindungen können in Zeiten sehr geringen Volumens auch abbrechen und eine erneute Anmeldung erfordern." },
+    { type: "heading",text: "3. Ein Risikolimit blockiert die Order" },
+    { type: "paragraph",html: "Die <strong class='text-white'>Risk Settings</strong> des Kontos bei Tradovate erzwingen harte Obergrenzen: Max Position Size, Daily Loss Limit, Weekly Loss Limit, Trailing Max Drawdown und eine <strong class='text-white'>Products Permitted</strong>-Liste. Würde Ihre Order eines davon verletzen oder steht das Instrument nicht auf der Liste zulässiger Produkte, wird die Order unter &ldquo;risk parameters&rdquo; abgelehnt, unabhängig von Ihrer Kaufkraft. Bei Prop- und Evaluierungskonten setzt die Firma diese Limits, möglicherweise haben Sie sie nicht selbst gesetzt." },
+    { type: "heading",text: "4. Abgelaufenes oder falsches Kontraktsymbol" },
+    { type: "paragraph",html: "Zeigt Ihr Chart, Alert oder DOM auf einen abgelaufenen Kontrakt oder ein fortlaufendes TradingView-Symbol (etwa NQ1! statt des aktuellen NQ-Monats), hat Tradovate möglicherweise keine Live-Quote zur Ausführung, das erzeugt &ldquo;no quote available&rdquo;, oder es lehnt die Order ab und markiert das Konto als &ldquo;Liquidation Only.&rdquo; Der Wechsel auf den aktuellen Front-Month-Kontrakt behebt das." },
+    { type: "heading",text: "5. Eine Plattform- oder Clearing-seitige Störung" },
+    { type: "paragraph",html: "Gelegentlich hat der Fehler gar nichts mit Ihrem Konto zu tun. Bei einer kurzen Störung beim Broker oder bei der Prop-Firma (Clearing) können Sie Häufungen von &ldquo;no quote available,&rdquo; &ldquo;maximum order quantity&rdquo; und &ldquo;Trading is temporarily halted&rdquo;-Ablehnungen sehen, selbst wenn die eigene Statusseite von Tradovate keinen allgemeinen Ausfall zeigt. In diesem Fall ist die Lösung einfach: Warten Sie, bis die Störung vorüber ist, und versuchen Sie es dann erneut." },
+    { type: "heading",text: "Diese Ablehnungen beheben: Schritt für Schritt" },
+    { type: "heading",text: "Schritt 1: Den genauen Ablehnungsgrund lesen" },
+    { type: "paragraph",html: "Raten Sie nicht. Melden Sie sich bei <strong class='text-white'>trader.tradovate.com</strong> an, öffnen Sie das Panel <strong class='text-white'>Orders</strong> oder <strong class='text-white'>Order History</strong>, suchen Sie die abgelehnte Order und klicken Sie darauf, um die Details zu öffnen. Der konkrete Grund (&ldquo;risk parameters&rdquo; gegenüber &ldquo;No quote available. Please contact support.&rdquo;) zeigt Ihnen, welchem Zweig unten Sie folgen. Denken Sie daran: Dieser Grund steht in Tradovate, nicht in Ihrem Charting-Tool oder TradingView." },
+    { type: "heading",text: "Schritt 2: Die Marktdatenseite beheben (erledigt die meisten „No Quote Available“)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Application Settings öffnen", html: "Öffnen Sie die Schaltfläche oben rechts im Web Trader." },
+        { title: "Die Börse abonnieren", html: "Wählen Sie den Tab <strong class='text-white'>Subscriptions</strong>, scrollen Sie zum Bereich <strong class='text-white'>Market Data</strong> und klicken Sie dann auf <strong class='text-white'>Subscribe</strong> für die Börse, die Sie handeln (für ES/NQ/MES/MNQ ist das das CME-Paket)." },
+        { title: "Die Non-Professional Market Data Agreement unterzeichnen", html: "Überspringen Sie das, werden Ihnen möglicherweise professionelle Tarife berechnet und, wichtiger noch, Sie erhalten möglicherweise überhaupt keine Echtzeitdaten." },
+        { title: "Auf Aktivierung warten, dann erneut anmelden", html: "Warten Sie auf die Aktivierung (etwa 10&ndash;90 Minuten), melden Sie sich dann ab und wieder an. Echtzeit-Symbole sollten danach in ihrer normalen Farbe mit einem Live-Bid/Ask angezeigt werden." },
+      ],
+    },
+    { type: "quote",html: "<strong>Prop- / Evaluierungskonten:</strong> Bei einem Funded- oder Eval-Konto (Apex, Topstep, TradeDay und ähnliche) können Sie sich oft <strong>nicht</strong> selbst abonnieren, nur die Prop-Firma kann den Datenfeed aktivieren oder reparieren. Unterzeichnen Sie jede verlangte Vereinbarung und kontaktieren Sie dann die Firma, wenn die Daten nach der Aktivierung nicht live sind." },
+    { type: "heading",text: "Schritt 3: Die Risikoseite beheben (erledigt die meisten „Risk Parameters“)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Application Settings öffnen", html: "Öffnen Sie <strong class='text-white'>Application Settings</strong> und wählen Sie den Tab <strong class='text-white'>Accounts</strong>." },
+        { title: "Risk Settings öffnen", html: "Klicken Sie auf <strong class='text-white'>Risk Settings</strong>, um das Panel zu erweitern." },
+        { title: "Max Position und Verlustlimits prüfen", html: "Prüfen Sie <strong class='text-white'>Max Position Size</strong>. Überschreitet Ihre Ordermenge den Wert, verringern Sie entweder die Menge oder erhöhen das Limit (bei Ihrem eigenen Konto). Gehen Sie ebenso bei <strong class='text-white'>Daily/Weekly Loss Limit</strong> und <strong class='text-white'>Trailing Max Drawdown</strong> vor, falls Sie diese erreicht haben." },
+        { title: "Products Permitted prüfen", html: "Ist es auf eine Liste beschränkt, fügen Sie den gehandelten Kontrakt hinzu oder deaktivieren Sie die Beschränkung." },
+        { title: "Bei einem Prop-Konto die Änderung beantragen", html: "Bei einem Prop- oder Eval-Konto können Sie diese meist nicht selbst erhöhen, reichen Sie eine Risikoänderungsanfrage ein oder kontaktieren Sie die Firma, um Ihre zulässige Größe zu erhöhen." },
+      ],
+    },
+    { type: "heading",text: "Schritt 4: Den Kontrakt bestätigen und erneut versuchen" },
+    { type: "paragraph",html: "Richten Sie Chart, DOM und alle Alerts auf den <strong class='text-white'>aktuellen Front-Month-Kontrakt</strong> aus, nicht auf ein abgelaufenes oder fortlaufendes (NQ1!) Symbol. Bestätigen Sie, dass im Tab Quotes ein Live-Bid/Ask angezeigt wird, und senden Sie dann erneut. Wird trotz vollständiger Einrichtung weiterhin abgelehnt, prüfen Sie auf eine Plattform- oder Clearing-Störung und kontaktieren Sie gegebenenfalls den Support mit der Order-ID und dem genauen Grund, den Sie in Schritt 1 gefunden haben." },
+    { type: "heading",text: "Fehlerbehebungstabelle" },
+    { type: "table", headers: ["Fehler","Bedeutung","Lösung"], rows: [
+      ["No quote available. Please contact support.","Kein aktueller Echtzeitpreis für diesen Kontrakt zum Zeitpunkt der Orderübermittlung","Live-Daten abonnieren, Non-Professional-Vereinbarung unterzeichnen, erneut anmelden; vor dem Order ein Live-Bid/Ask bestätigen"],
+      ["Risk parameters","Order hat eine Risiko-/Berechtigungsprüfung des Kontos nicht bestanden","Application Settings &gt; Accounts &gt; Risk Settings öffnen; Max Position, Verlustlimits oder Products Permitted anpassen; bei Prop-Konten eine Limitänderung beantragen"],
+      ["Your maximum order quantity has been met","Ordergröße überschreitet das Limit für maximale Position/Menge des Kontos","Kontrakte verringern oder Max Position Size erhöhen; bei Prop-/Eval-Konten eine Risikoerhöhung beantragen"],
+      ["Trading is temporarily halted","Kontobeschränkung oder Plattform-/Clearing-Störung, nicht immer ein Börsenhalt","Tradovate-Status und Risiko-/Liquidationsstatus Ihres Kontos prüfen, dann nach Behebung erneut versuchen"],
+      ["Liquidation Only (contract about to expire)","Order auf einem abgelaufenen oder fortlaufenden Kontrakt platziert","Auf den aktuellen Front-Month-Kontrakt wechseln, alte Alerts löschen und auf dem aktiven Symbol neu platzieren"],
+      ["Verzögerte / orange Symbole, leere Quotes","Datenfeed noch nicht aktiv oder nicht abonniert","Abonnieren, Vereinbarung unterzeichnen, ca. 10&ndash;90 Min. warten, dann ab- und wieder anmelden"],
+    ] },
+    { type: "heading",text: "Vermeiden Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade verbindet Ihre TradingView-Alerts direkt mit Tradovate und ergänzt Schutzmechanismen, damit weniger Orders überhaupt in einen abgelehnten Zustand geraten:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validierung von Symbol &amp; Menge</strong>, prüft Kontrakt und Größe vor dem Senden der Order, sodass abgelaufene Symbole und zu große Mengen frühzeitig erkannt werden, statt zurückzuprallen.",
+        "<strong class='text-white'>Berechtigungs- &amp; datenbewusstes Routing</strong>, entwickelt, um Orders über ein für den Live-Handel eingerichtetes Konto zu routen und so &ldquo;no quote available&rdquo;-Überraschungen durch nicht bereitgestellte Feeds zu verringern.",
+        "<strong class='text-white'>Risikobewusste Orderabwicklung</strong>, hilft Ihnen, die Alert-Menge innerhalb Ihrer Max-Position- und Produktlimits bei Tradovate oder Ihrer Prop-Firma zu halten, sodass &ldquo;risk parameters&rdquo;-Ablehnungen unwahrscheinlicher werden.",
+        "<strong class='text-white'>Multi-Account-Sync</strong>, spiegelt eine korrigierte, validierte Order auf alle verbundenen Konten, statt fehlerhafte Orders überall gleichzeitig abzufeuern.",
+      ],
+    },
+    { type: "paragraph",html: "Der Gewinn: weniger manuelle Klicks, weniger festgefahrene Einstiege und sauberere Logs, wenn Sie doch einmal debuggen müssen." },
+  ], es: [
+    { type: "paragraph",html: "Cuando hace scalping en ES o NQ, pocas cosas frenan tanto su impulso como una orden de Tradovate que rebota de inmediato como rechazada. Dos de los motivos más confusos suelen aparecer juntos: <strong class='text-white'>&ldquo;risk parameters&rdquo;</strong> y <strong class='text-white'>&ldquo;no quote available.&rdquo;</strong> Ve las cotizaciones en vivo moverse por el gráfico, pero cada orden, a mercado, venta al ask, compra al bid, incluso un stop en reposo, vuelve rechazada por uno de esos dos motivos. Lo tranquilizador: ambos casi siempre se deben a uno de tres estados de cuenta que usted mismo puede corregir, un acuerdo de datos de mercado sin firmar, un feed que aún no está activo o un límite de riesgo. Rara vez es una plataforma averiada. A continuación repasaremos cada causa y su solución, y luego mostraremos cómo automatizar sus entradas con PickMyTrade evita la mayoría antes de enviar ninguna orden." },
+    {
+      type: "checklist",
+      heading: "Lista de comprobación rápida para rechazos de Risk Parameters y No Quote",
+      items: [
+        "<strong class='text-white'>Lea primero el motivo exacto del rechazo.</strong> Abra Orders / Order History y haga clic en la orden rechazada para ver si dice &ldquo;risk parameters&rdquo; o &ldquo;no quote available.&rdquo;",
+        "<strong class='text-white'>Confirme que su feed de datos está activo.</strong> Los nombres de símbolo en naranja o con retraso y los campos de cotización vacíos significan que no recibe datos en tiempo real, y las órdenes se rechazarán.",
+        "<strong class='text-white'>Firme el Non-Professional Market Data Agreement.</strong> Un acuerdo sin firmar bloquea los datos en tiempo real y puede desencadenar rechazos en cascada.",
+        "<strong class='text-white'>Revise los Risk Settings.</strong> Una regla de Max Position Size, un límite de pérdida o Products Permitted puede bloquear la orden sea cual sea el saldo de su cuenta.",
+        "<strong class='text-white'>Verifique que está en el mes de contrato vigente.</strong> Un símbolo vencido o continuo (NQ1!) puede producir errores de cotización y de rechazo.",
+        "<strong class='text-white'>Esté atento a incidentes de plataforma o de compensación.</strong> Durante un fallo de datos del bróker o de la prop firm, estos dos errores pueden aparecer brevemente aunque su cuenta esté bien.",
+      ],
+    },
+    { type: "heading",text: "Qué significan «Risk Parameters» y «No Quote Available»" },
+    { type: "paragraph",html: "Un rechazo <strong class='text-white'>&ldquo;risk parameters&rdquo;</strong> significa que la orden no superó una comprobación dentro de la configuración de riesgo de su cuenta o de los permisos asociados. Esa comprobación puede ser una cifra estricta que usted mismo estableció (un Max Position Size o un límite de pérdida), una regla que una prop firm aplicó a una cuenta fondeada o de evaluación, o una carencia de permisos, por ejemplo, la cuenta no puede confirmar que tiene licencia para operar o recibir datos de ese instrumento. La orden nunca llega al motor de casamiento porque antes no supera la validación." },
+    { type: "paragraph",html: "Un rechazo <strong class='text-white'>&ldquo;no quote available&rdquo;</strong> es otra cosa. Tradovate no pudo fijar el precio de la orden porque no tenía una cotización válida en tiempo real para ese contrato en ese momento. El mensaje completo que suele verse es <strong class='text-white'>&ldquo;No quote available. Please contact support.&rdquo;</strong> Ocurre cuando la cuenta no está suscrita (o autorizada) a datos en vivo del mercado, cuando el símbolo está vencido o tiene poca negociación, o durante una ventana previa a la apertura o de baja liquidez en la que no existe una cotización firme." },
+    { type: "paragraph",html: "La razón por la que estos dos aparecen juntos con tanta frecuencia es que comparten una única raíz: su cuenta no está totalmente aprovisionada para datos de mercado en tiempo real. Cuando el acuerdo de datos está sin firmar o el feed está inactivo, algunas órdenes rebotan como &ldquo;no quote available&rdquo; (sin precio) mientras que otras rebotan como &ldquo;risk parameters&rdquo; (falla la comprobación de permisos). Corrija el estado de datos y de riesgo y normalmente eliminará ambos a la vez." },
+    { type: "heading",text: "Principales causas de estos rechazos" },
+    { type: "heading",text: "1. Sin suscripción de datos de mercado activa (o sin firmar)" },
+    { type: "paragraph",html: "Toda cuenta real de Tradovate necesita una suscripción activa de datos en tiempo real y un acuerdo de datos firmado para fijar el precio de las órdenes. Si nunca se suscribió, o se registró pero nunca completó el <strong class='text-white'>Non-Professional Market Data Agreement</strong>, la plataforma puede mostrar datos con retraso (nombres de símbolo en naranja) y rechazar las órdenes a mercado como &ldquo;no quote available.&rdquo; Del lado de los permisos, esa misma carencia puede aparecer como &ldquo;risk parameters&rdquo; porque la cuenta no puede confirmar que está autorizada para operar el instrumento." },
+    { type: "heading",text: "2. El feed de datos aún no se ha activado (o se cayó)" },
+    { type: "paragraph",html: "Incluso después de suscribirse y firmar, los datos en tiempo real no son instantáneos. La activación suele tardar de 10 a 90 minutos, y normalmente hay que cerrar sesión y volver a entrar para que se aplique el permiso. Si opera dentro de esa ventana verá cotizaciones con retraso y &ldquo;no quote available.&rdquo; Las conexiones del feed también pueden caerse en periodos de muy bajo volumen y necesitar un nuevo inicio de sesión para recuperarse." },
+    { type: "heading",text: "3. Un límite de riesgo bloquea la orden" },
+    { type: "paragraph",html: "Los <strong class='text-white'>Risk Settings</strong> de la cuenta de Tradovate imponen topes estrictos: Max Position Size, Daily Loss Limit, Weekly Loss Limit, Trailing Max Drawdown y una lista <strong class='text-white'>Products Permitted</strong>. Si su orden infringiera cualquiera de ellos, o el instrumento no está en la lista de permitidos, la orden se rechaza como &ldquo;risk parameters,&rdquo; por mucho poder de compra que tenga. En cuentas prop y de evaluación, la firma establece estos límites, así que puede que no los haya fijado usted." },
+    { type: "heading",text: "4. Símbolo de contrato vencido o equivocado" },
+    { type: "paragraph",html: "Si su gráfico, alerta o DOM apunta a un contrato vencido o a un símbolo continuo de TradingView (por ejemplo, NQ1! en lugar del mes actual de NQ), Tradovate puede no tener cotización en vivo para ejecutar, eso produce &ldquo;no quote available&rdquo;, o puede rechazar la orden y marcar la cuenta como &ldquo;Liquidation Only.&rdquo; Pasar al contrato del mes más cercano vigente lo soluciona." },
+    { type: "heading",text: "5. Un incidente de plataforma o de compensación" },
+    { type: "paragraph",html: "De vez en cuando estos errores no tienen nada que ver con su cuenta. Durante un incidente breve del bróker o de la prop firm (compensación), puede ver grupos de rechazos &ldquo;no quote available,&rdquo; &ldquo;maximum order quantity&rdquo; y &ldquo;Trading is temporarily halted,&rdquo; incluso mientras la página de estado de Tradovate no muestra una caída general. Cuando es así, la solución es simple: espere a que pase el incidente y reintente." },
+    { type: "heading",text: "Cómo solucionar estos rechazos: paso a paso" },
+    { type: "heading",text: "Paso 1: Lea el motivo exacto del rechazo" },
+    { type: "paragraph",html: "No adivine. Inicie sesión en <strong class='text-white'>trader.tradovate.com</strong>, abra el panel <strong class='text-white'>Orders</strong> u <strong class='text-white'>Order History</strong>, busque la orden rechazada y haga clic en ella para abrir el detalle. El motivo concreto (&ldquo;risk parameters&rdquo; frente a &ldquo;No quote available. Please contact support.&rdquo;) le indica qué rama de las siguientes debe seguir. Recuerde: ese motivo vive dentro de Tradovate, no en su herramienta de gráficos ni en TradingView." },
+    { type: "heading",text: "Paso 2: Corrija el lado de los datos de mercado (resuelve la mayoría de «No Quote Available»)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra Application Settings", html: "Abra el botón de la parte superior derecha del Web Trader." },
+        { title: "Suscríbase al mercado", html: "Seleccione la pestaña <strong class='text-white'>Subscriptions</strong>, desplácese a la sección <strong class='text-white'>Market Data</strong> y haga clic en <strong class='text-white'>Subscribe</strong> para el mercado que opera (para ES/NQ/MES/MNQ, es el paquete CME)." },
+        { title: "Firme el Non-Professional Market Data Agreement", html: "Si lo omite, es posible que le facturen tarifas profesionales y, lo que es más importante, que no reciba datos en tiempo real en absoluto." },
+        { title: "Espere a la activación y vuelva a iniciar sesión", html: "Espere a la activación (unos 10&ndash;90 minutos), luego cierre sesión y vuelva a entrar. Los símbolos en tiempo real deberían mostrarse entonces en su color normal con un bid/ask en vivo." },
+      ],
+    },
+    { type: "quote",html: "<strong>Cuentas prop / de evaluación:</strong> si está en una cuenta fondeada o de evaluación (Apex, Topstep, TradeDay y similares), a menudo <strong>no puede</strong> suscribirse usted mismo, solo la prop firm puede activar o reparar el feed de datos. Firme cualquier acuerdo que le pidan y luego contacte con la firma si los datos siguen sin estar en vivo tras la activación." },
+    { type: "heading",text: "Paso 3: Corrija el lado del riesgo (resuelve la mayoría de «Risk Parameters»)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra Application Settings", html: "Abra <strong class='text-white'>Application Settings</strong> y elija la pestaña <strong class='text-white'>Accounts</strong>." },
+        { title: "Abra Risk Settings", html: "Haga clic en <strong class='text-white'>Risk Settings</strong> para expandir el panel." },
+        { title: "Revise Max Position y los límites de pérdida", html: "Revise <strong class='text-white'>Max Position Size</strong>. Si la cantidad de su orden lo supera, reduzca la cantidad o aumente el límite (en su propia cuenta). Haga lo mismo con <strong class='text-white'>Daily/Weekly Loss Limit</strong> y <strong class='text-white'>Trailing Max Drawdown</strong> si los ha alcanzado." },
+        { title: "Revise Products Permitted", html: "Si está restringido a una lista, añada el contrato que está operando o desactive la restricción." },
+        { title: "En una cuenta prop, solicite el cambio", html: "En una cuenta prop o de evaluación normalmente no puede aumentarlos usted mismo, envíe una solicitud de cambio de riesgo o contacte con la firma para aumentar su tamaño permitido." },
+      ],
+    },
+    { type: "heading",text: "Paso 4: Confirme el contrato y reintente" },
+    { type: "paragraph",html: "Dirija su gráfico, DOM y cualquier alerta al <strong class='text-white'>contrato del mes más cercano vigente</strong>, no a un símbolo vencido o continuo (NQ1!). Confirme que se muestra un bid/ask en vivo en la pestaña Quotes y vuelva a enviar. Si todo está aprovisionado y aun así se rechaza, compruebe si hay un incidente de plataforma o de compensación y, si es necesario, contacte con el soporte con el ID de la orden y el motivo exacto que encontró en el paso 1." },
+    { type: "heading",text: "Tabla de resolución de problemas" },
+    { type: "table", headers: ["Error","Significado","Solución"], rows: [
+      ["No quote available. Please contact support.","No hay precio en tiempo real para ese contrato en el momento de enviar la orden","Suscríbase a datos en vivo, firme el acuerdo Non-Professional, vuelva a iniciar sesión; confirme un bid/ask en vivo antes de operar"],
+      ["Risk parameters","La orden no superó una comprobación de riesgo/permisos de la cuenta","Abra Application Settings &gt; Accounts &gt; Risk Settings; ajuste Max Position, límites de pérdida o Products Permitted; en cuentas prop solicite un cambio de límite"],
+      ["Your maximum order quantity has been met","El tamaño de la orden supera el límite de posición/cantidad máxima de la cuenta","Reduzca contratos o aumente Max Position Size; en cuentas prop/eval envíe una solicitud de aumento de riesgo"],
+      ["Trading is temporarily halted","Restricción de la cuenta o incidente de plataforma/compensación, no siempre una suspensión del mercado","Compruebe el estado de Tradovate y el estado de riesgo/liquidación de su cuenta, y reintente cuando se resuelva"],
+      ["Liquidation Only (contract about to expire)","Orden colocada en un contrato vencido o continuo","Pase al contrato del mes más cercano vigente, elimine las alertas antiguas y vuelva a colocar la orden en el símbolo activo"],
+      ["Símbolos con retraso / en naranja, cotizaciones vacías","Feed de datos aún no activo o sin suscribir","Suscríbase, firme el acuerdo, espere ~10&ndash;90 min y luego cierre sesión y vuelva a entrar"],
+    ] },
+    { type: "heading",text: "Evítelo con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade conecta sus alertas de TradingView directamente con Tradovate y añade salvaguardas para que menos órdenes lleguen siquiera a un estado de rechazo:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validación de símbolo y cantidad</strong>, comprueba el contrato y el tamaño antes de enviar la orden, de modo que los símbolos vencidos y las cantidades excesivas se detectan pronto en lugar de rebotar.",
+        "<strong class='text-white'>Enrutamiento consciente de permisos y datos</strong>, diseñado para enrutar órdenes a través de una cuenta configurada para operar en real, reduciendo las sorpresas de &ldquo;no quote available&rdquo; por feeds sin aprovisionar.",
+        "<strong class='text-white'>Gestión de órdenes consciente del riesgo</strong>, le ayuda a mantener la cantidad de las alertas dentro de sus límites de Max Position y de productos en Tradovate o en su prop firm, de modo que los rechazos &ldquo;risk parameters&rdquo; sean menos probables.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replica una orden corregida y validada en todas las cuentas conectadas en lugar de disparar órdenes erróneas en todas partes a la vez.",
+      ],
+    },
+    { type: "paragraph",html: "La recompensa: menos clics manuales, menos entradas bloqueadas y registros más limpios cuando sí necesite depurar." },
+  ], fr: [
+    { type: "paragraph",html: "Quand vous scalpez ES ou NQ, peu de choses brisent plus vite votre élan qu'un ordre Tradovate qui revient aussitôt rejeté. Deux des raisons les plus déroutantes apparaissent souvent ensemble : <strong class='text-white'>&ldquo;risk parameters&rdquo;</strong> et <strong class='text-white'>&ldquo;no quote available.&rdquo;</strong> Vous voyez les cotations en direct défiler sur le graphique, et pourtant chaque ordre, au marché, vente à l'ask, achat au bid, même un stop au repos, revient rejeté pour l'une de ces deux raisons. Voici le côté rassurant : les deux remontent presque toujours à l'un de trois états de compte que vous pouvez corriger vous-même, un accord de données de marché non signé, un flux qui n'est pas encore actif ou une limite de risque. Il s'agit rarement d'une plateforme défaillante. Nous passons ci-dessous en revue chaque cause et sa solution, puis nous montrons comment l'automatisation de vos entrées avec PickMyTrade en évite la plupart avant même l'envoi d'un ordre." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour les rejets Risk Parameters et No Quote",
+      items: [
+        "<strong class='text-white'>Lisez d'abord la raison exacte du rejet.</strong> Ouvrez Orders / Order History et cliquez sur l'ordre rejeté pour voir s'il indique &ldquo;risk parameters&rdquo; ou &ldquo;no quote available.&rdquo;",
+        "<strong class='text-white'>Vérifiez que votre flux de données est actif.</strong> Des noms de symboles orange ou différés et des champs de cotation vides signifient que vous ne recevez pas de données temps réel, et les ordres seront rejetés.",
+        "<strong class='text-white'>Signez le Non-Professional Market Data Agreement.</strong> Un accord non signé bloque les données temps réel et peut entraîner des rejets en cascade.",
+        "<strong class='text-white'>Vérifiez les Risk Settings.</strong> Une règle Max Position Size, une limite de perte ou Products Permitted peut bloquer l'ordre quel que soit le solde de votre compte.",
+        "<strong class='text-white'>Vérifiez que vous êtes sur le mois de contrat en vigueur.</strong> Un symbole expiré ou continu (NQ1!) peut produire des erreurs de cotation et de rejet.",
+        "<strong class='text-white'>Surveillez les incidents de plateforme ou de compensation.</strong> Lors d'un accroc de données côté courtier ou prop firm, ces deux erreurs peuvent apparaître brièvement même si votre compte est en règle.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifient « Risk Parameters » et « No Quote Available »" },
+    { type: "paragraph",html: "Un rejet <strong class='text-white'>&ldquo;risk parameters&rdquo;</strong> signifie que l'ordre a échoué à un contrôle de la configuration de risque de votre compte ou des droits qui lui sont rattachés. Ce contrôle peut être un chiffre strict que vous avez défini vous-même (un Max Position Size ou une limite de perte), une règle qu'une prop firm a appliquée à un compte financé ou d'évaluation, ou une lacune de droits, par exemple, le compte ne peut pas confirmer qu'il est autorisé à négocier ou à recevoir des données pour cet instrument. L'ordre n'atteint jamais le moteur d'appariement car il échoue d'abord à la validation." },
+    { type: "paragraph",html: "Un rejet <strong class='text-white'>&ldquo;no quote available&rdquo;</strong> est d'une autre nature. Tradovate n'a pas pu établir le prix de l'ordre parce qu'il n'avait pas de cotation valide en temps réel pour ce contrat à ce moment-là. Le message complet que vous verrez généralement est <strong class='text-white'>&ldquo;No quote available. Please contact support.&rdquo;</strong> Il survient lorsque le compte n'est pas abonné (ou autorisé) aux données en direct de la bourse, lorsque le symbole est expiré ou peu négocié, ou pendant une fenêtre de pré-ouverture ou de faible liquidité où aucune cotation ferme n'existe." },
+    { type: "paragraph",html: "La raison pour laquelle ces deux messages apparaissent si souvent ensemble est qu'ils partagent une même racine : votre compte n'est pas entièrement provisionné pour les données de marché en temps réel. Lorsque l'accord de données n'est pas signé ou que le flux est inactif, certains ordres sont rejetés avec &ldquo;no quote available&rdquo; (pas de prix) tandis que d'autres le sont avec &ldquo;risk parameters&rdquo; (le contrôle des droits échoue). Corrigez l'état des données et du risque et vous résoudrez généralement les deux d'un coup." },
+    { type: "heading",text: "Principales causes de ces rejets" },
+    { type: "heading",text: "1. Aucun abonnement de données de marché actif (ou non signé)" },
+    { type: "paragraph",html: "Tout compte réel Tradovate a besoin d'un abonnement de données temps réel actif et d'un accord de données signé pour établir le prix des ordres. Si vous ne vous êtes jamais abonné, ou si vous vous êtes inscrit sans jamais finaliser le <strong class='text-white'>Non-Professional Market Data Agreement</strong>, la plateforme peut afficher des données différées (noms de symboles en orange) et rejeter les ordres au marché avec &ldquo;no quote available.&rdquo; Côté droits, cette même lacune peut apparaître comme &ldquo;risk parameters&rdquo; car le compte ne peut pas confirmer qu'il est autorisé à négocier l'instrument." },
+    { type: "heading",text: "2. Le flux de données n'est pas encore activé (ou a décroché)" },
+    { type: "paragraph",html: "Même après abonnement et signature, les données temps réel ne sont pas instantanées. L'activation prend couramment de 10 à 90 minutes, et il faut généralement se déconnecter puis se reconnecter pour que le droit soit pris en compte. Si vous tradez dans cette fenêtre, vous verrez des cotations différées et &ldquo;no quote available.&rdquo; Les connexions du flux peuvent aussi tomber pendant les périodes de très faible volume et nécessiter une reconnexion pour revenir." },
+    { type: "heading",text: "3. Une limite de risque bloque l'ordre" },
+    { type: "paragraph",html: "Les <strong class='text-white'>Risk Settings</strong> du compte Tradovate imposent des plafonds stricts : Max Position Size, Daily Loss Limit, Weekly Loss Limit, Trailing Max Drawdown et une liste <strong class='text-white'>Products Permitted</strong>. Si votre ordre enfreignait l'un d'eux, ou si l'instrument ne figure pas sur la liste autorisée, l'ordre est rejeté sous &ldquo;risk parameters,&rdquo; quel que soit votre pouvoir d'achat. Sur les comptes prop et d'évaluation, la firme fixe ces limites, vous ne les avez donc peut-être pas définies vous-même." },
+    { type: "heading",text: "4. Symbole de contrat expiré ou erroné" },
+    { type: "paragraph",html: "Si votre graphique, votre alerte ou votre DOM pointe vers un contrat expiré ou un symbole continu TradingView (par exemple NQ1! au lieu du mois NQ en cours), Tradovate peut n'avoir aucune cotation en direct pour exécuter, ce qui produit &ldquo;no quote available&rdquo;, ou rejeter l'ordre et signaler le compte &ldquo;Liquidation Only.&rdquo; Passer au contrat du mois le plus proche en vigueur règle le problème." },
+    { type: "heading",text: "5. Un incident côté plateforme ou compensation" },
+    { type: "paragraph",html: "De temps en temps, ces erreurs n'ont rien à voir avec votre compte. Lors d'un bref incident chez le courtier ou la prop firm (compensation), vous pouvez voir des grappes de rejets &ldquo;no quote available,&rdquo; &ldquo;maximum order quantity&rdquo; et &ldquo;Trading is temporarily halted,&rdquo; même quand la page de statut de Tradovate n'affiche aucune panne générale. Dans ce cas, la solution est simple : attendez que l'incident se résorbe, puis réessayez." },
+    { type: "heading",text: "Comment résoudre ces rejets : pas à pas" },
+    { type: "heading",text: "Étape 1 : Lire la raison exacte du rejet" },
+    { type: "paragraph",html: "Ne devinez pas. Connectez-vous à <strong class='text-white'>trader.tradovate.com</strong>, ouvrez le panneau <strong class='text-white'>Orders</strong> ou <strong class='text-white'>Order History</strong>, trouvez l'ordre rejeté et cliquez dessus pour ouvrir le détail. La raison précise (&ldquo;risk parameters&rdquo; ou &ldquo;No quote available. Please contact support.&rdquo;) vous indique quelle branche ci-dessous suivre. N'oubliez pas : cette raison se trouve dans Tradovate, pas dans votre outil de graphiques ni dans TradingView." },
+    { type: "heading",text: "Étape 2 : Corriger le côté données de marché (règle la plupart des « No Quote Available »)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez Application Settings", html: "Ouvrez le bouton en haut à droite du Web Trader." },
+        { title: "Abonnez-vous à la bourse", html: "Sélectionnez l'onglet <strong class='text-white'>Subscriptions</strong>, faites défiler jusqu'à la section <strong class='text-white'>Market Data</strong>, puis cliquez sur <strong class='text-white'>Subscribe</strong> pour la bourse que vous négociez (pour ES/NQ/MES/MNQ, c'est le bundle CME)." },
+        { title: "Signez le Non-Professional Market Data Agreement", html: "Si vous l'omettez, vous risquez d'être facturé au tarif professionnel et, surtout, de ne recevoir aucune donnée temps réel." },
+        { title: "Attendez l'activation, puis reconnectez-vous", html: "Attendez l'activation (environ 10&ndash;90 minutes), puis déconnectez-vous et reconnectez-vous. Les symboles temps réel devraient alors s'afficher dans leur couleur normale avec un bid/ask en direct." },
+      ],
+    },
+    { type: "quote",html: "<strong>Comptes prop / d'évaluation :</strong> si vous êtes sur un compte financé ou d'évaluation (Apex, Topstep, TradeDay, etc.), vous ne pouvez souvent <strong>pas</strong> vous abonner vous-même, seule la prop firm peut activer ou réparer le flux de données. Signez tout accord demandé, puis contactez la firme si les données ne sont toujours pas en direct après l'activation." },
+    { type: "heading",text: "Étape 3 : Corriger le côté risque (règle la plupart des « Risk Parameters »)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez Application Settings", html: "Ouvrez <strong class='text-white'>Application Settings</strong> et choisissez l'onglet <strong class='text-white'>Accounts</strong>." },
+        { title: "Ouvrez Risk Settings", html: "Cliquez sur <strong class='text-white'>Risk Settings</strong> pour développer le panneau." },
+        { title: "Vérifiez Max Position et les limites de perte", html: "Vérifiez <strong class='text-white'>Max Position Size</strong>. Si la quantité de votre ordre le dépasse, réduisez la quantité ou relevez la limite (sur votre propre compte). Faites de même pour <strong class='text-white'>Daily/Weekly Loss Limit</strong> et <strong class='text-white'>Trailing Max Drawdown</strong> si vous les avez atteints." },
+        { title: "Vérifiez Products Permitted", html: "S'il est restreint à une liste, ajoutez le contrat que vous négociez ou désactivez la restriction." },
+        { title: "Sur un compte prop, demandez le changement", html: "Sur un compte prop ou d'évaluation, vous ne pouvez généralement pas les relever vous-même, soumettez une demande de modification du risque ou contactez la firme pour augmenter votre taille autorisée." },
+      ],
+    },
+    { type: "heading",text: "Étape 4 : Confirmer le contrat et réessayer" },
+    { type: "paragraph",html: "Pointez votre graphique, votre DOM et vos alertes vers le <strong class='text-white'>contrat du mois le plus proche en vigueur</strong>, et non vers un symbole expiré ou continu (NQ1!). Vérifiez qu'un bid/ask en direct s'affiche dans l'onglet Quotes, puis renvoyez. Si tout est provisionné et que l'ordre est toujours rejeté, vérifiez la présence d'un incident de plateforme ou de compensation et, si nécessaire, contactez le support avec l'ID de l'ordre et la raison exacte trouvée à l'étape 1." },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Erreur","Signification","Solution"], rows: [
+      ["No quote available. Please contact support.","Aucun prix temps réel en direct pour ce contrat au moment de la soumission","Abonnez-vous aux données en direct, signez l'accord Non-Professional, reconnectez-vous ; vérifiez un bid/ask en direct avant de passer l'ordre"],
+      ["Risk parameters","L'ordre a échoué à un contrôle de risque/droits du compte","Ouvrez Application Settings &gt; Accounts &gt; Risk Settings ; ajustez Max Position, les limites de perte ou Products Permitted ; sur les comptes prop, demandez une modification de limite"],
+      ["Your maximum order quantity has been met","La taille de l'ordre dépasse la limite de position/quantité maximale du compte","Réduisez les contrats ou relevez Max Position Size ; sur les comptes prop/eval, soumettez une demande d'augmentation du risque"],
+      ["Trading is temporarily halted","Restriction du compte ou incident de plateforme/compensation, pas toujours une suspension de la bourse","Vérifiez le statut de Tradovate et l'état de risque/liquidation de votre compte, puis réessayez une fois résolu"],
+      ["Liquidation Only (contract about to expire)","Ordre placé sur un contrat expiré ou continu","Passez au contrat du mois le plus proche en vigueur, supprimez les anciennes alertes et replacez l'ordre sur le symbole actif"],
+      ["Symboles différés / orange, cotations vides","Flux de données pas encore actif ou non souscrit","Abonnez-vous, signez l'accord, attendez ~10&ndash;90 min, puis déconnectez-vous et reconnectez-vous"],
+    ] },
+    { type: "heading",text: "Évitez-le avec PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade relie vos alertes TradingView directement à Tradovate et ajoute des garde-fous pour que moins d'ordres atteignent un état de rejet :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validation du symbole &amp; de la quantité</strong>, vérifie le contrat et la taille avant l'envoi de l'ordre, de sorte que les symboles expirés et les quantités excessives sont détectés tôt au lieu d'être rejetés.",
+        "<strong class='text-white'>Routage conscient des droits &amp; des données</strong>, conçu pour router les ordres via un compte configuré pour le trading réel, ce qui réduit les mauvaises surprises &ldquo;no quote available&rdquo; dues à des flux non provisionnés.",
+        "<strong class='text-white'>Gestion des ordres consciente du risque</strong>, vous aide à maintenir la quantité des alertes dans vos limites de Max Position et de produits Tradovate ou prop firm, de sorte que les rejets &ldquo;risk parameters&rdquo; soient moins probables.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, reproduit un ordre corrigé et validé sur tous les comptes connectés au lieu de tirer des ordres erronés partout à la fois.",
+      ],
+    },
+    { type: "paragraph",html: "Le bénéfice : moins de clics manuels, moins d'entrées bloquées et des journaux plus propres lorsque vous devez déboguer." },
+  ], it: [
+    { type: "paragraph",html: "Quando fa scalping su ES o NQ, poche cose uccidono il Suo slancio più in fretta di un ordine Tradovate che torna subito indietro come rifiutato. Due dei motivi più confusi tendono a comparire insieme: <strong class='text-white'>&ldquo;risk parameters&rdquo;</strong> e <strong class='text-white'>&ldquo;no quote available.&rdquo;</strong> Vede le quotazioni live scorrere sul grafico, eppure ogni ordine, a mercato, vendita all'ask, acquisto al bid, perfino uno stop in attesa, torna rifiutato per uno di questi due motivi. Ecco la parte rassicurante: entrambi risalgono quasi sempre a uno di tre stati del conto che può correggere da solo, un accordo sui dati di mercato non firmato, un feed non ancora attivo o un limite di rischio. Raramente è la piattaforma a essere guasta. Di seguito esaminiamo ogni causa e la sua soluzione, poi mostriamo come automatizzare i Suoi ingressi con PickMyTrade ne prevenga la maggior parte prima ancora che un ordine venga inviato." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per i rifiuti Risk Parameters e No Quote",
+      items: [
+        "<strong class='text-white'>Legga prima il motivo esatto del rifiuto.</strong> Apra Orders / Order History e clicchi sull'ordine rifiutato per vedere se indica &ldquo;risk parameters&rdquo; oppure &ldquo;no quote available.&rdquo;",
+        "<strong class='text-white'>Confermi che il feed dei dati sia attivo.</strong> Nomi di simboli arancioni o ritardati e campi di quotazione vuoti significano che non sta ricevendo dati in tempo reale, e gli ordini verranno rifiutati.",
+        "<strong class='text-white'>Firmi il Non-Professional Market Data Agreement.</strong> Un accordo non firmato blocca i dati in tempo reale e può innescare rifiuti a cascata.",
+        "<strong class='text-white'>Controlli i Risk Settings.</strong> Una regola Max Position Size, un limite di perdita o Products Permitted può bloccare l'ordine indipendentemente dal saldo del conto.",
+        "<strong class='text-white'>Verifichi di essere sul mese di contratto in vigore.</strong> Un simbolo scaduto o continuo (NQ1!) può produrre errori di quotazione e di rifiuto.",
+        "<strong class='text-white'>Faccia attenzione a incidenti di piattaforma o di compensazione.</strong> Durante un intoppo dei dati del broker o della prop firm, questi due errori possono comparire brevemente anche se il Suo conto è a posto.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significano «Risk Parameters» e «No Quote Available»" },
+    { type: "paragraph",html: "Un rifiuto <strong class='text-white'>&ldquo;risk parameters&rdquo;</strong> significa che l'ordine non ha superato un controllo all'interno della configurazione di rischio del Suo conto o dei diritti ad esso associati. Quel controllo può essere un numero rigido che ha impostato Lei stesso (un Max Position Size o un limite di perdita), una regola applicata da una prop firm a un conto finanziato o di valutazione, oppure una lacuna nei diritti, per esempio il conto non può confermare di essere autorizzato a negoziare o a ricevere dati per quello strumento. L'ordine non raggiunge mai il motore di abbinamento perché fallisce prima la convalida." },
+    { type: "paragraph",html: "Un rifiuto <strong class='text-white'>&ldquo;no quote available&rdquo;</strong> è di natura diversa. Tradovate non è riuscito a determinare il prezzo dell'ordine perché in quel momento non aveva una quotazione valida in tempo reale per quel contratto. Il messaggio completo che di solito vedrà è <strong class='text-white'>&ldquo;No quote available. Please contact support.&rdquo;</strong> Si verifica quando il conto non è abbonato (o abilitato) ai dati live per la borsa, quando il simbolo è scaduto o poco negoziato, oppure durante una finestra di pre-apertura o a bassa liquidità in cui non esiste una quotazione ferma." },
+    { type: "paragraph",html: "Il motivo per cui questi due compaiono così spesso insieme è che condividono un'unica radice: il Suo conto non è completamente predisposto per i dati di mercato in tempo reale. Quando l'accordo sui dati non è firmato o il feed è inattivo, alcuni ordini vengono respinti come &ldquo;no quote available&rdquo; (nessun prezzo) mentre altri come &ldquo;risk parameters&rdquo; (il controllo dei diritti fallisce). Corregga lo stato dei dati e del rischio e di solito risolverà entrambi in un colpo solo." },
+    { type: "heading",text: "Cause principali di questi rifiuti" },
+    { type: "heading",text: "1. Nessun abbonamento ai dati di mercato attivo (o non firmato)" },
+    { type: "paragraph",html: "Ogni conto live Tradovate ha bisogno di un abbonamento ai dati in tempo reale attivo e di un accordo sui dati firmato per determinare il prezzo degli ordini. Se non si è mai abbonato, oppure si è registrato ma non ha mai completato il <strong class='text-white'>Non-Professional Market Data Agreement</strong>, la piattaforma può mostrare dati ritardati (nomi dei simboli in arancione) e rifiutare gli ordini a mercato come &ldquo;no quote available.&rdquo; Sul versante dei diritti, la stessa lacuna può comparire come &ldquo;risk parameters&rdquo; perché il conto non può confermare di essere abilitato a negoziare lo strumento." },
+    { type: "heading",text: "2. Il feed dei dati non si è ancora attivato (o si è interrotto)" },
+    { type: "paragraph",html: "Anche dopo l'abbonamento e la firma, i dati in tempo reale non sono istantanei. L'attivazione richiede comunemente da 10 a 90 minuti, e di solito occorre disconnettersi e riconnettersi per recepire il diritto. Se negozia in quella finestra vedrà quotazioni ritardate e &ldquo;no quote available.&rdquo; Anche le connessioni del feed possono cadere durante periodi di volume molto basso e richiedere una nuova connessione per tornare." },
+    { type: "heading",text: "3. Un limite di rischio blocca l'ordine" },
+    { type: "paragraph",html: "I <strong class='text-white'>Risk Settings</strong> del conto Tradovate impongono tetti rigidi: Max Position Size, Daily Loss Limit, Weekly Loss Limit, Trailing Max Drawdown e una lista <strong class='text-white'>Products Permitted</strong>. Se il Suo ordine violasse uno di questi, o lo strumento non è nella lista consentita, l'ordine viene rifiutato come &ldquo;risk parameters,&rdquo; indipendentemente dal potere d'acquisto. Sui conti prop e di valutazione la società imposta questi limiti, quindi potrebbe non averli impostati Lei." },
+    { type: "heading",text: "4. Simbolo del contratto scaduto o sbagliato" },
+    { type: "paragraph",html: "Se il Suo grafico, alert o DOM punta a un contratto scaduto o a un simbolo continuo di TradingView (per esempio NQ1! invece del mese NQ corrente), Tradovate potrebbe non avere una quotazione live con cui eseguire, il che produce &ldquo;no quote available&rdquo;, oppure potrebbe rifiutare l'ordine e contrassegnare il conto come &ldquo;Liquidation Only.&rdquo; Passare al contratto del mese più vicino in vigore risolve il problema." },
+    { type: "heading",text: "5. Un incidente lato piattaforma o compensazione" },
+    { type: "paragraph",html: "Ogni tanto questi errori non dipendono affatto dal Suo conto. Durante un breve incidente del broker o della prop firm (compensazione), può vedere gruppi di rifiuti &ldquo;no quote available,&rdquo; &ldquo;maximum order quantity&rdquo; e &ldquo;Trading is temporarily halted,&rdquo; anche mentre la pagina di stato di Tradovate non mostra alcun disservizio generale. In tal caso la soluzione è semplice: attenda che l'incidente si risolva, poi riprovi." },
+    { type: "heading",text: "Come correggere questi rifiuti: passo dopo passo" },
+    { type: "heading",text: "Passaggio 1: leggere il motivo esatto del rifiuto" },
+    { type: "paragraph",html: "Non tiri a indovinare. Acceda a <strong class='text-white'>trader.tradovate.com</strong>, apra il pannello <strong class='text-white'>Orders</strong> o <strong class='text-white'>Order History</strong>, trovi l'ordine rifiutato e vi clicchi sopra per aprire il dettaglio. Il motivo specifico (&ldquo;risk parameters&rdquo; oppure &ldquo;No quote available. Please contact support.&rdquo;) Le dice quale ramo seguire qui sotto. Ricordi: quel motivo si trova dentro Tradovate, non nel Suo strumento di grafici né in TradingView." },
+    { type: "heading",text: "Passaggio 2: correggere il lato dei dati di mercato (risolve la maggior parte dei «No Quote Available»)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra Application Settings", html: "Apra il pulsante in alto a destra del Web Trader." },
+        { title: "Si abboni alla borsa", html: "Selezioni la scheda <strong class='text-white'>Subscriptions</strong>, scorra fino alla sezione <strong class='text-white'>Market Data</strong>, quindi clicchi su <strong class='text-white'>Subscribe</strong> per la borsa che negozia (per ES/NQ/MES/MNQ è il bundle CME)." },
+        { title: "Firmi il Non-Professional Market Data Agreement", html: "Se lo salta, potrebbero addebitarLe tariffe professionali e, soprattutto, potrebbe non ricevere affatto dati in tempo reale." },
+        { title: "Attenda l'attivazione, poi acceda di nuovo", html: "Attenda l'attivazione (circa 10&ndash;90 minuti), poi si disconnetta e si riconnetta. I simboli in tempo reale dovrebbero quindi comparire nel loro colore normale con un bid/ask live." },
+      ],
+    },
+    { type: "quote",html: "<strong>Conti prop / di valutazione:</strong> se ha un conto finanziato o di valutazione (Apex, Topstep, TradeDay e simili), spesso <strong>non può</strong> abbonarsi da solo, solo la prop firm può attivare o riparare il feed dei dati. Firmi qualsiasi accordo richiesto, poi contatti la società se i dati non sono ancora live dopo l'attivazione." },
+    { type: "heading",text: "Passaggio 3: correggere il lato del rischio (risolve la maggior parte dei «Risk Parameters»)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra Application Settings", html: "Apra <strong class='text-white'>Application Settings</strong> e scelga la scheda <strong class='text-white'>Accounts</strong>." },
+        { title: "Apra Risk Settings", html: "Clicchi su <strong class='text-white'>Risk Settings</strong> per espandere il pannello." },
+        { title: "Controlli Max Position e i limiti di perdita", html: "Controlli <strong class='text-white'>Max Position Size</strong>. Se la quantità del Suo ordine lo supera, riduca la quantità oppure aumenti il limite (sul Suo conto). Faccia lo stesso per <strong class='text-white'>Daily/Weekly Loss Limit</strong> e <strong class='text-white'>Trailing Max Drawdown</strong> se li ha raggiunti." },
+        { title: "Controlli Products Permitted", html: "Se è limitato a una lista, aggiunga il contratto che sta negoziando oppure disattivi la restrizione." },
+        { title: "Su un conto prop, richieda la modifica", html: "Su un conto prop o di valutazione di solito non può aumentarli da solo, invii una richiesta di modifica del rischio o contatti la società per aumentare la dimensione consentita." },
+      ],
+    },
+    { type: "heading",text: "Passaggio 4: confermare il contratto e riprovare" },
+    { type: "paragraph",html: "Punti grafico, DOM e qualsiasi alert sul <strong class='text-white'>contratto del mese più vicino in vigore</strong>, non su un simbolo scaduto o continuo (NQ1!). Confermi che nella scheda Quotes sia visibile un bid/ask live, poi reinvii. Se tutto è predisposto e l'ordine viene comunque rifiutato, verifichi la presenza di un incidente di piattaforma o di compensazione e, se necessario, contatti il supporto con l'ID dell'ordine e il motivo esatto trovato nel passaggio 1." },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Errore","Significato","Soluzione"], rows: [
+      ["No quote available. Please contact support.","Nessun prezzo live in tempo reale per quel contratto al momento dell'invio","Si abboni ai dati live, firmi l'accordo Non-Professional, acceda di nuovo; confermi un bid/ask live prima di ordinare"],
+      ["Risk parameters","L'ordine non ha superato un controllo di rischio/diritti del conto","Apra Application Settings &gt; Accounts &gt; Risk Settings; regoli Max Position, i limiti di perdita o Products Permitted; sui conti prop richieda una modifica del limite"],
+      ["Your maximum order quantity has been met","La dimensione dell'ordine supera il limite di posizione/quantità massima del conto","Riduca i contratti o aumenti Max Position Size; sui conti prop/eval invii una richiesta di aumento del rischio"],
+      ["Trading is temporarily halted","Restrizione del conto o incidente di piattaforma/compensazione, non sempre una sospensione della borsa","Controlli lo stato di Tradovate e lo stato di rischio/liquidazione del Suo conto, poi riprovi una volta risolto"],
+      ["Liquidation Only (contract about to expire)","Ordine piazzato su un contratto scaduto o continuo","Passi al contratto del mese più vicino in vigore, elimini i vecchi alert e rimetta l'ordine sul simbolo attivo"],
+      ["Simboli ritardati / arancioni, quotazioni vuote","Feed dei dati non ancora attivo o non sottoscritto","Si abboni, firmi l'accordo, attenda ~10&ndash;90 min, poi si disconnetta e si riconnetta"],
+    ] },
+    { type: "heading",text: "Lo eviti con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade collega i Suoi alert di TradingView direttamente a Tradovate e aggiunge protezioni in modo che meno ordini raggiungano uno stato di rifiuto:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Validazione di simbolo &amp; quantità</strong>, controlla contratto e dimensione prima dell'invio dell'ordine, così simboli scaduti e quantità eccessive vengono intercettati subito invece di rimbalzare.",
+        "<strong class='text-white'>Instradamento consapevole di diritti &amp; dati</strong>, progettato per instradare gli ordini attraverso un conto predisposto per il trading live, riducendo le sorprese &ldquo;no quote available&rdquo; dovute a feed non predisposti.",
+        "<strong class='text-white'>Gestione degli ordini consapevole del rischio</strong>, Le aiuta a mantenere la quantità degli alert entro i limiti di Max Position e di prodotto di Tradovate o della Sua prop firm, così i rifiuti &ldquo;risk parameters&rdquo; diventano meno probabili.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replica un ordine corretto e convalidato su tutti i conti collegati invece di sparare ordini errati ovunque contemporaneamente.",
+      ],
+    },
+    { type: "paragraph",html: "Il risultato: meno clic manuali, meno ingressi bloccati e log più puliti quando deve davvero fare debug." },
+  ] },
+  ctaHeading: { en: "Stop Chasing Rejections", de: "Schluss mit dem Jagen von Ablehnungen", es: "Deje de perseguir rechazos", fr: "Cessez de courir après les rejets", it: "Smetta di inseguire i rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and trade rejection-free.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, verknüpfen Sie noch heute Ihre Alerts und handeln Sie ohne Ablehnungen.", es: "Comience su prueba gratuita de 7 días, vincule sus alertas hoy mismo y opere sin rechazos.", fr: "Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et tradez sans rejets.", it: "Inizi la prova gratuita di 7 giorni, colleghi i Suoi alert oggi stesso e operi senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does Tradovate reject my order for \"no quote available\" when I can see the price on my chart?", a: "A visible chart price isn't proof of a live, tradable quote. Your chart may be showing delayed data (symbol name in orange) while your account lacks an active real-time subscription or a signed data agreement, so at order time Tradovate has no firm quote to price against. Subscribe, sign the agreement, and re-login." },
+    { q: "What does a \"risk parameters\" rejection actually check?", a: "It validates the order against your account's Risk Settings and entitlements: Max Position Size, Daily/Weekly Loss Limit, Trailing Max Drawdown, and Products Permitted, plus whether the account is cleared to trade that instrument. If any check fails, the order is rejected before it reaches the market." },
+    { q: "I signed up for market data but still get rejections. What now?", a: "Real-time data usually activates within about 10 to 90 minutes, and you often need to log out and back in to pick it up. If symbols are still orange or quotes are blank after that window and a re-login, confirm the subscription shows active and that the Non-Professional agreement is signed." },
+    { q: "I'm on a prop firm evaluation account and can't fix the data feed. Why?", a: "On funded and evaluation accounts, Tradovate typically doesn't own the account, so it can't enable or repair market data; only the prop firm can. Sign whatever agreement the firm requires, then contact the firm's support to activate the feed." },
+    { q: "Could these rejections be Tradovate's fault, not mine?", a: "Sometimes, yes. Brief broker or clearing incidents can trigger bursts of \"no quote available,\" \"maximum order quantity,\" and \"Trading is temporarily halted\" even when Tradovate's status page looks clean. If your account is fully provisioned and orders still reject, wait a few minutes and retry, then contact support with the order ID." },
+    { q: "Does an expired contract cause these errors?", a: "Yes. Trading an expired symbol or a TradingView continuous symbol (like NQ1!) can leave Tradovate without a live quote to fill, or flag the account \"Liquidation Only.\" Roll to the current front-month contract and re-place the order." },
+    { q: "How do I find the exact reason my order was rejected?", a: "Open the Orders or Order History panel in trader.tradovate.com, click the rejected order, and read the reason in the order detail. That exact string is what determines the fix, and it lives inside Tradovate, not in TradingView or your charting tool." },
+    { q: "Will PickMyTrade stop every rejection?", a: "No tool can guarantee zero rejections; a prop firm can still cap your size and a broker incident is out of anyone's control. But validating symbol, quantity, and routing before the order is sent removes the most common self-inflicted causes, so far fewer alerts turn into rejected orders." },
+  ], de: [
+    { q: "Warum lehnt Tradovate meine Order mit „no quote available“ ab, obwohl ich den Kurs in meinem Chart sehe?", a: "Ein sichtbarer Chartkurs ist kein Beweis für eine aktive, handelbare Quote. Ihr Chart zeigt möglicherweise verzögerte Daten (Symbolname in Orange), während Ihrem Konto ein aktives Echtzeit-Abonnement oder eine unterzeichnete Datenvereinbarung fehlt, sodass Tradovate bei der Orderaufgabe keine feste Quote zur Preisbildung hat. Abonnieren Sie, unterzeichnen Sie die Vereinbarung und melden Sie sich erneut an." },
+    { q: "Was prüft eine „risk parameters“-Ablehnung eigentlich?", a: "Sie validiert die Order anhand der Risk Settings und Berechtigungen Ihres Kontos: Max Position Size, Daily/Weekly Loss Limit, Trailing Max Drawdown und Products Permitted, außerdem, ob das Konto für das Instrument freigegeben ist. Schlägt eine Prüfung fehl, wird die Order abgelehnt, bevor sie den Markt erreicht." },
+    { q: "Ich habe Marktdaten abonniert, werde aber weiterhin abgelehnt. Was nun?", a: "Echtzeitdaten werden in der Regel innerhalb von etwa 10 bis 90 Minuten aktiviert, und oft müssen Sie sich ab- und wieder anmelden, damit sie übernommen werden. Sind Symbole nach diesem Zeitfenster und einer erneuten Anmeldung weiterhin orange oder Quotes leer, prüfen Sie, ob das Abonnement als aktiv angezeigt wird und die Non-Professional-Vereinbarung unterzeichnet ist." },
+    { q: "Ich habe ein Prop-Firm-Evaluierungskonto und kann den Datenfeed nicht beheben. Warum?", a: "Bei Funded- und Evaluierungskonten gehört das Konto in der Regel nicht Tradovate, daher kann Tradovate Marktdaten weder aktivieren noch reparieren; nur die Prop-Firma kann das. Unterzeichnen Sie die von der Firma geforderte Vereinbarung und wenden Sie sich dann an den Support der Firma, um den Feed zu aktivieren." },
+    { q: "Könnten diese Ablehnungen an Tradovate liegen und nicht an mir?", a: "Manchmal ja. Kurze Störungen beim Broker oder Clearing können Häufungen von „no quote available“, „maximum order quantity“ und „Trading is temporarily halted“ auslösen, selbst wenn die Statusseite von Tradovate unauffällig aussieht. Ist Ihr Konto vollständig eingerichtet und Orders werden dennoch abgelehnt, warten Sie einige Minuten, versuchen Sie es erneut und kontaktieren Sie dann den Support mit der Order-ID." },
+    { q: "Verursacht ein abgelaufener Kontrakt diese Fehler?", a: "Ja. Der Handel mit einem abgelaufenen Symbol oder einem fortlaufenden TradingView-Symbol (wie NQ1!) kann dazu führen, dass Tradovate keine Live-Quote zur Ausführung hat oder das Konto als „Liquidation Only“ markiert. Wechseln Sie auf den aktuellen Front-Month-Kontrakt und platzieren Sie die Order erneut." },
+    { q: "Wie finde ich den genauen Grund für die Ablehnung meiner Order?", a: "Öffnen Sie das Panel Orders oder Order History auf trader.tradovate.com, klicken Sie auf die abgelehnte Order und lesen Sie den Grund in den Orderdetails. Genau diese Zeichenfolge bestimmt die Lösung, und sie steht in Tradovate, nicht in TradingView oder Ihrem Charting-Tool." },
+    { q: "Verhindert PickMyTrade jede Ablehnung?", a: "Nein. Kein Tool kann null Ablehnungen garantieren; eine Prop-Firma kann Ihre Größe weiterhin begrenzen, und eine Störung beim Broker liegt außerhalb der Kontrolle aller. Aber die Validierung von Symbol, Menge und Routing vor dem Senden der Order beseitigt die häufigsten selbstverschuldeten Ursachen, sodass weit weniger Alerts zu abgelehnten Orders werden." },
+  ], es: [
+    { q: "¿Por qué Tradovate rechaza mi orden con «no quote available» cuando veo el precio en mi gráfico?", a: "Un precio visible en el gráfico no es prueba de una cotización activa y negociable. Es posible que su gráfico muestre datos con retraso (nombre del símbolo en naranja) mientras su cuenta carece de una suscripción activa en tiempo real o de un acuerdo de datos firmado, de modo que al enviar la orden Tradovate no tiene una cotización firme para fijar el precio. Suscríbase, firme el acuerdo y vuelva a iniciar sesión." },
+    { q: "¿Qué comprueba realmente un rechazo «risk parameters»?", a: "Valida la orden frente a los Risk Settings y los permisos de su cuenta: Max Position Size, Daily/Weekly Loss Limit, Trailing Max Drawdown y Products Permitted, además de si la cuenta está autorizada para operar ese instrumento. Si falla alguna comprobación, la orden se rechaza antes de llegar al mercado." },
+    { q: "Me suscribí a los datos de mercado pero sigo recibiendo rechazos. ¿Qué hago?", a: "Los datos en tiempo real suelen activarse en unos 10 a 90 minutos, y a menudo hay que cerrar sesión y volver a entrar para que se apliquen. Si tras ese plazo y un nuevo inicio de sesión los símbolos siguen en naranja o las cotizaciones están en blanco, confirme que la suscripción figura como activa y que el acuerdo Non-Professional está firmado." },
+    { q: "Estoy en una cuenta de evaluación de una prop firm y no puedo arreglar el feed de datos. ¿Por qué?", a: "En cuentas fondeadas y de evaluación, Tradovate normalmente no es el titular de la cuenta, por lo que no puede activar ni reparar los datos de mercado; solo puede la prop firm. Firme el acuerdo que exija la firma y luego contacte con su soporte para activar el feed." },
+    { q: "¿Podrían estos rechazos ser culpa de Tradovate y no mía?", a: "A veces, sí. Incidentes breves del bróker o de la cámara de compensación pueden provocar ráfagas de «no quote available», «maximum order quantity» y «Trading is temporarily halted» incluso cuando la página de estado de Tradovate parece limpia. Si su cuenta está totalmente aprovisionada y las órdenes siguen rechazándose, espere unos minutos y reintente, y luego contacte con el soporte con el ID de la orden." },
+    { q: "¿Un contrato vencido causa estos errores?", a: "Sí. Operar con un símbolo vencido o con un símbolo continuo de TradingView (como NQ1!) puede dejar a Tradovate sin una cotización en vivo para ejecutar, o marcar la cuenta como «Liquidation Only». Pase al contrato del mes más cercano vigente y vuelva a colocar la orden." },
+    { q: "¿Cómo averiguo el motivo exacto del rechazo de mi orden?", a: "Abra el panel Orders u Order History en trader.tradovate.com, haga clic en la orden rechazada y lea el motivo en el detalle de la orden. Esa cadena exacta es la que determina la solución, y vive dentro de Tradovate, no en TradingView ni en su herramienta de gráficos." },
+    { q: "¿PickMyTrade evitará todos los rechazos?", a: "No. Ninguna herramienta puede garantizar cero rechazos; una prop firm puede seguir limitando su tamaño y un incidente del bróker escapa al control de todos. Pero validar símbolo, cantidad y enrutamiento antes de enviar la orden elimina las causas autoinfligidas más comunes, de modo que muchas menos alertas terminan en órdenes rechazadas." },
+  ], fr: [
+    { q: "Pourquoi Tradovate rejette-t-il mon ordre avec « no quote available » alors que je vois le prix sur mon graphique ?", a: "Un prix visible sur le graphique n'est pas la preuve d'une cotation active et négociable. Votre graphique peut afficher des données différées (nom du symbole en orange) alors que votre compte n'a pas d'abonnement temps réel actif ni d'accord de données signé ; au moment de l'ordre, Tradovate n'a donc aucune cotation ferme pour établir le prix. Abonnez-vous, signez l'accord et reconnectez-vous." },
+    { q: "Que vérifie réellement un rejet « risk parameters » ?", a: "Il valide l'ordre par rapport aux Risk Settings et aux droits de votre compte : Max Position Size, Daily/Weekly Loss Limit, Trailing Max Drawdown et Products Permitted, ainsi que l'autorisation du compte à négocier cet instrument. Si l'une des vérifications échoue, l'ordre est rejeté avant d'atteindre le marché." },
+    { q: "Je me suis abonné aux données de marché mais je suis toujours rejeté. Que faire ?", a: "Les données temps réel s'activent généralement en 10 à 90 minutes environ, et il faut souvent se déconnecter puis se reconnecter pour qu'elles soient prises en compte. Si, après ce délai et une reconnexion, les symboles sont toujours orange ou les cotations vides, vérifiez que l'abonnement apparaît comme actif et que l'accord Non-Professional est signé." },
+    { q: "Je suis sur un compte d'évaluation de prop firm et je ne peux pas réparer le flux de données. Pourquoi ?", a: "Sur les comptes financés et d'évaluation, Tradovate ne détient généralement pas le compte et ne peut donc ni activer ni réparer les données de marché ; seule la prop firm le peut. Signez l'accord exigé par la firme, puis contactez son support pour activer le flux." },
+    { q: "Ces rejets peuvent-ils venir de Tradovate et non de moi ?", a: "Parfois, oui. De brefs incidents côté courtier ou chambre de compensation peuvent déclencher des rafales de « no quote available », « maximum order quantity » et « Trading is temporarily halted », même lorsque la page de statut de Tradovate semble normale. Si votre compte est entièrement provisionné et que les ordres sont toujours rejetés, attendez quelques minutes et réessayez, puis contactez le support avec l'ID de l'ordre." },
+    { q: "Un contrat expiré provoque-t-il ces erreurs ?", a: "Oui. Négocier un symbole expiré ou un symbole continu TradingView (comme NQ1!) peut laisser Tradovate sans cotation en direct pour exécuter, ou signaler le compte « Liquidation Only ». Passez au contrat du mois le plus proche en vigueur et replacez l'ordre." },
+    { q: "Comment trouver la raison exacte du rejet de mon ordre ?", a: "Ouvrez le panneau Orders ou Order History sur trader.tradovate.com, cliquez sur l'ordre rejeté et lisez la raison dans le détail de l'ordre. Cette chaîne exacte détermine la correction, et elle se trouve dans Tradovate, pas dans TradingView ni dans votre outil de graphiques." },
+    { q: "PickMyTrade arrêtera-t-il tous les rejets ?", a: "Non. Aucun outil ne peut garantir zéro rejet ; une prop firm peut toujours plafonner votre taille et un incident du courtier échappe au contrôle de tous. Mais valider le symbole, la quantité et le routage avant l'envoi de l'ordre supprime les causes auto-infligées les plus courantes, de sorte que bien moins d'alertes se transforment en ordres rejetés." },
+  ], it: [
+    { q: "Perché Tradovate rifiuta il mio ordine con «no quote available» quando vedo il prezzo sul mio grafico?", a: "Un prezzo visibile sul grafico non è la prova di una quotazione attiva e negoziabile. Il Suo grafico potrebbe mostrare dati ritardati (nome del simbolo in arancione) mentre al Suo conto manca un abbonamento real-time attivo o un accordo dati firmato, quindi al momento dell'ordine Tradovate non ha una quotazione ferma con cui determinare il prezzo. Si abboni, firmi l'accordo e acceda di nuovo." },
+    { q: "Che cosa verifica in realtà un rifiuto «risk parameters»?", a: "Convalida l'ordine rispetto ai Risk Settings e ai diritti del Suo conto: Max Position Size, Daily/Weekly Loss Limit, Trailing Max Drawdown e Products Permitted, oltre al fatto che il conto sia abilitato a negoziare quello strumento. Se una verifica non riesce, l'ordine viene rifiutato prima di raggiungere il mercato." },
+    { q: "Mi sono abbonato ai dati di mercato ma continuo a ricevere rifiuti. E ora?", a: "I dati in tempo reale di solito si attivano entro circa 10-90 minuti, e spesso occorre disconnettersi e riconnettersi per recepirli. Se dopo quel lasso di tempo e una nuova connessione i simboli sono ancora arancioni o le quotazioni vuote, confermi che l'abbonamento risulti attivo e che l'accordo Non-Professional sia firmato." },
+    { q: "Ho un conto di valutazione di una prop firm e non riesco a sistemare il feed dei dati. Perché?", a: "Sui conti finanziati e di valutazione, Tradovate in genere non è titolare del conto, quindi non può attivare né riparare i dati di mercato; solo la prop firm può farlo. Firmi l'accordo richiesto dalla società, poi contatti il suo supporto per attivare il feed." },
+    { q: "Questi rifiuti potrebbero essere colpa di Tradovate e non mia?", a: "A volte sì. Brevi incidenti del broker o della stanza di compensazione possono scatenare raffiche di «no quote available», «maximum order quantity» e «Trading is temporarily halted» anche quando la pagina di stato di Tradovate sembra regolare. Se il Suo conto è completamente predisposto e gli ordini vengono comunque rifiutati, attenda qualche minuto e riprovi, poi contatti il supporto con l'ID dell'ordine." },
+    { q: "Un contratto scaduto causa questi errori?", a: "Sì. Negoziare un simbolo scaduto o un simbolo continuo di TradingView (come NQ1!) può lasciare Tradovate senza una quotazione live per l'esecuzione, oppure contrassegnare il conto come «Liquidation Only». Passi al contratto del mese più vicino in vigore e rimetta l'ordine." },
+    { q: "Come trovo il motivo esatto per cui il mio ordine è stato rifiutato?", a: "Apra il pannello Orders o Order History su trader.tradovate.com, clicchi sull'ordine rifiutato e legga il motivo nel dettaglio dell'ordine. Quella stringa esatta determina la soluzione, e si trova dentro Tradovate, non in TradingView né nel Suo strumento di grafici." },
+    { q: "PickMyTrade fermerà ogni rifiuto?", a: "No. Nessuno strumento può garantire zero rifiuti; una prop firm può comunque limitare la Sua dimensione e un incidente del broker è fuori dal controllo di chiunque. Ma convalidare simbolo, quantità e instradamento prima dell'invio dell'ordine elimina le cause autoinflitte più comuni, quindi molti meno alert si trasformano in ordini rifiutati." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Ähnliche Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von Tradovate, Inc. unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit, bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, pertanto confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

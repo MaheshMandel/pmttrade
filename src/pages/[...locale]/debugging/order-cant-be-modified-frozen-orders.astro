@@ -1,0 +1,559 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "order-cant-be-modified-frozen-orders";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate 'Order Can't Be Modified' / Frozen Orders";
+const META_DESCRIPTION =
+  "Tradovate order can't be modified? Flatten with a manual opposite market order, then reconnect to clear frozen, stuck orders fast.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate „Order can't be modified“ / eingefrorene Orders", es: "Tradovate «Order can't be modified» / órdenes congeladas", fr: "Tradovate « Order can't be modified » / ordres figés", it: "Tradovate «Order can't be modified» / ordini bloccati" },
+  dek: { en: "Your stop won't drag, the cancel button does nothing, and Tradovate flashes \"Order can't be modified\" while the market keeps moving. Here's how to take control by hand and clear the freeze.", de: "Ihr Stop lässt sich nicht verschieben, der Stornieren-Button reagiert nicht, und Tradovate blendet „Order can't be modified“ ein, während sich der Markt weiterbewegt. So übernehmen Sie die Kontrolle von Hand und lösen das Einfrieren.", es: "Su stop no se arrastra, el botón de cancelar no hace nada y Tradovate muestra «Order can't be modified» mientras el mercado sigue moviéndose. Así puede tomar el control manualmente y liberar el bloqueo.", fr: "Votre stop ne se déplace plus, le bouton d'annulation ne fait rien et Tradovate affiche « Order can't be modified » alors que le marché continue de bouger. Voici comment reprendre la main manuellement et lever le blocage.", it: "Il Suo stop non si sposta, il pulsante di annullamento non fa nulla e Tradovate mostra «Order can't be modified» mentre il mercato continua a muoversi. Ecco come prendere il controllo manualmente e sbloccare la situazione." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You're long two ES contracts, price is racing toward your stop, and you drag the order to breakeven, nothing happens. You click the X to cancel, and still nothing. Tradovate flashes &ldquo;Order can't be modified,&rdquo; and your bracket sits frozen on the chart while the market keeps moving against you. It's one of the most stressful failures a futures trader can hit, and it shows up under a handful of names: a frozen limit order, a stop that won't drag, an exit button that does nothing, or a bracket leg that &ldquo;can't be cancelled.&rdquo; The recovery is almost always the same. Take control of the position by hand with an opposite market order, then reconnect to clear the stuck working orders. And if you route your order flow through a rate-limit-aware bridge like PickMyTrade, you kill the most common trigger, flooding Tradovate's order engine with modifications, before a freeze ever starts." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Frozen Orders",
+      items: [
+        "<strong class='text-white'>Protect the position first.</strong> Place a manual opposite market order to flatten before you troubleshoot the frozen order.",
+        "<strong class='text-white'>Reconnect the session.</strong> Log out of every session (desktop, web, mobile, TradingView) and log back in on one device to refresh working orders.",
+        "<strong class='text-white'>Cancel from the broker side.</strong> After reconnecting, cancel the stuck order directly in the Tradovate Orders panel, not from your charting app.",
+        "<strong class='text-white'>Slow down modifications.</strong> Stop dragging stops repeatedly, rapid modify/cancel bursts and trailing stops can exhaust Tradovate's API limits and freeze order management.",
+        "<strong class='text-white'>Check your clock and connection.</strong> An unsynced PC clock or unstable Wi-Fi blocks the acknowledgements a modify or cancel needs.",
+        "<strong class='text-white'>Keep an emergency exit ready.</strong> Know Tradovate's Emergency Trade Desk number in case you can't manage the position at all.",
+      ],
+    },
+    { type: "heading", text: "What \"Order Can't Be Modified\" Means" },
+    { type: "paragraph", html: "Every time you drag a stop, edit a limit, or hit cancel, Tradovate doesn't change the order locally. It sends a modify or cancel request to the order-management layer, waits for an acknowledgement, and only then updates what you see. &ldquo;Order can't be modified&rdquo; is the platform telling you it can't get that acknowledgement back, so it refuses to touch the order. The order is still live and working, the <em>control channel</em> to it is what's broken." },
+    { type: "paragraph", html: "That distinction matters. A frozen order isn't a cosmetic glitch. The limit or stop remains on the exchange and can still fill later in the session, which is exactly what you don't want. Orders can stay stuck on the chart permanently until price interacts with them, and a stop loss can refuse to move or cancel even after a manual exit. So the goal is twofold: neutralize the risk of that frozen order firing, then force the platform to reload a clean view of your working orders so you can remove it." },
+    { type: "paragraph", html: "The freeze can hit the Tradovate web or desktop platform directly, an account linked through TradingView, or a connection running through NinjaTrader, because in all three cases the same Tradovate order engine is doing the acknowledging." },
+    { type: "heading", text: "Top Causes of Frozen Orders in Tradovate" },
+    { type: "heading", text: "1. API Rate-Limit Exhaustion from Rapid Modifications" },
+    { type: "paragraph", html: "This is the most common trigger for automated and semi-automated traders. Tradovate enforces request limits on its API, roughly 80 requests per minute and a few thousand per hour, though you should confirm Tradovate's current published limits. Trailing stops that re-price on every tick, or manually dragging a stop dozens of times in a minute, can burn through that budget fast. Once you hit the ceiling, the platform stops accepting new modify or cancel requests for a cooldown period (often around an hour), and during that window you can't modify stops, cancel orders, or exit cleanly." },
+    { type: "heading", text: "2. A Dropped or Duplicated Session" },
+    { type: "paragraph", html: "Tradovate limits how many sessions an account can hold at once across desktop, web, mobile, and TradingView (the exact number varies, so check Tradovate's current rules). Exceed that, and your sessions start fighting for the connection. One gets bumped, the order channel goes stale, and you're left with orders that look present on the chart but refuse to respond." },
+    { type: "heading", text: "3. Clock Sync and Network Instability" },
+    { type: "paragraph", html: "Order acknowledgements are time-sensitive. If your PC clock has drifted or your connection is dropping packets over Wi-Fi, the modify/cancel handshake never completes and the order appears frozen." },
+    { type: "heading", text: "4. A Manual Exit That Orphaned a Bracket Leg" },
+    { type: "paragraph", html: "Here's a scenario that trips up a lot of traders: your bracket's profit-target limit didn't fill, you bailed out with a market order, and now the opposite stop-loss leg is stranded and &ldquo;frozen.&rdquo; The bracket's OCO linkage expected its sibling to close it, and when you stepped outside that logic by hand, the leftover leg lost its cancel path." },
+    { type: "heading", text: "5. A Platform-Side Bug or Outage" },
+    { type: "paragraph", html: "Tradovate has shipped bugs where limit orders in specific modes, Market Replay, for one, couldn't be modified or cancelled at all until a patch went out. During live outages, the whole order layer can stall. These are Tradovate-side and resolve with an app update or once the outage clears." },
+    { type: "heading", text: "How to Fix Frozen Orders in Tradovate: Step-by-Step" },
+    { type: "paragraph", html: "Work these in order. The first step controls your risk; the rest clear the stuck order." },
+    { type: "heading", text: "Fixing It Fast: Flatten with a Manual Opposite Market Order" },
+    { type: "paragraph", html: "If the frozen order is protecting an open position, don't wait for the platform to recover, take the position flat yourself." },
+    {
+      type: "steps",
+      items: [
+        { title: "Note your current position", html: "For example, long 2 contracts." },
+        { title: "Place a market order in the opposite direction", html: "For the same quantity (sell 2 to close a long, buy 2 to close a short). A market order doesn't depend on modifying the frozen order, so it usually goes through even when drags and cancels don't." },
+        { title: "Confirm the position reads flat", html: "Check the Positions panel to verify." },
+      ],
+    },
+    { type: "paragraph", html: "One catch to watch for: flattening the <em>position</em> doesn't always remove the <em>frozen working order</em>. You may now be flat but still have a stuck limit or stop sitting on the chart. That's what the next steps clear." },
+    { type: "heading", text: "Fixing a Stale Session: Reconnect to Refresh Working Orders" },
+    { type: "paragraph", html: "Reconnecting forces Tradovate to re-sync its view of your orders, which is what usually breaks the freeze." },
+    {
+      type: "steps",
+      items: [
+        { title: "Log out of Tradovate", html: "Start from your primary session." },
+        { title: "Log out of every other place the account is signed in", html: "Desktop app, browser tab, mobile app, and the TradingView broker connection. Only one live session should remain." },
+        { title: "Log back in on a single device", html: "Use one device to re-establish a clean session." },
+        { title: "Retry the cancel", html: "Open the Orders panel and try to cancel the previously frozen order again. After a clean reconnect it typically responds. (If you route through NinjaTrader, disconnecting and reconnecting the Tradovate connection performs the same refresh.)" },
+      ],
+    },
+    { type: "heading", text: "Fixing a Stubborn Order: Cancel on the Broker Side, Then Wait Out Any Limit" },
+    { type: "paragraph", html: "If the order is still stuck after reconnecting:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cancel it from the broker side", html: "Cancel it directly from the <strong class='text-white'>Tradovate platform's Orders panel</strong> rather than from TradingView or another front-end. The broker side is the source of truth for order state." },
+        { title: "Wait out any rate-limit cooldown", html: "If you suspect you tripped the API rate limit (heavy trailing or modifying just before the freeze), <strong class='text-white'>stop sending requests</strong> and wait out the cooldown. Hammering more cancels only extends it." },
+        { title: "Fix the basics that block acknowledgements", html: "Sync your system clock (right-click the Windows clock, Adjust date/time, Sync now) and switch from Wi-Fi to a wired connection if you can." },
+      ],
+    },
+    { type: "heading", text: "Fixing a Total Lockout: Use the Emergency Trade Desk" },
+    { type: "paragraph", html: "If you genuinely can't manage a <strong class='text-white'>live</strong> position, the platform is down, or you've lost internet or power, Tradovate operates an Emergency Trade Desk that can flatten positions and cancel working orders for you. It has been published as <strong class='text-white'>312-423-2234</strong> (email orders@ninjatrader.com), reachable 24 hours from Sunday afternoon to Friday afternoon Central Time. Confirm the current number on Tradovate's site before you need it. This is for live-account emergencies only, not routine cancels." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / Symptom", "Meaning", "Fix"],
+      rows: [
+        ["&ldquo;Order can't be modified&rdquo;", "Platform can't get a modify/cancel acknowledgement for a live order", "Flatten with a manual opposite market order, then reconnect and cancel from the Orders panel"],
+        ["Limit order won't drag or cancel", "Control channel to the working order is stale", "Log out of all sessions, log back in on one device, retry the cancel"],
+        ["Stop loss frozen after a manual exit", "Orphaned OCO bracket leg lost its cancel path", "Cancel the leftover leg on the broker side after reconnecting"],
+        ["Order stuck &ldquo;until price interacts&rdquo;", "Working order is still live on the exchange", "Neutralize risk with an opposite market order; don't leave it to fill"],
+        ["Freeze after heavy trailing/modifying", "API request limit exhausted, cooldown active", "Stop sending requests, wait out the cooldown, then manage orders"],
+        ["Can't manage a live position at all", "Platform/connection outage", "Call the Emergency Trade Desk to flatten and cancel"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "Most frozen-order incidents trace back to one root cause: too many order changes hitting Tradovate's engine too fast. PickMyTrade sits between your TradingView alerts and Tradovate and manages that flow for you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, spaces out order and modification traffic so you don't exhaust Tradovate's API budget and trigger a freeze.",
+        "<strong class='text-white'>Controlled Modifications</strong>, sends stop and target updates deliberately instead of firing a request on every tick, the pattern that most often locks up trailing stops.",
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, blocks malformed or oversized orders before they're sent, so you're not fighting a stuck order that never should have gone out.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors a clean, corrected order across all your linked accounts instead of leaving one frozen and out of step.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie sind long zwei ES-Kontrakte, der Kurs rast auf Ihren Stop zu, Sie ziehen die Order auf Breakeven, und nichts passiert. Sie klicken auf das X, um sie zu stornieren, und wieder nichts. Tradovate blendet &ldquo;Order can't be modified&rdquo; ein, und Ihr Bracket steht eingefroren im Chart, während der Markt weiter gegen Sie läuft. Das ist einer der stressigsten Fehler, die einem Futures-Trader passieren können, und er tritt unter mehreren Bezeichnungen auf: eine eingefrorene Limit-Order, ein Stop, der sich nicht verschieben lässt, ein Ausstiegs-Button, der nichts tut, oder ein Bracket-Bein, das &ldquo;nicht storniert werden kann&rdquo;. Die Wiederherstellung ist fast immer dieselbe. Übernehmen Sie die Position von Hand mit einer entgegengesetzten Market-Order und verbinden Sie sich dann neu, um die festhängenden aktiven Orders zu lösen. Und wenn Sie Ihren Orderfluss über eine ratenlimitbewusste Brücke wie PickMyTrade leiten, beseitigen Sie den häufigsten Auslöser, das Überfluten der Orders-Engine von Tradovate mit Änderungen, bevor ein Einfrieren überhaupt beginnt." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste bei eingefrorenen Orders",
+      items: [
+        "<strong class='text-white'>Schützen Sie zuerst die Position.</strong> Platzieren Sie eine manuelle entgegengesetzte Market-Order, um flat zu werden, bevor Sie die eingefrorene Order untersuchen.",
+        "<strong class='text-white'>Verbinden Sie die Sitzung neu.</strong> Melden Sie sich von jeder Sitzung ab (Desktop, Web, Mobil, TradingView) und auf einem einzigen Gerät wieder an, um aktive Orders zu aktualisieren.",
+        "<strong class='text-white'>Stornieren Sie auf der Broker-Seite.</strong> Stornieren Sie die festhängende Order nach der erneuten Verbindung direkt im Tradovate-Orders-Panel, nicht in Ihrer Charting-App.",
+        "<strong class='text-white'>Verlangsamen Sie Änderungen.</strong> Hören Sie auf, Stops wiederholt zu ziehen, denn schnelle Änderungs- und Stornoserien sowie Trailing-Stops können die API-Limits von Tradovate ausschöpfen und die Orderverwaltung einfrieren.",
+        "<strong class='text-white'>Prüfen Sie Uhr und Verbindung.</strong> Eine nicht synchronisierte PC-Uhr oder instabiles WLAN blockiert die Bestätigungen, die eine Änderung oder Stornierung braucht.",
+        "<strong class='text-white'>Halten Sie einen Notausstieg bereit.</strong> Kennen Sie die Nummer des Emergency Trade Desk von Tradovate für den Fall, dass Sie die Position gar nicht mehr verwalten können.",
+      ],
+    },
+    { type: "heading",text: "Was „Order Can't Be Modified“ bedeutet" },
+    { type: "paragraph",html: "Jedes Mal, wenn Sie einen Stop ziehen, ein Limit bearbeiten oder auf Stornieren klicken, ändert Tradovate die Order nicht lokal. Es sendet eine Änderungs- oder Stornoanfrage an die Orderverwaltungsebene, wartet auf eine Bestätigung und aktualisiert erst dann, was Sie sehen. &ldquo;Order can't be modified&rdquo; bedeutet, dass die Plattform diese Bestätigung nicht zurückbekommt und die Order deshalb nicht anfasst. Die Order ist weiterhin aktiv, defekt ist der <em>Steuerkanal</em> dorthin." },
+    { type: "paragraph",html: "Diese Unterscheidung ist wichtig. Eine eingefrorene Order ist kein kosmetischer Fehler. Das Limit oder der Stop bleibt an der Börse bestehen und kann später in der Sitzung noch ausgeführt werden, was Sie genau nicht wollen. Orders können dauerhaft im Chart hängen bleiben, bis der Kurs mit ihnen interagiert, und ein Stop-Loss kann sich auch nach einem manuellen Ausstieg weder verschieben noch stornieren lassen. Das Ziel ist daher zweifach: das Risiko neutralisieren, dass die eingefrorene Order ausgelöst wird, und die Plattform dazu bringen, eine saubere Ansicht Ihrer aktiven Orders zu laden, damit Sie sie entfernen können." },
+    { type: "paragraph",html: "Das Einfrieren kann die Tradovate-Web- oder -Desktop-Plattform direkt treffen, ein über TradingView verknüpftes Konto oder eine über NinjaTrader laufende Verbindung, weil in allen drei Fällen dieselbe Tradovate-Orders-Engine die Bestätigung liefert." },
+    { type: "heading",text: "Häufigste Ursachen für eingefrorene Orders in Tradovate" },
+    { type: "heading",text: "1. Erschöpfung des API-Ratenlimits durch schnelle Änderungen" },
+    { type: "paragraph",html: "Das ist der häufigste Auslöser für automatisierte und halbautomatisierte Trader. Tradovate erzwingt Anfragelimits für seine API, ungefähr 80 Anfragen pro Minute und einige tausend pro Stunde, wobei Sie die aktuell veröffentlichten Limits von Tradovate bestätigen sollten. Trailing-Stops, die bei jedem Tick neu bepreist werden, oder das manuelle Ziehen eines Stops dutzende Male pro Minute können dieses Budget schnell verbrauchen. Sobald Sie die Obergrenze erreichen, nimmt die Plattform für eine Abkühlphase (oft etwa eine Stunde) keine neuen Änderungs- oder Stornoanfragen mehr an, und in diesem Zeitraum können Sie Stops nicht ändern, Orders nicht stornieren und nicht sauber aussteigen." },
+    { type: "heading",text: "2. Eine unterbrochene oder doppelte Sitzung" },
+    { type: "paragraph",html: "Tradovate begrenzt, wie viele Sitzungen ein Konto gleichzeitig über Desktop, Web, Mobil und TradingView halten kann (die genaue Zahl variiert, prüfen Sie daher die aktuellen Regeln von Tradovate). Wird das überschritten, konkurrieren Ihre Sitzungen um die Verbindung. Eine wird verdrängt, der Orderkanal veraltet, und Sie haben Orders, die im Chart vorhanden aussehen, aber nicht reagieren." },
+    { type: "heading",text: "3. Uhrensynchronisation und Netzwerkinstabilität" },
+    { type: "paragraph",html: "Order-Bestätigungen sind zeitkritisch. Wenn Ihre PC-Uhr abgewichen ist oder Ihre Verbindung über WLAN Pakete verliert, wird der Handshake für Änderung oder Stornierung nie abgeschlossen, und die Order erscheint eingefroren." },
+    { type: "heading",text: "4. Ein manueller Ausstieg, der ein Bracket-Bein verwaist hat" },
+    { type: "paragraph",html: "Ein Szenario, das viele Trader überrascht: Das Gewinnziel-Limit Ihres Brackets wurde nicht ausgeführt, Sie sind mit einer Market-Order ausgestiegen, und nun steht das gegenüberliegende Stop-Loss-Bein verwaist und &ldquo;eingefroren&rdquo; da. Die OCO-Verknüpfung des Brackets erwartete, dass sein Gegenstück es schließt. Als Sie sich von Hand außerhalb dieser Logik bewegt haben, verlor das übrig gebliebene Bein seinen Stornoweg." },
+    { type: "heading",text: "5. Ein plattformseitiger Fehler oder Ausfall" },
+    { type: "paragraph",html: "Tradovate hat Fehler ausgeliefert, bei denen Limit-Orders in bestimmten Modi, unter anderem Market Replay, bis zu einem Patch gar nicht geändert oder storniert werden konnten. Bei Live-Ausfällen kann die gesamte Orderebene stocken. Diese Probleme liegen bei Tradovate und lösen sich mit einem App-Update oder sobald der Ausfall behoben ist." },
+    { type: "heading",text: "So beheben Sie eingefrorene Orders in Tradovate: Schritt für Schritt" },
+    { type: "paragraph",html: "Arbeiten Sie diese Schritte der Reihe nach ab. Der erste Schritt kontrolliert Ihr Risiko, die übrigen lösen die festhängende Order." },
+    { type: "heading",text: "Schnelle Lösung: Mit einer manuellen entgegengesetzten Market-Order flat werden" },
+    { type: "paragraph",html: "Wenn die eingefrorene Order eine offene Position schützt, warten Sie nicht auf die Erholung der Plattform, sondern stellen Sie die Position selbst glatt." },
+    {
+      type: "steps",
+      items: [
+        { title: "Notieren Sie Ihre aktuelle Position", html: "Zum Beispiel long 2 Kontrakte." },
+        { title: "Platzieren Sie eine Market-Order in die entgegengesetzte Richtung", html: "Mit derselben Stückzahl (2 verkaufen, um eine Long-Position zu schließen, 2 kaufen, um eine Short-Position zu schließen). Eine Market-Order hängt nicht von der Änderung der eingefrorenen Order ab und geht daher meist durch, auch wenn Ziehen und Stornieren nicht funktionieren." },
+        { title: "Bestätigen Sie, dass die Position flat ist", html: "Prüfen Sie dies im Positions-Panel." },
+      ],
+    },
+    { type: "paragraph",html: "Ein Hinweis: Das Glattstellen der <em>Position</em> entfernt nicht immer die <em>eingefrorene aktive Order</em>. Möglicherweise sind Sie jetzt flat, haben aber noch ein festhängendes Limit oder einen Stop im Chart stehen. Genau das lösen die nächsten Schritte." },
+    { type: "heading",text: "Veraltete Sitzung beheben: Neu verbinden, um aktive Orders zu aktualisieren" },
+    { type: "paragraph",html: "Eine erneute Verbindung zwingt Tradovate, seine Sicht auf Ihre Orders neu abzugleichen, was das Einfrieren in der Regel löst." },
+    {
+      type: "steps",
+      items: [
+        { title: "Bei Tradovate abmelden", html: "Beginnen Sie mit Ihrer primären Sitzung." },
+        { title: "Von allen anderen Orten abmelden, an denen das Konto angemeldet ist", html: "Desktop-App, Browser-Tab, Mobile-App und die TradingView-Broker-Verbindung. Es sollte nur eine aktive Sitzung übrig bleiben." },
+        { title: "Auf einem einzigen Gerät wieder anmelden", html: "Verwenden Sie ein Gerät, um eine saubere Sitzung aufzubauen." },
+        { title: "Stornieren erneut versuchen", html: "Öffnen Sie das Orders-Panel und versuchen Sie erneut, die zuvor eingefrorene Order zu stornieren. Nach einer sauberen erneuten Verbindung reagiert sie in der Regel. (Wenn Sie über NinjaTrader gehen, bewirkt das Trennen und erneute Verbinden der Tradovate-Verbindung dieselbe Aktualisierung.)" },
+      ],
+    },
+    { type: "heading",text: "Hartnäckige Order beheben: Auf der Broker-Seite stornieren, dann eine eventuelle Begrenzung abwarten" },
+    { type: "paragraph",html: "Wenn die Order nach der erneuten Verbindung weiterhin festhängt:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Auf der Broker-Seite stornieren", html: "Stornieren Sie sie direkt im <strong class='text-white'>Orders-Panel der Tradovate-Plattform</strong> und nicht in TradingView oder einem anderen Frontend. Die Broker-Seite ist die maßgebliche Quelle für den Orderstatus." },
+        { title: "Eine Ratenlimit-Abkühlphase abwarten", html: "Wenn Sie vermuten, dass Sie das API-Ratenlimit ausgelöst haben (intensives Trailing oder Ändern kurz vor dem Einfrieren), <strong class='text-white'>senden Sie keine Anfragen mehr</strong> und warten Sie die Abkühlphase ab. Weitere Stornierungen verlängern sie nur." },
+        { title: "Die Grundlagen beheben, die Bestätigungen blockieren", html: "Synchronisieren Sie Ihre Systemuhr (Rechtsklick auf die Windows-Uhr, Datum/Uhrzeit anpassen, Jetzt synchronisieren) und wechseln Sie nach Möglichkeit von WLAN auf eine Kabelverbindung." },
+      ],
+    },
+    { type: "heading",text: "Totalausfall beheben: Den Emergency Trade Desk nutzen" },
+    { type: "paragraph",html: "Wenn Sie eine <strong class='text-white'>laufende</strong> Position tatsächlich nicht verwalten können, die Plattform ausgefallen ist oder Sie Internet oder Strom verloren haben, betreibt Tradovate einen Emergency Trade Desk, der für Sie Positionen glattstellen und aktive Orders stornieren kann. Er wurde mit <strong class='text-white'>312-423-2234</strong> (E-Mail orders@ninjatrader.com) veröffentlicht und ist 24 Stunden von Sonntagnachmittag bis Freitagnachmittag Central Time erreichbar. Bestätigen Sie die aktuelle Nummer auf der Website von Tradovate, bevor Sie sie brauchen. Dies ist nur für Notfälle mit Live-Konten gedacht, nicht für routinemäßiges Stornieren." },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Fehler / Symptom","Bedeutung","Lösung"], rows: [
+      ["&ldquo;Order can't be modified&rdquo;","Die Plattform erhält keine Änderungs-/Stornobestätigung für eine aktive Order","Mit einer manuellen entgegengesetzten Market-Order flat werden, dann neu verbinden und im Orders-Panel stornieren"],
+      ["Limit-Order lässt sich nicht ziehen oder stornieren","Der Steuerkanal zur aktiven Order ist veraltet","Von allen Sitzungen abmelden, auf einem Gerät wieder anmelden, Stornieren erneut versuchen"],
+      ["Stop-Loss nach manuellem Ausstieg eingefroren","Verwaistes OCO-Bracket-Bein hat seinen Stornoweg verloren","Das übrig gebliebene Bein nach der erneuten Verbindung auf der Broker-Seite stornieren"],
+      ["Order hängt &ldquo;bis der Kurs sie berührt&rdquo;","Die aktive Order ist an der Börse weiterhin aktiv","Risiko mit einer entgegengesetzten Market-Order neutralisieren; nicht ausführen lassen"],
+      ["Einfrieren nach intensivem Trailing/Ändern","API-Anfragelimit ausgeschöpft, Abkühlphase aktiv","Keine Anfragen mehr senden, Abkühlphase abwarten, dann Orders verwalten"],
+      ["Eine laufende Position lässt sich gar nicht verwalten","Plattform-/Verbindungsausfall","Den Emergency Trade Desk anrufen, um glattzustellen und zu stornieren"],
+    ] },
+    { type: "heading",text: "Vermeiden Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Die meisten Vorfälle mit eingefrorenen Orders gehen auf eine Ursache zurück: zu viele Orderänderungen, die zu schnell auf die Engine von Tradovate treffen. PickMyTrade sitzt zwischen Ihren TradingView-Alerts und Tradovate und steuert diesen Fluss für Sie:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ratenlimit-sicheres Routing</strong>, taktet Order- und Änderungsverkehr, damit Sie das API-Budget von Tradovate nicht ausschöpfen und kein Einfrieren auslösen.",
+        "<strong class='text-white'>Kontrollierte Änderungen</strong>, sendet Stop- und Ziel-Updates gezielt, statt bei jedem Tick eine Anfrage abzufeuern, jenes Muster, das Trailing-Stops am häufigsten blockiert.",
+        "<strong class='text-white'>Prüfung von Menge und Symbol</strong>, blockiert fehlerhafte oder überdimensionierte Orders, bevor sie gesendet werden, sodass Sie nicht mit einer festhängenden Order kämpfen, die nie hätte rausgehen dürfen.",
+        "<strong class='text-white'>Multi-Account-Synchronisation</strong>, spiegelt eine saubere, korrigierte Order auf alle Ihre verknüpften Konten, statt eines eingefroren und nicht im Gleichschritt zu lassen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Está en largo con dos contratos de ES, el precio corre hacia su stop, arrastra la orden a breakeven y no pasa nada. Hace clic en la X para cancelar y sigue sin pasar nada. Tradovate muestra &ldquo;Order can't be modified&rdquo; y su bracket queda congelado en el gráfico mientras el mercado sigue en su contra. Es uno de los fallos más estresantes que puede sufrir un trader de futuros y aparece con varios nombres: una orden límite congelada, un stop que no se arrastra, un botón de salida que no hace nada o una pata del bracket que &ldquo;no se puede cancelar&rdquo;. La recuperación casi siempre es la misma. Tome el control de la posición manualmente con una orden de mercado contraria y después vuelva a conectarse para liberar las órdenes activas atascadas. Y si enruta su flujo de órdenes a través de un puente que respeta los límites de frecuencia como PickMyTrade, elimina el desencadenante más común, inundar el motor de órdenes de Tradovate con modificaciones, antes de que empiece cualquier congelación." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para órdenes congeladas",
+      items: [
+        "<strong class='text-white'>Proteja primero la posición.</strong> Coloque una orden de mercado contraria manual para quedar a cero antes de investigar la orden congelada.",
+        "<strong class='text-white'>Vuelva a conectar la sesión.</strong> Cierre sesión en todas las sesiones (escritorio, web, móvil, TradingView) y vuelva a iniciar sesión en un solo dispositivo para actualizar las órdenes activas.",
+        "<strong class='text-white'>Cancele desde el lado del bróker.</strong> Tras volver a conectarse, cancele la orden atascada directamente en el panel Orders de Tradovate, no desde su aplicación de gráficos.",
+        "<strong class='text-white'>Reduzca las modificaciones.</strong> Deje de arrastrar stops repetidamente: las ráfagas rápidas de modificar y cancelar y los trailing stops pueden agotar los límites de la API de Tradovate y congelar la gestión de órdenes.",
+        "<strong class='text-white'>Revise su reloj y su conexión.</strong> Un reloj de PC sin sincronizar o un Wi-Fi inestable bloquean las confirmaciones que necesita una modificación o cancelación.",
+        "<strong class='text-white'>Tenga una salida de emergencia lista.</strong> Conozca el número del Emergency Trade Desk de Tradovate por si no puede gestionar la posición en absoluto.",
+      ],
+    },
+    { type: "heading",text: "Qué significa «Order Can't Be Modified»" },
+    { type: "paragraph",html: "Cada vez que arrastra un stop, edita un límite o pulsa cancelar, Tradovate no cambia la orden localmente. Envía una solicitud de modificación o cancelación a la capa de gestión de órdenes, espera una confirmación y solo entonces actualiza lo que usted ve. &ldquo;Order can't be modified&rdquo; es la plataforma diciéndole que no puede recibir esa confirmación, por lo que se niega a tocar la orden. La orden sigue activa y funcionando; lo que falla es el <em>canal de control</em> hacia ella." },
+    { type: "paragraph",html: "Esa distinción importa. Una orden congelada no es un fallo cosmético. El límite o el stop permanece en la bolsa y todavía puede ejecutarse más tarde en la sesión, que es justo lo que no quiere. Las órdenes pueden permanecer atascadas en el gráfico de forma permanente hasta que el precio interactúe con ellas, y un stop loss puede negarse a moverse o cancelarse incluso después de una salida manual. Por tanto, el objetivo es doble: neutralizar el riesgo de que la orden congelada se dispare y obligar a la plataforma a cargar una vista limpia de sus órdenes activas para poder eliminarla." },
+    { type: "paragraph",html: "El congelamiento puede afectar directamente a la plataforma web o de escritorio de Tradovate, a una cuenta vinculada a través de TradingView o a una conexión que pasa por NinjaTrader, porque en los tres casos es el mismo motor de órdenes de Tradovate el que confirma." },
+    { type: "heading",text: "Principales causas de órdenes congeladas en Tradovate" },
+    { type: "heading",text: "1. Agotamiento del límite de frecuencia de la API por modificaciones rápidas" },
+    { type: "paragraph",html: "Este es el desencadenante más común para traders automatizados y semiautomatizados. Tradovate aplica límites de solicitudes en su API, aproximadamente 80 solicitudes por minuto y unos pocos miles por hora, aunque debe confirmar los límites publicados actualmente por Tradovate. Los trailing stops que se reprecian en cada tick, o arrastrar manualmente un stop decenas de veces por minuto, pueden consumir ese presupuesto rápidamente. Una vez que alcanza el techo, la plataforma deja de aceptar nuevas solicitudes de modificación o cancelación durante un período de enfriamiento (a menudo alrededor de una hora) y, durante esa ventana, no puede modificar stops, cancelar órdenes ni salir limpiamente." },
+    { type: "heading",text: "2. Una sesión caída o duplicada" },
+    { type: "paragraph",html: "Tradovate limita cuántas sesiones puede mantener una cuenta a la vez entre escritorio, web, móvil y TradingView (el número exacto varía, así que consulte las reglas vigentes de Tradovate). Si lo excede, sus sesiones empiezan a pelearse por la conexión. Una queda desplazada, el canal de órdenes se queda obsoleto y le quedan órdenes que parecen presentes en el gráfico pero no responden." },
+    { type: "heading",text: "3. Sincronización del reloj e inestabilidad de red" },
+    { type: "paragraph",html: "Las confirmaciones de órdenes dependen del tiempo. Si el reloj de su PC se ha desfasado o su conexión pierde paquetes por Wi-Fi, el intercambio de modificar o cancelar nunca se completa y la orden parece congelada." },
+    { type: "heading",text: "4. Una salida manual que dejó huérfana una pata del bracket" },
+    { type: "paragraph",html: "Este es un escenario que sorprende a muchos traders: el límite de toma de beneficios de su bracket no se ejecutó, salió con una orden de mercado y ahora la pata opuesta de stop loss queda abandonada y &ldquo;congelada&rdquo;. El vínculo OCO del bracket esperaba que su hermana lo cerrara y, al salirse de esa lógica manualmente, la pata restante perdió su vía de cancelación." },
+    { type: "heading",text: "5. Un error o caída del lado de la plataforma" },
+    { type: "paragraph",html: "Tradovate ha lanzado errores en los que las órdenes límite en modos específicos, Market Replay, por ejemplo, no se podían modificar ni cancelar hasta que se publicó un parche. Durante caídas en vivo, toda la capa de órdenes puede paralizarse. Son problemas del lado de Tradovate y se resuelven con una actualización de la aplicación o cuando termina la caída." },
+    { type: "heading",text: "Cómo solucionar las órdenes congeladas en Tradovate: paso a paso" },
+    { type: "paragraph",html: "Siga estos pasos en orden. El primero controla su riesgo; el resto libera la orden atascada." },
+    { type: "heading",text: "Solución rápida: cerrar con una orden de mercado contraria manual" },
+    { type: "paragraph",html: "Si la orden congelada protege una posición abierta, no espere a que la plataforma se recupere: cierre la posición usted mismo." },
+    {
+      type: "steps",
+      items: [
+        { title: "Anote su posición actual", html: "Por ejemplo, largo de 2 contratos." },
+        { title: "Coloque una orden de mercado en la dirección contraria", html: "Por la misma cantidad (vender 2 para cerrar un largo, comprar 2 para cerrar un corto). Una orden de mercado no depende de modificar la orden congelada, así que normalmente se ejecuta aunque arrastrar y cancelar no funcionen." },
+        { title: "Confirme que la posición figura a cero", html: "Compruébelo en el panel Positions." },
+      ],
+    },
+    { type: "paragraph",html: "Un detalle a tener en cuenta: cerrar la <em>posición</em> no siempre elimina la <em>orden activa congelada</em>. Puede que ahora esté a cero pero aún tenga un límite o un stop atascado en el gráfico. Eso es lo que resuelven los siguientes pasos." },
+    { type: "heading",text: "Solución para una sesión obsoleta: volver a conectar para actualizar las órdenes activas" },
+    { type: "paragraph",html: "Volver a conectar obliga a Tradovate a resincronizar su vista de las órdenes, que es lo que normalmente rompe el congelamiento." },
+    {
+      type: "steps",
+      items: [
+        { title: "Cierre sesión en Tradovate", html: "Empiece por su sesión principal." },
+        { title: "Cierre sesión en todos los demás lugares donde la cuenta esté conectada", html: "Aplicación de escritorio, pestaña del navegador, aplicación móvil y la conexión del bróker de TradingView. Solo debe quedar una sesión activa." },
+        { title: "Vuelva a iniciar sesión en un solo dispositivo", html: "Use un único dispositivo para restablecer una sesión limpia." },
+        { title: "Reintente la cancelación", html: "Abra el panel Orders e intente de nuevo cancelar la orden previamente congelada. Tras una reconexión limpia, normalmente responde. (Si enruta a través de NinjaTrader, desconectar y volver a conectar la conexión de Tradovate realiza la misma actualización.)" },
+      ],
+    },
+    { type: "heading",text: "Solución para una orden obstinada: cancelar desde el lado del bróker y luego esperar a que pase cualquier límite" },
+    { type: "paragraph",html: "Si la orden sigue atascada tras volver a conectarse:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cancélela desde el lado del bróker", html: "Cancélela directamente desde el <strong class='text-white'>panel Orders de la plataforma Tradovate</strong> en lugar de hacerlo desde TradingView u otra interfaz. El lado del bróker es la fuente de verdad del estado de las órdenes." },
+        { title: "Espere a que pase cualquier enfriamiento por límite de frecuencia", html: "Si sospecha que superó el límite de frecuencia de la API (trailing o modificaciones intensas justo antes del congelamiento), <strong class='text-white'>deje de enviar solicitudes</strong> y espere a que pase el enfriamiento. Insistir con más cancelaciones solo lo prolonga." },
+        { title: "Corrija lo básico que bloquea las confirmaciones", html: "Sincronice el reloj de su sistema (clic derecho en el reloj de Windows, Ajustar fecha y hora, Sincronizar ahora) y cambie de Wi-Fi a una conexión por cable si puede." },
+      ],
+    },
+    { type: "heading",text: "Solución para un bloqueo total: usar el Emergency Trade Desk" },
+    { type: "paragraph",html: "Si realmente no puede gestionar una posición <strong class='text-white'>en vivo</strong>, la plataforma está caída o ha perdido internet o electricidad, Tradovate opera un Emergency Trade Desk que puede cerrar posiciones y cancelar órdenes activas por usted. Se ha publicado como <strong class='text-white'>312-423-2234</strong> (correo orders@ninjatrader.com), accesible las 24 horas desde la tarde del domingo hasta la tarde del viernes, hora central. Confirme el número actual en el sitio de Tradovate antes de necesitarlo. Es solo para emergencias en cuentas en vivo, no para cancelaciones rutinarias." },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Error / síntoma","Significado","Solución"], rows: [
+      ["&ldquo;Order can't be modified&rdquo;","La plataforma no puede obtener una confirmación de modificación/cancelación de una orden activa","Cierre con una orden de mercado contraria manual, luego vuelva a conectarse y cancele desde el panel Orders"],
+      ["La orden límite no se arrastra ni se cancela","El canal de control hacia la orden activa está obsoleto","Cierre sesión en todas las sesiones, vuelva a iniciarla en un dispositivo y reintente la cancelación"],
+      ["Stop loss congelado tras una salida manual","La pata huérfana del bracket OCO perdió su vía de cancelación","Cancele la pata restante desde el lado del bróker tras volver a conectarse"],
+      ["Orden atascada &ldquo;hasta que el precio interactúe&rdquo;","La orden activa sigue viva en la bolsa","Neutralice el riesgo con una orden de mercado contraria; no la deje a que se ejecute"],
+      ["Congelamiento tras trailing/modificaciones intensas","Límite de solicitudes de la API agotado, enfriamiento activo","Deje de enviar solicitudes, espere a que pase el enfriamiento y luego gestione las órdenes"],
+      ["No puede gestionar en absoluto una posición en vivo","Caída de la plataforma o de la conexión","Llame al Emergency Trade Desk para cerrar y cancelar"],
+    ] },
+    { type: "heading",text: "Evítelo con PickMyTrade" },
+    { type: "paragraph",html: "La mayoría de los incidentes de órdenes congeladas se remontan a una causa raíz: demasiados cambios de órdenes llegando demasiado rápido al motor de Tradovate. PickMyTrade se sitúa entre sus alertas de TradingView y Tradovate y gestiona ese flujo por usted:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de frecuencia</strong>, espacía el tráfico de órdenes y modificaciones para que no agote el presupuesto de API de Tradovate ni provoque un congelamiento.",
+        "<strong class='text-white'>Modificaciones controladas</strong>, envía las actualizaciones de stop y objetivo de forma deliberada en lugar de disparar una solicitud en cada tick, el patrón que con más frecuencia bloquea los trailing stops.",
+        "<strong class='text-white'>Validación de cantidad y símbolo</strong>, bloquea órdenes mal formadas o de tamaño excesivo antes de enviarlas, para que no tenga que pelear con una orden atascada que nunca debió salir.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replica una orden limpia y corregida en todas sus cuentas vinculadas en lugar de dejar una congelada y desincronizada.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous êtes long de deux contrats ES, le prix fonce vers votre stop, vous faites glisser l'ordre au point mort, rien ne se passe. Vous cliquez sur le X pour annuler, et toujours rien. Tradovate affiche &ldquo;Order can't be modified&rdquo; et votre bracket reste figé sur le graphique pendant que le marché continue de jouer contre vous. C'est l'un des échecs les plus stressants pour un trader de futures, et il se présente sous plusieurs noms : un ordre limite figé, un stop qui ne se déplace pas, un bouton de sortie qui ne fait rien ou une branche de bracket qui &ldquo;ne peut pas être annulée&rdquo;. La récupération est presque toujours la même. Prenez le contrôle de la position manuellement avec un ordre au marché opposé, puis reconnectez-vous pour débloquer les ordres actifs coincés. Et si vous acheminez votre flux d'ordres par un pont attentif aux limites de débit comme PickMyTrade, vous supprimez le déclencheur le plus courant, la saturation du moteur d'ordres de Tradovate par des modifications, avant même qu'un blocage ne commence." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour les ordres figés",
+      items: [
+        "<strong class='text-white'>Protégez d'abord la position.</strong> Placez un ordre au marché opposé manuel pour vous mettre à plat avant de traiter l'ordre figé.",
+        "<strong class='text-white'>Reconnectez la session.</strong> Déconnectez-vous de chaque session (bureau, web, mobile, TradingView) et reconnectez-vous sur un seul appareil pour rafraîchir les ordres actifs.",
+        "<strong class='text-white'>Annulez côté courtier.</strong> Après la reconnexion, annulez l'ordre bloqué directement dans le panneau Orders de Tradovate, et non depuis votre application de graphiques.",
+        "<strong class='text-white'>Ralentissez les modifications.</strong> Cessez de déplacer les stops à répétition : les rafales de modifications/annulations et les stops suiveurs peuvent épuiser les limites de l'API de Tradovate et figer la gestion des ordres.",
+        "<strong class='text-white'>Vérifiez votre horloge et votre connexion.</strong> Une horloge de PC non synchronisée ou un Wi-Fi instable bloquent les accusés de réception dont une modification ou une annulation a besoin.",
+        "<strong class='text-white'>Gardez une sortie de secours prête.</strong> Connaissez le numéro de l'Emergency Trade Desk de Tradovate au cas où vous ne pourriez plus du tout gérer la position.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « Order Can't Be Modified »" },
+    { type: "paragraph",html: "Chaque fois que vous déplacez un stop, modifiez un limite ou cliquez sur annuler, Tradovate ne change pas l'ordre localement. Il envoie une demande de modification ou d'annulation à la couche de gestion des ordres, attend un accusé de réception, et ne met à jour ce que vous voyez qu'ensuite. &ldquo;Order can't be modified&rdquo; est la plateforme qui vous dit qu'elle ne peut pas recevoir cet accusé et refuse donc de toucher à l'ordre. L'ordre est toujours actif ; c'est le <em>canal de contrôle</em> vers lui qui est défaillant." },
+    { type: "paragraph",html: "Cette distinction compte. Un ordre figé n'est pas un simple défaut d'affichage. Le limite ou le stop reste sur la bourse et peut encore être exécuté plus tard dans la séance, ce qui est exactement ce que vous ne voulez pas. Les ordres peuvent rester bloqués en permanence sur le graphique jusqu'à ce que le prix les touche, et un stop loss peut refuser de bouger ou de s'annuler même après une sortie manuelle. L'objectif est donc double : neutraliser le risque que cet ordre figé se déclenche, puis forcer la plateforme à recharger une vue propre de vos ordres actifs afin que vous puissiez le supprimer." },
+    { type: "paragraph",html: "Le blocage peut toucher directement la plateforme web ou de bureau Tradovate, un compte relié via TradingView ou une connexion passant par NinjaTrader, car dans les trois cas, c'est le même moteur d'ordres Tradovate qui accuse réception." },
+    { type: "heading",text: "Principales causes des ordres figés dans Tradovate" },
+    { type: "heading",text: "1. Épuisement de la limite de débit de l'API par des modifications rapides" },
+    { type: "paragraph",html: "C'est le déclencheur le plus fréquent pour les traders automatisés et semi-automatisés. Tradovate applique des limites de requêtes sur son API, environ 80 requêtes par minute et quelques milliers par heure, mais vous devez confirmer les limites actuellement publiées par Tradovate. Les stops suiveurs qui se repositionnent à chaque tick, ou le déplacement manuel d'un stop des dizaines de fois par minute, peuvent consommer ce budget très vite. Une fois le plafond atteint, la plateforme cesse d'accepter de nouvelles demandes de modification ou d'annulation pendant une période d'attente (souvent environ une heure), et pendant cette fenêtre vous ne pouvez ni modifier les stops, ni annuler les ordres, ni sortir proprement." },
+    { type: "heading",text: "2. Une session interrompue ou dupliquée" },
+    { type: "paragraph",html: "Tradovate limite le nombre de sessions qu'un compte peut ouvrir simultanément sur le bureau, le web, le mobile et TradingView (le nombre exact varie, consultez donc les règles actuelles de Tradovate). Si vous le dépassez, vos sessions se disputent la connexion. L'une est évincée, le canal d'ordres devient obsolète, et vous vous retrouvez avec des ordres qui semblent présents sur le graphique mais ne répondent plus." },
+    { type: "heading",text: "3. Synchronisation de l'horloge et instabilité du réseau" },
+    { type: "paragraph",html: "Les accusés de réception des ordres sont sensibles au temps. Si l'horloge de votre PC a dérivé ou si votre connexion perd des paquets en Wi-Fi, la poignée de main de modification/annulation n'aboutit jamais et l'ordre paraît figé." },
+    { type: "heading",text: "4. Une sortie manuelle qui a orphelinisé une branche de bracket" },
+    { type: "paragraph",html: "Voici un scénario qui piège beaucoup de traders : le limite de prise de profit de votre bracket n'a pas été exécuté, vous êtes sorti avec un ordre au marché, et maintenant la branche stop loss opposée est abandonnée et &ldquo;figée&rdquo;. Le lien OCO du bracket comptait sur son jumeau pour le clôturer ; en sortant de cette logique à la main, la branche restante a perdu son chemin d'annulation." },
+    { type: "heading",text: "5. Un bug ou une panne côté plateforme" },
+    { type: "paragraph",html: "Tradovate a livré des bugs où des ordres limites dans certains modes, Market Replay par exemple, ne pouvaient ni être modifiés ni être annulés avant la publication d'un correctif. Lors de pannes en direct, toute la couche d'ordres peut se bloquer. Ces cas relèvent de Tradovate et se résolvent avec une mise à jour de l'application ou lorsque la panne est terminée." },
+    { type: "heading",text: "Comment corriger les ordres figés dans Tradovate : étape par étape" },
+    { type: "paragraph",html: "Suivez ces étapes dans l'ordre. La première maîtrise votre risque ; les autres débloquent l'ordre coincé." },
+    { type: "heading",text: "Solution rapide : se mettre à plat avec un ordre au marché opposé manuel" },
+    { type: "paragraph",html: "Si l'ordre figé protège une position ouverte, n'attendez pas que la plateforme se rétablisse, clôturez vous-même la position." },
+    {
+      type: "steps",
+      items: [
+        { title: "Notez votre position actuelle", html: "Par exemple, long de 2 contrats." },
+        { title: "Placez un ordre au marché dans la direction opposée", html: "Pour la même quantité (vendre 2 pour fermer une position longue, acheter 2 pour fermer une position courte). Un ordre au marché ne dépend pas de la modification de l'ordre figé ; il passe donc généralement même lorsque le glissement et l'annulation échouent." },
+        { title: "Confirmez que la position est à plat", html: "Vérifiez dans le panneau Positions." },
+      ],
+    },
+    { type: "paragraph",html: "Un piège à surveiller : clôturer la <em>position</em> ne supprime pas toujours l'<em>ordre actif figé</em>. Vous pouvez être à plat tout en ayant encore un limite ou un stop bloqué sur le graphique. C'est ce que les étapes suivantes règlent." },
+    { type: "heading",text: "Corriger une session obsolète : se reconnecter pour rafraîchir les ordres actifs" },
+    { type: "paragraph",html: "Se reconnecter oblige Tradovate à resynchroniser sa vue de vos ordres, ce qui lève généralement le blocage." },
+    {
+      type: "steps",
+      items: [
+        { title: "Déconnectez-vous de Tradovate", html: "Partez de votre session principale." },
+        { title: "Déconnectez-vous de tous les autres endroits où le compte est connecté", html: "Application de bureau, onglet de navigateur, application mobile et connexion courtier TradingView. Une seule session active doit subsister." },
+        { title: "Reconnectez-vous sur un seul appareil", html: "Utilisez un seul appareil pour rétablir une session propre." },
+        { title: "Réessayez l'annulation", html: "Ouvrez le panneau Orders et essayez à nouveau d'annuler l'ordre précédemment figé. Après une reconnexion propre, il répond en général. (Si vous passez par NinjaTrader, déconnecter puis reconnecter la connexion Tradovate effectue le même rafraîchissement.)" },
+      ],
+    },
+    { type: "heading",text: "Corriger un ordre récalcitrant : annuler côté courtier, puis attendre la fin d'une éventuelle limite" },
+    { type: "paragraph",html: "Si l'ordre reste bloqué après la reconnexion :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Annulez-le côté courtier", html: "Annulez-le directement depuis le <strong class='text-white'>panneau Orders de la plateforme Tradovate</strong> plutôt que depuis TradingView ou une autre interface. Le côté courtier fait foi pour l'état des ordres." },
+        { title: "Attendez la fin de toute période d'attente liée à la limite de débit", html: "Si vous soupçonnez d'avoir déclenché la limite de débit de l'API (suivi ou modifications intensifs juste avant le blocage), <strong class='text-white'>cessez d'envoyer des requêtes</strong> et attendez la fin de la période d'attente. Multiplier les annulations ne fait que la prolonger." },
+        { title: "Corrigez les bases qui bloquent les accusés de réception", html: "Synchronisez l'horloge de votre système (clic droit sur l'horloge Windows, Ajuster la date/l'heure, Synchroniser maintenant) et passez du Wi-Fi à une connexion filaire si possible." },
+      ],
+    },
+    { type: "heading",text: "Corriger un blocage total : utiliser l'Emergency Trade Desk" },
+    { type: "paragraph",html: "Si vous ne pouvez vraiment pas gérer une position <strong class='text-white'>en cours</strong>, que la plateforme est en panne ou que vous avez perdu Internet ou l'électricité, Tradovate exploite un Emergency Trade Desk qui peut clôturer les positions et annuler les ordres actifs pour vous. Il a été publié sous le numéro <strong class='text-white'>312-423-2234</strong> (e-mail orders@ninjatrader.com), joignable 24 heures par jour du dimanche après-midi au vendredi après-midi, heure centrale. Confirmez le numéro actuel sur le site de Tradovate avant d'en avoir besoin. Il est réservé aux urgences sur compte réel, pas aux annulations courantes." },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Erreur / symptôme","Signification","Solution"], rows: [
+      ["&ldquo;Order can't be modified&rdquo;","La plateforme ne peut pas obtenir d'accusé de modification/annulation pour un ordre actif","Mettez-vous à plat avec un ordre au marché opposé manuel, puis reconnectez-vous et annulez depuis le panneau Orders"],
+      ["L'ordre limite ne se déplace ni ne s'annule","Le canal de contrôle vers l'ordre actif est obsolète","Déconnectez-vous de toutes les sessions, reconnectez-vous sur un seul appareil, réessayez l'annulation"],
+      ["Stop loss figé après une sortie manuelle","La branche orpheline du bracket OCO a perdu son chemin d'annulation","Annulez la branche restante côté courtier après la reconnexion"],
+      ["Ordre bloqué &ldquo;jusqu'à ce que le prix l'atteigne&rdquo;","L'ordre actif est toujours en vie sur la bourse","Neutralisez le risque avec un ordre au marché opposé ; ne le laissez pas s'exécuter"],
+      ["Blocage après un suivi/des modifications intensifs","Limite de requêtes API épuisée, période d'attente active","Cessez d'envoyer des requêtes, attendez la fin de la période d'attente, puis gérez les ordres"],
+      ["Impossible de gérer une position en cours","Panne de plateforme ou de connexion","Appelez l'Emergency Trade Desk pour clôturer et annuler"],
+    ] },
+    { type: "heading",text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph",html: "La plupart des incidents d'ordres figés remontent à une seule cause : trop de modifications d'ordres qui frappent trop vite le moteur de Tradovate. PickMyTrade s'intercale entre vos alertes TradingView et Tradovate et gère ce flux pour vous :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Routage respectueux des limites de débit</strong>, espace le trafic d'ordres et de modifications afin que vous n'épuisiez pas le budget d'API de Tradovate et ne déclenchiez pas un blocage.",
+        "<strong class='text-white'>Modifications contrôlées</strong>, envoie les mises à jour de stop et d'objectif de manière délibérée plutôt que de déclencher une requête à chaque tick, le schéma qui bloque le plus souvent les stops suiveurs.",
+        "<strong class='text-white'>Validation de quantité et de symbole</strong>, bloque les ordres mal formés ou surdimensionnés avant leur envoi, de sorte que vous ne luttez pas contre un ordre bloqué qui n'aurait jamais dû partir.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, reproduit un ordre propre et corrigé sur tous vos comptes liés au lieu d'en laisser un figé et désynchronisé.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "È long di due contratti ES, il prezzo corre verso il Suo stop, trascina l'ordine a breakeven e non succede nulla. Clicca sulla X per annullare e ancora nulla. Tradovate mostra &ldquo;Order can't be modified&rdquo; e il Suo bracket resta bloccato sul grafico mentre il mercato continua a muoversi contro di Lei. È uno dei guasti più stressanti che un trader di futures possa incontrare, e si presenta sotto vari nomi: un ordine limit bloccato, uno stop che non si trascina, un pulsante di uscita che non fa nulla o una gamba del bracket che &ldquo;non può essere annullata&rdquo;. Il ripristino è quasi sempre lo stesso. Prenda il controllo della posizione manualmente con un ordine a mercato opposto, poi si riconnetta per liberare gli ordini attivi bloccati. E se instrada il Suo flusso di ordini attraverso un bridge attento ai limiti di frequenza come PickMyTrade, elimina il fattore scatenante più comune, il sovraccarico del motore degli ordini di Tradovate con modifiche, prima ancora che un blocco inizi." },
+    {
+      type: "checklist",
+      heading: "Rapida checklist per gli ordini bloccati",
+      items: [
+        "<strong class='text-white'>Protegga prima la posizione.</strong> Inserisca un ordine a mercato opposto manuale per andare flat prima di risolvere l'ordine bloccato.",
+        "<strong class='text-white'>Riconnetta la sessione.</strong> Si disconnetta da ogni sessione (desktop, web, mobile, TradingView) e si riconnetta su un solo dispositivo per aggiornare gli ordini attivi.",
+        "<strong class='text-white'>Annulli lato broker.</strong> Dopo la riconnessione, annulli l'ordine bloccato direttamente nel pannello Orders di Tradovate, non dalla Sua app di grafici.",
+        "<strong class='text-white'>Rallenti le modifiche.</strong> Smetta di trascinare ripetutamente gli stop: raffiche rapide di modifica/annullamento e trailing stop possono esaurire i limiti dell'API di Tradovate e bloccare la gestione degli ordini.",
+        "<strong class='text-white'>Controlli orologio e connessione.</strong> Un orologio del PC non sincronizzato o un Wi-Fi instabile bloccano le conferme di cui una modifica o un annullamento hanno bisogno.",
+        "<strong class='text-white'>Tenga pronta un'uscita di emergenza.</strong> Conosca il numero dell'Emergency Trade Desk di Tradovate nel caso non riuscisse a gestire affatto la posizione.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa «Order Can't Be Modified»" },
+    { type: "paragraph",html: "Ogni volta che trascina uno stop, modifica un limit o preme annulla, Tradovate non modifica l'ordine localmente. Invia una richiesta di modifica o annullamento al livello di gestione degli ordini, attende una conferma e solo allora aggiorna ciò che vede. &ldquo;Order can't be modified&rdquo; è la piattaforma che Le dice di non poter ricevere quella conferma, quindi si rifiuta di toccare l'ordine. L'ordine è ancora attivo; ciò che non funziona è il <em>canale di controllo</em> verso di esso." },
+    { type: "paragraph",html: "Questa distinzione è importante. Un ordine bloccato non è un difetto estetico. Il limit o lo stop resta sulla borsa e può ancora essere eseguito più tardi nella sessione, che è esattamente ciò che non vuole. Gli ordini possono rimanere bloccati sul grafico in modo permanente finché il prezzo non interagisce con essi, e uno stop loss può rifiutarsi di spostarsi o annullarsi anche dopo un'uscita manuale. Quindi l'obiettivo è duplice: neutralizzare il rischio che quell'ordine bloccato scatti e costringere la piattaforma a ricaricare una visione pulita dei Suoi ordini attivi così da poterlo rimuovere." },
+    { type: "paragraph",html: "Il blocco può colpire direttamente la piattaforma web o desktop di Tradovate, un conto collegato tramite TradingView o una connessione che passa da NinjaTrader, perché in tutti e tre i casi è lo stesso motore degli ordini di Tradovate a dare la conferma." },
+    { type: "heading",text: "Principali cause degli ordini bloccati in Tradovate" },
+    { type: "heading",text: "1. Esaurimento del limite di frequenza dell'API per modifiche rapide" },
+    { type: "paragraph",html: "È il fattore scatenante più comune per i trader automatizzati e semi-automatizzati. Tradovate applica limiti di richieste alla propria API, circa 80 richieste al minuto e alcune migliaia all'ora, anche se dovrebbe confermare i limiti attualmente pubblicati da Tradovate. I trailing stop che si riprezzano a ogni tick, o il trascinamento manuale di uno stop decine di volte al minuto, possono consumare rapidamente quel budget. Una volta raggiunto il tetto, la piattaforma smette di accettare nuove richieste di modifica o annullamento per un periodo di attesa (spesso circa un'ora) e, durante quella finestra, non può modificare stop, annullare ordini o uscire in modo pulito." },
+    { type: "heading",text: "2. Una sessione caduta o duplicata" },
+    { type: "paragraph",html: "Tradovate limita quante sessioni un conto può mantenere contemporaneamente tra desktop, web, mobile e TradingView (il numero esatto varia, quindi controlli le regole attuali di Tradovate). Se lo supera, le Sue sessioni iniziano a contendersi la connessione. Una viene espulsa, il canale degli ordini diventa obsoleto e si ritrova con ordini che sembrano presenti sul grafico ma non rispondono." },
+    { type: "heading",text: "3. Sincronizzazione dell'orologio e instabilità di rete" },
+    { type: "paragraph",html: "Le conferme degli ordini sono sensibili al tempo. Se l'orologio del Suo PC è andato fuori sincrono o la connessione perde pacchetti via Wi-Fi, l'handshake di modifica/annullamento non si completa mai e l'ordine appare bloccato." },
+    { type: "heading",text: "4. Un'uscita manuale che ha reso orfana una gamba del bracket" },
+    { type: "paragraph",html: "Ecco uno scenario che coglie in fallo molti trader: il limit di presa profitto del Suo bracket non è stato eseguito, è uscito con un ordine a mercato e ora la gamba opposta di stop loss è abbandonata e &ldquo;bloccata&rdquo;. Il collegamento OCO del bracket si aspettava che la gemella lo chiudesse e, uscendo da quella logica a mano, la gamba residua ha perso il suo percorso di annullamento." },
+    { type: "heading",text: "5. Un bug o un'interruzione lato piattaforma" },
+    { type: "paragraph",html: "Tradovate ha rilasciato bug in cui gli ordini limit in modalità specifiche, Market Replay per esempio, non potevano essere modificati né annullati finché non è uscita una correzione. Durante le interruzioni live, l'intero livello degli ordini può bloccarsi. Sono problemi lato Tradovate e si risolvono con un aggiornamento dell'app o quando l'interruzione termina." },
+    { type: "heading",text: "Come risolvere gli ordini bloccati in Tradovate: passo dopo passo" },
+    { type: "paragraph",html: "Segua questi passaggi in ordine. Il primo controlla il Suo rischio; gli altri liberano l'ordine bloccato." },
+    { type: "heading",text: "Soluzione rapida: andare flat con un ordine a mercato opposto manuale" },
+    { type: "paragraph",html: "Se l'ordine bloccato protegge una posizione aperta, non aspetti che la piattaforma si riprenda, chiuda la posizione da solo." },
+    {
+      type: "steps",
+      items: [
+        { title: "Annoti la Sua posizione attuale", html: "Ad esempio, long di 2 contratti." },
+        { title: "Inserisca un ordine a mercato nella direzione opposta", html: "Per la stessa quantità (vendere 2 per chiudere una long, comprare 2 per chiudere una short). Un ordine a mercato non dipende dalla modifica dell'ordine bloccato, quindi di solito passa anche quando trascinamenti e annullamenti non funzionano." },
+        { title: "Confermi che la posizione risulti flat", html: "Verifichi nel pannello Positions." },
+      ],
+    },
+    { type: "paragraph",html: "Un'avvertenza: chiudere la <em>posizione</em> non sempre rimuove l'<em>ordine attivo bloccato</em>. Potrebbe essere ora flat ma avere ancora un limit o uno stop bloccato sul grafico. È ciò che risolvono i passaggi successivi." },
+    { type: "heading",text: "Risolvere una sessione obsoleta: riconnettersi per aggiornare gli ordini attivi" },
+    { type: "paragraph",html: "La riconnessione costringe Tradovate a risincronizzare la propria visione dei Suoi ordini, che è ciò che di solito spezza il blocco." },
+    {
+      type: "steps",
+      items: [
+        { title: "Si disconnetta da Tradovate", html: "Parta dalla Sua sessione principale." },
+        { title: "Si disconnetta da ogni altro posto in cui il conto è connesso", html: "App desktop, scheda del browser, app mobile e connessione broker di TradingView. Deve rimanere una sola sessione attiva." },
+        { title: "Si riconnetta su un solo dispositivo", html: "Usi un solo dispositivo per ristabilire una sessione pulita." },
+        { title: "Riprovi l'annullamento", html: "Apra il pannello Orders e provi di nuovo ad annullare l'ordine precedentemente bloccato. Dopo una riconnessione pulita, di solito risponde. (Se passa da NinjaTrader, disconnettere e riconnettere la connessione Tradovate esegue lo stesso aggiornamento.)" },
+      ],
+    },
+    { type: "heading",text: "Risolvere un ordine ostinato: annullare lato broker, poi attendere eventuali limiti" },
+    { type: "paragraph",html: "Se l'ordine è ancora bloccato dopo la riconnessione:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Lo annulli lato broker", html: "Lo annulli direttamente dal <strong class='text-white'>pannello Orders della piattaforma Tradovate</strong> anziché da TradingView o da un altro front-end. Il lato broker è la fonte di verità per lo stato degli ordini." },
+        { title: "Attenda la fine di eventuali periodi di attesa per limite di frequenza", html: "Se sospetta di aver superato il limite di frequenza dell'API (trailing o modifiche intensive subito prima del blocco), <strong class='text-white'>smetta di inviare richieste</strong> e attenda la fine del periodo di attesa. Insistere con altri annullamenti non fa che prolungarlo." },
+        { title: "Corregga le basi che bloccano le conferme", html: "Sincronizzi l'orologio di sistema (clic destro sull'orologio di Windows, Modifica data/ora, Sincronizza ora) e passi dal Wi-Fi a una connessione cablata, se possibile." },
+      ],
+    },
+    { type: "heading",text: "Risolvere un blocco totale: usare l'Emergency Trade Desk" },
+    { type: "paragraph",html: "Se davvero non riesce a gestire una posizione <strong class='text-white'>live</strong>, la piattaforma è fuori uso o ha perso Internet o la corrente, Tradovate gestisce un Emergency Trade Desk che può chiudere le posizioni e annullare gli ordini attivi per Lei. È stato pubblicato come <strong class='text-white'>312-423-2234</strong> (e-mail orders@ninjatrader.com), raggiungibile 24 ore al giorno dalla domenica pomeriggio al venerdì pomeriggio, ora centrale. Confermi il numero attuale sul sito di Tradovate prima di averne bisogno. È solo per emergenze su conti live, non per annullamenti di routine." },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Errore / sintomo","Significato","Soluzione"], rows: [
+      ["&ldquo;Order can't be modified&rdquo;","La piattaforma non riesce a ottenere una conferma di modifica/annullamento per un ordine attivo","Vada flat con un ordine a mercato opposto manuale, poi si riconnetta e annulli dal pannello Orders"],
+      ["L'ordine limit non si trascina né si annulla","Il canale di controllo verso l'ordine attivo è obsoleto","Si disconnetta da tutte le sessioni, si riconnetta su un solo dispositivo, riprovi l'annullamento"],
+      ["Stop loss bloccato dopo un'uscita manuale","La gamba orfana del bracket OCO ha perso il suo percorso di annullamento","Annulli la gamba residua lato broker dopo la riconnessione"],
+      ["Ordine bloccato &ldquo;finché il prezzo non interagisce&rdquo;","L'ordine attivo è ancora vivo sulla borsa","Neutralizzi il rischio con un ordine a mercato opposto; non lo lasci eseguire"],
+      ["Blocco dopo trailing/modifiche intensive","Limite di richieste API esaurito, periodo di attesa attivo","Smetta di inviare richieste, attenda la fine del periodo di attesa, poi gestisca gli ordini"],
+      ["Impossibile gestire affatto una posizione live","Interruzione della piattaforma o della connessione","Chiami l'Emergency Trade Desk per chiudere e annullare"],
+    ] },
+    { type: "heading",text: "Lo eviti con PickMyTrade" },
+    { type: "paragraph",html: "La maggior parte degli incidenti di ordini bloccati risale a un'unica causa: troppe modifiche di ordini che colpiscono troppo in fretta il motore di Tradovate. PickMyTrade si colloca tra i Suoi alert di TradingView e Tradovate e gestisce quel flusso per Lei:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Instradamento sicuro rispetto ai limiti di frequenza</strong>, distanzia il traffico di ordini e modifiche in modo da non esaurire il budget API di Tradovate e non innescare un blocco.",
+        "<strong class='text-white'>Modifiche controllate</strong>, invia gli aggiornamenti di stop e target in modo deliberato invece di sparare una richiesta a ogni tick, lo schema che più spesso blocca i trailing stop.",
+        "<strong class='text-white'>Validazione di quantità e simbolo</strong>, blocca gli ordini malformati o sovradimensionati prima dell'invio, così non deve combattere con un ordine bloccato che non sarebbe mai dovuto partire.",
+        "<strong class='text-white'>Sincronizzazione multi-conto</strong>, replica un ordine pulito e corretto su tutti i Suoi conti collegati invece di lasciarne uno bloccato e non allineato.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Handeln ohne Ablehnungen", es: "Opere sin rechazos", fr: "Tradez sans rejet", it: "Operi senza rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and trade rejection-free.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, verknüpfen Sie noch heute Ihre Alerts und handeln Sie ohne Ablehnungen.", es: "Comience su prueba gratuita de 7 días, vincule sus alertas hoy mismo y opere sin rechazos.", fr: "Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et tradez sans rejet.", it: "Inizi la prova gratuita di 7 giorni, colleghi oggi i Suoi alert e operi senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does \"Order can't be modified\" mean in Tradovate?", a: "It means Tradovate could not get an acknowledgement to change or cancel a live order, so it refuses to touch it. The order is still working on the exchange, the connection to manage it is what's broken." },
+    { q: "How do I close a position when the exit button won't work?", a: "Place a market order in the opposite direction for the same quantity (sell to close a long, buy to close a short). A market order doesn't rely on modifying the frozen order, so it usually fills even when drag and cancel don't." },
+    { q: "I flattened but the frozen order is still on the chart. Why?", a: "Flattening the position and removing a stuck working order are two different actions. Reconnect your session, then cancel the leftover order directly from the Tradovate Orders panel." },
+    { q: "Does reconnecting really clear frozen orders?", a: "Usually, yes. Logging out of all sessions and back in forces Tradovate to re-sync its view of your orders, which restores the ability to cancel them. If you use NinjaTrader, disconnecting and reconnecting the Tradovate connection does the same thing." },
+    { q: "Can trailing stops cause frozen orders?", a: "They can. A trailing stop that re-prices on every tick generates a steady stream of modify requests, and combined with manual dragging it can exhaust Tradovate's API limits and freeze order management until a cooldown passes." },
+    { q: "Will a frozen limit order still fill?", a: "Yes, that's the danger. A frozen order is still live on the exchange and can fill later in the session, which is why you should neutralize the position first and then cancel the order rather than leaving it." },
+    { q: "Is this a Tradovate bug or something I did?", a: "Both happen. Tradovate has shipped platform bugs (for example, in Market Replay) that froze order modification until patched, and outages stall the whole order layer. But rapid modifications, duplicate sessions, and clock or network problems are user-side triggers you can control." },
+    { q: "What if I can't manage a live position at all?", a: "For live-account emergencies where you've lost access, Tradovate's Emergency Trade Desk can flatten positions and cancel working orders. Keep their current contact details handy before you need them." },
+  ], de: [
+    { q: "Was bedeutet „Order can't be modified“ in Tradovate?", a: "Es bedeutet, dass Tradovate keine Bestätigung erhalten konnte, um eine aktive Order zu ändern oder zu stornieren, und sie deshalb nicht anfasst. Die Order ist an der Börse weiterhin aktiv, defekt ist die Verbindung, über die sie verwaltet wird." },
+    { q: "Wie schließe ich eine Position, wenn der Ausstiegs-Button nicht funktioniert?", a: "Platzieren Sie eine Market-Order in die entgegengesetzte Richtung mit derselben Stückzahl (verkaufen, um eine Long-Position zu schließen, kaufen, um eine Short-Position zu schließen). Eine Market-Order ist nicht darauf angewiesen, die eingefrorene Order zu ändern, und wird daher meist ausgeführt, selbst wenn Ziehen und Stornieren nicht funktionieren." },
+    { q: "Ich bin flat, aber die eingefrorene Order steht noch im Chart. Warum?", a: "Eine Position glattzustellen und eine festhängende aktive Order zu entfernen sind zwei verschiedene Aktionen. Verbinden Sie Ihre Sitzung neu und stornieren Sie dann die übrig gebliebene Order direkt im Tradovate-Orders-Panel." },
+    { q: "Löst eine erneute Verbindung eingefrorene Orders wirklich?", a: "In der Regel ja. Wenn Sie sich von allen Sitzungen abmelden und wieder anmelden, gleicht Tradovate seine Sicht auf Ihre Orders neu ab, wodurch Sie sie wieder stornieren können. Wenn Sie NinjaTrader verwenden, bewirkt das Trennen und erneute Verbinden der Tradovate-Verbindung dasselbe." },
+    { q: "Können Trailing-Stops eingefrorene Orders verursachen?", a: "Das ist möglich. Ein Trailing-Stop, der bei jedem Tick neu bepreist wird, erzeugt einen stetigen Strom von Änderungsanfragen, und zusammen mit manuellem Ziehen kann er die API-Limits von Tradovate ausschöpfen und die Orderverwaltung einfrieren, bis eine Abkühlphase vorüber ist." },
+    { q: "Wird eine eingefrorene Limit-Order trotzdem ausgeführt?", a: "Ja, das ist die Gefahr. Eine eingefrorene Order ist an der Börse weiterhin aktiv und kann später in der Sitzung ausgeführt werden. Deshalb sollten Sie zuerst die Position neutralisieren und dann die Order stornieren, statt sie liegen zu lassen." },
+    { q: "Ist das ein Tradovate-Fehler oder habe ich etwas falsch gemacht?", a: "Beides kommt vor. Tradovate hat Plattformfehler ausgeliefert (zum Beispiel in Market Replay), die die Orderänderung bis zu einem Patch einfroren, und Ausfälle legen die gesamte Orderebene lahm. Schnelle Änderungen, doppelte Sitzungen sowie Uhr- oder Netzwerkprobleme sind jedoch Auslöser auf Ihrer Seite, die Sie kontrollieren können." },
+    { q: "Was, wenn ich eine laufende Position gar nicht mehr verwalten kann?", a: "Bei Notfällen mit Live-Konten, in denen Sie den Zugriff verloren haben, kann der Emergency Trade Desk von Tradovate Positionen glattstellen und aktive Orders stornieren. Halten Sie die aktuellen Kontaktdaten bereit, bevor Sie sie brauchen." },
+  ], es: [
+    { q: "¿Qué significa «Order can't be modified» en Tradovate?", a: "Significa que Tradovate no pudo obtener una confirmación para modificar o cancelar una orden activa, por lo que se niega a tocarla. La orden sigue activa en la bolsa; lo que falla es la conexión para gestionarla." },
+    { q: "¿Cómo cierro una posición cuando el botón de salida no funciona?", a: "Coloque una orden de mercado en la dirección contraria por la misma cantidad (vender para cerrar un largo, comprar para cerrar un corto). Una orden de mercado no depende de modificar la orden congelada, por lo que normalmente se ejecuta aunque arrastrar y cancelar no funcionen." },
+    { q: "Cerré la posición pero la orden congelada sigue en el gráfico. ¿Por qué?", a: "Cerrar la posición y eliminar una orden activa atascada son dos acciones distintas. Vuelva a conectar su sesión y luego cancele la orden restante directamente desde el panel Orders de Tradovate." },
+    { q: "¿Volver a conectarse realmente libera las órdenes congeladas?", a: "Normalmente sí. Cerrar sesión en todas las sesiones y volver a iniciarla obliga a Tradovate a resincronizar su vista de sus órdenes, lo que restaura la capacidad de cancelarlas. Si usa NinjaTrader, desconectar y volver a conectar la conexión de Tradovate hace lo mismo." },
+    { q: "¿Pueden los trailing stops causar órdenes congeladas?", a: "Pueden. Un trailing stop que se reprecia en cada tick genera un flujo constante de solicitudes de modificación y, combinado con arrastres manuales, puede agotar los límites de la API de Tradovate y congelar la gestión de órdenes hasta que pase un período de enfriamiento." },
+    { q: "¿Una orden límite congelada todavía se ejecutará?", a: "Sí, ese es el peligro. Una orden congelada sigue activa en la bolsa y puede ejecutarse más tarde en la sesión, por lo que debe neutralizar primero la posición y después cancelar la orden en lugar de dejarla." },
+    { q: "¿Es un error de Tradovate o algo que hice yo?", a: "Ocurren ambos casos. Tradovate ha lanzado errores de plataforma (por ejemplo, en Market Replay) que congelaron la modificación de órdenes hasta que se corrigieron, y las caídas paralizan toda la capa de órdenes. Pero las modificaciones rápidas, las sesiones duplicadas y los problemas de reloj o de red son desencadenantes del lado del usuario que usted puede controlar." },
+    { q: "¿Qué hago si no puedo gestionar en absoluto una posición en vivo?", a: "Para emergencias en cuentas en vivo en las que ha perdido el acceso, el Emergency Trade Desk de Tradovate puede cerrar posiciones y cancelar órdenes activas. Tenga a mano sus datos de contacto actuales antes de necesitarlos." },
+  ], fr: [
+    { q: "Que signifie « Order can't be modified » dans Tradovate ?", a: "Cela signifie que Tradovate n'a pas pu obtenir d'accusé de réception pour modifier ou annuler un ordre actif, et qu'il refuse donc d'y toucher. L'ordre est toujours actif sur la bourse ; c'est la connexion permettant de le gérer qui est défaillante." },
+    { q: "Comment fermer une position lorsque le bouton de sortie ne fonctionne pas ?", a: "Placez un ordre au marché dans la direction opposée pour la même quantité (vendre pour fermer une position longue, acheter pour fermer une position courte). Un ordre au marché ne dépend pas de la modification de l'ordre figé ; il est donc généralement exécuté même lorsque le glissement et l'annulation ne fonctionnent pas." },
+    { q: "J'ai clôturé ma position mais l'ordre figé est toujours sur le graphique. Pourquoi ?", a: "Clôturer la position et supprimer un ordre actif bloqué sont deux actions différentes. Reconnectez votre session, puis annulez l'ordre restant directement depuis le panneau Orders de Tradovate." },
+    { q: "Se reconnecter débloque-t-il vraiment les ordres figés ?", a: "Généralement, oui. Se déconnecter de toutes les sessions puis se reconnecter oblige Tradovate à resynchroniser sa vue de vos ordres, ce qui rétablit la possibilité de les annuler. Si vous utilisez NinjaTrader, déconnecter puis reconnecter la connexion Tradovate produit le même effet." },
+    { q: "Les stops suiveurs peuvent-ils provoquer des ordres figés ?", a: "Oui. Un stop suiveur qui se repositionne à chaque tick génère un flux constant de demandes de modification et, combiné à des déplacements manuels, il peut épuiser les limites de l'API de Tradovate et figer la gestion des ordres jusqu'à la fin d'une période d'attente." },
+    { q: "Un ordre limite figé sera-t-il quand même exécuté ?", a: "Oui, c'est là le danger. Un ordre figé est toujours actif sur la bourse et peut être exécuté plus tard dans la séance ; c'est pourquoi vous devez d'abord neutraliser la position puis annuler l'ordre plutôt que de le laisser." },
+    { q: "Est-ce un bug de Tradovate ou quelque chose que j'ai fait ?", a: "Les deux existent. Tradovate a livré des bugs de plateforme (par exemple dans Market Replay) qui ont figé la modification des ordres jusqu'à un correctif, et les pannes bloquent toute la couche d'ordres. Mais les modifications rapides, les sessions en double et les problèmes d'horloge ou de réseau sont des déclencheurs côté utilisateur que vous pouvez maîtriser." },
+    { q: "Que faire si je ne peux plus du tout gérer une position en cours ?", a: "Pour les urgences sur compte réel où vous avez perdu l'accès, l'Emergency Trade Desk de Tradovate peut clôturer les positions et annuler les ordres actifs. Gardez leurs coordonnées actuelles à portée de main avant d'en avoir besoin." },
+  ], it: [
+    { q: "Cosa significa «Order can't be modified» in Tradovate?", a: "Significa che Tradovate non ha potuto ottenere una conferma per modificare o annullare un ordine attivo, quindi si rifiuta di toccarlo. L'ordine è ancora attivo sulla borsa; ciò che non funziona è la connessione per gestirlo." },
+    { q: "Come chiudo una posizione quando il pulsante di uscita non funziona?", a: "Inserisca un ordine a mercato nella direzione opposta per la stessa quantità (vendere per chiudere una long, comprare per chiudere una short). Un ordine a mercato non dipende dalla modifica dell'ordine bloccato, quindi di solito viene eseguito anche quando trascinamento e annullamento non funzionano." },
+    { q: "Sono flat ma l'ordine bloccato è ancora sul grafico. Perché?", a: "Chiudere la posizione e rimuovere un ordine attivo bloccato sono due azioni diverse. Riconnetta la Sua sessione, poi annulli l'ordine residuo direttamente dal pannello Orders di Tradovate." },
+    { q: "La riconnessione sblocca davvero gli ordini bloccati?", a: "Di solito sì. Disconnettersi da tutte le sessioni e riconnettersi costringe Tradovate a risincronizzare la propria visione dei Suoi ordini, il che ripristina la possibilità di annullarli. Se usa NinjaTrader, disconnettere e riconnettere la connessione Tradovate ottiene lo stesso risultato." },
+    { q: "I trailing stop possono causare ordini bloccati?", a: "Possono. Un trailing stop che si riprezza a ogni tick genera un flusso costante di richieste di modifica e, combinato con il trascinamento manuale, può esaurire i limiti dell'API di Tradovate e bloccare la gestione degli ordini finché non passa un periodo di attesa." },
+    { q: "Un ordine limit bloccato verrà comunque eseguito?", a: "Sì, questo è il pericolo. Un ordine bloccato è ancora attivo sulla borsa e può essere eseguito più tardi nella sessione, ed è per questo che dovrebbe prima neutralizzare la posizione e poi annullare l'ordine invece di lasciarlo lì." },
+    { q: "È un bug di Tradovate o qualcosa che ho fatto io?", a: "Capitano entrambi i casi. Tradovate ha rilasciato bug di piattaforma (ad esempio in Market Replay) che bloccavano la modifica degli ordini fino alla correzione, e le interruzioni bloccano l'intero livello degli ordini. Ma modifiche rapide, sessioni duplicate e problemi di orologio o di rete sono fattori scatenanti lato utente che può controllare." },
+    { q: "E se non riesco a gestire affatto una posizione live?", a: "Per le emergenze su conti live in cui ha perso l'accesso, l'Emergency Trade Desk di Tradovate può chiudere le posizioni e annullare gli ordini attivi. Tenga a portata di mano i loro recapiti aggiornati prima di averne bisogno." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich zu Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von diesem unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que confirme siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins strictement éducatives et informatives et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. La négociation de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par celle-ci. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo didattico e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né da essa approvata o sponsorizzata. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

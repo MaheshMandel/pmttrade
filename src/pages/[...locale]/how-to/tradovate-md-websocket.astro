@@ -1,0 +1,325 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-md-websocket";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Subscribe to Market Data Over the Tradovate API";
+const META_DESCRIPTION =
+  "Open the Tradovate market data WebSocket, authorize it, and stream live quotes with md/subscribeQuote, a step-by-step API guide with the gotchas.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Marktdaten über die Tradovate-API abonnieren", es: "Suscríbase a datos de mercado a través de la API de Tradovate", fr: "S’abonner aux données de marché via l’API Tradovate", it: "Abbonarsi ai dati di mercato tramite l’API di Tradovate" },
+  dek: { en: "Want live bids, offers, and trades streaming into your own code? Here's the exact path from access token to a running quote stream, plus the two mistakes that trip up almost everyone.", de: "Möchten Sie Live-Bids, -Offers und -Trades in Ihren eigenen Code streamen? Hier ist der genaue Weg vom Access-Token zum laufenden Quote-Stream, plus die zwei Fehler, über die fast jeder stolpert.", es: "¿Quiere recibir bids, offers y operaciones en vivo directamente en su propio código? Este es el camino exacto desde el token de acceso hasta un flujo de cotizaciones en marcha, más los dos errores que hacen tropezar a casi todos.", fr: "Vous voulez recevoir des bids, des offers et des transactions en direct dans votre propre code ? Voici le chemin exact entre le jeton d’accès et un flux de cotations opérationnel, ainsi que les deux erreurs qui piègent presque tout le monde.", it: "Vuole ricevere bid, offer e operazioni in tempo reale nel suo codice? Ecco il percorso esatto dal token di accesso a un flusso di quotazioni attivo, più i due errori che fanno inciampare quasi tutti." },
+  readTime: { en: "6 min read", de: "6 Min. Lesezeit", es: "Lectura de 6 min", fr: "Lecture : 6 min", it: "Lettura di 6 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Want live bids, offers, and trades streaming into your own code instead of the Trader app? Tradovate hands them over through a WebSocket, but not the one most people try first. Get the endpoint wrong and every subscription comes back as a cryptic <code>Not found: md/subscribeQuote</code>. Here's the exact path from access token to a running quote stream, plus the two mistakes that trip up almost everyone." },
+    { type: "heading", text: "Why a Separate Market Data Socket?" },
+    { type: "paragraph", html: "Tradovate splits its real-time traffic across two WebSockets. One carries your account and order events; the other carries market data, quotes, DOM depth, charts, and histograms. They speak the same frame protocol, but they live on different hosts. Market data endpoints like <code>md/subscribeQuote</code> only exist on the market data socket, so if you send that request to the account socket you get a \"not found\" error even though your token is perfectly valid." },
+    { type: "heading", text: "Before You Start" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>API access enabled</strong>, the API Access add-on has to be turned on for your login.",
+        "<strong class='text-white'>An access token</strong>, you'll pull one in Step 1.",
+        "<strong class='text-white'>A live market-data entitlement</strong>, real-time API data requires a CME market-data subscription (you become a registered sub-vendor). The fee runs a few hundred dollars a month, so check Tradovate's current rate before you commit. Without it, you'll still connect, you just get a <code>Symbol is inaccessible</code> reply.",
+      ],
+    },
+    { type: "heading", text: "Subscribe to Tradovate Market Data: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Get an Access Token", html: "POST your credentials to <code>auth/accessTokenRequest</code>. The response hands back an <code>accessToken</code> (and an <code>mdAccessToken</code>) along with an expiration time. Keep that token, the market data socket authorizes with the same access token you'd use on the REST API. If the request fails outright, confirm the API Access add-on is actually enabled on your account first." },
+        { title: "Open the Market Data WebSocket", html: "Point your WebSocket client at the market data host, not the account host. The moment your market data connection opens, the server sends a single <code>o</code> frame. That's your cue to authorize." },
+        { title: "Authorize the Socket", html: "Every request over the socket is a plain text frame with four fields separated by newline characters: the endpoint, a unique integer request id, an optional query string, and an optional body. To authorize, the endpoint is <code>authorize</code> and the body is your token. The server answers with an <code>a</code> frame containing a <code>200</code> status. Once you see it, the socket is live." },
+        { title: "Subscribe With md/subscribeQuote", html: "Now send the subscription. Same four-field frame, the endpoint is <code>md/subscribeQuote</code> and the body names the contract. Use the current front-month contract (swap <code>ESU6</code> for whatever's active when you run this), or pass a numeric <code>contractId</code> instead of the symbol string. One catch: subscribe to a single symbol per request. To watch several instruments, fire <code>md/subscribeQuote</code> again with a new request id for each one, the same connection handles all of them." },
+        { title: "Read the Quotes and Keep Heartbeats Alive", html: "Quotes now stream in as <code>a</code> frames wrapping a <code>md</code> event. Each quote object carries a <code>timestamp</code>, a <code>contractId</code>, and an <code>entries</code> map with <code>Bid</code>, <code>Offer</code>, and <code>Trade</code>, each holding a <code>price</code> and <code>size</code>. One thing you can't skip: heartbeats. Send an empty-array frame, literally <code>[]</code>, every 2.5 seconds, or the server closes the connection for inactivity and your quotes stop cold. When you're done with a feed, send <code>md/unsubscribeQuote</code> with the same symbol to shut it off." },
+      ],
+    },
+    { type: "table", headers: ["Environment", "Market data URL"], rows: [
+      ["Demo / simulated", "<code>wss://md-demo.tradovateapi.com/v1/websocket</code>"],
+      ["Live / funded", "<code>wss://md.tradovateapi.com/v1/websocket</code>"],
+    ] },
+    { type: "paragraph", html: "For reference, the account socket lives at <code>wss://demo.tradovateapi.com/v1/websocket</code> and <code>wss://live.tradovateapi.com/v1/websocket</code>, different hostnames entirely." },
+    { type: "quote", html: "<code>authorize<br>1<br><br>YOUR_ACCESS_TOKEN</code>" },
+    { type: "paragraph", html: "That's <code>authorize</code>, then <code>1</code>, then an empty query line, then the token, each on its own line." },
+    { type: "quote", html: "<code>md/subscribeQuote<br>2<br><br>{\"symbol\":\"ESU6\"}</code>" },
+    { type: "quote", html: "<code>{\"e\":\"md\",\"d\":{\"quotes\":[{\"contractId\":123456,\"entries\":{\"Bid\":{\"price\":5602.25,\"size\":18},\"Offer\":{\"price\":5602.50,\"size\":24},\"Trade\":{\"price\":5602.25,\"size\":3}}}]}}</code>" },
+    { type: "heading", text: "Common Gotchas" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>\"Not found: md/subscribeQuote\"</strong>, you're on the account socket. Reconnect to the <code>md-demo</code> / <code>md</code> host from Step 2.",
+        "<strong class='text-white'>\"Symbol is inaccessible\"</strong>, your login lacks a real-time data agreement for that product, or the symbol isn't a valid front-month contract.",
+        "<strong class='text-white'>Feed goes silent after a few seconds</strong>, you stopped sending <code>[]</code> heartbeats. Put them on a 2.5-second timer that runs for the life of the socket.",
+      ],
+    },
+    { type: "heading", text: "Skip the Plumbing With PickMyTrade" },
+    { type: "paragraph", html: "Standing up a market data socket, token refresh, heartbeats, reconnect logic, the CME data license, is real work before you've placed a single order. If your goal is just to automate entries and exits from your strategy, <strong class='text-white'>PickMyTrade wires your TradingView alerts straight to Tradovate</strong>. No WebSocket to babysit." },
+  ], de: [
+    { type: "paragraph",html: "Möchten Sie Live-Bids, -Offers und -Trades in Ihren eigenen Code streamen statt in die Trader-App? Tradovate liefert sie über einen WebSocket, aber nicht über den, den die meisten zuerst versuchen. Ist der Endpunkt falsch, kommt jedes Abonnement als kryptisches <code>Not found: md/subscribeQuote</code> zurück. Hier ist der genaue Weg vom Access-Token zum laufenden Quote-Stream, plus die zwei Fehler, über die fast jeder stolpert." },
+    { type: "heading",text: "Warum ein separater Marktdaten-Socket?" },
+    { type: "paragraph",html: "Tradovate teilt seinen Echtzeit-Datenverkehr auf zwei WebSockets auf. Einer überträgt Ihre Konto- und Order-Ereignisse, der andere Marktdaten, Quotes, DOM-Tiefe, Charts und Histogramme. Sie sprechen dasselbe Frame-Protokoll, liegen aber auf verschiedenen Hosts. Marktdaten-Endpunkte wie <code>md/subscribeQuote</code> existieren nur auf dem Marktdaten-Socket. Senden Sie diese Anfrage also an den Konto-Socket, erhalten Sie einen „Not found“-Fehler, obwohl Ihr Token völlig gültig ist." },
+    { type: "heading",text: "Bevor Sie beginnen" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>API-Zugang aktiviert</strong>, das API-Access-Add-on muss für Ihr Login eingeschaltet sein.",
+        "<strong class='text-white'>Ein Access-Token</strong>, das Sie in Schritt 1 abrufen.",
+        "<strong class='text-white'>Eine Live-Marktdaten-Berechtigung</strong>, Echtzeit-API-Daten erfordern ein CME-Marktdatenabonnement (Sie werden registrierter Sub-Vendor). Die Gebühr beträgt einige hundert Dollar im Monat, prüfen Sie also Tradovates aktuellen Tarif, bevor Sie sich festlegen. Ohne sie verbinden Sie sich zwar, erhalten aber nur die Antwort <code>Symbol is inaccessible</code>.",
+      ],
+    },
+    { type: "heading",text: "Tradovate-Marktdaten abonnieren: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ein Access-Token abrufen", html: "Senden Sie Ihre Zugangsdaten per POST an <code>auth/accessTokenRequest</code>. Die Antwort liefert ein <code>accessToken</code> (und ein <code>mdAccessToken</code>) samt Ablaufzeit. Bewahren Sie dieses Token auf, denn der Marktdaten-Socket autorisiert sich mit demselben Access-Token wie die REST-API. Schlägt die Anfrage komplett fehl, prüfen Sie zuerst, ob das API-Access-Add-on in Ihrem Konto tatsächlich aktiviert ist." },
+        { title: "Den Marktdaten-WebSocket öffnen", html: "Richten Sie Ihren WebSocket-Client auf den Marktdaten-Host, nicht auf den Konto-Host. Sobald Ihre Marktdatenverbindung offen ist, sendet der Server einen einzelnen <code>o</code>-Frame. Das ist Ihr Stichwort zur Autorisierung." },
+        { title: "Den Socket autorisieren", html: "Jede Anfrage über den Socket ist ein einfacher Text-Frame mit vier durch Zeilenumbrüche getrennten Feldern: dem Endpunkt, einer eindeutigen ganzzahligen Request-ID, einem optionalen Query-String und einem optionalen Body. Zur Autorisierung ist der Endpunkt <code>authorize</code> und der Body Ihr Token. Der Server antwortet mit einem <code>a</code>-Frame mit dem Status <code>200</code>. Sobald Sie ihn sehen, ist der Socket aktiv." },
+        { title: "Mit md/subscribeQuote abonnieren", html: "Senden Sie nun das Abonnement. Derselbe Vier-Felder-Frame: Der Endpunkt ist <code>md/subscribeQuote</code> und der Body benennt den Kontrakt. Verwenden Sie den aktuellen Front-Month-Kontrakt (ersetzen Sie <code>ESU6</code> durch den, der gerade aktiv ist) oder übergeben Sie statt des Symbol-Strings eine numerische <code>contractId</code>. Ein Haken: Abonnieren Sie pro Anfrage nur ein Symbol. Um mehrere Instrumente zu beobachten, senden Sie <code>md/subscribeQuote</code> für jedes erneut mit neuer Request-ID; dieselbe Verbindung bedient alle." },
+        { title: "Quotes lesen und Heartbeats am Leben halten", html: "Quotes treffen nun als <code>a</code>-Frames ein, die ein <code>md</code>-Ereignis umschließen. Jedes Quote-Objekt enthält einen <code>timestamp</code>, eine <code>contractId</code> und eine <code>entries</code>-Map mit <code>Bid</code>, <code>Offer</code> und <code>Trade</code>, jeweils mit <code>price</code> und <code>size</code>. Eines dürfen Sie nicht auslassen: Heartbeats. Senden Sie alle 2,5 Sekunden einen Frame mit leerem Array, buchstäblich <code>[]</code>, sonst schließt der Server die Verbindung wegen Inaktivität und Ihre Quotes versiegen schlagartig. Wenn Sie einen Feed nicht mehr brauchen, senden Sie <code>md/unsubscribeQuote</code> mit demselben Symbol, um ihn abzuschalten." },
+      ],
+    },
+    { type: "table", headers: ["Umgebung","Marktdaten-URL"], rows: [
+      ["Demo / simuliert","<code>wss://md-demo.tradovateapi.com/v1/websocket</code>"],
+      ["Live / finanziert","<code>wss://md.tradovateapi.com/v1/websocket</code>"],
+    ] },
+    { type: "paragraph",html: "Zur Orientierung: Der Konto-Socket liegt unter <code>wss://demo.tradovateapi.com/v1/websocket</code> und <code>wss://live.tradovateapi.com/v1/websocket</code>, also auf völlig anderen Hostnamen." },
+    { type: "quote",html: "<code>authorize<br>1<br><br>YOUR_ACCESS_TOKEN</code>" },
+    { type: "paragraph",html: "Das ist <code>authorize</code>, dann <code>1</code>, dann eine leere Query-Zeile, dann das Token, jeweils in einer eigenen Zeile." },
+    { type: "quote",html: "<code>md/subscribeQuote<br>2<br><br>{\"symbol\":\"ESU6\"}</code>" },
+    { type: "quote",html: "<code>{\"e\":\"md\",\"d\":{\"quotes\":[{\"contractId\":123456,\"entries\":{\"Bid\":{\"price\":5602.25,\"size\":18},\"Offer\":{\"price\":5602.50,\"size\":24},\"Trade\":{\"price\":5602.25,\"size\":3}}}]}}</code>" },
+    { type: "heading",text: "Häufige Stolperfallen" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>\"Not found: md/subscribeQuote\"</strong>, Sie befinden sich auf dem Konto-Socket. Verbinden Sie sich erneut mit dem Host <code>md-demo</code> / <code>md</code> aus Schritt 2.",
+        "<strong class='text-white'>\"Symbol is inaccessible\"</strong>, Ihrem Login fehlt eine Echtzeitdaten-Vereinbarung für dieses Produkt, oder das Symbol ist kein gültiger Front-Month-Kontrakt.",
+        "<strong class='text-white'>Der Feed verstummt nach wenigen Sekunden</strong>, Sie haben keine <code>[]</code>-Heartbeats mehr gesendet. Legen Sie sie auf einen 2,5-Sekunden-Timer, der für die gesamte Lebensdauer des Sockets läuft.",
+      ],
+    },
+    { type: "heading",text: "Sparen Sie sich die Installation mit PickMyTrade" },
+    { type: "paragraph",html: "Einen Marktdaten-Socket aufzusetzen, Token-Refresh, Heartbeats, Reconnect-Logik und die CME-Datenlizenz, ist echte Arbeit, noch bevor Sie eine einzige Order platziert haben. Wenn Ihr Ziel nur ist, Ein- und Ausstiege Ihrer Strategie zu automatisieren, <strong class='text-white'>verbindet PickMyTrade Ihre TradingView-Alerts direkt mit Tradovate</strong>. Kein WebSocket, um den Sie sich kümmern müssen." },
+  ], es: [
+    { type: "paragraph",html: "¿Quiere recibir bids, offers y operaciones en vivo directamente en su propio código en lugar de en la aplicación Trader? Tradovate se los entrega mediante un WebSocket, pero no el que la mayoría prueba primero. Si se equivoca de endpoint, cada suscripción devuelve un críptico <code>Not found: md/subscribeQuote</code>. Este es el camino exacto desde el token de acceso hasta un flujo de cotizaciones en marcha, más los dos errores que hacen tropezar a casi todos." },
+    { type: "heading",text: "¿Por qué un socket de datos de mercado separado?" },
+    { type: "paragraph",html: "Tradovate divide su tráfico en tiempo real entre dos WebSockets. Uno transporta los eventos de su cuenta y de sus órdenes; el otro transporta datos de mercado, cotizaciones, profundidad del DOM, gráficos e histogramas. Hablan el mismo protocolo de tramas, pero residen en hosts distintos. Los endpoints de datos de mercado como <code>md/subscribeQuote</code> solo existen en el socket de datos de mercado, así que, si envía esa solicitud al socket de la cuenta, recibe un error de «not found» aunque su token sea perfectamente válido." },
+    { type: "heading",text: "Antes de empezar" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Acceso a la API habilitado</strong>, el complemento API Access debe estar activado para su inicio de sesión.",
+        "<strong class='text-white'>Un token de acceso</strong>, lo obtendrá en el Paso 1.",
+        "<strong class='text-white'>Un derecho de datos de mercado en vivo</strong>, los datos de API en tiempo real requieren una suscripción de datos de mercado de CME (usted se convierte en sub-vendor registrado). La tarifa ronda unos cientos de dólares al mes, así que consulte la tarifa vigente de Tradovate antes de comprometerse. Sin ella, igualmente se conectará, pero recibirá la respuesta <code>Symbol is inaccessible</code>.",
+      ],
+    },
+    { type: "heading",text: "Suscribirse a los datos de mercado de Tradovate: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Obtenga un token de acceso", html: "Envíe sus credenciales mediante POST a <code>auth/accessTokenRequest</code>. La respuesta devuelve un <code>accessToken</code> (y un <code>mdAccessToken</code>) junto con una hora de expiración. Conserve ese token: el socket de datos de mercado se autoriza con el mismo token de acceso que usaría en la API REST. Si la solicitud falla por completo, confirme primero que el complemento API Access esté realmente habilitado en su cuenta." },
+        { title: "Abra el WebSocket de datos de mercado", html: "Apunte su cliente WebSocket al host de datos de mercado, no al host de la cuenta. En cuanto se abre su conexión de datos de mercado, el servidor envía una única trama <code>o</code>. Esa es su señal para autorizar." },
+        { title: "Autorice el socket", html: "Cada solicitud por el socket es una trama de texto plano con cuatro campos separados por saltos de línea: el endpoint, un id de solicitud entero único, una cadena de consulta opcional y un cuerpo opcional. Para autorizar, el endpoint es <code>authorize</code> y el cuerpo es su token. El servidor responde con una trama <code>a</code> que contiene un estado <code>200</code>. Cuando la vea, el socket está activo." },
+        { title: "Suscríbase con md/subscribeQuote", html: "Ahora envíe la suscripción. La misma trama de cuatro campos: el endpoint es <code>md/subscribeQuote</code> y el cuerpo nombra el contrato. Use el contrato vigente del mes frontal (cambie <code>ESU6</code> por el que esté activo cuando lo ejecute), o pase un <code>contractId</code> numérico en lugar de la cadena del símbolo. Un detalle: suscríbase a un solo símbolo por solicitud. Para vigilar varios instrumentos, envíe <code>md/subscribeQuote</code> de nuevo con un nuevo id de solicitud para cada uno; la misma conexión los atiende a todos." },
+        { title: "Lea las cotizaciones y mantenga los heartbeats", html: "Las cotizaciones llegan ahora como tramas <code>a</code> que envuelven un evento <code>md</code>. Cada objeto de cotización incluye un <code>timestamp</code>, un <code>contractId</code> y un mapa <code>entries</code> con <code>Bid</code>, <code>Offer</code> y <code>Trade</code>, cada uno con un <code>price</code> y un <code>size</code>. Hay algo que no puede omitir: los heartbeats. Envíe una trama con un array vacío, literalmente <code>[]</code>, cada 2,5 segundos, o el servidor cerrará la conexión por inactividad y sus cotizaciones se detendrán en seco. Cuando termine con un feed, envíe <code>md/unsubscribeQuote</code> con el mismo símbolo para apagarlo." },
+      ],
+    },
+    { type: "table", headers: ["Entorno","URL de datos de mercado"], rows: [
+      ["Demo / simulado","<code>wss://md-demo.tradovateapi.com/v1/websocket</code>"],
+      ["En vivo / fondeado","<code>wss://md.tradovateapi.com/v1/websocket</code>"],
+    ] },
+    { type: "paragraph",html: "Como referencia, el socket de la cuenta está en <code>wss://demo.tradovateapi.com/v1/websocket</code> y <code>wss://live.tradovateapi.com/v1/websocket</code>, nombres de host totalmente distintos." },
+    { type: "quote",html: "<code>authorize<br>1<br><br>YOUR_ACCESS_TOKEN</code>" },
+    { type: "paragraph",html: "Es decir: <code>authorize</code>, luego <code>1</code>, luego una línea de consulta vacía y después el token, cada uno en su propia línea." },
+    { type: "quote",html: "<code>md/subscribeQuote<br>2<br><br>{\"symbol\":\"ESU6\"}</code>" },
+    { type: "quote",html: "<code>{\"e\":\"md\",\"d\":{\"quotes\":[{\"contractId\":123456,\"entries\":{\"Bid\":{\"price\":5602.25,\"size\":18},\"Offer\":{\"price\":5602.50,\"size\":24},\"Trade\":{\"price\":5602.25,\"size\":3}}}]}}</code>" },
+    { type: "heading",text: "Problemas habituales" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>\"Not found: md/subscribeQuote\"</strong>, está en el socket de la cuenta. Vuelva a conectarse al host <code>md-demo</code> / <code>md</code> del Paso 2.",
+        "<strong class='text-white'>\"Symbol is inaccessible\"</strong>, su inicio de sesión no tiene un acuerdo de datos en tiempo real para ese producto, o el símbolo no es un contrato válido del mes frontal.",
+        "<strong class='text-white'>El feed se silencia tras unos segundos</strong>, dejó de enviar los heartbeats <code>[]</code>. Póngalos en un temporizador de 2,5 segundos que se ejecute durante toda la vida del socket.",
+      ],
+    },
+    { type: "heading",text: "Olvídese de la infraestructura con PickMyTrade" },
+    { type: "paragraph",html: "Montar un socket de datos de mercado, renovación de tokens, heartbeats, lógica de reconexión y la licencia de datos de CME es trabajo de verdad antes de haber colocado una sola orden. Si su objetivo es simplemente automatizar las entradas y salidas de su estrategia, <strong class='text-white'>PickMyTrade conecta sus alertas de TradingView directamente con Tradovate</strong>. Sin ningún WebSocket que vigilar." },
+  ], fr: [
+    { type: "paragraph",html: "Vous voulez recevoir des bids, des offers et des transactions en direct dans votre propre code plutôt que dans l’application Trader ? Tradovate les fournit via un WebSocket, mais pas celui que la plupart essaient en premier. Si vous vous trompez de point d’accès, chaque abonnement renvoie un énigmatique <code>Not found: md/subscribeQuote</code>. Voici le chemin exact entre le jeton d’accès et un flux de cotations opérationnel, ainsi que les deux erreurs qui piègent presque tout le monde." },
+    { type: "heading",text: "Pourquoi un socket de données de marché distinct ?" },
+    { type: "paragraph",html: "Tradovate répartit son trafic en temps réel sur deux WebSockets. L’un transporte les événements de votre compte et de vos ordres ; l’autre les données de marché, cotations, profondeur du DOM, graphiques et histogrammes. Ils parlent le même protocole de trames, mais résident sur des hôtes différents. Les points d’accès de données de marché comme <code>md/subscribeQuote</code> n’existent que sur le socket de données de marché ; si vous envoyez cette requête au socket du compte, vous obtenez une erreur « not found » même si votre jeton est parfaitement valide." },
+    { type: "heading",text: "Avant de commencer" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Accès API activé</strong>, le module complémentaire API Access doit être activé pour votre identifiant.",
+        "<strong class='text-white'>Un jeton d’accès</strong>, vous en obtiendrez un à l’étape 1.",
+        "<strong class='text-white'>Une habilitation aux données de marché en direct</strong>, les données API en temps réel nécessitent un abonnement aux données de marché du CME (vous devenez sous-fournisseur enregistré). Les frais s’élèvent à quelques centaines de dollars par mois ; vérifiez donc le tarif actuel de Tradovate avant de vous engager. Sans cela, vous vous connecterez quand même, mais vous obtiendrez une réponse <code>Symbol is inaccessible</code>.",
+      ],
+    },
+    { type: "heading",text: "S’abonner aux données de marché Tradovate : pas à pas" },
+    {
+      type: "steps",
+      items: [
+        { title: "Obtenir un jeton d’accès", html: "Envoyez vos identifiants en POST à <code>auth/accessTokenRequest</code>. La réponse renvoie un <code>accessToken</code> (et un <code>mdAccessToken</code>) ainsi qu’une heure d’expiration. Conservez ce jeton : le socket de données de marché s’autorise avec le même jeton d’accès que celui utilisé sur l’API REST. Si la requête échoue complètement, vérifiez d’abord que le module complémentaire API Access est bien activé sur votre compte." },
+        { title: "Ouvrir le WebSocket de données de marché", html: "Pointez votre client WebSocket vers l’hôte de données de marché, et non vers l’hôte du compte. Dès que votre connexion de données de marché s’ouvre, le serveur envoie une unique trame <code>o</code>. C’est votre signal pour vous autoriser." },
+        { title: "Autoriser le socket", html: "Chaque requête sur le socket est une trame de texte brut composée de quatre champs séparés par des sauts de ligne : le point d’accès, un identifiant de requête entier unique, une chaîne de requête facultative et un corps facultatif. Pour vous autoriser, le point d’accès est <code>authorize</code> et le corps est votre jeton. Le serveur répond par une trame <code>a</code> contenant un statut <code>200</code>. Dès que vous la voyez, le socket est actif." },
+        { title: "S’abonner avec md/subscribeQuote", html: "Envoyez maintenant l’abonnement. La même trame à quatre champs : le point d’accès est <code>md/subscribeQuote</code> et le corps désigne le contrat. Utilisez le contrat du mois en cours (remplacez <code>ESU6</code> par celui qui est actif au moment de l’exécution), ou transmettez un <code>contractId</code> numérique à la place de la chaîne du symbole. Un point d’attention : abonnez-vous à un seul symbole par requête. Pour suivre plusieurs instruments, renvoyez <code>md/subscribeQuote</code> avec un nouvel identifiant de requête pour chacun ; la même connexion les gère tous." },
+        { title: "Lire les cotations et maintenir les heartbeats", html: "Les cotations arrivent désormais sous forme de trames <code>a</code> encapsulant un événement <code>md</code>. Chaque objet de cotation contient un <code>timestamp</code>, un <code>contractId</code> et une map <code>entries</code> avec <code>Bid</code>, <code>Offer</code> et <code>Trade</code>, chacun contenant un <code>price</code> et un <code>size</code>. Une chose à ne pas négliger : les heartbeats. Envoyez une trame avec un tableau vide, littéralement <code>[]</code>, toutes les 2,5 secondes, sinon le serveur ferme la connexion pour inactivité et vos cotations s’arrêtent net. Lorsque vous en avez fini avec un flux, envoyez <code>md/unsubscribeQuote</code> avec le même symbole pour l’interrompre." },
+      ],
+    },
+    { type: "table", headers: ["Environnement","URL des données de marché"], rows: [
+      ["Démo / simulé","<code>wss://md-demo.tradovateapi.com/v1/websocket</code>"],
+      ["Réel / financé","<code>wss://md.tradovateapi.com/v1/websocket</code>"],
+    ] },
+    { type: "paragraph",html: "À titre de référence, le socket du compte se trouve à <code>wss://demo.tradovateapi.com/v1/websocket</code> et <code>wss://live.tradovateapi.com/v1/websocket</code>, des noms d’hôte entièrement différents." },
+    { type: "quote",html: "<code>authorize<br>1<br><br>YOUR_ACCESS_TOKEN</code>" },
+    { type: "paragraph",html: "C’est-à-dire <code>authorize</code>, puis <code>1</code>, puis une ligne de requête vide, puis le jeton, chacun sur sa propre ligne." },
+    { type: "quote",html: "<code>md/subscribeQuote<br>2<br><br>{\"symbol\":\"ESU6\"}</code>" },
+    { type: "quote",html: "<code>{\"e\":\"md\",\"d\":{\"quotes\":[{\"contractId\":123456,\"entries\":{\"Bid\":{\"price\":5602.25,\"size\":18},\"Offer\":{\"price\":5602.50,\"size\":24},\"Trade\":{\"price\":5602.25,\"size\":3}}}]}}</code>" },
+    { type: "heading",text: "Pièges courants" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>\"Not found: md/subscribeQuote\"</strong>, vous êtes sur le socket du compte. Reconnectez-vous à l’hôte <code>md-demo</code> / <code>md</code> de l’étape 2.",
+        "<strong class='text-white'>\"Symbol is inaccessible\"</strong>, votre identifiant n’a pas d’accord de données en temps réel pour ce produit, ou le symbole n’est pas un contrat valide du mois en cours.",
+        "<strong class='text-white'>Le flux devient silencieux après quelques secondes</strong>, vous avez cessé d’envoyer les heartbeats <code>[]</code>. Placez-les sur un minuteur de 2,5 secondes qui tourne pendant toute la durée de vie du socket.",
+      ],
+    },
+    { type: "heading",text: "Évitez la plomberie avec PickMyTrade" },
+    { type: "paragraph",html: "Mettre en place un socket de données de marché, le renouvellement des jetons, les heartbeats, la logique de reconnexion et la licence de données du CME représente un vrai travail avant même d’avoir passé le moindre ordre. Si votre objectif est simplement d’automatiser les entrées et sorties de votre stratégie, <strong class='text-white'>PickMyTrade relie vos alertes TradingView directement à Tradovate</strong>. Aucun WebSocket à surveiller." },
+  ], it: [
+    { type: "paragraph",html: "Vuole ricevere bid, offer e operazioni in tempo reale nel suo codice anziché nell’app Trader? Tradovate li fornisce tramite un WebSocket, ma non quello che la maggior parte prova per primo. Se sbaglia endpoint, ogni sottoscrizione restituisce un criptico <code>Not found: md/subscribeQuote</code>. Ecco il percorso esatto dal token di accesso a un flusso di quotazioni attivo, più i due errori che fanno inciampare quasi tutti." },
+    { type: "heading",text: "Perché un socket dati di mercato separato?" },
+    { type: "paragraph",html: "Tradovate suddivide il suo traffico in tempo reale su due WebSocket. Uno trasporta gli eventi del suo conto e dei suoi ordini; l’altro trasporta i dati di mercato, quotazioni, profondità del DOM, grafici e istogrammi. Parlano lo stesso protocollo di frame, ma risiedono su host diversi. Gli endpoint dei dati di mercato come <code>md/subscribeQuote</code> esistono solo sul socket dei dati di mercato, quindi, se invia quella richiesta al socket del conto, riceve un errore «not found» anche se il suo token è perfettamente valido." },
+    { type: "heading",text: "Prima di iniziare" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Accesso API abilitato</strong>, il componente aggiuntivo API Access deve essere attivo per il suo login.",
+        "<strong class='text-white'>Un token di accesso</strong>, lo otterrà al Passaggio 1.",
+        "<strong class='text-white'>Un’abilitazione ai dati di mercato in tempo reale</strong>, i dati API in tempo reale richiedono un abbonamento ai dati di mercato CME (diventa sub-vendor registrato). La tariffa è di alcune centinaia di dollari al mese, quindi controlli la tariffa attuale di Tradovate prima di impegnarsi. Senza di essa si collegherà comunque, ma riceverà una risposta <code>Symbol is inaccessible</code>.",
+      ],
+    },
+    { type: "heading",text: "Abbonarsi ai dati di mercato di Tradovate: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ottenere un token di accesso", html: "Invii le sue credenziali con POST a <code>auth/accessTokenRequest</code>. La risposta restituisce un <code>accessToken</code> (e un <code>mdAccessToken</code>) insieme a un orario di scadenza. Conservi quel token: il socket dei dati di mercato si autorizza con lo stesso token di accesso usato sull’API REST. Se la richiesta fallisce del tutto, verifichi prima che il componente aggiuntivo API Access sia effettivamente abilitato sul suo conto." },
+        { title: "Aprire il WebSocket dei dati di mercato", html: "Punti il suo client WebSocket all’host dei dati di mercato, non all’host del conto. Nel momento in cui la connessione ai dati di mercato si apre, il server invia un singolo frame <code>o</code>. È il suo segnale per autorizzarsi." },
+        { title: "Autorizzare il socket", html: "Ogni richiesta sul socket è un frame di testo semplice con quattro campi separati da ritorni a capo: l’endpoint, un id di richiesta intero univoco, una query string facoltativa e un body facoltativo. Per autorizzare, l’endpoint è <code>authorize</code> e il body è il suo token. Il server risponde con un frame <code>a</code> contenente uno stato <code>200</code>. Una volta visto, il socket è attivo." },
+        { title: "Sottoscrivere con md/subscribeQuote", html: "Ora invii la sottoscrizione. Lo stesso frame a quattro campi: l’endpoint è <code>md/subscribeQuote</code> e il body indica il contratto. Utilizzi il contratto attuale del mese frontale (sostituisca <code>ESU6</code> con quello attivo quando lo esegue), oppure passi un <code>contractId</code> numerico al posto della stringa del simbolo. Un’avvertenza: si sottoscriva a un solo simbolo per richiesta. Per seguire più strumenti, invii di nuovo <code>md/subscribeQuote</code> con un nuovo id di richiesta per ciascuno; la stessa connessione li gestisce tutti." },
+        { title: "Leggere le quotazioni e mantenere attivi gli heartbeat", html: "Le quotazioni arrivano ora come frame <code>a</code> che racchiudono un evento <code>md</code>. Ogni oggetto quotazione contiene un <code>timestamp</code>, un <code>contractId</code> e una mappa <code>entries</code> con <code>Bid</code>, <code>Offer</code> e <code>Trade</code>, ciascuno con un <code>price</code> e un <code>size</code>. C’è una cosa che non può saltare: gli heartbeat. Invii un frame con un array vuoto, letteralmente <code>[]</code>, ogni 2,5 secondi, altrimenti il server chiude la connessione per inattività e le quotazioni si fermano di colpo. Quando ha finito con un feed, invii <code>md/unsubscribeQuote</code> con lo stesso simbolo per spegnerlo." },
+      ],
+    },
+    { type: "table", headers: ["Ambiente","URL dei dati di mercato"], rows: [
+      ["Demo / simulato","<code>wss://md-demo.tradovateapi.com/v1/websocket</code>"],
+      ["Live / finanziato","<code>wss://md.tradovateapi.com/v1/websocket</code>"],
+    ] },
+    { type: "paragraph",html: "Per riferimento, il socket del conto si trova su <code>wss://demo.tradovateapi.com/v1/websocket</code> e <code>wss://live.tradovateapi.com/v1/websocket</code>, nomi host del tutto diversi." },
+    { type: "quote",html: "<code>authorize<br>1<br><br>YOUR_ACCESS_TOKEN</code>" },
+    { type: "paragraph",html: "Cioè <code>authorize</code>, poi <code>1</code>, poi una riga di query vuota, poi il token, ciascuno su una riga propria." },
+    { type: "quote",html: "<code>md/subscribeQuote<br>2<br><br>{\"symbol\":\"ESU6\"}</code>" },
+    { type: "quote",html: "<code>{\"e\":\"md\",\"d\":{\"quotes\":[{\"contractId\":123456,\"entries\":{\"Bid\":{\"price\":5602.25,\"size\":18},\"Offer\":{\"price\":5602.50,\"size\":24},\"Trade\":{\"price\":5602.25,\"size\":3}}}]}}</code>" },
+    { type: "heading",text: "Problemi comuni" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>\"Not found: md/subscribeQuote\"</strong>, si trova sul socket del conto. Si riconnetta all’host <code>md-demo</code> / <code>md</code> del Passaggio 2.",
+        "<strong class='text-white'>\"Symbol is inaccessible\"</strong>, il suo login non ha un accordo sui dati in tempo reale per quel prodotto, oppure il simbolo non è un contratto valido del mese frontale.",
+        "<strong class='text-white'>Il feed si zittisce dopo pochi secondi</strong>, ha smesso di inviare gli heartbeat <code>[]</code>. Li metta su un timer di 2,5 secondi che giri per tutta la vita del socket.",
+      ],
+    },
+    { type: "heading",text: "Eviti l’infrastruttura con PickMyTrade" },
+    { type: "paragraph",html: "Mettere in piedi un socket dei dati di mercato, rinnovo dei token, heartbeat, logica di riconnessione e licenza dati CME è un lavoro concreto ancora prima di aver piazzato un solo ordine. Se il suo obiettivo è solo automatizzare ingressi e uscite dalla sua strategia, <strong class='text-white'>PickMyTrade collega i suoi alert di TradingView direttamente a Tradovate</strong>. Nessun WebSocket da gestire." },
+  ] },
+  ctaHeading: { en: "Skip the WebSocket Plumbing", de: "Sparen Sie sich die WebSocket-Installation", es: "Olvídese de la infraestructura de WebSocket", fr: "Évitez la plomberie WebSocket", it: "Eviti l’infrastruttura WebSocket" },
+  ctaText: { en: "No token refresh, heartbeats, or reconnect logic to babysit, PickMyTrade wires your TradingView alerts straight to Tradovate.", de: "Kein Token-Refresh, keine Heartbeats und keine Reconnect-Logik, um die Sie sich kümmern müssen: PickMyTrade verbindet Ihre TradingView-Alerts direkt mit Tradovate.", es: "Sin renovación de tokens, heartbeats ni lógica de reconexión que vigilar: PickMyTrade conecta sus alertas de TradingView directamente con Tradovate.", fr: "Aucun renouvellement de jeton, heartbeat ni logique de reconnexion à surveiller : PickMyTrade relie vos alertes TradingView directement à Tradovate.", it: "Nessun rinnovo del token, heartbeat o logica di riconnessione da gestire: PickMyTrade collega i suoi alert di TradingView direttamente a Tradovate." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Do I need a separate token for the market data socket?", a: "No. Authorize the market data socket with the same access token you get from auth/accessTokenRequest. The auth response also returns an mdAccessToken field, check the current docs if a call ever rejects your token." },
+    { q: "Why do I get \"Symbol is inaccessible\" even after connecting?", a: "You're connected fine, but your account has no real-time data agreement for that product, or the symbol isn't the active contract. Add the CME market-data subscription and use a valid front-month symbol." },
+    { q: "Can one connection stream multiple symbols?", a: "Yes. Send md/subscribeQuote once per symbol, each with its own request id, over the same socket. There's no array form, repeat the request instead." },
+  ], de: [
+    { q: "Benötige ich ein separates Token für den Marktdaten-Socket?", a: "Nein. Autorisieren Sie den Marktdaten-Socket mit demselben Access-Token, das Sie von auth/accessTokenRequest erhalten. Die Auth-Antwort liefert außerdem ein Feld mdAccessToken; prüfen Sie die aktuelle Dokumentation, falls ein Aufruf Ihr Token jemals ablehnt." },
+    { q: "Warum erhalte ich „Symbol is inaccessible“, obwohl ich verbunden bin?", a: "Die Verbindung steht, aber Ihr Konto hat keine Echtzeitdaten-Vereinbarung für dieses Produkt, oder das Symbol ist nicht der aktive Kontrakt. Fügen Sie das CME-Marktdatenabonnement hinzu und verwenden Sie ein gültiges Front-Month-Symbol." },
+    { q: "Kann eine Verbindung mehrere Symbole streamen?", a: "Ja. Senden Sie md/subscribeQuote einmal pro Symbol, jeweils mit eigener Request-ID, über denselben Socket. Es gibt keine Array-Form; wiederholen Sie stattdessen die Anfrage." },
+  ], es: [
+    { q: "¿Necesito un token aparte para el socket de datos de mercado?", a: "No. Autorice el socket de datos de mercado con el mismo token de acceso que obtiene de auth/accessTokenRequest. La respuesta de autenticación también devuelve un campo mdAccessToken; consulte la documentación actual si alguna llamada rechaza su token." },
+    { q: "¿Por qué recibo «Symbol is inaccessible» aunque ya me conecté?", a: "La conexión es correcta, pero su cuenta no tiene un acuerdo de datos en tiempo real para ese producto, o el símbolo no es el contrato activo. Añada la suscripción de datos de mercado de CME y use un símbolo válido del mes frontal." },
+    { q: "¿Puede una conexión transmitir varios símbolos?", a: "Sí. Envíe md/subscribeQuote una vez por símbolo, cada una con su propio id de solicitud, por el mismo socket. No existe una forma con array; repita la solicitud en su lugar." },
+  ], fr: [
+    { q: "Ai-je besoin d’un jeton distinct pour le socket de données de marché ?", a: "Non. Autorisez le socket de données de marché avec le même jeton d’accès que celui obtenu via auth/accessTokenRequest. La réponse d’authentification renvoie aussi un champ mdAccessToken ; consultez la documentation actuelle si un appel rejette un jour votre jeton." },
+    { q: "Pourquoi obtiens-je « Symbol is inaccessible » même après la connexion ?", a: "Vous êtes bien connecté, mais votre compte n’a pas d’accord de données en temps réel pour ce produit, ou le symbole n’est pas le contrat actif. Ajoutez l’abonnement aux données de marché du CME et utilisez un symbole valide du mois en cours." },
+    { q: "Une connexion peut-elle diffuser plusieurs symboles ?", a: "Oui. Envoyez md/subscribeQuote une fois par symbole, chacun avec son propre identifiant de requête, sur le même socket. Il n’existe pas de forme avec tableau ; répétez plutôt la requête." },
+  ], it: [
+    { q: "Ho bisogno di un token separato per il socket dei dati di mercato?", a: "No. Autorizzi il socket dei dati di mercato con lo stesso token di accesso che ottiene da auth/accessTokenRequest. La risposta di autenticazione restituisce anche un campo mdAccessToken; controlli la documentazione attuale se una chiamata dovesse rifiutare il suo token." },
+    { q: "Perché ricevo «Symbol is inaccessible» anche dopo essermi connesso?", a: "La connessione è corretta, ma il suo conto non ha un accordo sui dati in tempo reale per quel prodotto, oppure il simbolo non è il contratto attivo. Aggiunga l’abbonamento ai dati di mercato CME e utilizzi un simbolo valido del mese frontale." },
+    { q: "Una connessione può trasmettere più simboli?", a: "Sì. Invii md/subscribeQuote una volta per simbolo, ciascuna con il proprio id di richiesta, sullo stesso socket. Non esiste una forma con array; ripeta invece la richiesta." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von diesem unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und Schritte ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso vigente en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. Le trading de contrats à terme et d’autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d’automatisation tierce indépendante et n’est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. « Tradovate » et tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d’agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

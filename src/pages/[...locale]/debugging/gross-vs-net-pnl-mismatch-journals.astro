@@ -1,0 +1,458 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "gross-vs-net-pnl-mismatch-journals";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Export P&L Mismatch: Gross vs Net";
+const META_DESCRIPTION =
+  "Tradovate P&L mismatch after export? CSV exports are gross only, compare gross to gross and add Cash History fees to reconcile your net P&L fast.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate: P&L bruto vs. neto distinto en la exportación", it: "Tradovate: P&L lordo e netto discordanti nell'export" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Export: P&L-Abweichung zwischen Brutto und Netto", es: "Tradovate: discrepancia de P&L en la exportación, bruto frente a neto", fr: "Tradovate : écart de P&L à l'export, brut contre net", it: "Tradovate: discrepanza di P&L nell'export, lordo contro netto" },
+  dek: { en: "Your journal's P&L never quite matches your Tradovate account balance. Here's why exported CSVs are gross while your balance is net, and how to reconcile the two to the cent.", de: "Das P&L in Ihrem Journal stimmt nie ganz mit Ihrem Tradovate-Kontostand überein. Hier erfahren Sie, warum exportierte CSVs brutto sind, während Ihr Kontostand netto ist, und wie Sie beide bis auf den Cent abgleichen.", es: "El P&L de su diario nunca coincide del todo con el saldo de su cuenta de Tradovate. Descubra por qué los CSV exportados son brutos mientras que su saldo es neto, y cómo conciliar ambos hasta el céntimo.", fr: "Le P&L de votre journal ne correspond jamais tout à fait au solde de votre compte Tradovate. Voici pourquoi les CSV exportés sont bruts alors que votre solde est net, et comment réconcilier les deux au centime près.", it: "Il P&L del vostro diario non corrisponde mai esattamente al saldo del vostro account Tradovate. Ecco perché i CSV esportati sono lordi mentre il vostro saldo è netto, e come riconciliare i due fino al centesimo." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You export your Tradovate trades, drop the CSV into your journal, and the total P&amp;L is off. Sometimes it's a few dollars a trade, sometimes hundreds across a busy week, and it never quite matches the balance your Tradovate account actually shows. Before you decide the journal is broken or your fills were wrong, here's what's really happening: in almost every case this is a <strong class='text-white'>Tradovate P&amp;L mismatch between gross and net</strong>, and it comes down to one simple limitation. Tradovate's exported CSV files don't carry commission or fee data. Your account balance is <em>net</em> of those costs; the exported numbers are <em>gross</em>, before them. The gap you're staring at is the trading cost you already paid. Below, you'll see how to confirm that, where the missing fee data actually lives, and how to reconcile the two so your journal matches your statement to the cent." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for a Gross vs Net P&L Mismatch",
+      items: [
+        "<strong class='text-white'>Compare gross to gross first.</strong> Line up your journal's gross P&amp;L against Tradovate's gross P&amp;L for the <em>same</em> date range before you conclude anything is wrong.",
+        "<strong class='text-white'>Remember exports are gross.</strong> The Orders export has no commission or fee column, so any tool importing it shows pre-cost P&amp;L by default.",
+        "<strong class='text-white'>Pull the Cash History report.</strong> That's where Tradovate records commissions and fees. The Orders report doesn't.",
+        "<strong class='text-white'>Match the date range and time zone.</strong> A mismatch is often just a session-boundary or UTC-vs-local cutoff, not a fee gap.",
+        "<strong class='text-white'>Check API-sync accounts separately.</strong> A sync typically carries only <em>same-day</em> commission and fee data, so older synced trades look gross.",
+        "<strong class='text-white'>Know your per-side vs round-turn costs.</strong> Confirm whether you're subtracting commission once or twice per trade.",
+      ],
+    },
+    { type: "heading", text: "What a \"Gross vs Net\" P&L Mismatch Means" },
+    { type: "paragraph", html: "Gross P&amp;L is your raw trading result: exit price minus entry price, times contracts, times point value. Net P&amp;L is that same number <em>after</em> commissions, exchange fees, NFA fees, and any routing or data costs come out. On a single ES round-turn the difference is tiny. Multiply it across dozens of trades, though, and the two figures visibly split apart, which is exactly what you're seeing when a journal total won't line up with your Tradovate balance." },
+    { type: "paragraph", html: "The reason this mismatch shows up so reliably is structural. When you download the Orders report as a CSV, Tradovate includes fills, prices, quantities, and timestamps, but <strong class='text-white'>not</strong> the commission or fee charged on each transaction. A Tradovate file upload simply doesn't include commission or fee data, so anything built from that file alone is gross by construction. Your account, on the other hand, has already deducted every one of those charges, so its P&amp;L is net. Two different numbers, both correct, just measured at different points." },
+    { type: "paragraph", html: "There's a second flavor of the same problem for automated or synced setups. When a journal pulls trades through Tradovate's API instead of a file, it usually receives commission and fee data only for <em>same-day</em> activity. Historical trades come across without their costs attached, so recent days look net while older days look gross inside the same report. Knowing which path your data took, manual export or live sync, tells you right away why part of the journal reconciles and part doesn't." },
+    { type: "heading", text: "Top Causes of a Tradovate Export P&L Mismatch in 2026" },
+    { type: "heading", text: "1. The Orders export contains no commission or fee data" },
+    { type: "paragraph", html: "This is the root cause behind most mismatches. The Orders report (Order History / Fills) gives you the trade mechanics but leaves out the cost columns entirely. Commissions and fees aren't in the Orders export at all, they live in the Cash History report instead. Any journal fed only the Orders file therefore reports gross P&amp;L, and gross will always read higher on your winners, or less negative on your losers, than your net account balance." },
+    { type: "heading", text: "2. Your account and statement P&L are already net of costs" },
+    { type: "paragraph", html: "This is the flip side of cause 1. Tradovate's account balance, statements, and performance views reflect money that actually moved, so commissions and exchange fees are already baked in. That's the <em>net</em> figure. When you compare a gross export to a net statement, the difference isn't an error, it's the sum of every commission and fee for the period. You can confirm this by checking that the gap grows in proportion to your trade count rather than jumping around randomly." },
+    { type: "heading", text: "3. API-synced accounts only carry same-day fees" },
+    { type: "paragraph", html: "If your journal connects to Tradovate by API rather than by uploading a file, expect commissions and fees to appear only for trades executed that same day. Older synced trades arrive without cost data, so a synced journal can show a clean net figure for today and an unadjusted gross figure for last week, all in one report. That's a sync-scope limitation, not a fill discrepancy." },
+    { type: "heading", text: "4. Mismatched date ranges, sessions, or time zones" },
+    { type: "paragraph", html: "A surprising share of &ldquo;mismatches&rdquo; are really the same trades counted over slightly different windows. Futures sessions roll at the exchange close (around 5 PM Central), and exported timestamps may be in UTC while your account view is local. If your journal's day boundary and Tradovate's don't line up, a trade can land on a different day, or drop out of the compared range entirely, making the totals disagree even when every fill matches." },
+    { type: "heading", text: "5. Per-side vs round-turn commission confusion" },
+    { type: "paragraph", html: "Once you do add costs back, it's easy to subtract them wrong. Commissions are charged per side, once when you open, once when you close, so a full round-turn carries two commission hits plus per-contract exchange and regulatory fees. If your reconciliation applies commission once instead of twice, or the other way around, you'll just trade one mismatch for another. Exact rates vary by plan, by contract, and by whether you're trading micros or minis, so pull your real numbers instead of assuming a flat figure." },
+    { type: "heading", text: "How to Fix a Tradovate Gross vs Net P&L Mismatch: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirm it's a gross-vs-net gap (compare gross to gross)", html: "In your journal, switch the P&amp;L view to <strong class='text-white'>gross</strong> (most tools have a gross/net toggle or a &ldquo;filter by gross P&amp;L&rdquo; option). In Tradovate, open the account performance/reports view for the <strong class='text-white'>same</strong> date range and read off the gross P&amp;L. Compare the two gross numbers. If they now match, the diagnosis is confirmed, the only thing missing is commissions and fees. If they <em>don't</em> match at the gross level, stop: you're dealing with a date-range, time-zone, or missing-fill issue, not a fee gap." },
+        { title: "Pull the Cash History report for the fee and commission data", html: "Open Tradovate's <strong class='text-white'>Account Reports</strong> (the reporting section of the platform). Select the <strong class='text-white'>Cash History</strong> report, this is the ledger that records commissions and fees as they're deducted, alongside trade-paired entries when positions close. Set the <strong class='text-white'>same date range</strong> you used for the Orders export so the two files cover identical activity, then download it as CSV." },
+        { title: "Reconcile net P&L (merge the files or apply a commission rule)", html: "You have two reliable routes. <strong class='text-white'>Merge the reports:</strong> download <code>Orders.csv</code> from the Orders report, then append the contents of the Cash History CSV for the same range so the combined file carries both the fills and their fees. Or <strong class='text-white'>apply a commission/fee rule</strong> in your journal, if your platform supports it, so the gross import adjusts down to net without hand-editing rows. If you set up a temporary rule just to reconcile a synced account, delete it afterward so future imports, which already include same-day fees, aren't charged twice." },
+        { title: "Re-check the totals", html: "With costs applied, your journal's net P&amp;L should now match the Tradovate account balance for the period. If it's still off by a small, consistent amount, revisit per-side vs round-turn commission." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["What you see", "What it means", "Fix"],
+      rows: [
+        ["Journal P&amp;L higher than Tradovate balance", "Export is gross; account is net of fees", "Add commissions/fees from Cash History"],
+        ["Gross figures match, net figures don't", "Only commissions/fees are missing", "Merge Cash History or apply a fee rule"],
+        ["Gross figures also don't match", "Date-range, session, or time-zone misalignment", "Re-align the compared window and time zone"],
+        ["Recent days net, older days gross", "API sync carries same-day fees only", "Reconcile older trades from Cash History"],
+        ["Costs added but still slightly off", "Per-side vs round-turn commission error", "Apply commission per side (open + close)"],
+        ["Trade appears on wrong day", "5 PM CT session / UTC-vs-local boundary", "Match your journal's day cutoff to the exchange"],
+        ["Fees double-counted after reconciling", "Temporary rule left on a synced account", "Delete the temporary commission rule"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "A gross-vs-net mismatch is a reconciliation headache, but the deeper win is keeping your execution and your records clean from the start. PickMyTrade sits between your TradingView alerts and Tradovate and standardizes the order flow that later becomes your journal:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, every order carries a consistent, validated symbol and size, so your exported fills are clean and easy to match against Cash History.",
+        "<strong class='text-white'>Entitlement &amp; Risk Filters</strong>, respects prop-firm limits and account state, so you're not reconciling phantom or rejected orders after the fact.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, spaces out order flow so fills land predictably and your trade record is complete, not full of retries.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors the same order across every connected account, so each account's report tells the same, reconcilable story.",
+      ],
+    },
+    { type: "paragraph", html: "Cleaner order flow in means a journal that reconciles faster, you spend your time reviewing trades, not chasing missing fee columns." },
+  ], de: [
+    { type: "paragraph", html: "Sie exportieren Ihre Tradovate-Trades, laden die CSV-Datei in Ihr Journal, und der gesamte P&amp;L stimmt nicht. Manchmal sind es nur ein paar Dollar pro Trade, manchmal Hunderte über eine geschäftige Woche hinweg, und er stimmt nie ganz mit dem Saldo überein, den Ihr Tradovate-Konto tatsächlich anzeigt. Bevor Sie annehmen, das Journal sei fehlerhaft oder Ihre Fills seien falsch, hier die eigentliche Ursache: In fast jedem Fall handelt es sich um eine <strong class='text-white'>Tradovate-P&amp;L-Abweichung zwischen Brutto und Netto</strong>, und sie lässt sich auf eine einfache Einschränkung zurückführen. Die von Tradovate exportierten CSV-Dateien enthalten keine Kommissions- oder Gebührendaten. Ihr Kontostand ist <em>netto</em>, also nach Abzug dieser Kosten; die exportierten Zahlen sind <em>brutto</em>, also davor. Die Lücke, die Sie sehen, sind die Handelskosten, die Sie bereits bezahlt haben. Im Folgenden erfahren Sie, wie Sie das bestätigen, wo die fehlenden Gebührendaten tatsächlich zu finden sind und wie Sie beide abgleichen, damit Ihr Journal bis auf den Cent mit Ihrem Kontoauszug übereinstimmt." },
+    {
+      type: "checklist",
+      heading: "Schnell-Checkliste bei einer Brutto-Netto-P&L-Abweichung",
+      items: [
+        "<strong class='text-white'>Vergleichen Sie zuerst Brutto mit Brutto.</strong> Gleichen Sie das Brutto-P&amp;L Ihres Journals mit dem Brutto-P&amp;L von Tradovate für <em>denselben</em> Zeitraum ab, bevor Sie einen Fehler vermuten.",
+        "<strong class='text-white'>Denken Sie daran, dass Exporte brutto sind.</strong> Der Orders-Export hat keine Kommissions- oder Gebührenspalte, daher zeigt jedes Tool, das ihn importiert, standardmäßig das P&amp;L vor Kosten.",
+        "<strong class='text-white'>Rufen Sie den Cash-History-Report ab.</strong> Dort erfasst Tradovate Kommissionen und Gebühren. Der Orders-Report tut das nicht.",
+        "<strong class='text-white'>Gleichen Sie Zeitraum und Zeitzone ab.</strong> Eine Abweichung ist oft nur eine Sitzungsgrenze oder eine UTC-vs-lokal-Verschiebung, keine Gebührenlücke.",
+        "<strong class='text-white'>Prüfen Sie API-synchronisierte Konten separat.</strong> Eine Synchronisierung enthält in der Regel nur Kommissions- und Gebührendaten vom <em>selben Tag</em>, sodass ältere synchronisierte Trades brutto erscheinen.",
+        "<strong class='text-white'>Kennen Sie Ihre Kosten pro Seite versus Round-Turn.</strong> Stellen Sie sicher, ob Sie die Kommission einmal oder zweimal pro Trade abziehen.",
+      ],
+    },
+    { type: "heading", text: "Was eine \"Brutto vs. Netto\"-P&L-Abweichung bedeutet" },
+    { type: "paragraph", html: "Brutto-P&amp;L ist Ihr reines Handelsergebnis: Ausstiegspreis minus Einstiegspreis, mal Kontrakte, mal Punktwert. Netto-P&amp;L ist dieselbe Zahl, <em>nachdem</em> Kommissionen, Börsengebühren, NFA-Gebühren sowie etwaige Routing- oder Datenkosten abgezogen wurden. Bei einem einzelnen ES-Round-Turn ist der Unterschied winzig. Multiplizieren Sie ihn jedoch über Dutzende Trades, und die beiden Zahlen driften sichtbar auseinander, genau das sehen Sie, wenn eine Journal-Summe nicht mit Ihrem Tradovate-Saldo übereinstimmt." },
+    { type: "paragraph", html: "Der Grund, warum diese Abweichung so zuverlässig auftritt, ist struktureller Natur. Wenn Sie den Orders-Report als CSV herunterladen, enthält Tradovate Fills, Preise, Mengen und Zeitstempel, aber <strong class='text-white'>keine</strong> Kommission oder Gebühr, die bei jeder Transaktion berechnet wurde. Ein Tradovate-Datei-Upload enthält schlicht keine Kommissions- oder Gebührendaten, daher ist alles, was allein aus dieser Datei erstellt wird, konstruktionsbedingt brutto. Ihr Konto hingegen hat all diese Kosten bereits abgezogen, sein P&amp;L ist also netto. Zwei unterschiedliche Zahlen, beide korrekt, nur an unterschiedlichen Punkten gemessen." },
+    { type: "paragraph", html: "Es gibt eine zweite Variante desselben Problems bei automatisierten oder synchronisierten Setups. Wenn ein Journal Trades über die Tradovate-API statt über eine Datei abruft, erhält es Kommissions- und Gebührendaten in der Regel nur für Aktivitäten <em>desselben Tages</em>. Historische Trades kommen ohne zugehörige Kosten an, sodass aktuelle Tage netto und ältere Tage brutto innerhalb desselben Reports erscheinen. Zu wissen, welchen Weg Ihre Daten genommen haben, manueller Export oder Live-Sync, verrät Ihnen sofort, warum ein Teil des Journals abgleicht und ein anderer nicht." },
+    { type: "heading", text: "Häufigste Ursachen einer Tradovate-Export-P&L-Abweichung im Jahr 2026" },
+    { type: "heading", text: "1. Der Orders-Export enthält keine Kommissions- oder Gebührendaten" },
+    { type: "paragraph", html: "Das ist die Hauptursache hinter den meisten Abweichungen. Der Orders-Report (Order History / Fills) liefert Ihnen die Handelsmechanik, lässt die Kostenspalten aber komplett aus. Kommissionen und Gebühren sind im Orders-Export überhaupt nicht enthalten, sie befinden sich stattdessen im Cash-History-Report. Jedes Journal, das nur mit der Orders-Datei gespeist wird, meldet daher Brutto-P&amp;L, und Brutto liest sich bei Ihren Gewinnern immer höher, oder bei Ihren Verlusten weniger negativ, als Ihr Netto-Kontostand." },
+    { type: "heading", text: "2. Das P&L Ihres Kontos und Ihrer Kontoauszüge ist bereits netto" },
+    { type: "paragraph", html: "Das ist die Kehrseite von Ursache 1. Tradovates Kontostand, Kontoauszüge und Performance-Ansichten spiegeln das Geld wider, das sich tatsächlich bewegt hat, Kommissionen und Börsengebühren sind also bereits eingerechnet. Das ist die <em>Netto</em>-Zahl. Wenn Sie einen Brutto-Export mit einem Netto-Kontoauszug vergleichen, ist die Differenz kein Fehler, sondern die Summe aller Kommissionen und Gebühren des Zeitraums. Sie können das bestätigen, indem Sie prüfen, ob die Lücke proportional zu Ihrer Trade-Anzahl wächst, statt zufällig zu schwanken." },
+    { type: "heading", text: "3. API-synchronisierte Konten enthalten nur Gebühren vom selben Tag" },
+    { type: "paragraph", html: "Wenn Ihr Journal per API statt per Datei-Upload mit Tradovate verbunden ist, erscheinen Kommissionen und Gebühren in der Regel nur für Trades, die am selben Tag ausgeführt wurden. Ältere synchronisierte Trades kommen ohne Kostendaten an, sodass ein synchronisiertes Journal für heute eine saubere Netto-Zahl und für letzte Woche eine unangepasste Brutto-Zahl zeigt, alles in einem Report. Das ist eine Einschränkung des Sync-Umfangs, keine Fill-Abweichung." },
+    { type: "heading", text: "4. Nicht übereinstimmende Zeiträume, Sitzungen oder Zeitzonen" },
+    { type: "paragraph", html: "Ein überraschend großer Anteil der &ldquo;Abweichungen&rdquo; sind eigentlich dieselben Trades, nur über leicht unterschiedliche Zeitfenster gezählt. Futures-Sitzungen wechseln beim Börsenschluss (gegen 17 Uhr Central Time), und exportierte Zeitstempel können in UTC vorliegen, während Ihre Kontoansicht lokal ist. Wenn die Tagesgrenze Ihres Journals nicht mit der von Tradovate übereinstimmt, kann ein Trade auf einen anderen Tag fallen oder ganz aus dem verglichenen Zeitraum herausfallen, wodurch die Summen nicht übereinstimmen, obwohl jeder Fill passt." },
+    { type: "heading", text: "5. Verwechslung von Kommission pro Seite und Round-Turn" },
+    { type: "paragraph", html: "Sobald Sie Kosten wieder hinzurechnen, ist es leicht, sie falsch abzuziehen. Kommissionen werden pro Seite berechnet, einmal beim Öffnen, einmal beim Schließen, sodass ein vollständiger Round-Turn zwei Kommissionsbelastungen plus Börsen- und Aufsichtsgebühren pro Kontrakt trägt. Wenn Ihr Abgleich die Kommission einmal statt zweimal anwendet, oder umgekehrt, tauschen Sie nur eine Abweichung gegen eine andere. Die genauen Sätze variieren je nach Tarif, Kontrakt und danach, ob Sie Micros oder Minis handeln, ziehen Sie also Ihre echten Zahlen heran, statt einen pauschalen Wert anzunehmen." },
+    { type: "heading", text: "So beheben Sie eine Tradovate-Brutto-Netto-P&L-Abweichung: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Bestätigen, dass es sich um eine Brutto-Netto-Lücke handelt (Brutto mit Brutto vergleichen)", html: "Stellen Sie in Ihrem Journal die P&amp;L-Ansicht auf <strong class='text-white'>brutto</strong> um (die meisten Tools haben einen Brutto/Netto-Umschalter oder eine Option &ldquo;nach Brutto-P&amp;L filtern&rdquo;). Öffnen Sie in Tradovate die Konto-Performance-/Reports-Ansicht für <strong class='text-white'>denselben</strong> Zeitraum und lesen Sie das Brutto-P&amp;L ab. Vergleichen Sie die beiden Brutto-Zahlen. Stimmen sie jetzt überein, ist die Diagnose bestätigt, es fehlen nur Kommissionen und Gebühren. Stimmen sie auf Brutto-Ebene <em>nicht</em> überein, stoppen Sie: Dann liegt ein Problem mit Zeitraum, Zeitzone oder fehlenden Fills vor, keine Gebührenlücke." },
+        { title: "Den Cash-History-Report für Gebühren- und Kommissionsdaten abrufen", html: "Öffnen Sie die <strong class='text-white'>Account Reports</strong> von Tradovate (der Reporting-Bereich der Plattform). Wählen Sie den <strong class='text-white'>Cash-History</strong>-Report, das ist das Journal, das Kommissionen und Gebühren bei ihrem Abzug erfasst, zusammen mit trade-gepaarten Einträgen beim Schließen von Positionen. Stellen Sie <strong class='text-white'>denselben Zeitraum</strong> ein, den Sie für den Orders-Export verwendet haben, damit beide Dateien identische Aktivität abdecken, und laden Sie ihn dann als CSV herunter." },
+        { title: "Netto-P&L abgleichen (Dateien zusammenführen oder eine Kommissionsregel anwenden)", html: "Es gibt zwei zuverlässige Wege. <strong class='text-white'>Reports zusammenführen:</strong> Laden Sie <code>Orders.csv</code> aus dem Orders-Report herunter und hängen Sie den Inhalt der Cash-History-CSV für denselben Zeitraum an, sodass die kombinierte Datei sowohl die Fills als auch deren Gebühren enthält. Oder <strong class='text-white'>wenden Sie eine Kommissions-/Gebührenregel</strong> in Ihrem Journal an, sofern Ihre Plattform das unterstützt, damit sich der Brutto-Import ohne manuelle Zeilenbearbeitung auf netto anpasst. Wenn Sie eine temporäre Regel nur zum Abgleich eines synchronisierten Kontos einrichten, löschen Sie sie danach wieder, damit zukünftige Importe, die bereits Gebühren vom selben Tag enthalten, nicht doppelt belastet werden." },
+        { title: "Summen erneut prüfen", html: "Nach Anwendung der Kosten sollte das Netto-P&amp;L Ihres Journals nun mit dem Tradovate-Kontostand für den Zeitraum übereinstimmen. Weicht es weiterhin um einen kleinen, konstanten Betrag ab, prüfen Sie erneut die Kommission pro Seite versus Round-Turn." },
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Was Sie sehen", "Was es bedeutet", "Lösung"],
+      rows: [
+        ["Journal-P&amp;L höher als Tradovate-Saldo", "Export ist brutto; Konto ist netto nach Gebühren", "Kommissionen/Gebühren aus Cash History hinzufügen"],
+        ["Brutto-Zahlen stimmen überein, Netto-Zahlen nicht", "Es fehlen nur Kommissionen/Gebühren", "Cash History zusammenführen oder eine Gebührenregel anwenden"],
+        ["Auch die Brutto-Zahlen stimmen nicht überein", "Fehlausrichtung bei Zeitraum, Sitzung oder Zeitzone", "Verglichenen Zeitraum und Zeitzone neu abgleichen"],
+        ["Aktuelle Tage netto, ältere Tage brutto", "API-Sync enthält nur Gebühren vom selben Tag", "Ältere Trades aus Cash History abgleichen"],
+        ["Kosten hinzugefügt, aber noch leicht abweichend", "Fehler bei Kommission pro Seite vs. Round-Turn", "Kommission pro Seite anwenden (Öffnen + Schließen)"],
+        ["Trade erscheint am falschen Tag", "17-Uhr-CT-Sitzung / UTC-vs-lokale Grenze", "Tagesgrenze Ihres Journals an die Börse anpassen"],
+        ["Gebühren nach Abgleich doppelt gezählt", "Temporäre Regel bei einem synchronisierten Konto belassen", "Die temporäre Kommissionsregel löschen"],
+      ],
+    },
+    { type: "heading", text: "So verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "Eine Brutto-Netto-Abweichung ist ein lästiges Abgleichsproblem, aber der eigentliche Gewinn liegt darin, Ihre Ausführung und Ihre Aufzeichnungen von Anfang an sauber zu halten. PickMyTrade sitzt zwischen Ihren TradingView-Alerts und Tradovate und standardisiert den Orderfluss, der später zu Ihrem Journal wird:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, jede Order trägt ein konsistentes, validiertes Symbol und eine validierte Größe, sodass Ihre exportierten Fills sauber sind und sich leicht mit Cash History abgleichen lassen.",
+        "<strong class='text-white'>Entitlement &amp; Risk Filters</strong>, berücksichtigt Prop-Firm-Limits und Kontostatus, sodass Sie nicht im Nachhinein Phantom- oder abgelehnte Orders abgleichen müssen.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, staffelt den Orderfluss, sodass Fills vorhersehbar eintreffen und Ihr Handelsprotokoll vollständig ist, statt voller Wiederholungsversuche.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, spiegelt dieselbe Order über alle verbundenen Konten hinweg, sodass der Report jedes Kontos dieselbe, abgleichbare Geschichte erzählt.",
+      ],
+    },
+    { type: "paragraph", html: "Ein saubererer Orderfluss bedeutet ein Journal, das schneller abgleicht, Sie verbringen Ihre Zeit mit der Analyse von Trades, nicht mit der Jagd nach fehlenden Gebührenspalten." },
+  ], es: [
+    { type: "paragraph", html: "Usted exporta sus operaciones de Tradovate, coloca el CSV en su diario, y el P&amp;L total no cuadra. A veces son unos pocos dólares por operación, a veces cientos en una semana intensa, y nunca coincide del todo con el saldo que realmente muestra su cuenta de Tradovate. Antes de concluir que el diario está mal o que sus fills fueron incorrectos, esto es lo que realmente ocurre: en casi todos los casos se trata de una <strong class='text-white'>discrepancia de P&amp;L de Tradovate entre bruto y neto</strong>, y se reduce a una limitación sencilla. Los archivos CSV exportados por Tradovate no incluyen datos de comisiones ni tarifas. El saldo de su cuenta es <em>neto</em> de esos costos; las cifras exportadas son <em>brutas</em>, antes de ellos. La diferencia que está viendo es el costo de operar que ya pagó. A continuación verá cómo confirmarlo, dónde se encuentran realmente los datos de tarifas faltantes y cómo conciliar ambos para que su diario coincida con su estado de cuenta hasta el céntimo." },
+    {
+      type: "checklist",
+      heading: "Lista rápida ante una discrepancia de P&L bruto vs. neto",
+      items: [
+        "<strong class='text-white'>Compare primero bruto con bruto.</strong> Alinee el P&amp;L bruto de su diario con el P&amp;L bruto de Tradovate para el <em>mismo</em> rango de fechas antes de concluir que algo está mal.",
+        "<strong class='text-white'>Recuerde que las exportaciones son brutas.</strong> La exportación de Orders no tiene columna de comisiones ni tarifas, así que cualquier herramienta que la importe muestra por defecto el P&amp;L antes de costos.",
+        "<strong class='text-white'>Obtenga el informe Cash History.</strong> Ahí es donde Tradovate registra las comisiones y tarifas. El informe Orders no lo hace.",
+        "<strong class='text-white'>Haga coincidir el rango de fechas y la zona horaria.</strong> Una discrepancia suele ser solo un límite de sesión o un desfase UTC frente a hora local, no una brecha de tarifas.",
+        "<strong class='text-white'>Revise por separado las cuentas sincronizadas por API.</strong> Una sincronización normalmente solo trae datos de comisiones y tarifas del <em>mismo día</em>, así que las operaciones sincronizadas más antiguas aparecen brutas.",
+        "<strong class='text-white'>Conozca sus costos por lado frente a round-turn.</strong> Confirme si está restando la comisión una o dos veces por operación.",
+      ],
+    },
+    { type: "heading", text: "Qué significa una discrepancia de P&L \"bruto vs. neto\"" },
+    { type: "paragraph", html: "El P&amp;L bruto es su resultado de trading en crudo: precio de salida menos precio de entrada, por contratos, por valor de punto. El P&amp;L neto es esa misma cifra <em>después</em> de restar comisiones, tarifas de la bolsa, tarifas de la NFA y cualquier costo de enrutamiento o datos. En un solo round-turn de ES la diferencia es mínima. Multiplíquela por decenas de operaciones, sin embargo, y las dos cifras se separan visiblemente, que es exactamente lo que ve cuando el total de un diario no coincide con su saldo de Tradovate." },
+    { type: "paragraph", html: "La razón por la que esta discrepancia aparece de forma tan constante es estructural. Al descargar el informe Orders como CSV, Tradovate incluye fills, precios, cantidades y marcas de tiempo, pero <strong class='text-white'>no</strong> la comisión o tarifa cobrada en cada transacción. Una subida de archivo de Tradovate simplemente no incluye datos de comisiones ni tarifas, así que todo lo construido solo a partir de ese archivo es bruto por definición. Su cuenta, en cambio, ya ha descontado cada uno de esos cargos, así que su P&amp;L es neto. Dos cifras distintas, ambas correctas, solo medidas en puntos diferentes." },
+    { type: "paragraph", html: "Existe una segunda variante del mismo problema en configuraciones automatizadas o sincronizadas. Cuando un diario obtiene operaciones a través de la API de Tradovate en lugar de un archivo, normalmente recibe datos de comisiones y tarifas solo de la actividad del <em>mismo día</em>. Las operaciones históricas llegan sin sus costos asociados, así que los días recientes aparecen netos mientras que los días más antiguos aparecen brutos dentro del mismo informe. Saber qué camino siguieron sus datos, exportación manual o sincronización en vivo, le indica de inmediato por qué una parte del diario concilia y otra no." },
+    { type: "heading", text: "Principales causas de una discrepancia de P&L en la exportación de Tradovate en 2026" },
+    { type: "heading", text: "1. La exportación de Orders no contiene datos de comisiones ni tarifas" },
+    { type: "paragraph", html: "Esta es la causa raíz detrás de la mayoría de las discrepancias. El informe Orders (Order History / Fills) le da la mecánica de la operación pero omite por completo las columnas de costos. Las comisiones y tarifas no están en absoluto en la exportación de Orders, viven en cambio en el informe Cash History. Cualquier diario alimentado únicamente con el archivo Orders reporta, por tanto, P&amp;L bruto, y el bruto siempre se leerá más alto en sus ganadoras, o menos negativo en sus perdedoras, que su saldo de cuenta neto." },
+    { type: "heading", text: "2. El P&L de su cuenta y sus estados de cuenta ya es neto de costos" },
+    { type: "paragraph", html: "Este es el reverso de la causa 1. El saldo de la cuenta, los estados de cuenta y las vistas de rendimiento de Tradovate reflejan el dinero que realmente se movió, así que las comisiones y tarifas de la bolsa ya están incorporadas. Esa es la cifra <em>neta</em>. Cuando compara una exportación bruta con un estado de cuenta neto, la diferencia no es un error, es la suma de todas las comisiones y tarifas del periodo. Puede confirmarlo comprobando que la brecha crece en proporción a su número de operaciones en lugar de variar al azar." },
+    { type: "heading", text: "3. Las cuentas sincronizadas por API solo llevan tarifas del mismo día" },
+    { type: "paragraph", html: "Si su diario se conecta a Tradovate por API en lugar de subiendo un archivo, espere que las comisiones y tarifas aparezcan solo para operaciones ejecutadas ese mismo día. Las operaciones sincronizadas más antiguas llegan sin datos de costos, así que un diario sincronizado puede mostrar una cifra neta limpia para hoy y una cifra bruta sin ajustar para la semana pasada, todo en un mismo informe. Eso es una limitación del alcance de la sincronización, no una discrepancia de fills." },
+    { type: "heading", text: "4. Rangos de fechas, sesiones o zonas horarias que no coinciden" },
+    { type: "paragraph", html: "Una parte sorprendente de las &ldquo;discrepancias&rdquo; son en realidad las mismas operaciones contadas en ventanas ligeramente distintas. Las sesiones de futuros cambian al cierre de la bolsa (alrededor de las 5 p. m. hora central), y las marcas de tiempo exportadas pueden estar en UTC mientras que la vista de su cuenta es local. Si el límite de día de su diario no coincide con el de Tradovate, una operación puede caer en un día distinto o quedar totalmente fuera del rango comparado, haciendo que los totales no coincidan aunque cada fill sea correcto." },
+    { type: "heading", text: "5. Confusión entre comisión por lado y round-turn" },
+    { type: "paragraph", html: "Una vez que vuelve a sumar los costos, es fácil restarlos mal. Las comisiones se cobran por lado, una vez al abrir, una vez al cerrar, así que un round-turn completo conlleva dos cargos de comisión más las tarifas de bolsa y regulatorias por contrato. Si su conciliación aplica la comisión una vez en lugar de dos, o al revés, simplemente cambiará una discrepancia por otra. Las tarifas exactas varían según el plan, el contrato y si opera micros o minis, así que use sus cifras reales en lugar de asumir una tarifa fija." },
+    { type: "heading", text: "Cómo corregir una discrepancia de P&L bruto vs. neto en Tradovate: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirmar que es una brecha bruto vs. neto (comparar bruto con bruto)", html: "En su diario, cambie la vista de P&amp;L a <strong class='text-white'>bruto</strong> (la mayoría de las herramientas tienen un interruptor bruto/neto o una opción &ldquo;filtrar por P&amp;L bruto&rdquo;). En Tradovate, abra la vista de rendimiento/informes de la cuenta para el <strong class='text-white'>mismo</strong> rango de fechas y lea el P&amp;L bruto. Compare las dos cifras brutas. Si ahora coinciden, el diagnóstico queda confirmado, solo faltan comisiones y tarifas. Si <em>no</em> coinciden a nivel bruto, deténgase: está ante un problema de rango de fechas, zona horaria o fills faltantes, no una brecha de tarifas." },
+        { title: "Obtener el informe Cash History con los datos de tarifas y comisiones", html: "Abra los <strong class='text-white'>Account Reports</strong> de Tradovate (la sección de informes de la plataforma). Seleccione el informe <strong class='text-white'>Cash History</strong>, este es el libro que registra las comisiones y tarifas a medida que se deducen, junto con entradas emparejadas por operación cuando se cierran posiciones. Configure el <strong class='text-white'>mismo rango de fechas</strong> que usó para la exportación de Orders para que ambos archivos cubran la misma actividad, y luego descárguelo como CSV." },
+        { title: "Conciliar el P&L neto (fusionar los archivos o aplicar una regla de comisión)", html: "Tiene dos vías fiables. <strong class='text-white'>Fusionar los informes:</strong> descargue <code>Orders.csv</code> del informe Orders, luego agregue el contenido del CSV de Cash History para el mismo rango, de modo que el archivo combinado incluya tanto los fills como sus tarifas. O <strong class='text-white'>aplique una regla de comisión/tarifa</strong> en su diario, si su plataforma lo permite, para que la importación bruta se ajuste a neta sin editar filas manualmente. Si configura una regla temporal solo para conciliar una cuenta sincronizada, elimínela después para que las futuras importaciones, que ya incluyen tarifas del mismo día, no se cobren dos veces." },
+        { title: "Volver a revisar los totales", html: "Con los costos aplicados, el P&amp;L neto de su diario ahora debería coincidir con el saldo de la cuenta de Tradovate para el periodo. Si sigue habiendo una diferencia pequeña y constante, revise de nuevo la comisión por lado frente a round-turn." },
+      ],
+    },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Lo que ve", "Lo que significa", "Solución"],
+      rows: [
+        ["P&amp;L del diario más alto que el saldo de Tradovate", "La exportación es bruta; la cuenta es neta de tarifas", "Agregar comisiones/tarifas desde Cash History"],
+        ["Las cifras brutas coinciden, las netas no", "Solo faltan comisiones/tarifas", "Fusionar Cash History o aplicar una regla de tarifas"],
+        ["Las cifras brutas tampoco coinciden", "Desalineación de rango de fechas, sesión o zona horaria", "Realinear la ventana comparada y la zona horaria"],
+        ["Días recientes netos, días antiguos brutos", "La sincronización por API solo lleva tarifas del mismo día", "Conciliar operaciones antiguas desde Cash History"],
+        ["Costos añadidos pero aún hay una pequeña diferencia", "Error de comisión por lado frente a round-turn", "Aplicar comisión por lado (apertura + cierre)"],
+        ["La operación aparece en el día equivocado", "Sesión de las 5 p. m. CT / límite UTC frente a hora local", "Ajustar el corte diario de su diario al de la bolsa"],
+        ["Tarifas contadas dos veces tras conciliar", "Regla temporal dejada en una cuenta sincronizada", "Eliminar la regla de comisión temporal"],
+      ],
+    },
+    { type: "heading", text: "Prevenga esto con PickMyTrade" },
+    { type: "paragraph", html: "Una discrepancia bruto-neto es un dolor de cabeza de conciliación, pero el verdadero beneficio es mantener su ejecución y sus registros limpios desde el principio. PickMyTrade se sitúa entre sus alertas de TradingView y Tradovate y estandariza el flujo de órdenes que después se convierte en su diario:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, cada orden lleva un símbolo y un tamaño consistentes y validados, así que sus fills exportados quedan limpios y son fáciles de comparar con Cash History.",
+        "<strong class='text-white'>Entitlement &amp; Risk Filters</strong>, respeta los límites de la prop firm y el estado de la cuenta, así que no tiene que conciliar después órdenes fantasma o rechazadas.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, espacía el flujo de órdenes para que los fills lleguen de forma predecible y su registro de operaciones esté completo, no lleno de reintentos.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, replica la misma orden en todas las cuentas conectadas, así que el informe de cada cuenta cuenta la misma historia, conciliable.",
+      ],
+    },
+    { type: "paragraph", html: "Un flujo de órdenes más limpio significa un diario que concilia más rápido, usted pasa su tiempo revisando operaciones, no persiguiendo columnas de tarifas faltantes." },
+  ], fr: [
+    { type: "paragraph", html: "Vous exportez vos transactions Tradovate, déposez le CSV dans votre journal, et le P&amp;L total ne correspond pas. Parfois ce sont quelques dollars par transaction, parfois des centaines sur une semaine chargée, et cela ne correspond jamais tout à fait au solde que votre compte Tradovate affiche réellement. Avant de conclure que le journal est défaillant ou que vos exécutions étaient erronées, voici ce qui se passe réellement : dans presque tous les cas, il s'agit d'un <strong class='text-white'>écart de P&amp;L Tradovate entre brut et net</strong>, et cela se résume à une limitation simple. Les fichiers CSV exportés par Tradovate ne contiennent pas de données de commissions ni de frais. Le solde de votre compte est <em>net</em> de ces coûts ; les chiffres exportés sont <em>bruts</em>, avant ceux-ci. L'écart que vous observez correspond aux frais de trading que vous avez déjà payés. Vous verrez ci-dessous comment le confirmer, où se trouvent réellement les données de frais manquantes, et comment réconcilier les deux afin que votre journal corresponde à votre relevé au centime près." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide en cas d'écart de P&L brut vs net",
+      items: [
+        "<strong class='text-white'>Comparez d'abord le brut au brut.</strong> Alignez le P&amp;L brut de votre journal sur le P&amp;L brut de Tradovate pour la <em>même</em> période avant de conclure qu'il y a un problème.",
+        "<strong class='text-white'>Rappelez-vous que les exports sont bruts.</strong> L'export Orders n'a pas de colonne de commissions ni de frais, donc tout outil qui l'importe affiche par défaut le P&amp;L avant coûts.",
+        "<strong class='text-white'>Récupérez le rapport Cash History.</strong> C'est là que Tradovate enregistre les commissions et les frais. Le rapport Orders ne le fait pas.",
+        "<strong class='text-white'>Faites correspondre la période et le fuseau horaire.</strong> Un écart est souvent simplement une limite de session ou un décalage UTC contre heure locale, pas un manque de frais.",
+        "<strong class='text-white'>Vérifiez séparément les comptes synchronisés par API.</strong> Une synchronisation ne porte généralement que sur les données de commissions et de frais du <em>même jour</em>, donc les transactions synchronisées plus anciennes paraissent brutes.",
+        "<strong class='text-white'>Connaissez vos coûts par côté par rapport au round-turn.</strong> Vérifiez si vous soustrayez la commission une ou deux fois par transaction.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie un écart de P&L \"brut vs net\"" },
+    { type: "paragraph", html: "Le P&amp;L brut est votre résultat de trading brut : prix de sortie moins prix d'entrée, multiplié par les contrats, multiplié par la valeur du point. Le P&amp;L net est ce même chiffre <em>après</em> déduction des commissions, des frais de bourse, des frais NFA et de tout coût de routage ou de données. Sur un seul round-turn ES, la différence est minime. Multipliez-la sur des dizaines de transactions, cependant, et les deux chiffres se séparent nettement, ce qui est exactement ce que vous observez lorsqu'un total de journal ne correspond pas à votre solde Tradovate." },
+    { type: "paragraph", html: "La raison pour laquelle cet écart apparaît de façon aussi systématique est structurelle. Lorsque vous téléchargez le rapport Orders au format CSV, Tradovate inclut les exécutions, les prix, les quantités et les horodatages, mais <strong class='text-white'>pas</strong> la commission ou les frais facturés sur chaque transaction. Un fichier téléchargé depuis Tradovate n'inclut tout simplement pas de données de commissions ou de frais, donc tout ce qui est construit à partir de ce seul fichier est brut par construction. Votre compte, en revanche, a déjà déduit chacun de ces frais, donc son P&amp;L est net. Deux chiffres différents, tous deux corrects, simplement mesurés à des points différents." },
+    { type: "paragraph", html: "Il existe une seconde variante du même problème pour les configurations automatisées ou synchronisées. Lorsqu'un journal récupère les transactions via l'API de Tradovate plutôt que via un fichier, il ne reçoit généralement les données de commissions et de frais que pour l'activité du <em>même jour</em>. Les transactions historiques arrivent sans leurs coûts associés, si bien que les jours récents paraissent nets tandis que les jours plus anciens paraissent bruts dans le même rapport. Savoir quel chemin vos données ont emprunté, export manuel ou synchronisation en direct, vous indique immédiatement pourquoi une partie du journal se réconcilie et une autre non." },
+    { type: "heading", text: "Principales causes d'un écart de P&L à l'export Tradovate en 2026" },
+    { type: "heading", text: "1. L'export Orders ne contient aucune donnée de commissions ou de frais" },
+    { type: "paragraph", html: "C'est la cause première derrière la plupart des écarts. Le rapport Orders (Order History / Fills) vous donne la mécanique de la transaction mais omet entièrement les colonnes de coûts. Les commissions et les frais ne figurent absolument pas dans l'export Orders, ils se trouvent plutôt dans le rapport Cash History. Tout journal alimenté uniquement par le fichier Orders indique donc un P&amp;L brut, et le brut affichera toujours un chiffre plus élevé sur vos gains, ou moins négatif sur vos pertes, que votre solde de compte net." },
+    { type: "heading", text: "2. Le P&L de votre compte et de vos relevés est déjà net de coûts" },
+    { type: "paragraph", html: "C'est le revers de la cause 1. Le solde de compte, les relevés et les vues de performance de Tradovate reflètent l'argent qui a réellement bougé, donc les commissions et les frais de bourse sont déjà intégrés. C'est le chiffre <em>net</em>. Lorsque vous comparez un export brut à un relevé net, la différence n'est pas une erreur, c'est la somme de toutes les commissions et frais de la période. Vous pouvez le confirmer en vérifiant que l'écart croît proportionnellement à votre nombre de transactions plutôt que de varier au hasard." },
+    { type: "heading", text: "3. Les comptes synchronisés par API ne portent que les frais du même jour" },
+    { type: "paragraph", html: "Si votre journal se connecte à Tradovate par API plutôt qu'en téléchargeant un fichier, attendez-vous à ce que les commissions et les frais n'apparaissent que pour les transactions exécutées ce jour-là. Les transactions synchronisées plus anciennes arrivent sans données de coûts, si bien qu'un journal synchronisé peut afficher un chiffre net propre pour aujourd'hui et un chiffre brut non ajusté pour la semaine dernière, le tout dans un seul rapport. C'est une limitation de la portée de la synchronisation, pas un écart d'exécution." },
+    { type: "heading", text: "4. Périodes, sessions ou fuseaux horaires non concordants" },
+    { type: "paragraph", html: "Une part surprenante des &laquo;écarts&raquo; correspond en réalité aux mêmes transactions comptées sur des fenêtres légèrement différentes. Les sessions à terme basculent à la clôture de la bourse (vers 17 h heure du Centre), et les horodatages exportés peuvent être en UTC alors que la vue de votre compte est locale. Si la limite de journée de votre journal ne correspond pas à celle de Tradovate, une transaction peut atterrir sur un jour différent, ou sortir entièrement de la période comparée, faisant en sorte que les totaux ne concordent pas même si chaque exécution correspond." },
+    { type: "heading", text: "5. Confusion entre commission par côté et round-turn" },
+    { type: "paragraph", html: "Une fois que vous réintégrez les coûts, il est facile de mal les soustraire. Les commissions sont facturées par côté, une fois à l'ouverture, une fois à la clôture, donc un round-turn complet comporte deux prélèvements de commission plus les frais de bourse et réglementaires par contrat. Si votre réconciliation applique la commission une fois au lieu de deux, ou l'inverse, vous échangerez simplement un écart contre un autre. Les taux exacts varient selon le plan, le contrat, et selon que vous tradez des micros ou des minis, utilisez donc vos chiffres réels plutôt que de supposer un taux fixe." },
+    { type: "heading", text: "Comment corriger un écart de P&L brut vs net Tradovate : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirmer qu'il s'agit d'un écart brut-net (comparer le brut au brut)", html: "Dans votre journal, basculez la vue P&amp;L sur <strong class='text-white'>brut</strong> (la plupart des outils ont un bascule brut/net ou une option &laquo;filtrer par P&amp;L brut&raquo;). Dans Tradovate, ouvrez la vue performance/rapports du compte pour la <strong class='text-white'>même</strong> période et relevez le P&amp;L brut. Comparez les deux chiffres bruts. S'ils correspondent maintenant, le diagnostic est confirmé, il ne manque que les commissions et les frais. S'ils <em>ne</em> correspondent <em>pas</em> au niveau brut, arrêtez-vous : vous avez affaire à un problème de période, de fuseau horaire ou d'exécution manquante, pas à un manque de frais." },
+        { title: "Récupérer le rapport Cash History pour les données de frais et de commissions", html: "Ouvrez les <strong class='text-white'>Account Reports</strong> de Tradovate (la section rapports de la plateforme). Sélectionnez le rapport <strong class='text-white'>Cash History</strong>, c'est le registre qui enregistre les commissions et les frais au moment où ils sont déduits, ainsi que les entrées appariées aux transactions à la clôture des positions. Réglez la <strong class='text-white'>même période</strong> que celle utilisée pour l'export Orders afin que les deux fichiers couvrent une activité identique, puis téléchargez-le en CSV." },
+        { title: "Réconcilier le P&L net (fusionner les fichiers ou appliquer une règle de commission)", html: "Vous avez deux méthodes fiables. <strong class='text-white'>Fusionner les rapports :</strong> téléchargez <code>Orders.csv</code> depuis le rapport Orders, puis ajoutez le contenu du CSV Cash History pour la même période, afin que le fichier combiné porte à la fois les exécutions et leurs frais. Ou <strong class='text-white'>appliquez une règle de commission/frais</strong> dans votre journal, si votre plateforme le permet, afin que l'import brut s'ajuste au net sans modifier les lignes manuellement. Si vous configurez une règle temporaire uniquement pour réconcilier un compte synchronisé, supprimez-la ensuite afin que les futurs imports, qui incluent déjà les frais du même jour, ne soient pas facturés deux fois." },
+        { title: "Revérifier les totaux", html: "Une fois les coûts appliqués, le P&amp;L net de votre journal devrait maintenant correspondre au solde du compte Tradovate pour la période. S'il reste décalé d'un petit montant constant, revoyez la commission par côté par rapport au round-turn." },
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Ce que vous voyez", "Ce que cela signifie", "Solution"],
+      rows: [
+        ["P&amp;L du journal supérieur au solde Tradovate", "L'export est brut ; le compte est net de frais", "Ajouter les commissions/frais depuis Cash History"],
+        ["Les chiffres bruts correspondent, pas les nets", "Seuls les commissions/frais manquent", "Fusionner Cash History ou appliquer une règle de frais"],
+        ["Les chiffres bruts ne correspondent pas non plus", "Désalignement de période, de session ou de fuseau horaire", "Réaligner la fenêtre comparée et le fuseau horaire"],
+        ["Jours récents nets, jours anciens bruts", "La synchronisation API ne porte que sur les frais du même jour", "Réconcilier les anciennes transactions depuis Cash History"],
+        ["Coûts ajoutés mais toujours un léger écart", "Erreur de commission par côté vs round-turn", "Appliquer la commission par côté (ouverture + clôture)"],
+        ["La transaction apparaît le mauvais jour", "Session 17 h CT / limite UTC vs locale", "Aligner la limite de journée de votre journal sur celle de la bourse"],
+        ["Frais comptés deux fois après réconciliation", "Règle temporaire laissée sur un compte synchronisé", "Supprimer la règle de commission temporaire"],
+      ],
+    },
+    { type: "heading", text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph", html: "Un écart brut-net est un casse-tête de réconciliation, mais le véritable gain consiste à garder votre exécution et vos registres propres dès le départ. PickMyTrade se place entre vos alertes TradingView et Tradovate et standardise le flux d'ordres qui deviendra ensuite votre journal :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, chaque ordre porte un symbole et une taille cohérents et validés, si bien que vos exécutions exportées sont propres et faciles à faire correspondre avec Cash History.",
+        "<strong class='text-white'>Entitlement &amp; Risk Filters</strong>, respecte les limites de la prop firm et l'état du compte, si bien que vous ne réconciliez pas après coup des ordres fantômes ou rejetés.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, espace le flux d'ordres pour que les exécutions arrivent de manière prévisible et que votre registre de transactions soit complet, pas rempli de tentatives répétées.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, reproduit le même ordre sur tous les comptes connectés, si bien que le rapport de chaque compte raconte la même histoire, réconciliable.",
+      ],
+    },
+    { type: "paragraph", html: "Un flux d'ordres plus propre signifie un journal qui se réconcilie plus vite, vous passez votre temps à examiner vos transactions, pas à traquer des colonnes de frais manquantes." },
+  ], it: [
+    { type: "paragraph", html: "Esportate le vostre operazioni Tradovate, inserite il CSV nel vostro diario, e il P&amp;L totale non torna. A volte sono pochi dollari per operazione, a volte centinaia in una settimana intensa, e non corrisponde mai esattamente al saldo che il vostro account Tradovate mostra realmente. Prima di concludere che il diario è difettoso o che le vostre esecuzioni erano sbagliate, ecco cosa sta realmente accadendo: in quasi tutti i casi si tratta di una <strong class='text-white'>discrepanza di P&amp;L Tradovate tra lordo e netto</strong>, e si riduce a una semplice limitazione. I file CSV esportati da Tradovate non contengono dati su commissioni o costi. Il saldo del vostro account è <em>netto</em> di tali costi; le cifre esportate sono <em>lorde</em>, prima di essi. Il divario che state osservando è il costo di trading che avete già pagato. Di seguito vedrete come confermarlo, dove si trovano realmente i dati di costo mancanti e come riconciliare i due valori in modo che il vostro diario corrisponda al vostro estratto conto fino al centesimo." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per una discrepanza di P&L lordo vs netto",
+      items: [
+        "<strong class='text-white'>Confrontate prima lordo con lordo.</strong> Allineate il P&amp;L lordo del vostro diario con il P&amp;L lordo di Tradovate per lo <em>stesso</em> intervallo di date prima di concludere che qualcosa non va.",
+        "<strong class='text-white'>Ricordate che gli export sono lordi.</strong> L'export Orders non ha una colonna commissioni o costi, quindi qualsiasi strumento che lo importa mostra per impostazione predefinita il P&amp;L prima dei costi.",
+        "<strong class='text-white'>Recuperate il report Cash History.</strong> È lì che Tradovate registra commissioni e costi. Il report Orders non lo fa.",
+        "<strong class='text-white'>Fate corrispondere l'intervallo di date e il fuso orario.</strong> Una discrepanza è spesso solo un limite di sessione o uno scarto UTC rispetto all'ora locale, non un buco di costi.",
+        "<strong class='text-white'>Controllate separatamente gli account sincronizzati via API.</strong> Una sincronizzazione porta tipicamente solo dati di commissioni e costi dello <em>stesso giorno</em>, quindi le operazioni sincronizzate più vecchie appaiono lorde.",
+        "<strong class='text-white'>Conoscete i vostri costi per lato rispetto al round-turn.</strong> Verificate se state sottraendo la commissione una o due volte per operazione.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa una discrepanza di P&L \"lordo vs netto\"" },
+    { type: "paragraph", html: "Il P&amp;L lordo è il vostro risultato di trading grezzo: prezzo di uscita meno prezzo di entrata, moltiplicato per i contratti, moltiplicato per il valore del punto. Il P&amp;L netto è lo stesso numero <em>dopo</em> che commissioni, costi di borsa, costi NFA ed eventuali costi di routing o dati vengono sottratti. Su un singolo round-turn ES la differenza è minima. Moltiplicatela però su decine di operazioni, e le due cifre si separano visibilmente, che è esattamente ciò che vedete quando il totale di un diario non torna con il vostro saldo Tradovate." },
+    { type: "paragraph", html: "Il motivo per cui questa discrepanza si presenta in modo così sistematico è strutturale. Quando scaricate il report Orders come CSV, Tradovate include esecuzioni, prezzi, quantità e timestamp, ma <strong class='text-white'>non</strong> la commissione o il costo addebitato su ogni transazione. Un file caricato da Tradovate semplicemente non include dati su commissioni o costi, quindi qualsiasi cosa costruita solo a partire da quel file è lorda per costruzione. Il vostro account, invece, ha già dedotto ciascuno di quegli addebiti, quindi il suo P&amp;L è netto. Due numeri diversi, entrambi corretti, semplicemente misurati in punti diversi." },
+    { type: "paragraph", html: "Esiste una seconda variante dello stesso problema per configurazioni automatizzate o sincronizzate. Quando un diario recupera le operazioni tramite l'API di Tradovate anziché tramite un file, di solito riceve dati di commissioni e costi solo per l'attività dello <em>stesso giorno</em>. Le operazioni storiche arrivano senza i relativi costi, quindi i giorni recenti appaiono netti mentre i giorni più vecchi appaiono lordi all'interno dello stesso report. Sapere quale percorso hanno seguito i vostri dati, export manuale o sincronizzazione live, vi dice subito perché una parte del diario riconcilia e un'altra no." },
+    { type: "heading", text: "Principali cause di una discrepanza di P&L nell'export Tradovate nel 2026" },
+    { type: "heading", text: "1. L'export Orders non contiene dati su commissioni o costi" },
+    { type: "paragraph", html: "Questa è la causa principale dietro la maggior parte delle discrepanze. Il report Orders (Order History / Fills) fornisce la meccanica dell'operazione ma omette completamente le colonne dei costi. Commissioni e costi non sono affatto presenti nell'export Orders, si trovano invece nel report Cash History. Qualsiasi diario alimentato solo dal file Orders riporta quindi P&amp;L lordo, e il lordo apparirà sempre più alto sulle operazioni vincenti, o meno negativo su quelle perdenti, rispetto al vostro saldo account netto." },
+    { type: "heading", text: "2. Il P&L del vostro account e dell'estratto conto è già netto dei costi" },
+    { type: "paragraph", html: "Questo è il rovescio della causa 1. Il saldo dell'account, gli estratti conto e le viste sulle performance di Tradovate riflettono il denaro effettivamente movimentato, quindi commissioni e costi di borsa sono già inclusi. Questa è la cifra <em>netta</em>. Quando confrontate un export lordo con un estratto conto netto, la differenza non è un errore, è la somma di tutte le commissioni e i costi del periodo. Potete confermarlo verificando che il divario cresca in proporzione al numero delle vostre operazioni anziché variare in modo casuale." },
+    { type: "heading", text: "3. Gli account sincronizzati via API portano solo i costi dello stesso giorno" },
+    { type: "paragraph", html: "Se il vostro diario si collega a Tradovate tramite API anziché caricando un file, aspettatevi che commissioni e costi compaiano solo per le operazioni eseguite quel giorno stesso. Le operazioni sincronizzate più vecchie arrivano senza dati sui costi, quindi un diario sincronizzato può mostrare una cifra netta pulita per oggi e una cifra lorda non corretta per la settimana scorsa, tutto in un unico report. Si tratta di un limite dell'ambito della sincronizzazione, non di una discrepanza sulle esecuzioni." },
+    { type: "heading", text: "4. Intervalli di date, sessioni o fusi orari non corrispondenti" },
+    { type: "paragraph", html: "Una parte sorprendente delle &ldquo;discrepanze&rdquo; sono in realtà le stesse operazioni contate su finestre leggermente diverse. Le sessioni sui futures cambiano alla chiusura di borsa (intorno alle 17:00 ora centrale), e i timestamp esportati possono essere in UTC mentre la vista del vostro account è locale. Se il limite di giornata del vostro diario non corrisponde a quello di Tradovate, un'operazione può finire su un giorno diverso, o uscire completamente dall'intervallo confrontato, facendo sì che i totali non coincidano anche se ogni esecuzione corrisponde." },
+    { type: "heading", text: "5. Confusione tra commissione per lato e round-turn" },
+    { type: "paragraph", html: "Una volta che riaggiungete i costi, è facile sottrarli in modo errato. Le commissioni vengono addebitate per lato, una volta all'apertura, una volta alla chiusura, quindi un round-turn completo comporta due addebiti di commissione più i costi di borsa e normativi per contratto. Se la vostra riconciliazione applica la commissione una volta anziché due, o viceversa, scambierete semplicemente una discrepanza con un'altra. Le tariffe esatte variano in base al piano, al contratto e al fatto che stiate tradando micro o mini, quindi usate i vostri numeri reali invece di presumere una tariffa fissa." },
+    { type: "heading", text: "Come correggere una discrepanza di P&L lordo vs netto su Tradovate: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confermare che si tratti di un divario lordo-netto (confrontare lordo con lordo)", html: "Nel vostro diario, passate la vista del P&amp;L a <strong class='text-white'>lordo</strong> (la maggior parte degli strumenti ha un interruttore lordo/netto o un'opzione &ldquo;filtra per P&amp;L lordo&rdquo;). In Tradovate, aprite la vista performance/report dell'account per lo <strong class='text-white'>stesso</strong> intervallo di date e leggete il P&amp;L lordo. Confrontate i due numeri lordi. Se ora corrispondono, la diagnosi è confermata, manca solo commissioni e costi. Se <em>non</em> corrispondono a livello lordo, fermatevi: avete a che fare con un problema di intervallo di date, fuso orario o esecuzioni mancanti, non con un buco di costi." },
+        { title: "Recuperare il report Cash History per i dati su costi e commissioni", html: "Aprite gli <strong class='text-white'>Account Reports</strong> di Tradovate (la sezione report della piattaforma). Selezionate il report <strong class='text-white'>Cash History</strong>, è il registro che riporta commissioni e costi man mano che vengono dedotti, insieme alle voci abbinate all'operazione quando le posizioni si chiudono. Impostate lo <strong class='text-white'>stesso intervallo di date</strong> usato per l'export Orders in modo che i due file coprano attività identica, quindi scaricatelo come CSV." },
+        { title: "Riconciliare il P&L netto (unire i file o applicare una regola sulle commissioni)", html: "Avete due percorsi affidabili. <strong class='text-white'>Unire i report:</strong> scaricate <code>Orders.csv</code> dal report Orders, poi aggiungete il contenuto del CSV di Cash History per lo stesso intervallo, in modo che il file combinato porti sia le esecuzioni sia i relativi costi. Oppure <strong class='text-white'>applicate una regola su commissioni/costi</strong> nel vostro diario, se la vostra piattaforma lo supporta, in modo che l'importazione lorda si adegui al netto senza modificare manualmente le righe. Se impostate una regola temporanea solo per riconciliare un account sincronizzato, eliminatela in seguito in modo che le future importazioni, che già includono i costi dello stesso giorno, non vengano addebitate due volte." },
+        { title: "Ricontrollare i totali", html: "Con i costi applicati, il P&amp;L netto del vostro diario dovrebbe ora corrispondere al saldo dell'account Tradovate per il periodo. Se c'è ancora una differenza piccola e costante, rivedete la commissione per lato rispetto al round-turn." },
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Cosa vedete", "Cosa significa", "Soluzione"],
+      rows: [
+        ["P&amp;L del diario più alto del saldo Tradovate", "L'export è lordo; l'account è netto dei costi", "Aggiungere commissioni/costi da Cash History"],
+        ["Le cifre lorde corrispondono, quelle nette no", "Mancano solo commissioni/costi", "Unire Cash History o applicare una regola sui costi"],
+        ["Anche le cifre lorde non corrispondono", "Disallineamento di intervallo di date, sessione o fuso orario", "Riallineare la finestra confrontata e il fuso orario"],
+        ["Giorni recenti netti, giorni vecchi lordi", "La sincronizzazione API porta solo i costi dello stesso giorno", "Riconciliare le operazioni più vecchie da Cash History"],
+        ["Costi aggiunti ma ancora leggermente diversi", "Errore di commissione per lato vs round-turn", "Applicare la commissione per lato (apertura + chiusura)"],
+        ["L'operazione appare nel giorno sbagliato", "Sessione delle 17:00 CT / confine UTC vs locale", "Allineare il limite di giornata del diario a quello della borsa"],
+        ["Costi conteggiati due volte dopo la riconciliazione", "Regola temporanea lasciata su un account sincronizzato", "Eliminare la regola di commissione temporanea"],
+      ],
+    },
+    { type: "heading", text: "Prevenite questo con PickMyTrade" },
+    { type: "paragraph", html: "Una discrepanza lordo-netto è un grattacapo di riconciliazione, ma il vero vantaggio è mantenere pulite fin dall'inizio la vostra esecuzione e le vostre registrazioni. PickMyTrade si colloca tra i vostri alert di TradingView e Tradovate e standardizza il flusso di ordini che in seguito diventa il vostro diario:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, ogni ordine porta un simbolo e una dimensione coerenti e validati, quindi le vostre esecuzioni esportate sono pulite e facili da far corrispondere con Cash History.",
+        "<strong class='text-white'>Entitlement &amp; Risk Filters</strong>, rispetta i limiti della prop firm e lo stato dell'account, quindi non dovete riconciliare a posteriori ordini fantasma o rifiutati.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, distanzia il flusso di ordini in modo che le esecuzioni arrivino in modo prevedibile e il vostro registro operazioni sia completo, non pieno di tentativi ripetuti.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, replica lo stesso ordine su tutti gli account collegati, quindi il report di ogni account racconta la stessa storia, riconciliabile.",
+      ],
+    },
+    { type: "paragraph", html: "Un flusso di ordini più pulito significa un diario che riconcilia più velocemente, passate il vostro tempo a rivedere le operazioni, non a inseguire colonne di costi mancanti." },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Handeln ohne Ablehnungen", es: "Opere sin rechazos", fr: "Tradez sans rejets", it: "Operate senza rifiuti" },
+  ctaText: { en: "Link your alerts to Tradovate with PickMyTrade and keep your order flow clean, consistent, and easy to reconcile.", de: "Verknüpfen Sie Ihre Alerts mit Tradovate über PickMyTrade und halten Sie Ihren Orderfluss sauber, konsistent und leicht abzugleichen.", es: "Vincule sus alertas a Tradovate con PickMyTrade y mantenga su flujo de órdenes limpio, coherente y fácil de conciliar.", fr: "Reliez vos alertes à Tradovate avec PickMyTrade et gardez votre flux d'ordres propre, cohérent et facile à réconcilier.", it: "Collegate i vostri alert a Tradovate con PickMyTrade e mantenete il vostro flusso di ordini pulito, coerente e facile da riconciliare." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-tägige Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avviate la vostra prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why doesn't my Tradovate export match my account P&L?", a: "The exported CSV is gross, it has no commission or fee data, while your account balance is net of those costs. The difference between them is the commissions and fees you paid over the period." },
+    { q: "Does the Tradovate Orders export include commissions and fees?", a: "No. The Orders (Order History) export contains fills, prices, quantities, and timestamps, but not commissions or fees. Those are recorded separately in the Cash History report." },
+    { q: "Where does Tradovate keep commission and fee data?", a: "In the Cash History report inside Account Reports. It logs commissions and fees as they're deducted, along with entries when positions are closed (trade-paired)." },
+    { q: "How do I reconcile gross and net P&L?", a: "Compare gross to gross first to confirm the fills agree. Then pull the Cash History report for the same date range and either merge it with your Orders file or apply a commission-and-fee rule in your journal to arrive at net." },
+    { q: "Why do commissions show up for recent trades but not older ones?", a: "You're likely syncing via API rather than uploading a file. API syncs typically carry only same-day commission and fee data, so historical trades come across gross until you reconcile them from Cash History." },
+    { q: "Are the export numbers wrong?", a: "No, they're just gross rather than net. Both the export and the account balance are accurate; they simply measure P&L before and after trading costs." },
+    { q: "How much are Tradovate commissions and fees?", a: "They vary by plan, contract, and whether you trade micros or minis, and they include exchange and regulatory fees on top of the broker commission. Check Tradovate's current commission schedule for your plan rather than assuming a flat rate." },
+    { q: "My totals are still slightly off after adding fees, why?", a: "Most often it's a per-side vs round-turn error. Commission is charged once when you open and once when you close, so a full round-turn carries two commission hits plus per-contract fees. Make sure you're subtracting costs for both sides." },
+  ], de: [
+    { q: "Warum stimmt mein Tradovate-Export nicht mit dem P&L meines Kontos überein?", a: "Die exportierte CSV ist brutto, sie enthält keine Kommissions- oder Gebührendaten, während Ihr Kontostand netto nach diesen Kosten ist. Die Differenz zwischen beiden sind die Kommissionen und Gebühren, die Sie im Zeitraum bezahlt haben." },
+    { q: "Enthält der Tradovate-Orders-Export Kommissionen und Gebühren?", a: "Nein. Der Orders-Export (Order History) enthält Fills, Preise, Mengen und Zeitstempel, aber keine Kommissionen oder Gebühren. Diese werden separat im Cash-History-Report erfasst." },
+    { q: "Wo speichert Tradovate Kommissions- und Gebührendaten?", a: "Im Cash-History-Report innerhalb der Account Reports. Er erfasst Kommissionen und Gebühren bei ihrem Abzug, zusammen mit Einträgen beim Schließen von Positionen (trade-gepaart)." },
+    { q: "Wie gleiche ich Brutto- und Netto-P&L ab?", a: "Vergleichen Sie zuerst Brutto mit Brutto, um zu bestätigen, dass die Fills übereinstimmen. Rufen Sie dann den Cash-History-Report für denselben Zeitraum ab und führen Sie ihn entweder mit Ihrer Orders-Datei zusammen oder wenden Sie in Ihrem Journal eine Kommissions-/Gebührenregel an, um auf netto zu kommen." },
+    { q: "Warum erscheinen Kommissionen bei aktuellen Trades, aber nicht bei älteren?", a: "Sie synchronisieren wahrscheinlich per API statt eine Datei hochzuladen. API-Synchronisierungen enthalten in der Regel nur Kommissions- und Gebührendaten vom selben Tag, sodass historische Trades brutto erscheinen, bis Sie sie über Cash History abgleichen." },
+    { q: "Sind die Export-Zahlen falsch?", a: "Nein, sie sind einfach brutto statt netto. Sowohl der Export als auch der Kontostand sind korrekt; sie messen das P&L lediglich vor und nach den Handelskosten." },
+    { q: "Wie hoch sind Tradovate-Kommissionen und -Gebühren?", a: "Sie variieren je nach Tarif, Kontrakt und danach, ob Sie Micros oder Minis handeln, und beinhalten Börsen- und Aufsichtsgebühren zusätzlich zur Broker-Kommission. Prüfen Sie den aktuellen Kommissionsplan von Tradovate für Ihren Tarif, statt einen pauschalen Satz anzunehmen." },
+    { q: "Meine Summen weichen nach Hinzufügen der Gebühren noch leicht ab, warum?", a: "Meist ist es ein Fehler bei Kommission pro Seite versus Round-Turn. Die Kommission wird einmal beim Öffnen und einmal beim Schließen berechnet, sodass ein vollständiger Round-Turn zwei Kommissionsbelastungen plus Gebühren pro Kontrakt trägt. Stellen Sie sicher, dass Sie die Kosten für beide Seiten abziehen." },
+  ], es: [
+    { q: "¿Por qué mi exportación de Tradovate no coincide con el P&L de mi cuenta?", a: "El CSV exportado es bruto, no tiene datos de comisiones ni tarifas, mientras que el saldo de su cuenta es neto de esos costos. La diferencia entre ambos son las comisiones y tarifas que pagó durante el periodo." },
+    { q: "¿La exportación de Orders de Tradovate incluye comisiones y tarifas?", a: "No. La exportación de Orders (Order History) contiene fills, precios, cantidades y marcas de tiempo, pero no comisiones ni tarifas. Esas se registran por separado en el informe Cash History." },
+    { q: "¿Dónde guarda Tradovate los datos de comisiones y tarifas?", a: "En el informe Cash History dentro de Account Reports. Registra las comisiones y tarifas a medida que se deducen, junto con las entradas al cerrar posiciones (emparejadas por operación)." },
+    { q: "¿Cómo concilio el P&L bruto y neto?", a: "Compare primero bruto con bruto para confirmar que los fills coinciden. Luego obtenga el informe Cash History para el mismo rango de fechas y fusiónelo con su archivo de Orders o aplique una regla de comisiones y tarifas en su diario para llegar al neto." },
+    { q: "¿Por qué aparecen comisiones en operaciones recientes pero no en las antiguas?", a: "Probablemente esté sincronizando por API en lugar de subir un archivo. Las sincronizaciones por API normalmente solo traen datos de comisiones y tarifas del mismo día, así que las operaciones históricas llegan brutas hasta que las concilie desde Cash History." },
+    { q: "¿Son incorrectas las cifras de la exportación?", a: "No, simplemente son brutas en lugar de netas. Tanto la exportación como el saldo de la cuenta son correctos; solo miden el P&L antes y después de los costos de trading." },
+    { q: "¿Cuánto son las comisiones y tarifas de Tradovate?", a: "Varían según el plan, el contrato y si opera micros o minis, e incluyen tarifas de bolsa y regulatorias además de la comisión del bróker. Consulte el cronograma de comisiones actual de Tradovate para su plan en lugar de asumir una tarifa fija." },
+    { q: "Mis totales siguen ligeramente desviados después de añadir las tarifas, ¿por qué?", a: "Lo más frecuente es un error de comisión por lado frente a round-turn. La comisión se cobra una vez al abrir y una vez al cerrar, así que un round-turn completo conlleva dos cargos de comisión más las tarifas por contrato. Asegúrese de restar los costos de ambos lados." },
+  ], fr: [
+    { q: "Pourquoi mon export Tradovate ne correspond-il pas au P&L de mon compte ?", a: "Le CSV exporté est brut, il n'a pas de données de commissions ni de frais, alors que le solde de votre compte est net de ces coûts. La différence entre les deux correspond aux commissions et frais que vous avez payés sur la période." },
+    { q: "L'export Orders de Tradovate inclut-il les commissions et les frais ?", a: "Non. L'export Orders (Order History) contient les exécutions, les prix, les quantités et les horodatages, mais pas les commissions ni les frais. Ceux-ci sont enregistrés séparément dans le rapport Cash History." },
+    { q: "Où Tradovate conserve-t-il les données de commissions et de frais ?", a: "Dans le rapport Cash History, à l'intérieur d'Account Reports. Il enregistre les commissions et les frais au moment où ils sont déduits, ainsi que les entrées lorsque les positions sont clôturées (appariées à la transaction)." },
+    { q: "Comment réconcilier le P&L brut et net ?", a: "Comparez d'abord le brut au brut pour confirmer que les exécutions correspondent. Récupérez ensuite le rapport Cash History pour la même période et fusionnez-le avec votre fichier Orders ou appliquez une règle de commissions et de frais dans votre journal pour arriver au net." },
+    { q: "Pourquoi les commissions apparaissent-elles pour les transactions récentes mais pas pour les plus anciennes ?", a: "Vous synchronisez probablement via API plutôt que de télécharger un fichier. Les synchronisations API ne portent généralement que sur les données de commissions et de frais du même jour, donc les transactions historiques arrivent brutes jusqu'à ce que vous les réconciliiez depuis Cash History." },
+    { q: "Les chiffres de l'export sont-ils erronés ?", a: "Non, ils sont simplement bruts plutôt que nets. L'export et le solde du compte sont tous deux exacts ; ils mesurent simplement le P&L avant et après les frais de trading." },
+    { q: "À combien s'élèvent les commissions et frais Tradovate ?", a: "Ils varient selon le plan, le contrat, et selon que vous tradez des micros ou des minis, et incluent des frais de bourse et réglementaires en plus de la commission du courtier. Consultez le barème de commissions actuel de Tradovate pour votre plan plutôt que de supposer un taux fixe." },
+    { q: "Mes totaux sont encore légèrement décalés après l'ajout des frais, pourquoi ?", a: "Il s'agit le plus souvent d'une erreur de commission par côté vs round-turn. La commission est facturée une fois à l'ouverture et une fois à la clôture, donc un round-turn complet comporte deux prélèvements de commission plus les frais par contrat. Assurez-vous de soustraire les coûts des deux côtés." },
+  ], it: [
+    { q: "Perché il mio export Tradovate non corrisponde al P&L del mio account?", a: "Il CSV esportato è lordo, non ha dati su commissioni o costi, mentre il saldo del vostro account è netto di tali costi. La differenza tra i due è costituita dalle commissioni e dai costi che avete pagato nel periodo." },
+    { q: "L'export Orders di Tradovate include commissioni e costi?", a: "No. L'export Orders (Order History) contiene esecuzioni, prezzi, quantità e timestamp, ma non commissioni o costi. Questi sono registrati separatamente nel report Cash History." },
+    { q: "Dove conserva Tradovate i dati su commissioni e costi?", a: "Nel report Cash History all'interno di Account Reports. Registra commissioni e costi man mano che vengono dedotti, insieme alle voci quando le posizioni vengono chiuse (abbinate all'operazione)." },
+    { q: "Come riconcilio il P&L lordo e netto?", a: "Confrontate prima lordo con lordo per confermare che le esecuzioni coincidano. Poi recuperate il report Cash History per lo stesso intervallo di date e unitelo al vostro file Orders oppure applicate una regola su commissioni e costi nel vostro diario per arrivare al netto." },
+    { q: "Perché le commissioni compaiono per le operazioni recenti ma non per quelle più vecchie?", a: "Probabilmente state sincronizzando via API anziché caricare un file. Le sincronizzazioni API di solito portano solo dati di commissioni e costi dello stesso giorno, quindi le operazioni storiche arrivano lorde finché non le riconciliate da Cash History." },
+    { q: "I numeri dell'export sono sbagliati?", a: "No, sono semplicemente lordi anziché netti. Sia l'export sia il saldo dell'account sono corretti; misurano semplicemente il P&L prima e dopo i costi di trading." },
+    { q: "Quanto sono le commissioni e i costi di Tradovate?", a: "Variano in base al piano, al contratto e al fatto che tradiate micro o mini, e includono costi di borsa e normativi oltre alla commissione del broker. Controllate il listino commissioni attuale di Tradovate per il vostro piano invece di presumere una tariffa fissa." },
+    { q: "I miei totali sono ancora leggermente diversi dopo aver aggiunto i costi, perché?", a: "Il più delle volte è un errore di commissione per lato vs round-turn. La commissione viene addebitata una volta all'apertura e una volta alla chiusura, quindi un round-turn completo comporta due addebiti di commissione più i costi per contratto. Assicuratevi di sottrarre i costi per entrambi i lati." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich zu Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -abläufe ändern sich im Laufe der Zeit, bestätigen Sie daher vor dem Handeln stets den aktuellen Ablauf in der offiziellen Plattformdokumentation.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada a Tradovate, Inc. ni a Bookmap, ni cuenta con su patrocinio o respaldo. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à Tradovate, Inc. ou à Bookmap, ni approuvée ou parrainée par eux. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, veuillez donc toujours vérifier la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha uno scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verificate sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

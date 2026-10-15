@@ -1,0 +1,498 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-404-md-getchart";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API 404 on md/getChart Historical Data";
+const META_DESCRIPTION =
+  "Getting a 404 on historical chart requests? Route md/getChart to the market-data socket, use full contract symbols, and verify your data entitlements.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate API 404 en datos históricos de md/getChart", fr: "API Tradovate : erreur 404 sur md/getChart (historique)", it: "API Tradovate: errore 404 sui dati storici md/getChart" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate-API-Fehler 404 bei md/getChart-Verlaufsdaten", es: "Error 404 de la API de Tradovate en los datos históricos de md/getChart", fr: "Erreur 404 de l'API Tradovate sur les données historiques md/getChart", it: "Errore 404 dell'API Tradovate sui dati storici di md/getChart" },
+  dek: { en: "You wired up a WebSocket, sent a clean md/getChart request, and got Not found: md/getChart back. Nine times out of ten it's the wrong socket or a symbol Tradovate can't resolve.", de: "Sie haben ein WebSocket eingerichtet, eine saubere md/getChart-Anfrage gesendet und Not found: md/getChart zurückbekommen. In neun von zehn Fällen liegt es am falschen Socket oder an einem Symbol, das Tradovate nicht auflösen kann.", es: "Configuró un WebSocket, envió una solicitud md/getChart limpia y recibió Not found: md/getChart. Nueve de cada diez veces se debe al socket incorrecto o a un símbolo que Tradovate no puede resolver.", fr: "Vous avez configuré un WebSocket, envoyé une requête md/getChart propre, et reçu en retour Not found: md/getChart. Neuf fois sur dix, c'est le mauvais socket ou un symbole que Tradovate ne parvient pas à résoudre.", it: "Ha configurato un WebSocket, inviato una richiesta md/getChart pulita e ricevuto come risposta Not found: md/getChart. Nove volte su dieci il problema è il socket sbagliato o un simbolo che Tradovate non riesce a risolvere." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You wired up a WebSocket, authorized it, sent a clean <code>md/getChart</code> request for a few hundred bars of history, and the server slapped you with <code>Not found: md/getChart</code>. Nothing in the payload looks wrong. So why a 404 on an endpoint that clearly exists in the docs?" },
+    { type: "paragraph", html: "Nine times out of ten it comes down to one of two things: you sent the request to the wrong socket, or you asked for a symbol Tradovate can't resolve. Both throw a &ldquo;not found&rdquo; that looks identical from your side. Let's walk through each cause, in the order worth checking, and get your historical bars flowing." },
+    { type: "heading", text: "What the 404 Is Actually Telling You" },
+    { type: "paragraph", html: "A 404 from a REST call means the URL path doesn't exist. Over Tradovate's WebSocket it's the same idea: the frame you send names an endpoint, and if the socket you're connected to doesn't serve that endpoint, you get <code>Not found</code> with the endpoint name echoed back. It's not saying your symbol is bad or your token expired. It's saying &ldquo;I don't have a route for that here.&rdquo;" },
+    { type: "paragraph", html: "That distinction matters. If the message is literally <code>Not found: md/getChart</code>, the endpoint itself isn't reachable on that connection, which points straight at the wrong-socket problem. If the request reaches the market-data engine but the contract can't be found, you'll see a failure tied to the symbol instead. Read the exact text before you start changing code." },
+    { type: "heading", text: "Cause #1: You're Hitting the Wrong WebSocket" },
+    { type: "paragraph", html: "This is the big one, and it catches almost everyone the first time. Tradovate runs two different WebSocket services, and they are not interchangeable:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>The trading / API socket</strong> handles orders, positions, accounts, and the rest of the entity data. Live is <code>wss://live.tradovateapi.com/v1/websocket</code>; demo is <code>wss://demo.tradovateapi.com/v1/websocket</code>.",
+        "<strong class='text-white'>The market-data socket</strong> handles quotes, DOM, and charts. Live is <code>wss://md.tradovateapi.com/v1/websocket</code>; demo is <code>wss://md-demo.tradovateapi.com/v1/websocket</code>.",
+      ],
+    },
+    { type: "paragraph", html: "All the <code>md/</code> endpoints, <code>md/getChart</code>, <code>md/subscribeQuote</code>, <code>md/subscribeDOM</code>, only exist on the market-data socket. Send them to the trading socket and there's simply no route to match, so you get <code>Not found: md/getChart</code>. The trading socket won't hint that you're in the wrong place; it just reports the endpoint as missing." },
+    { type: "paragraph", html: "The fix: open a <em>second</em> WebSocket connection to the market-data host and send your chart request there. A common mistake is authorizing the trading socket beautifully, then reusing that same connection for market data. You need both sockets open, and each one needs its own <code>authorize</code> frame with your access token before it will answer any request." },
+    { type: "paragraph", html: "One more trap on the same theme, match your environment. If your access token came from the live auth endpoint, use <code>md.tradovateapi.com</code>. If it came from demo, use <code>md-demo.tradovateapi.com</code>. Crossing a live token with the demo market-data host (or vice versa) gets you rejected before the chart request even matters. Hostnames do get updated occasionally, so confirm the current ones against Tradovate's own developer docs rather than trusting a snippet you copied a year ago." },
+    { type: "heading", text: "Cause #2: The Symbol Isn't a Real Contract" },
+    { type: "paragraph", html: "Say your socket is correct and you're still getting a not-found response tied to the request. Look hard at the symbol. Chart requests need a fully qualified futures contract, not the product root you see in a watchlist." },
+    { type: "paragraph", html: "&ldquo;YM&rdquo; isn't tradable on its own, it's the root. What Tradovate can resolve is the specific contract, like <code>YMH5</code>, where <code>H</code> is the March month code and <code>5</code> is the year 2025. Pass the bare root, a wrong month code, or a contract that's already expired and rolled to the next quarter, and the engine can't find anything to build a chart from. Here's the standard futures month-code map:" },
+    {
+      type: "table",
+      headers: ["Month", "Code", "Month", "Code"],
+      rows: [
+        ["January", "F", "July", "N"],
+        ["February", "G", "August", "Q"],
+        ["March", "H", "September", "U"],
+        ["April", "J", "October", "V"],
+        ["May", "K", "November", "X"],
+        ["June", "M", "December", "Z"],
+      ],
+    },
+    { type: "paragraph", html: "Rather than hard-coding a symbol string, resolve the current front-month contract programmatically. The <code>contract/find</code> and product lookup endpoints on the trading socket give you the exact tradable symbol, so you're never guessing whether ES rolled from December to March. If you must use a continuous or &ldquo;front month&rdquo; alias, double-check it's one Tradovate actually accepts for charts, a lot of continuous notations that work in a charting UI won't resolve in a raw <code>md/getChart</code> call. When in doubt, request the explicit contract." },
+    { type: "paragraph", html: "This is also the classic reason a request that worked last quarter suddenly 404s: the contract you pinned expired. Rolls happen on a fixed schedule, and an expired symbol is gone from the data engine. Automate the roll instead of chasing it manually." },
+    { type: "heading", text: "Cause #3: Your Market-Data Entitlement Isn't Set Up" },
+    { type: "paragraph", html: "Correct socket, valid contract, and still nothing useful? Now check what your account is actually entitled to. Two layers matter here." },
+    { type: "paragraph", html: "First, API access itself has to be switched on. That's the <strong class='text-white'>API Access</strong> add-on inside your Tradovate account settings, which enables programmatic access and lets you generate the credentials your auth flow needs. Without it, your token won't carry the permissions the market-data engine expects." },
+    { type: "paragraph", html: "Second, real-time market data over the API needs the relevant exchange agreement and license. For CME products that means a monthly market-data license on top of your plan. The exact amount is set by the exchange and changes over time, so confirm the current figure with Tradovate rather than trusting a number you read somewhere, it's typically a recurring monthly charge, not trivial. Without that entitlement, a well-formed chart request can still come back inaccessible or empty, because you're asking for data your account isn't licensed to receive. If your symbols show as inaccessible rather than not-found, that's the flavor of problem you're looking at." },
+    { type: "paragraph", html: "If you're on a prop-firm or evaluation account, you often can't self-subscribe to that data at all, the firm controls it. In that case the entitlement fix runs through your firm's support, not Tradovate's." },
+    { type: "heading", text: "Cause #4: A Malformed Frame or an Unauthorized Socket" },
+    { type: "paragraph", html: "Tradovate's WebSocket doesn't speak plain JSON. Each request is a text frame with a specific shape: the endpoint, then the request id, then an (often empty) query line, then the JSON body, separated by newlines, for example <code>md/getChart\\n2\\n\\n{ ... }</code>. Get that structure wrong and the server may not parse the endpoint name correctly, which can surface as a not-found style error even though your intent was fine." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Authorize first.</strong> The very first frame on the market-data socket must be <code>authorize\\n1\\n\\n&lt;yourAccessToken&gt;</code>. Fire off <code>md/getChart</code> before the socket is authorized and it won't be honored.",
+        "<strong class='text-white'>Keep the socket alive.</strong> The connection expects a periodic heartbeat frame. Miss it and the socket drops; requests sent to a half-dead connection fail in confusing ways.",
+      ],
+    },
+    { type: "paragraph", html: "Build the frame exactly as documented, authorize before you request, and send heartbeats on schedule. Most &ldquo;random&rdquo; 404s on a socket that was working an hour ago trace back to one of these three." },
+    { type: "heading", text: "A Quick Checklist to Clear the 404" },
+    {
+      type: "table",
+      headers: ["Check", "What to confirm"],
+      rows: [
+        ["Right socket", "md/getChart goes to md.tradovateapi.com (live) or md-demo.tradovateapi.com (demo), not the trading socket."],
+        ["Matching environment", "Live token → live market-data host; demo token → demo host."],
+        ["Full contract symbol", "Use ESH5-style symbols, not the ES root, and not an expired contract."],
+        ["Entitlements on", "API Access add-on enabled and the exchange market-data license active."],
+        ["Frame + auth", "Authorize the socket first, then send a correctly newline-delimited request frame."],
+      ],
+    },
+    { type: "heading", text: "Once the Chart Data Starts Flowing" },
+    { type: "paragraph", html: "When the request lands, the response hands you back subscription ids, a historical id and a real-time id, and streams bars. History arrives in batches, and each batch ends with an &ldquo;end of history&rdquo; marker so you know when a chunk is complete. There's no fixed hard cap on how much you can pull per request, but the practical limit shifts day to day, so a big ask (say, minute bars over several years) comes back truncated instead of erroring out." },
+    { type: "paragraph", html: "To page further back, grab the oldest timestamp you received, fire a new <code>md/getChart</code> with that as your closest timestamp and your target date as the far timestamp, and repeat until you've got the range you need. And when you're done with a real-time chart, cancel it with <code>md/cancelChart</code> using the real-time id so you're not holding a subscription you no longer read." },
+    { type: "heading", text: "Where PickMyTrade Fits" },
+    { type: "paragraph", html: "Most people hitting this 404 don't actually want to become WebSocket plumbers, they want a strategy to execute on Tradovate without babysitting sockets, tokens, and frame formats. PickMyTrade automates order routing from TradingView alerts to Tradovate, so you don't have to wire raw WebSocket frames yourself just to execute a strategy." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>No raw socket plumbing</strong> your TradingView alerts route to Tradovate without hand-coding a single WebSocket frame.",
+        "<strong class='text-white'>Managed auth</strong> tokens and hosts are handled for you, so a wrong-environment mismatch never becomes your problem.",
+        "<strong class='text-white'>Symbol handling</strong> contract resolution is managed under the hood instead of you hand-tracking month codes and rolls.",
+        "<strong class='text-white'>Rate-limit-safe routing</strong> spaces order flow so nothing bounces off Tradovate's request limits.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie haben ein WebSocket eingerichtet, es autorisiert, eine saubere <code>md/getChart</code>-Anfrage für ein paar Hundert Bars an Historie gesendet, und der Server hat Ihnen <code>Not found: md/getChart</code> entgegengeschleudert. Am Payload scheint nichts falsch zu sein. Warum also ein 404 auf einen Endpunkt, der eindeutig in der Dokumentation existiert?" },
+    { type: "paragraph", html: "In neun von zehn Fällen liegt es an einer von zwei Sachen: Sie haben die Anfrage an das falsche Socket gesendet, oder Sie haben nach einem Symbol gefragt, das Tradovate nicht auflösen kann. Beides erzeugt ein &ldquo;not found&rdquo;, das von Ihrer Seite aus identisch aussieht. Gehen wir jede Ursache in der Reihenfolge durch, in der es sich zu prüfen lohnt, damit Ihre historischen Bars wieder fließen." },
+    { type: "heading", text: "Was der 404 Ihnen wirklich sagt" },
+    { type: "paragraph", html: "Ein 404 bei einem REST-Aufruf bedeutet, dass der URL-Pfad nicht existiert. Über Tradovates WebSocket gilt dasselbe Prinzip: Der Frame, den Sie senden, benennt einen Endpunkt, und wenn das Socket, mit dem Sie verbunden sind, diesen Endpunkt nicht bedient, erhalten Sie <code>Not found</code> mit dem zurückgespiegelten Endpunktnamen. Das bedeutet nicht, dass Ihr Symbol ungültig oder Ihr Token abgelaufen ist. Es bedeutet: &ldquo;Ich habe hier keine Route dafür.&rdquo;" },
+    { type: "paragraph", html: "Diese Unterscheidung ist wichtig. Wenn die Meldung wortwörtlich <code>Not found: md/getChart</code> lautet, ist der Endpunkt selbst über diese Verbindung nicht erreichbar, was direkt auf das Problem mit dem falschen Socket hindeutet. Wenn die Anfrage die Marktdaten-Engine erreicht, der Kontrakt aber nicht gefunden werden kann, sehen Sie stattdessen einen Fehler, der mit dem Symbol zusammenhängt. Lesen Sie den genauen Text, bevor Sie anfangen, Code zu ändern." },
+    { type: "heading", text: "Ursache 1: Sie greifen auf das falsche WebSocket zu" },
+    { type: "paragraph", html: "Das ist die große Ursache, und sie erwischt fast jeden beim ersten Mal. Tradovate betreibt zwei unterschiedliche WebSocket-Dienste, und diese sind nicht austauschbar:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Das Trading-/API-Socket</strong> verarbeitet Orders, Positionen, Konten und die übrigen Entitätsdaten. Live ist <code>wss://live.tradovateapi.com/v1/websocket</code>; Demo ist <code>wss://demo.tradovateapi.com/v1/websocket</code>.",
+        "<strong class='text-white'>Das Marktdaten-Socket</strong> verarbeitet Kurse, DOM und Charts. Live ist <code>wss://md.tradovateapi.com/v1/websocket</code>; Demo ist <code>wss://md-demo.tradovateapi.com/v1/websocket</code>.",
+      ],
+    },
+    { type: "paragraph", html: "Alle <code>md/</code>-Endpunkte, <code>md/getChart</code>, <code>md/subscribeQuote</code>, <code>md/subscribeDOM</code>, existieren ausschließlich auf dem Marktdaten-Socket. Senden Sie sie an das Trading-Socket, gibt es schlicht keine passende Route, und Sie erhalten <code>Not found: md/getChart</code>. Das Trading-Socket gibt keinen Hinweis darauf, dass Sie am falschen Ort sind; es meldet den Endpunkt einfach als fehlend." },
+    { type: "paragraph", html: "Die Lösung: Öffnen Sie eine <em>zweite</em> WebSocket-Verbindung zum Marktdaten-Host und senden Sie Ihre Chart-Anfrage dorthin. Ein häufiger Fehler ist, das Trading-Socket einwandfrei zu autorisieren und dann dieselbe Verbindung für Marktdaten wiederzuverwenden. Sie brauchen beide Sockets geöffnet, und jedes benötigt seinen eigenen <code>authorize</code>-Frame mit Ihrem Access Token, bevor es überhaupt auf eine Anfrage antwortet." },
+    { type: "paragraph", html: "Noch eine Falle zum selben Thema: Umgebung abgleichen. Wenn Ihr Access Token vom Live-Auth-Endpunkt stammt, verwenden Sie <code>md.tradovateapi.com</code>. Wenn er von Demo stammt, verwenden Sie <code>md-demo.tradovateapi.com</code>. Ein Live-Token mit dem Demo-Marktdaten-Host zu kombinieren (oder umgekehrt) führt zur Ablehnung, noch bevor die Chart-Anfrage überhaupt eine Rolle spielt. Hostnamen werden gelegentlich aktualisiert, also überprüfen Sie die aktuellen anhand von Tradovates eigener Entwicklerdokumentation, statt einem Snippet zu vertrauen, das Sie vor einem Jahr kopiert haben." },
+    { type: "heading", text: "Ursache 2: Das Symbol ist kein echter Kontrakt" },
+    { type: "paragraph", html: "Angenommen, Ihr Socket ist korrekt und Sie erhalten dennoch eine Not-found-Antwort im Zusammenhang mit der Anfrage. Schauen Sie sich das Symbol genau an. Chart-Anfragen benötigen einen vollständig qualifizierten Futures-Kontrakt, nicht die Produktwurzel, die Sie in einer Watchlist sehen." },
+    { type: "paragraph", html: "&ldquo;YM&rdquo; ist für sich genommen nicht handelbar, es ist die Wurzel. Was Tradovate auflösen kann, ist der konkrete Kontrakt, wie <code>YMH5</code>, wobei <code>H</code> der Monatscode für März und <code>5</code> das Jahr 2025 ist. Übergeben Sie die reine Wurzel, einen falschen Monatscode oder einen bereits abgelaufenen und zum nächsten Quartal gerollten Kontrakt, kann die Engine nichts finden, um daraus einen Chart zu erstellen. Hier ist die Standard-Monatscode-Tabelle für Futures:" },
+    {
+      type: "table",
+      headers: ["Monat", "Code", "Monat", "Code"],
+      rows: [
+        ["Januar", "F", "Juli", "N"],
+        ["Februar", "G", "August", "Q"],
+        ["März", "H", "September", "U"],
+        ["April", "J", "Oktober", "V"],
+        ["Mai", "K", "November", "X"],
+        ["Juni", "M", "Dezember", "Z"],
+      ],
+    },
+    { type: "paragraph", html: "Statt eine Symbolzeichenkette fest zu codieren, lösen Sie den aktuellen Frontmonat-Kontrakt programmatisch auf. Die Endpunkte <code>contract/find</code> und die Produktsuche im Trading-Socket liefern Ihnen das exakte handelbare Symbol, sodass Sie nie raten müssen, ob ES von Dezember auf März gerollt ist. Wenn Sie einen kontinuierlichen oder &ldquo;Frontmonat&rdquo;-Alias verwenden müssen, prüfen Sie unbedingt, ob Tradovate diesen für Charts tatsächlich akzeptiert, viele kontinuierliche Notationen, die in einer Charting-Oberfläche funktionieren, lassen sich in einem rohen <code>md/getChart</code>-Aufruf nicht auflösen. Im Zweifelsfall fordern Sie den expliziten Kontrakt an." },
+    { type: "paragraph", html: "Das ist auch der klassische Grund, warum eine Anfrage, die letztes Quartal funktioniert hat, plötzlich einen 404 wirft: Der von Ihnen fest hinterlegte Kontrakt ist abgelaufen. Rollovers erfolgen nach einem festen Zeitplan, und ein abgelaufenes Symbol verschwindet aus der Daten-Engine. Automatisieren Sie den Rollover, statt ihm manuell hinterherzujagen." },
+    { type: "heading", text: "Ursache 3: Ihre Marktdaten-Berechtigung ist nicht eingerichtet" },
+    { type: "paragraph", html: "Korrektes Socket, gültiger Kontrakt, und trotzdem nichts Brauchbares? Prüfen Sie jetzt, wozu Ihr Konto tatsächlich berechtigt ist. Zwei Ebenen sind hier relevant." },
+    { type: "paragraph", html: "Erstens muss der API-Zugriff selbst aktiviert sein. Das ist das Add-on <strong class='text-white'>API Access</strong> in Ihren Tradovate-Kontoeinstellungen, das den programmatischen Zugriff aktiviert und es Ihnen ermöglicht, die für Ihren Auth-Flow benötigten Anmeldedaten zu generieren. Ohne dieses Add-on trägt Ihr Token nicht die Berechtigungen, die die Marktdaten-Engine erwartet." },
+    { type: "paragraph", html: "Zweitens erfordern Echtzeit-Marktdaten über die API die entsprechende Börsenvereinbarung und Lizenz. Für CME-Produkte bedeutet das eine monatliche Marktdatenlizenz zusätzlich zu Ihrem Plan. Der genaue Betrag wird von der Börse festgelegt und ändert sich im Laufe der Zeit. Bestätigen Sie daher die aktuelle Zahl bei Tradovate, statt einer Angabe zu vertrauen, die Sie irgendwo gelesen haben, es handelt sich typischerweise um eine wiederkehrende monatliche Gebühr, nicht um einen trivialen Betrag. Ohne diese Berechtigung kann eine korrekt formulierte Chart-Anfrage weiterhin unzugänglich oder leer zurückkommen, weil Sie Daten anfordern, für deren Empfang Ihr Konto nicht lizenziert ist. Wenn Ihre Symbole als unzugänglich statt als not-found angezeigt werden, ist genau das die Art von Problem, mit der Sie es zu tun haben." },
+    { type: "paragraph", html: "Wenn Sie ein Prop-Firm- oder Evaluierungskonto haben, können Sie diese Daten oft überhaupt nicht selbst abonnieren, die Firma kontrolliert das. In diesem Fall läuft die Behebung der Berechtigung über den Support Ihrer Firma, nicht über den von Tradovate." },
+    { type: "heading", text: "Ursache 4: Ein fehlerhafter Frame oder ein nicht autorisiertes Socket" },
+    { type: "paragraph", html: "Das WebSocket von Tradovate spricht kein reines JSON. Jede Anfrage ist ein Textframe mit einer bestimmten Struktur: der Endpunkt, dann die Anfrage-ID, dann eine (oft leere) Query-Zeile, dann der JSON-Body, getrennt durch Zeilenumbrüche, zum Beispiel <code>md/getChart\\n2\\n\\n{ ... }</code>. Bringen Sie diese Struktur durcheinander, kann der Server den Endpunktnamen möglicherweise nicht korrekt parsen, was sich als Fehler im Stil von not-found äußern kann, obwohl Ihre Absicht in Ordnung war." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Zuerst autorisieren.</strong> Der allererste Frame auf dem Marktdaten-Socket muss <code>authorize\\n1\\n\\n&lt;yourAccessToken&gt;</code> sein. Senden Sie <code>md/getChart</code>, bevor das Socket autorisiert ist, wird es nicht ausgeführt.",
+        "<strong class='text-white'>Socket am Leben halten.</strong> Die Verbindung erwartet einen periodischen Heartbeat-Frame. Verpassen Sie ihn, bricht das Socket ab; Anfragen an eine halbtote Verbindung schlagen auf verwirrende Weise fehl.",
+      ],
+    },
+    { type: "paragraph", html: "Bauen Sie den Frame genau wie dokumentiert auf, autorisieren Sie, bevor Sie anfragen, und senden Sie Heartbeats nach Zeitplan. Die meisten &ldquo;zufälligen&rdquo; 404s auf einem Socket, das vor einer Stunde noch funktioniert hat, lassen sich auf einen dieser drei Punkte zurückführen." },
+    { type: "heading", text: "Eine kurze Checkliste, um den 404 zu beheben" },
+    {
+      type: "table",
+      headers: ["Prüfpunkt", "Was zu bestätigen ist"],
+      rows: [
+        ["Richtiges Socket", "md/getChart geht an md.tradovateapi.com (live) oder md-demo.tradovateapi.com (demo), nicht an das Trading-Socket."],
+        ["Passende Umgebung", "Live-Token → Live-Marktdaten-Host; Demo-Token → Demo-Host."],
+        ["Vollständiges Kontraktsymbol", "Verwenden Sie Symbole im Stil von ESH5, nicht die Wurzel ES und keinen abgelaufenen Kontrakt."],
+        ["Berechtigungen aktiv", "API-Access-Add-on aktiviert und Börsen-Marktdatenlizenz aktiv."],
+        ["Frame + Auth", "Autorisieren Sie das Socket zuerst und senden Sie dann einen korrekt durch Zeilenumbrüche getrennten Anfrage-Frame."],
+      ],
+    },
+    { type: "heading", text: "Sobald die Chartdaten zu fließen beginnen" },
+    { type: "paragraph", html: "Wenn die Anfrage erfolgreich ist, liefert die Antwort Ihnen Subscription-IDs zurück, eine historische ID und eine Echtzeit-ID, und streamt Bars. Die Historie kommt in Batches an, und jeder Batch endet mit einem &ldquo;end of history&rdquo;-Marker, damit Sie wissen, wann ein Abschnitt vollständig ist. Es gibt keine feste harte Obergrenze dafür, wie viel Sie pro Anfrage abrufen können, aber das praktische Limit verschiebt sich von Tag zu Tag, sodass eine große Anfrage (etwa Minutenbars über mehrere Jahre) abgeschnitten statt mit einem Fehler zurückkommt." },
+    { type: "paragraph", html: "Um weiter zurückzublättern, nehmen Sie den ältesten empfangenen Zeitstempel, senden Sie eine neue <code>md/getChart</code>-Anfrage mit diesem als nächstgelegenem Zeitstempel und Ihrem Zieldatum als fernem Zeitstempel, und wiederholen Sie das, bis Sie den benötigten Zeitraum haben. Und wenn Sie mit einem Echtzeit-Chart fertig sind, brechen Sie ihn mit <code>md/cancelChart</code> unter Verwendung der Echtzeit-ID ab, damit Sie keine Subscription behalten, die Sie nicht mehr lesen." },
+    { type: "heading", text: "Wo PickMyTrade ins Spiel kommt" },
+    { type: "paragraph", html: "Die meisten Menschen, die auf diesen 404 stoßen, wollen eigentlich keine WebSocket-Klempner werden, sie wollen eine Strategie auf Tradovate ausführen, ohne Sockets, Token und Frame-Formate im Auge behalten zu müssen. PickMyTrade automatisiert das Order-Routing von TradingView-Alerts zu Tradovate, sodass Sie nicht selbst rohe WebSocket-Frames verdrahten müssen, nur um eine Strategie auszuführen." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Keine rohe Socket-Verkabelung</strong> Ihre TradingView-Alerts werden an Tradovate weitergeleitet, ohne einen einzigen WebSocket-Frame von Hand zu codieren.",
+        "<strong class='text-white'>Verwaltete Authentifizierung</strong> Tokens und Hosts werden für Sie verwaltet, sodass eine Umgebungs-Fehlanpassung nie zu Ihrem Problem wird.",
+        "<strong class='text-white'>Symbolverwaltung</strong> die Kontraktauflösung wird im Hintergrund verwaltet, statt dass Sie Monatscodes und Rollovers manuell im Blick behalten müssen.",
+        "<strong class='text-white'>Rate-Limit-sicheres Routing</strong> staffelt den Order-Flow, sodass nichts an Tradovates Anfragelimits abprallt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Configuró un WebSocket, lo autorizó, envió una solicitud <code>md/getChart</code> limpia para unas cientos de barras de historial, y el servidor le respondió con <code>Not found: md/getChart</code>. Nada en el payload parece incorrecto. Entonces, ¿por qué un 404 en un endpoint que claramente existe en la documentación?" },
+    { type: "paragraph", html: "Nueve de cada diez veces se reduce a una de dos cosas: envió la solicitud al socket equivocado o pidió un símbolo que Tradovate no puede resolver. Ambos casos generan un &ldquo;not found&rdquo; que se ve idéntico desde su lado. Repasemos cada causa, en el orden en que vale la pena revisarlas, para que sus barras históricas empiecen a fluir." },
+    { type: "heading", text: "Qué le está diciendo realmente el 404" },
+    { type: "paragraph", html: "Un 404 en una llamada REST significa que la ruta de la URL no existe. En el WebSocket de Tradovate se aplica la misma idea: el frame que envía nombra un endpoint, y si el socket al que está conectado no atiende ese endpoint, recibe <code>Not found</code> con el nombre del endpoint reflejado de vuelta. No significa que su símbolo sea incorrecto ni que su token haya expirado. Significa &ldquo;no tengo una ruta para eso aquí&rdquo;." },
+    { type: "paragraph", html: "Esa distinción importa. Si el mensaje es literalmente <code>Not found: md/getChart</code>, el propio endpoint no es accesible en esa conexión, lo que apunta directamente al problema del socket equivocado. Si la solicitud llega al motor de datos de mercado pero no se encuentra el contrato, verá en su lugar un fallo relacionado con el símbolo. Lea el texto exacto antes de empezar a modificar el código." },
+    { type: "heading", text: "Causa 1: está usando el WebSocket equivocado" },
+    { type: "paragraph", html: "Esta es la causa principal, y atrapa a casi todo el mundo la primera vez. Tradovate opera dos servicios WebSocket distintos, y no son intercambiables:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>El socket de trading/API</strong> gestiona órdenes, posiciones, cuentas y el resto de los datos de entidades. En real es <code>wss://live.tradovateapi.com/v1/websocket</code>; en demo es <code>wss://demo.tradovateapi.com/v1/websocket</code>.",
+        "<strong class='text-white'>El socket de datos de mercado</strong> gestiona cotizaciones, DOM y gráficos. En real es <code>wss://md.tradovateapi.com/v1/websocket</code>; en demo es <code>wss://md-demo.tradovateapi.com/v1/websocket</code>.",
+      ],
+    },
+    { type: "paragraph", html: "Todos los endpoints <code>md/</code>, <code>md/getChart</code>, <code>md/subscribeQuote</code>, <code>md/subscribeDOM</code>, existen únicamente en el socket de datos de mercado. Si los envía al socket de trading, simplemente no hay ninguna ruta que coincida, por lo que recibe <code>Not found: md/getChart</code>. El socket de trading no le indicará que está en el lugar equivocado; solo reporta el endpoint como inexistente." },
+    { type: "paragraph", html: "La solución: abra una <em>segunda</em> conexión WebSocket al host de datos de mercado y envíe allí su solicitud de gráfico. Un error común es autorizar perfectamente el socket de trading y luego reutilizar esa misma conexión para los datos de mercado. Necesita ambos sockets abiertos, y cada uno necesita su propio frame <code>authorize</code> con su token de acceso antes de responder a cualquier solicitud." },
+    { type: "paragraph", html: "Otra trampa relacionada con el mismo tema: haga coincidir su entorno. Si su token de acceso proviene del endpoint de autenticación en real, use <code>md.tradovateapi.com</code>. Si proviene de demo, use <code>md-demo.tradovateapi.com</code>. Combinar un token en real con el host de datos de mercado de demo (o viceversa) hace que lo rechacen antes incluso de que la solicitud de gráfico importe. Los nombres de host se actualizan ocasionalmente, así que confirme los actuales en la documentación oficial para desarrolladores de Tradovate en lugar de confiar en un fragmento que copió hace un año." },
+    { type: "heading", text: "Causa 2: el símbolo no es un contrato real" },
+    { type: "paragraph", html: "Supongamos que su socket es correcto y aun así sigue recibiendo una respuesta not-found asociada a la solicitud. Examine cuidadosamente el símbolo. Las solicitudes de gráfico necesitan un contrato de futuros completamente calificado, no la raíz del producto que ve en una lista de seguimiento." },
+    { type: "paragraph", html: "&ldquo;YM&rdquo; no es negociable por sí solo, es la raíz. Lo que Tradovate puede resolver es el contrato específico, como <code>YMH5</code>, donde <code>H</code> es el código del mes de marzo y <code>5</code> es el año 2025. Si pasa la raíz sola, un código de mes incorrecto o un contrato que ya venció y pasó al siguiente trimestre, el motor no podrá encontrar nada con qué construir un gráfico. Aquí está el mapa estándar de códigos de mes para futuros:" },
+    {
+      type: "table",
+      headers: ["Mes", "Código", "Mes", "Código"],
+      rows: [
+        ["enero", "F", "julio", "N"],
+        ["febrero", "G", "agosto", "Q"],
+        ["marzo", "H", "septiembre", "U"],
+        ["abril", "J", "octubre", "V"],
+        ["mayo", "K", "noviembre", "X"],
+        ["junio", "M", "diciembre", "Z"],
+      ],
+    },
+    { type: "paragraph", html: "En lugar de codificar de forma fija una cadena de símbolo, resuelva el contrato del mes frontal actual de forma programática. Los endpoints <code>contract/find</code> y de búsqueda de productos en el socket de trading le dan el símbolo negociable exacto, de modo que nunca tenga que adivinar si ES pasó de diciembre a marzo. Si debe usar un alias continuo o de &ldquo;mes frontal&rdquo;, verifique bien que sea uno que Tradovate realmente acepte para gráficos, muchas notaciones continuas que funcionan en una interfaz de gráficos no se resuelven en una llamada directa a <code>md/getChart</code>. En caso de duda, solicite el contrato explícito." },
+    { type: "paragraph", html: "Esta es también la razón clásica por la que una solicitud que funcionaba el trimestre pasado de repente da un 404: el contrato que fijó ha vencido. Los rollovers ocurren según un calendario fijo, y un símbolo vencido desaparece del motor de datos. Automatice el rollover en lugar de perseguirlo manualmente." },
+    { type: "heading", text: "Causa 3: su permiso de datos de mercado no está configurado" },
+    { type: "paragraph", html: "¿Socket correcto, contrato válido y aun así nada útil? Ahora revise a qué está realmente autorizada su cuenta. Aquí importan dos niveles." },
+    { type: "paragraph", html: "Primero, el acceso a la API en sí debe estar activado. Ese es el complemento <strong class='text-white'>API Access</strong> dentro de la configuración de su cuenta de Tradovate, que habilita el acceso programático y le permite generar las credenciales que necesita su flujo de autenticación. Sin él, su token no llevará los permisos que espera el motor de datos de mercado." },
+    { type: "paragraph", html: "En segundo lugar, los datos de mercado en tiempo real a través de la API requieren el acuerdo y la licencia correspondientes de la bolsa. Para los productos de CME, eso significa una licencia mensual de datos de mercado adicional a su plan. El importe exacto lo fija la bolsa y cambia con el tiempo, así que confirme la cifra actual con Tradovate en lugar de confiar en un número que leyó en algún lugar, normalmente es un cargo mensual recurrente, no trivial. Sin esa autorización, una solicitud de gráfico bien formada puede seguir devolviendo datos inaccesibles o vacíos, porque está pidiendo datos que su cuenta no tiene licencia para recibir. Si sus símbolos aparecen como inaccesibles en lugar de not-found, ese es el tipo de problema que está viendo." },
+    { type: "paragraph", html: "Si tiene una cuenta de prop-firm o de evaluación, a menudo no puede suscribirse usted mismo a esos datos, la firma los controla. En ese caso, la solución del permiso pasa por el soporte de su firma, no por el de Tradovate." },
+    { type: "heading", text: "Causa 4: un frame mal formado o un socket sin autorizar" },
+    { type: "paragraph", html: "El WebSocket de Tradovate no habla JSON plano. Cada solicitud es un frame de texto con una forma específica: el endpoint, luego el id de la solicitud, luego una línea de consulta (a menudo vacía), luego el cuerpo JSON, separados por saltos de línea, por ejemplo <code>md/getChart\\n2\\n\\n{ ... }</code>. Si esa estructura está mal, el servidor puede no analizar correctamente el nombre del endpoint, lo que puede manifestarse como un error tipo not-found aunque su intención fuera correcta." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Autorice primero.</strong> El primer frame en el socket de datos de mercado debe ser <code>authorize\\n1\\n\\n&lt;yourAccessToken&gt;</code>. Si envía <code>md/getChart</code> antes de que el socket esté autorizado, no se atenderá.",
+        "<strong class='text-white'>Mantenga vivo el socket.</strong> La conexión espera un frame de heartbeat periódico. Si lo omite, el socket se cae; las solicitudes enviadas a una conexión semimuerta fallan de formas confusas.",
+      ],
+    },
+    { type: "paragraph", html: "Construya el frame exactamente como está documentado, autorice antes de solicitar, y envíe heartbeats según el calendario. La mayoría de los 404 &ldquo;aleatorios&rdquo; en un socket que funcionaba hace una hora se remontan a uno de estos tres puntos." },
+    { type: "heading", text: "Una lista de verificación rápida para resolver el 404" },
+    {
+      type: "table",
+      headers: ["Verificación", "Qué confirmar"],
+      rows: [
+        ["Socket correcto", "md/getChart va a md.tradovateapi.com (real) o md-demo.tradovateapi.com (demo), no al socket de trading."],
+        ["Entorno coincidente", "Token en real → host de datos de mercado en real; token de demo → host de demo."],
+        ["Símbolo de contrato completo", "Use símbolos con formato ESH5, no la raíz ES, y no un contrato vencido."],
+        ["Permisos activados", "Complemento API Access habilitado y licencia de datos de mercado de la bolsa activa."],
+        ["Frame + autenticación", "Autorice el socket primero y luego envíe un frame de solicitud correctamente delimitado por saltos de línea."],
+      ],
+    },
+    { type: "heading", text: "Una vez que los datos del gráfico empiezan a fluir" },
+    { type: "paragraph", html: "Cuando la solicitud tiene éxito, la respuesta le devuelve ids de suscripción, un id histórico y un id en tiempo real, y transmite barras. El historial llega en lotes, y cada lote termina con un marcador de &ldquo;end of history&rdquo; para que sepa cuándo un fragmento está completo. No hay un límite máximo fijo de cuánto puede extraer por solicitud, pero el límite práctico varía día a día, así que una solicitud grande (por ejemplo, barras de un minuto durante varios años) vuelve truncada en lugar de dar error." },
+    { type: "paragraph", html: "Para retroceder más en la paginación, tome la marca de tiempo más antigua que recibió, envíe una nueva <code>md/getChart</code> usándola como su marca de tiempo más cercana y su fecha objetivo como la marca de tiempo lejana, y repita hasta obtener el rango que necesita. Y cuando termine con un gráfico en tiempo real, cancélelo con <code>md/cancelChart</code> usando el id en tiempo real, para no mantener una suscripción que ya no lee." },
+    { type: "heading", text: "Dónde encaja PickMyTrade" },
+    { type: "paragraph", html: "La mayoría de las personas que se topan con este 404 en realidad no quieren convertirse en fontaneros de WebSocket, quieren ejecutar una estrategia en Tradovate sin tener que vigilar sockets, tokens y formatos de frame. PickMyTrade automatiza el enrutamiento de órdenes desde las alertas de TradingView hacia Tradovate, de modo que no tenga que cablear frames WebSocket en bruto usted mismo solo para ejecutar una estrategia." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Sin cableado de sockets en bruto</strong> sus alertas de TradingView se enrutan a Tradovate sin codificar a mano ni un solo frame WebSocket.",
+        "<strong class='text-white'>Autenticación gestionada</strong> los tokens y hosts se gestionan por usted, de modo que un desajuste de entorno nunca se convierte en su problema.",
+        "<strong class='text-white'>Gestión de símbolos</strong> la resolución de contratos se maneja internamente en lugar de que usted rastree manualmente los códigos de mes y los rollovers.",
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de tasa</strong> espacia el flujo de órdenes para que nada choque contra los límites de solicitudes de Tradovate.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous avez configuré un WebSocket, l'avez autorisé, envoyé une requête <code>md/getChart</code> propre pour quelques centaines de barres d'historique, et le serveur vous a répondu par <code>Not found: md/getChart</code>. Rien dans la charge utile ne semble incorrect. Alors pourquoi une erreur 404 sur un endpoint qui existe clairement dans la documentation ?" },
+    { type: "paragraph", html: "Neuf fois sur dix, cela se résume à l'une de ces deux choses : vous avez envoyé la requête au mauvais socket, ou vous avez demandé un symbole que Tradovate ne peut pas résoudre. Les deux déclenchent un &ldquo;not found&rdquo; qui semble identique de votre côté. Passons en revue chaque cause, dans l'ordre où il vaut la peine de les vérifier, pour faire circuler vos barres historiques." },
+    { type: "heading", text: "Ce que le 404 vous indique réellement" },
+    { type: "paragraph", html: "Une erreur 404 sur un appel REST signifie que le chemin de l'URL n'existe pas. Sur le WebSocket de Tradovate, c'est la même logique : la trame que vous envoyez nomme un endpoint, et si le socket auquel vous êtes connecté ne dessert pas cet endpoint, vous recevez <code>Not found</code> avec le nom de l'endpoint renvoyé. Cela ne signifie pas que votre symbole est invalide ou que votre jeton a expiré. Cela signifie &ldquo;je n'ai pas de route pour cela ici&rdquo;." },
+    { type: "paragraph", html: "Cette distinction est importante. Si le message est littéralement <code>Not found: md/getChart</code>, l'endpoint lui-même n'est pas accessible sur cette connexion, ce qui pointe directement vers le problème de mauvais socket. Si la requête atteint le moteur de données de marché mais que le contrat est introuvable, vous verrez plutôt un échec lié au symbole. Lisez le texte exact avant de commencer à modifier le code." },
+    { type: "heading", text: "Cause n° 1 : vous utilisez le mauvais WebSocket" },
+    { type: "paragraph", html: "C'est la cause la plus fréquente, et elle piège presque tout le monde la première fois. Tradovate exploite deux services WebSocket distincts, qui ne sont pas interchangeables :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Le socket de trading/API</strong> gère les ordres, les positions, les comptes et le reste des données d'entités. En live, c'est <code>wss://live.tradovateapi.com/v1/websocket</code> ; en démo, c'est <code>wss://demo.tradovateapi.com/v1/websocket</code>.",
+        "<strong class='text-white'>Le socket de données de marché</strong> gère les cotations, le DOM et les graphiques. En live, c'est <code>wss://md.tradovateapi.com/v1/websocket</code> ; en démo, c'est <code>wss://md-demo.tradovateapi.com/v1/websocket</code>.",
+      ],
+    },
+    { type: "paragraph", html: "Tous les endpoints <code>md/</code>, <code>md/getChart</code>, <code>md/subscribeQuote</code>, <code>md/subscribeDOM</code>, n'existent que sur le socket de données de marché. Envoyez-les au socket de trading et il n'y a tout simplement aucune route correspondante, donc vous obtenez <code>Not found: md/getChart</code>. Le socket de trading ne vous indiquera pas que vous êtes au mauvais endroit ; il signale simplement l'endpoint comme introuvable." },
+    { type: "paragraph", html: "La solution : ouvrez une <em>seconde</em> connexion WebSocket vers l'hôte de données de marché et envoyez-y votre requête de graphique. Une erreur courante consiste à autoriser parfaitement le socket de trading, puis à réutiliser cette même connexion pour les données de marché. Vous avez besoin des deux sockets ouverts, et chacun nécessite sa propre trame <code>authorize</code> avec votre jeton d'accès avant de répondre à la moindre requête." },
+    { type: "paragraph", html: "Autre piège sur le même thème : faites correspondre votre environnement. Si votre jeton d'accès provient de l'endpoint d'authentification live, utilisez <code>md.tradovateapi.com</code>. S'il provient de la démo, utilisez <code>md-demo.tradovateapi.com</code>. Croiser un jeton live avec l'hôte de données de marché de démo (ou l'inverse) entraîne un rejet avant même que la requête de graphique n'entre en jeu. Les noms d'hôte sont parfois mis à jour, alors vérifiez les noms actuels dans la documentation officielle des développeurs Tradovate plutôt que de faire confiance à un extrait copié il y a un an." },
+    { type: "heading", text: "Cause n° 2 : le symbole n'est pas un contrat réel" },
+    { type: "paragraph", html: "Supposons que votre socket soit correct et que vous receviez toujours une réponse not-found liée à la requête. Examinez attentivement le symbole. Les requêtes de graphique nécessitent un contrat à terme entièrement qualifié, et non la racine du produit que vous voyez dans une liste de suivi." },
+    { type: "paragraph", html: "&ldquo;YM&rdquo; n'est pas négociable seul, c'est la racine. Ce que Tradovate peut résoudre, c'est le contrat spécifique, comme <code>YMH5</code>, où <code>H</code> est le code du mois de mars et <code>5</code> l'année 2025. Si vous transmettez la racine seule, un code de mois erroné ou un contrat déjà expiré et reporté au trimestre suivant, le moteur ne trouvera rien pour construire un graphique. Voici la table standard des codes de mois pour les contrats à terme :" },
+    {
+      type: "table",
+      headers: ["Mois", "Code", "Mois", "Code"],
+      rows: [
+        ["janvier", "F", "juillet", "N"],
+        ["février", "G", "août", "Q"],
+        ["mars", "H", "septembre", "U"],
+        ["avril", "J", "octobre", "V"],
+        ["mai", "K", "novembre", "X"],
+        ["juin", "M", "décembre", "Z"],
+      ],
+    },
+    { type: "paragraph", html: "Plutôt que de coder en dur une chaîne de symbole, résolvez le contrat du mois avant de manière programmatique. Les endpoints <code>contract/find</code> et de recherche de produit sur le socket de trading vous donnent le symbole négociable exact, de sorte que vous n'ayez jamais à deviner si ES est passé de décembre à mars. Si vous devez utiliser un alias continu ou de &ldquo;mois avant&rdquo;, vérifiez bien qu'il s'agit d'un alias que Tradovate accepte réellement pour les graphiques, de nombreuses notations continues qui fonctionnent dans une interface de graphique ne se résolvent pas dans un appel brut à <code>md/getChart</code>. En cas de doute, demandez le contrat explicite." },
+    { type: "paragraph", html: "C'est également la raison classique pour laquelle une requête qui fonctionnait le trimestre dernier renvoie soudainement une erreur 404 : le contrat que vous aviez fixé a expiré. Les roulements se produisent selon un calendrier fixe, et un symbole expiré disparaît du moteur de données. Automatisez le roulement au lieu de le poursuivre manuellement." },
+    { type: "heading", text: "Cause n° 3 : votre droit d'accès aux données de marché n'est pas configuré" },
+    { type: "paragraph", html: "Bon socket, contrat valide, et toujours rien d'exploitable ? Vérifiez maintenant à quoi votre compte a réellement droit. Deux niveaux comptent ici." },
+    { type: "paragraph", html: "Premièrement, l'accès à l'API lui-même doit être activé. C'est le module complémentaire <strong class='text-white'>API Access</strong> dans les paramètres de votre compte Tradovate, qui active l'accès programmatique et vous permet de générer les identifiants dont votre flux d'authentification a besoin. Sans cela, votre jeton ne portera pas les permissions attendues par le moteur de données de marché." },
+    { type: "paragraph", html: "Deuxièmement, les données de marché en temps réel via l'API nécessitent l'accord et la licence appropriés de la bourse. Pour les produits CME, cela signifie une licence mensuelle de données de marché en plus de votre forfait. Le montant exact est fixé par la bourse et évolue dans le temps, alors confirmez le chiffre actuel auprès de Tradovate plutôt que de vous fier à un montant lu quelque part, il s'agit généralement d'un frais mensuel récurrent, non négligeable. Sans ce droit d'accès, une requête de graphique correctement formée peut toujours revenir inaccessible ou vide, car vous demandez des données que votre compte n'est pas autorisé à recevoir. Si vos symboles apparaissent comme inaccessibles plutôt que introuvables, c'est le type de problème auquel vous êtes confronté." },
+    { type: "paragraph", html: "Si vous avez un compte de prop firm ou d'évaluation, vous ne pouvez souvent pas vous abonner vous-même à ces données, c'est la société qui les contrôle. Dans ce cas, la résolution du droit d'accès passe par le support de votre société, pas par celui de Tradovate." },
+    { type: "heading", text: "Cause n° 4 : une trame mal formée ou un socket non autorisé" },
+    { type: "paragraph", html: "Le WebSocket de Tradovate ne parle pas du JSON brut. Chaque requête est une trame texte avec une forme spécifique : l'endpoint, puis l'identifiant de la requête, puis une ligne de requête (souvent vide), puis le corps JSON, séparés par des sauts de ligne, par exemple <code>md/getChart\\n2\\n\\n{ ... }</code>. Si cette structure est incorrecte, le serveur peut ne pas analyser correctement le nom de l'endpoint, ce qui peut se manifester par une erreur de type not-found même si votre intention était correcte." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Autorisez d'abord.</strong> La toute première trame sur le socket de données de marché doit être <code>authorize\\n1\\n\\n&lt;yourAccessToken&gt;</code>. Envoyez <code>md/getChart</code> avant que le socket ne soit autorisé et elle ne sera pas honorée.",
+        "<strong class='text-white'>Maintenez le socket actif.</strong> La connexion attend une trame de heartbeat périodique. Manquez-la et le socket se coupe ; les requêtes envoyées à une connexion à moitié morte échouent de façon déroutante.",
+      ],
+    },
+    { type: "paragraph", html: "Construisez la trame exactement comme documentée, autorisez avant de faire votre requête, et envoyez les heartbeats selon le calendrier prévu. La plupart des erreurs 404 &ldquo;aléatoires&rdquo; sur un socket qui fonctionnait il y a une heure remontent à l'un de ces trois points." },
+    { type: "heading", text: "Une checklist rapide pour résoudre le 404" },
+    {
+      type: "table",
+      headers: ["Vérification", "Quoi confirmer"],
+      rows: [
+        ["Bon socket", "md/getChart va vers md.tradovateapi.com (live) ou md-demo.tradovateapi.com (démo), pas vers le socket de trading."],
+        ["Environnement correspondant", "Jeton live → hôte de données de marché live ; jeton démo → hôte démo."],
+        ["Symbole de contrat complet", "Utilisez des symboles au format ESH5, pas la racine ES, ni un contrat expiré."],
+        ["Droits d'accès activés", "Module API Access activé et licence de données de marché de la bourse active."],
+        ["Trame + authentification", "Autorisez d'abord le socket, puis envoyez une trame de requête correctement délimitée par des sauts de ligne."],
+      ],
+    },
+    { type: "heading", text: "Une fois que les données du graphique commencent à circuler" },
+    { type: "paragraph", html: "Lorsque la requête aboutit, la réponse vous renvoie des identifiants d'abonnement, un identifiant historique et un identifiant temps réel, et diffuse des barres. L'historique arrive par lots, et chaque lot se termine par un marqueur &ldquo;end of history&rdquo; pour que vous sachiez quand un segment est complet. Il n'y a pas de plafond fixe strict sur la quantité que vous pouvez récupérer par requête, mais la limite pratique varie d'un jour à l'autre, donc une grosse demande (par exemple des barres à la minute sur plusieurs années) revient tronquée plutôt que de générer une erreur." },
+    { type: "paragraph", html: "Pour remonter plus loin dans l'historique, prenez l'horodatage le plus ancien que vous avez reçu, envoyez un nouveau <code>md/getChart</code> en l'utilisant comme horodatage le plus proche et votre date cible comme horodatage le plus éloigné, et répétez jusqu'à obtenir la plage dont vous avez besoin. Et lorsque vous en avez terminé avec un graphique en temps réel, annulez-le avec <code>md/cancelChart</code> en utilisant l'identifiant temps réel, afin de ne pas conserver un abonnement que vous ne lisez plus." },
+    { type: "heading", text: "Où PickMyTrade s'intègre" },
+    { type: "paragraph", html: "La plupart des personnes qui rencontrent ce 404 ne veulent pas vraiment devenir des plombiers WebSocket, elles veulent exécuter une stratégie sur Tradovate sans avoir à surveiller les sockets, les jetons et les formats de trame. PickMyTrade automatise le routage des ordres depuis les alertes TradingView vers Tradovate, afin que vous n'ayez pas à câbler vous-même des trames WebSocket brutes juste pour exécuter une stratégie." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Aucun câblage brut de socket</strong> vos alertes TradingView sont routées vers Tradovate sans coder à la main la moindre trame WebSocket.",
+        "<strong class='text-white'>Authentification gérée</strong> les jetons et les hôtes sont gérés pour vous, de sorte qu'une incohérence d'environnement ne devienne jamais votre problème.",
+        "<strong class='text-white'>Gestion des symboles</strong> la résolution des contrats est gérée en coulisses au lieu que vous suiviez manuellement les codes de mois et les roulements.",
+        "<strong class='text-white'>Routage sûr vis-à-vis des limites de débit</strong> espace le flux d'ordres pour que rien ne se heurte aux limites de requêtes de Tradovate.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Ha configurato un WebSocket, lo ha autorizzato, inviato una richiesta <code>md/getChart</code> pulita per qualche centinaio di barre di storico, e il server ha risposto con <code>Not found: md/getChart</code>. Nel payload non sembra esserci nulla di sbagliato. Allora perché un 404 su un endpoint che esiste chiaramente nella documentazione?" },
+    { type: "paragraph", html: "Nove volte su dieci si tratta di una di due cose: ha inviato la richiesta al socket sbagliato, oppure ha chiesto un simbolo che Tradovate non riesce a risolvere. Entrambe le situazioni generano un &ldquo;not found&rdquo; identico dal suo punto di vista. Analizziamo ogni causa, nell'ordine in cui conviene controllarle, per far fluire le sue barre storiche." },
+    { type: "heading", text: "Cosa le sta dicendo davvero il 404" },
+    { type: "paragraph", html: "Un 404 su una chiamata REST significa che il percorso URL non esiste. Sul WebSocket di Tradovate vale lo stesso principio: il frame che invia indica un endpoint e, se il socket a cui è connesso non serve quell'endpoint, riceve <code>Not found</code> con il nome dell'endpoint riportato. Non significa che il suo simbolo non sia valido o che il token sia scaduto. Significa &ldquo;non ho una route per questo qui&rdquo;." },
+    { type: "paragraph", html: "Questa distinzione è importante. Se il messaggio è letteralmente <code>Not found: md/getChart</code>, l'endpoint stesso non è raggiungibile su quella connessione, il che indica direttamente il problema del socket sbagliato. Se la richiesta raggiunge il motore dei dati di mercato ma il contratto non viene trovato, vedrà invece un errore legato al simbolo. Legga il testo esatto prima di iniziare a modificare il codice." },
+    { type: "heading", text: "Causa 1: sta usando il WebSocket sbagliato" },
+    { type: "paragraph", html: "Questa è la causa principale e coglie quasi tutti alla prima esperienza. Tradovate gestisce due servizi WebSocket distinti, che non sono intercambiabili:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Il socket di trading/API</strong> gestisce ordini, posizioni, conti e il resto dei dati delle entità. In live è <code>wss://live.tradovateapi.com/v1/websocket</code>; in demo è <code>wss://demo.tradovateapi.com/v1/websocket</code>.",
+        "<strong class='text-white'>Il socket dei dati di mercato</strong> gestisce quotazioni, DOM e grafici. In live è <code>wss://md.tradovateapi.com/v1/websocket</code>; in demo è <code>wss://md-demo.tradovateapi.com/v1/websocket</code>.",
+      ],
+    },
+    { type: "paragraph", html: "Tutti gli endpoint <code>md/</code>, <code>md/getChart</code>, <code>md/subscribeQuote</code>, <code>md/subscribeDOM</code>, esistono solo sul socket dei dati di mercato. Se li invia al socket di trading semplicemente non c'è alcuna route corrispondente, quindi riceve <code>Not found: md/getChart</code>. Il socket di trading non le darà alcun indizio che si trova nel posto sbagliato; segnala semplicemente l'endpoint come mancante." },
+    { type: "paragraph", html: "La soluzione: aprire una <em>seconda</em> connessione WebSocket verso l'host dei dati di mercato e inviare lì la richiesta del grafico. Un errore comune è autorizzare perfettamente il socket di trading e poi riutilizzare quella stessa connessione per i dati di mercato. Servono entrambi i socket aperti, e ciascuno richiede il proprio frame <code>authorize</code> con il token di accesso prima di rispondere a qualsiasi richiesta." },
+    { type: "paragraph", html: "Un'altra trappola sullo stesso tema: far corrispondere l'ambiente. Se il token di accesso proviene dall'endpoint di autenticazione live, usi <code>md.tradovateapi.com</code>. Se proviene dalla demo, usi <code>md-demo.tradovateapi.com</code>. Incrociare un token live con l'host dei dati di mercato demo (o viceversa) porta al rifiuto ancora prima che la richiesta del grafico entri in gioco. I nomi host vengono aggiornati occasionalmente, quindi verifichi quelli attuali nella documentazione ufficiale per sviluppatori di Tradovate invece di fidarsi di uno snippet copiato un anno fa." },
+    { type: "heading", text: "Causa 2: il simbolo non è un contratto reale" },
+    { type: "paragraph", html: "Supponiamo che il socket sia corretto e che continui comunque a ricevere una risposta not-found legata alla richiesta. Osservi attentamente il simbolo. Le richieste di grafico richiedono un contratto future completamente qualificato, non la radice del prodotto che si vede in una watchlist." },
+    { type: "paragraph", html: "&ldquo;YM&rdquo; non è negoziabile da solo, è la radice. Ciò che Tradovate può risolvere è il contratto specifico, come <code>YMH5</code>, dove <code>H</code> è il codice del mese di marzo e <code>5</code> è l'anno 2025. Se passa la radice nuda, un codice mese errato o un contratto già scaduto e passato al trimestre successivo, il motore non trova nulla su cui costruire un grafico. Ecco la mappa standard dei codici mese per i future:" },
+    {
+      type: "table",
+      headers: ["Mese", "Codice", "Mese", "Codice"],
+      rows: [
+        ["gennaio", "F", "luglio", "N"],
+        ["febbraio", "G", "agosto", "Q"],
+        ["marzo", "H", "settembre", "U"],
+        ["aprile", "J", "ottobre", "V"],
+        ["maggio", "K", "novembre", "X"],
+        ["giugno", "M", "dicembre", "Z"],
+      ],
+    },
+    { type: "paragraph", html: "Invece di codificare in modo fisso una stringa di simbolo, risolva il contratto del mese corrente in modo programmatico. Gli endpoint <code>contract/find</code> e di ricerca prodotto sul socket di trading forniscono il simbolo negoziabile esatto, così non deve mai indovinare se ES è passato da dicembre a marzo. Se deve usare un alias continuo o &ldquo;front month&rdquo;, verifichi bene che sia uno accettato realmente da Tradovate per i grafici, molte notazioni continue che funzionano in un'interfaccia grafica non si risolvono in una chiamata diretta a <code>md/getChart</code>. In caso di dubbio, richieda il contratto esplicito." },
+    { type: "paragraph", html: "Questa è anche la ragione classica per cui una richiesta che funzionava il trimestre scorso restituisce improvvisamente un 404: il contratto che aveva fissato è scaduto. I rollover avvengono secondo un calendario fisso, e un simbolo scaduto scompare dal motore dati. Automatizzi il rollover invece di inseguirlo manualmente." },
+    { type: "heading", text: "Causa 3: il diritto ai dati di mercato non è configurato" },
+    { type: "paragraph", html: "Socket corretto, contratto valido e ancora nulla di utile? Verifichi ora a cosa ha effettivamente diritto il suo account. Qui contano due livelli." },
+    { type: "paragraph", html: "Innanzitutto, l'accesso API stesso deve essere attivato. Si tratta del componente aggiuntivo <strong class='text-white'>API Access</strong> nelle impostazioni del suo account Tradovate, che abilita l'accesso programmatico e le consente di generare le credenziali necessarie al suo flusso di autenticazione. Senza di esso, il token non porterà i permessi attesi dal motore dei dati di mercato." },
+    { type: "paragraph", html: "In secondo luogo, i dati di mercato in tempo reale tramite API richiedono il relativo accordo e licenza della borsa. Per i prodotti CME questo significa una licenza mensile per i dati di mercato in aggiunta al suo piano. L'importo esatto è fissato dalla borsa e cambia nel tempo, quindi confermi la cifra attuale con Tradovate invece di fidarsi di un numero letto da qualche parte, si tratta in genere di un addebito mensile ricorrente, non trascurabile. Senza tale diritto, una richiesta di grafico ben formata può comunque tornare inaccessibile o vuota, perché sta chiedendo dati che il suo account non è autorizzato a ricevere. Se i suoi simboli risultano inaccessibili anziché not-found, è questo il tipo di problema di cui si tratta." },
+    { type: "paragraph", html: "Se ha un account prop-firm o di valutazione, spesso non può sottoscrivere autonomamente quei dati, è la società a controllarli. In quel caso la risoluzione del diritto passa attraverso il supporto della sua società, non quello di Tradovate." },
+    { type: "heading", text: "Causa 4: un frame malformato o un socket non autorizzato" },
+    { type: "paragraph", html: "Il WebSocket di Tradovate non parla JSON semplice. Ogni richiesta è un frame di testo con una forma specifica: l'endpoint, poi l'id della richiesta, poi una riga di query (spesso vuota), poi il corpo JSON, separati da a-capo, ad esempio <code>md/getChart\\n2\\n\\n{ ... }</code>. Se questa struttura è sbagliata, il server potrebbe non analizzare correttamente il nome dell'endpoint, il che può manifestarsi come un errore in stile not-found anche se l'intento era corretto." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Autorizzare prima.</strong> Il primissimo frame sul socket dei dati di mercato deve essere <code>authorize\\n1\\n\\n&lt;yourAccessToken&gt;</code>. Se invia <code>md/getChart</code> prima che il socket sia autorizzato, non verrà elaborato.",
+        "<strong class='text-white'>Mantenere attivo il socket.</strong> La connessione si aspetta un frame di heartbeat periodico. Se lo si manca, il socket si interrompe; le richieste inviate a una connessione semi-morta falliscono in modi confusi.",
+      ],
+    },
+    { type: "paragraph", html: "Costruisca il frame esattamente come documentato, autorizzi prima di effettuare la richiesta e invii gli heartbeat secondo la pianificazione. La maggior parte dei 404 &ldquo;casuali&rdquo; su un socket che funzionava un'ora fa risale a uno di questi tre punti." },
+    { type: "heading", text: "Una checklist rapida per risolvere il 404" },
+    {
+      type: "table",
+      headers: ["Verifica", "Cosa confermare"],
+      rows: [
+        ["Socket corretto", "md/getChart va verso md.tradovateapi.com (live) o md-demo.tradovateapi.com (demo), non verso il socket di trading."],
+        ["Ambiente corrispondente", "Token live → host dati di mercato live; token demo → host demo."],
+        ["Simbolo del contratto completo", "Usi simboli in stile ESH5, non la radice ES, e non un contratto scaduto."],
+        ["Diritti attivi", "Componente aggiuntivo API Access abilitato e licenza dei dati di mercato della borsa attiva."],
+        ["Frame + autenticazione", "Autorizzi prima il socket, quindi invii un frame di richiesta correttamente delimitato da a-capo."],
+      ],
+    },
+    { type: "heading", text: "Una volta che i dati del grafico iniziano a fluire" },
+    { type: "paragraph", html: "Quando la richiesta va a buon fine, la risposta restituisce id di sottoscrizione, un id storico e un id in tempo reale, e trasmette le barre. Lo storico arriva a lotti, e ogni lotto termina con un marcatore &ldquo;end of history&rdquo; così sa quando un blocco è completo. Non esiste un limite massimo fisso su quanto si può estrarre per richiesta, ma il limite pratico varia di giorno in giorno, quindi una richiesta ampia (ad esempio barre al minuto su più anni) torna troncata invece di generare un errore." },
+    { type: "paragraph", html: "Per risalire ulteriormente indietro, prenda il timestamp più vecchio ricevuto, invii una nuova <code>md/getChart</code> usandolo come timestamp più vicino e la data target come timestamp più lontano, e ripeta finché non ha ottenuto l'intervallo di cui ha bisogno. E quando ha finito con un grafico in tempo reale, lo annulli con <code>md/cancelChart</code> usando l'id in tempo reale, così da non mantenere una sottoscrizione che non legge più." },
+    { type: "heading", text: "Dove si inserisce PickMyTrade" },
+    { type: "paragraph", html: "La maggior parte delle persone che incontra questo 404 non vuole in realtà diventare un idraulico di WebSocket, vuole eseguire una strategia su Tradovate senza dover sorvegliare socket, token e formati dei frame. PickMyTrade automatizza l'instradamento degli ordini dagli alert di TradingView a Tradovate, così non deve cablare da sé i frame WebSocket grezzi solo per eseguire una strategia." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Nessun cablaggio grezzo dei socket</strong> i suoi alert di TradingView vengono instradati verso Tradovate senza codificare a mano un solo frame WebSocket.",
+        "<strong class='text-white'>Autenticazione gestita</strong> token e host vengono gestiti per lei, così un disallineamento di ambiente non diventa mai un suo problema.",
+        "<strong class='text-white'>Gestione dei simboli</strong> la risoluzione dei contratti viene gestita internamente invece che dover tracciare manualmente codici mese e rollover.",
+        "<strong class='text-white'>Instradamento sicuro rispetto ai limiti di frequenza</strong> distanzia il flusso degli ordini in modo che nulla urti contro i limiti di richiesta di Tradovate.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Skip the Raw Socket Wiring", de: "Überspringen Sie die rohe Socket-Verkabelung", es: "Evite el cableado de sockets en bruto", fr: "Évitez le câblage brut de socket", it: "Salti il cablaggio grezzo dei socket" },
+  ctaText: { en: "Want your TradingView strategy to trade Tradovate without hand-coding a single WebSocket frame? See how PickMyTrade automates the whole order flow.", de: "Möchten Sie, dass Ihre TradingView-Strategie auf Tradovate handelt, ohne einen einzigen WebSocket-Frame von Hand zu codieren? Erfahren Sie, wie PickMyTrade den gesamten Order-Flow automatisiert.", es: "¿Quiere que su estrategia de TradingView opere en Tradovate sin codificar a mano ni un solo frame WebSocket? Vea cómo PickMyTrade automatiza todo el flujo de órdenes.", fr: "Vous voulez que votre stratégie TradingView trade sur Tradovate sans coder à la main la moindre trame WebSocket ? Découvrez comment PickMyTrade automatise l'ensemble du flux d'ordres.", it: "Vuole che la sua strategia TradingView faccia trading su Tradovate senza codificare a mano un solo frame WebSocket? Scopra come PickMyTrade automatizza l'intero flusso degli ordini." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvii la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does md/getChart return \"Not found\"?", a: "Because the endpoint doesn't exist on the socket you sent it to. Market-data endpoints only live on the dedicated market-data WebSocket. Send md/getChart over the trading/API socket and the server has no route for it, so it answers Not found: md/getChart. Move the request to the market-data host and it resolves." },
+    { q: "What is the correct market-data WebSocket URL?", a: "Live market data uses wss://md.tradovateapi.com/v1/websocket and demo uses wss://md-demo.tradovateapi.com/v1/websocket. Those are separate from the trading sockets. Confirm the current hostnames in Tradovate's developer docs before you commit them to code." },
+    { q: "Why does a symbol like YM still throw a 404?", a: "Chart requests need a full contract symbol, not the root. YM can't be resolved, but YMH5 (March 2025) can. A root symbol, a wrong month code, or an already-expired contract all come back not found. Pull the exact tradable symbol from a contract lookup first." },
+    { q: "Do I need a paid data subscription to pull chart data over the API?", a: "Real-time API market data requires the relevant exchange agreement and license, which for CME products is a recurring monthly fee. The amount varies and is set by the exchange, so confirm the current rate with Tradovate. Without it, symbols come back inaccessible even when your request is perfectly formed." },
+    { q: "Can PickMyTrade help me avoid hand-building these socket calls?", a: "PickMyTrade automates order routing from TradingView alerts to Tradovate, so you don't have to wire raw WebSocket frames just to execute a strategy. It isn't a bulk historical-data feed, but for automation it removes most of the low-level plumbing that causes errors like this one." },
+  ], de: [
+    { q: "Warum gibt md/getChart \"Not found\" zurück?", a: "Weil der Endpunkt auf dem Socket, an das Sie ihn gesendet haben, nicht existiert. Marktdaten-Endpunkte gibt es nur auf dem dedizierten Marktdaten-WebSocket. Senden Sie md/getChart über das Trading-/API-Socket, hat der Server dafür keine Route, sodass er mit Not found: md/getChart antwortet. Verschieben Sie die Anfrage zum Marktdaten-Host, und sie wird aufgelöst." },
+    { q: "Wie lautet die korrekte Marktdaten-WebSocket-URL?", a: "Live-Marktdaten verwenden wss://md.tradovateapi.com/v1/websocket, Demo verwendet wss://md-demo.tradovateapi.com/v1/websocket. Diese sind von den Trading-Sockets getrennt. Bestätigen Sie die aktuellen Hostnamen in Tradovates Entwicklerdokumentation, bevor Sie sie fest in Ihren Code übernehmen." },
+    { q: "Warum wirft ein Symbol wie YM immer noch einen 404?", a: "Chart-Anfragen benötigen ein vollständiges Kontraktsymbol, nicht die Wurzel. YM kann nicht aufgelöst werden, YMH5 (März 2025) hingegen schon. Ein Wurzelsymbol, ein falscher Monatscode oder ein bereits abgelaufener Kontrakt liefern alle not found zurück. Holen Sie sich zuerst das exakte handelbare Symbol über eine Kontraktsuche." },
+    { q: "Benötige ich ein kostenpflichtiges Datenabonnement, um Chartdaten über die API abzurufen?", a: "Echtzeit-Marktdaten über die API erfordern die entsprechende Börsenvereinbarung und Lizenz, die bei CME-Produkten eine wiederkehrende monatliche Gebühr ist. Der Betrag variiert und wird von der Börse festgelegt, bestätigen Sie daher den aktuellen Satz bei Tradovate. Ohne diese Lizenz kommen Symbole als unzugänglich zurück, selbst wenn Ihre Anfrage perfekt formuliert ist." },
+    { q: "Kann PickMyTrade mir helfen, das manuelle Erstellen dieser Socket-Aufrufe zu vermeiden?", a: "PickMyTrade automatisiert das Order-Routing von TradingView-Alerts zu Tradovate, sodass Sie keine rohen WebSocket-Frames verdrahten müssen, nur um eine Strategie auszuführen. Es ist kein Feed für historische Massendaten, aber für die Automatisierung entfernt es den größten Teil der Low-Level-Verkabelung, die Fehler wie diesen verursacht." },
+  ], es: [
+    { q: "¿Por qué md/getChart devuelve \"Not found\"?", a: "Porque el endpoint no existe en el socket al que lo envió. Los endpoints de datos de mercado solo existen en el WebSocket de datos de mercado dedicado. Si envía md/getChart por el socket de trading/API, el servidor no tiene ruta para él, por lo que responde Not found: md/getChart. Mueva la solicitud al host de datos de mercado y se resolverá." },
+    { q: "¿Cuál es la URL correcta del WebSocket de datos de mercado?", a: "Los datos de mercado en real usan wss://md.tradovateapi.com/v1/websocket y la demo usa wss://md-demo.tradovateapi.com/v1/websocket. Son distintos de los sockets de trading. Confirme los nombres de host actuales en la documentación para desarrolladores de Tradovate antes de incorporarlos a su código." },
+    { q: "¿Por qué un símbolo como YM sigue arrojando un 404?", a: "Las solicitudes de gráfico necesitan un símbolo de contrato completo, no la raíz. YM no se puede resolver, pero YMH5 (marzo de 2025) sí. Un símbolo raíz, un código de mes incorrecto o un contrato ya vencido siempre devuelven not found. Obtenga primero el símbolo negociable exacto mediante una búsqueda de contrato." },
+    { q: "¿Necesito una suscripción de datos de pago para obtener datos de gráfico a través de la API?", a: "Los datos de mercado en tiempo real por la API requieren el acuerdo y la licencia correspondientes de la bolsa, que para los productos de CME es una tarifa mensual recurrente. El importe varía y lo fija la bolsa, así que confirme la tarifa actual con Tradovate. Sin ella, los símbolos vuelven como inaccesibles incluso cuando su solicitud está perfectamente formada." },
+    { q: "¿Puede PickMyTrade ayudarme a evitar construir manualmente estas llamadas de socket?", a: "PickMyTrade automatiza el enrutamiento de órdenes desde las alertas de TradingView hacia Tradovate, de modo que no tenga que cablear frames WebSocket en bruto solo para ejecutar una estrategia. No es un feed masivo de datos históricos, pero para la automatización elimina la mayor parte del cableado de bajo nivel que causa errores como este." },
+  ], fr: [
+    { q: "Pourquoi md/getChart renvoie-t-il \"Not found\" ?", a: "Parce que l'endpoint n'existe pas sur le socket auquel vous l'avez envoyé. Les endpoints de données de marché n'existent que sur le WebSocket de données de marché dédié. Envoyez md/getChart via le socket de trading/API et le serveur n'a aucune route pour cela, donc il répond Not found: md/getChart. Déplacez la requête vers l'hôte de données de marché et elle se résout." },
+    { q: "Quelle est l'URL correcte du WebSocket de données de marché ?", a: "Les données de marché live utilisent wss://md.tradovateapi.com/v1/websocket et la démo utilise wss://md-demo.tradovateapi.com/v1/websocket. Ils sont distincts des sockets de trading. Confirmez les noms d'hôte actuels dans la documentation développeur de Tradovate avant de les intégrer à votre code." },
+    { q: "Pourquoi un symbole comme YM renvoie-t-il encore une erreur 404 ?", a: "Les requêtes de graphique nécessitent un symbole de contrat complet, pas la racine. YM ne peut pas être résolu, mais YMH5 (mars 2025) le peut. Un symbole racine, un code de mois erroné ou un contrat déjà expiré renvoient tous not found. Récupérez d'abord le symbole négociable exact via une recherche de contrat." },
+    { q: "Ai-je besoin d'un abonnement de données payant pour récupérer des données de graphique via l'API ?", a: "Les données de marché en temps réel via l'API nécessitent l'accord et la licence appropriés de la bourse, ce qui, pour les produits CME, représente des frais mensuels récurrents. Le montant varie et est fixé par la bourse, alors confirmez le tarif actuel auprès de Tradovate. Sans cela, les symboles reviennent inaccessibles même lorsque votre requête est parfaitement formée." },
+    { q: "PickMyTrade peut-il m'aider à éviter de construire ces appels de socket à la main ?", a: "PickMyTrade automatise le routage des ordres depuis les alertes TradingView vers Tradovate, afin que vous n'ayez pas à câbler des trames WebSocket brutes juste pour exécuter une stratégie. Ce n'est pas un flux de données historiques en masse, mais pour l'automatisation, il élimine la majeure partie de la plomberie bas niveau à l'origine d'erreurs comme celle-ci." },
+  ], it: [
+    { q: "Perché md/getChart restituisce \"Not found\"?", a: "Perché l'endpoint non esiste sul socket a cui è stato inviato. Gli endpoint dei dati di mercato esistono solo sul WebSocket dei dati di mercato dedicato. Se invia md/getChart tramite il socket di trading/API, il server non ha alcuna route per esso, quindi risponde Not found: md/getChart. Sposti la richiesta sull'host dei dati di mercato e si risolverà." },
+    { q: "Qual è l'URL corretto del WebSocket dei dati di mercato?", a: "I dati di mercato live usano wss://md.tradovateapi.com/v1/websocket e la demo usa wss://md-demo.tradovateapi.com/v1/websocket. Sono distinti dai socket di trading. Confermi i nomi host attuali nella documentazione per sviluppatori di Tradovate prima di inserirli nel codice." },
+    { q: "Perché un simbolo come YM restituisce ancora un 404?", a: "Le richieste di grafico richiedono un simbolo di contratto completo, non la radice. YM non può essere risolto, ma YMH5 (marzo 2025) sì. Un simbolo radice, un codice mese errato o un contratto già scaduto restituiscono tutti not found. Recuperi prima il simbolo negoziabile esatto tramite una ricerca contratti." },
+    { q: "Ho bisogno di un abbonamento dati a pagamento per ottenere dati di grafico tramite l'API?", a: "I dati di mercato in tempo reale tramite API richiedono il relativo accordo e licenza della borsa, che per i prodotti CME è una tariffa mensile ricorrente. L'importo varia ed è fissato dalla borsa, quindi confermi la tariffa attuale con Tradovate. Senza di essa, i simboli risultano inaccessibili anche quando la richiesta è formata perfettamente." },
+    { q: "PickMyTrade può aiutarmi a evitare di costruire manualmente queste chiamate socket?", a: "PickMyTrade automatizza l'instradamento degli ordini dagli alert di TradingView a Tradovate, così non deve cablare frame WebSocket grezzi solo per eseguire una strategia. Non è un feed di dati storici massivo, ma per l'automazione elimina la maggior parte dell'idraulica a basso livello che causa errori come questo." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Dieser Leitfaden dient ausschließlich zu Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. und wird nicht von diesem Unternehmen unterstützt oder gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines educativos e informativos únicamente y no constituye asesoramiento financiero, de inversión o de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización de terceros independiente y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni parrainée par Tradovate, Inc. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, alors confirmez toujours la procédure actuelle sur la plateforme et dans la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha scopo puramente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di future e altri prodotti a leva comporta un notevole rischio di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione di terze parti indipendente e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre il processo attuale sulla piattaforma e nella documentazione ufficiale di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

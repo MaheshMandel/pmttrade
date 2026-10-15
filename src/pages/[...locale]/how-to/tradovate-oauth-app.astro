@@ -1,0 +1,235 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-oauth-app";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Register an OAuth App in Tradovate";
+const META_DESCRIPTION =
+  "Learn to register an OAuth app so third-party tools can securely connect to your futures trading account, with redirect URI and permission setup.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Eine OAuth-App in Tradovate registrieren", es: "Registre una aplicación OAuth en Tradovate", fr: "Enregistrer une application OAuth dans Tradovate", it: "Registrare un'app OAuth in Tradovate" },
+  dek: { en: "Learn to register an OAuth app so third-party tools can securely connect to your futures trading account, with redirect URI and permission setup.", de: "Erfahren Sie, wie Sie eine OAuth-App registrieren, damit Drittanbieter-Tools sich sicher mit Ihrem Futures-Handelskonto verbinden können, einschließlich Redirect-URI- und Berechtigungseinrichtung.", es: "Aprenda a registrar una aplicación OAuth para que herramientas de terceros se conecten de forma segura a su cuenta de trading de futuros, con la configuración del URI de redirección y de los permisos.", fr: "Apprenez à enregistrer une application OAuth pour que des outils tiers se connectent en toute sécurité à votre compte de trading de contrats à terme, avec la configuration de l'URI de redirection et des autorisations.", it: "Scopra come registrare un'app OAuth affinché strumenti di terze parti possano collegarsi in modo sicuro al Suo conto di trading sui futures, con la configurazione del redirect URI e dei permessi." },
+  readTime: { en: "6 min read", de: "6 Min. Lesezeit", es: "Lectura de 6 min", fr: "Lecture : 6 min", it: "Lettura di 6 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "If you're building a tool that other traders will connect to their Tradovate accounts, you don't want to ask each of them for a username and password. That's the whole point of OAuth. Registering an OAuth app gives your integration a client ID and a client secret, and it lets your users grant access through a proper login screen instead of handing over raw credentials. Here's how to set one up from inside your own account." },
+    { type: "paragraph", html: "Quick gut check before you start: if you're only automating your own account, you probably don't need OAuth at all. A plain API key with the username and password auth flow is simpler and does the job. OAuth earns its keep when third parties log in through <em>your</em> app." },
+    { type: "heading", text: "What You'll Need First" },
+    {
+      type: "list",
+      items: [
+        "An active Tradovate account that has API access available on it.",
+        "The API terms signed (a quick one-time step, covered below).",
+        "A redirect URI, which is the callback URL your app listens on after a user logs in.",
+      ],
+    },
+    { type: "paragraph", html: "One caveat on prop-firm and evaluation accounts: API and OAuth availability varies by firm and account type, so check your firm's current rules before you count on it." },
+    { type: "heading", text: "Register an OAuth App in Tradovate: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Sign the API Terms", html: "Before the OAuth options appear, Tradovate asks you to complete a self-attestation and sign the digital agreement covering its API terms and conditions. It's a one-time thing. Read it, accept it, and the developer options open up." },
+        { title: "Open API Access and Choose OAuth Registration", html: "Open Application Settings, then go to the <strong class='text-white'>API Access</strong> tab. You'll see the API options there. Pick <strong class='text-white'>OAuth Registration</strong> to start a new app. This is the same settings area you'd use to generate a standard API key, so if you've been there before it'll look familiar." },
+        { title: "Fill in the App Details", html: "The registration form asks for two required fields: <strong class='text-white'>App Title</strong>, the name users see on the consent screen when they authorize your app, and <strong class='text-white'>Redirect URI</strong>, where Tradovate sends the user back after they log in. This has to match, character for character, the redirect URI your app sends in the authorization request later. A trailing slash or a wrong port is enough to break the flow. You can also add a privacy policy link, a terms and conditions link, and upload a logo. Those are optional, but they make the consent screen look legitimate, which matters if strangers are trusting your app with account access." },
+        { title: "Set the Permissions", html: "Lower down on the form you choose the permissions that users will grant when they authorize through your app. Keep this tight. Ask only for what your integration actually uses. Narrow scopes are easier to trust and easier to reason about if something ever goes wrong." },
+        { title: "Generate and Store Your Keys", html: "When the form looks right, click Generate. Tradovate shows you the key <strong class='text-white'>one time only</strong>. Copy the client ID and secret immediately and put them somewhere safe, like a secrets manager or a server-side environment file. Never commit the secret to a public repository. If you lose it, you'll be registering again from scratch." },
+      ],
+    },
+    { type: "heading", text: "Putting the Credentials to Work" },
+    { type: "paragraph", html: "Once you've got the client ID and secret, the flow is a standard OAuth authorization code exchange. Send the user to the authorization URL, catch the single-use code on your redirect URI, then swap that code for an access token server-side." },
+    { type: "quote", html: "<code>Authorization URL:</code> <code>https://trader.tradovate.com/oauth</code> with <code>response_type=code</code>, <code>client_id</code>, and <code>redirect_uri</code><br><br><code>Token exchange URL:</code> <code>https://live.tradovateapi.com/auth/oauthtoken</code><br><br><code>Token exchange body:</code> <code>grant_type=authorization_code</code>, <code>client_id</code>, <code>client_secret</code>, <code>redirect_uri</code>, <code>code</code>" },
+    { type: "paragraph", html: "The redirect URI in the token exchange must match the one from the authorization request, which must match what you registered in Step 3. Access tokens expire, so build in a refresh routine rather than re-authorizing users constantly." },
+    { type: "heading", text: "A Couple of Things That Trip People Up" },
+    { type: "paragraph", html: "Redirect URI mismatches are the number-one reason a fresh OAuth app won't complete the handshake, so lock that down first. The other one is the one-time key: people breeze past the Generate screen, lose the secret, and have to redo everything. Treat that screen like it's the only time you'll ever see it, because it is." },
+    { type: "heading", text: "Automate This with PickMyTrade" },
+    { type: "paragraph", html: "Want the automation without building an OAuth app yourself? <strong class='text-white'>PickMyTrade connects TradingView to Tradovate for you</strong>, so you can route alerts to your account without writing a line of OAuth code." },
+  ], de: [
+    { type: "paragraph",html: "Wenn Sie ein Tool entwickeln, das andere Trader mit ihren Tradovate-Konten verbinden sollen, möchten Sie nicht von jedem Benutzernamen und Passwort verlangen. Genau dafür gibt es OAuth. Die Registrierung einer OAuth-App liefert Ihrer Integration eine Client-ID und ein Client-Secret und ermöglicht es Ihren Nutzern, den Zugriff über einen ordentlichen Anmeldebildschirm zu erteilen, statt Zugangsdaten im Klartext herauszugeben. So richten Sie eine direkt in Ihrem eigenen Konto ein." },
+    { type: "paragraph",html: "Kurzer Realitätscheck, bevor Sie beginnen: Wenn Sie nur Ihr eigenes Konto automatisieren, brauchen Sie OAuth wahrscheinlich gar nicht. Ein einfacher API-Schlüssel mit dem Authentifizierungsablauf per Benutzername und Passwort ist simpler und erfüllt den Zweck. OAuth lohnt sich, wenn Dritte sich über <em>Ihre</em> App anmelden." },
+    { type: "heading",text: "Was Sie zuerst benötigen" },
+    {
+      type: "list",
+      items: [
+        "Ein aktives Tradovate-Konto, für das API-Zugriff verfügbar ist.",
+        "Die unterzeichneten API-Bedingungen (ein kurzer, einmaliger Schritt, siehe unten).",
+        "Eine Redirect-URI, also die Callback-URL, auf die Ihre App nach der Anmeldung eines Nutzers lauscht.",
+      ],
+    },
+    { type: "paragraph",html: "Ein Hinweis zu Prop-Firm- und Evaluierungskonten: Die Verfügbarkeit von API und OAuth hängt von der Firma und dem Kontotyp ab. Prüfen Sie daher die aktuellen Regeln Ihrer Firma, bevor Sie darauf bauen." },
+    { type: "heading",text: "Eine OAuth-App in Tradovate registrieren: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "API-Bedingungen unterzeichnen", html: "Bevor die OAuth-Optionen erscheinen, verlangt Tradovate eine Selbstauskunft und die Unterzeichnung der digitalen Vereinbarung zu den API-Bedingungen. Das ist ein einmaliger Schritt. Lesen Sie sie, akzeptieren Sie sie, und die Entwickleroptionen werden freigeschaltet." },
+        { title: "API Access öffnen und OAuth-Registrierung wählen", html: "Öffnen Sie Application Settings und wechseln Sie zum Reiter <strong class='text-white'>API Access</strong>. Dort sehen Sie die API-Optionen. Wählen Sie <strong class='text-white'>OAuth Registration</strong>, um eine neue App zu starten. Es ist derselbe Einstellungsbereich, in dem Sie einen Standard-API-Schlüssel erzeugen. Wenn Sie schon einmal dort waren, wird es Ihnen vertraut vorkommen." },
+        { title: "App-Details eingeben", html: "Das Registrierungsformular verlangt zwei Pflichtfelder: <strong class='text-white'>App Title</strong>, den Namen, den Nutzer auf dem Zustimmungsbildschirm sehen, wenn sie Ihre App autorisieren, und <strong class='text-white'>Redirect URI</strong>, das Ziel, an das Tradovate den Nutzer nach der Anmeldung zurückschickt. Sie muss Zeichen für Zeichen mit der Redirect-URI übereinstimmen, die Ihre App später in der Autorisierungsanfrage sendet. Ein abschließender Schrägstrich oder ein falscher Port genügt, um den Ablauf zu unterbrechen. Optional können Sie einen Link zur Datenschutzerklärung, einen Link zu den Geschäftsbedingungen und ein Logo hinzufügen. Diese Angaben sind freiwillig, aber sie lassen den Zustimmungsbildschirm seriös wirken, was wichtig ist, wenn Fremde Ihrer App Kontozugriff anvertrauen." },
+        { title: "Berechtigungen festlegen", html: "Weiter unten im Formular wählen Sie die Berechtigungen, die Nutzer beim Autorisieren über Ihre App erteilen. Halten Sie diese knapp. Fordern Sie nur an, was Ihre Integration tatsächlich verwendet. Enge Berechtigungsbereiche schaffen mehr Vertrauen und sind leichter zu überblicken, falls einmal etwas schiefgeht." },
+        { title: "Schlüssel erzeugen und speichern", html: "Wenn das Formular passt, klicken Sie auf Generate. Tradovate zeigt Ihnen den Schlüssel <strong class='text-white'>nur ein einziges Mal</strong>. Kopieren Sie die Client-ID und das Secret sofort und bewahren Sie sie sicher auf, etwa in einem Secrets-Manager oder einer serverseitigen Umgebungsdatei. Committen Sie das Secret niemals in ein öffentliches Repository. Wenn Sie es verlieren, müssen Sie die Registrierung von vorn beginnen." },
+      ],
+    },
+    { type: "heading",text: "So setzen Sie die Zugangsdaten ein" },
+    { type: "paragraph",html: "Sobald Sie Client-ID und Secret haben, ist der Ablauf ein standardmäßiger OAuth-Autorisierungscode-Austausch. Leiten Sie den Nutzer zur Autorisierungs-URL, fangen Sie den einmalig gültigen Code an Ihrer Redirect-URI ab und tauschen Sie diesen Code serverseitig gegen ein Access-Token." },
+    { type: "quote",html: "<code>Autorisierungs-URL:</code> <code>https://trader.tradovate.com/oauth</code> mit <code>response_type=code</code>, <code>client_id</code> und <code>redirect_uri</code><br><br><code>Token-Austausch-URL:</code> <code>https://live.tradovateapi.com/auth/oauthtoken</code><br><br><code>Token-Austausch-Body:</code> <code>grant_type=authorization_code</code>, <code>client_id</code>, <code>client_secret</code>, <code>redirect_uri</code>, <code>code</code>" },
+    { type: "paragraph",html: "Die Redirect-URI im Token-Austausch muss mit der aus der Autorisierungsanfrage übereinstimmen, und diese wiederum mit der in Schritt 3 registrierten. Access-Tokens laufen ab, bauen Sie daher eine Auffrischungsroutine ein, statt Nutzer ständig neu zu autorisieren." },
+    { type: "heading",text: "Ein paar Stolperfallen" },
+    { type: "paragraph",html: "Nicht übereinstimmende Redirect-URIs sind der häufigste Grund, warum eine neue OAuth-App den Handshake nicht abschließt. Klären Sie das also zuerst. Die andere Falle ist der einmalige Schlüssel: Viele klicken sich durch den Generate-Bildschirm, verlieren das Secret und müssen alles wiederholen. Behandeln Sie diesen Bildschirm so, als wäre es das einzige Mal, dass Sie ihn sehen, denn genau so ist es." },
+    { type: "heading",text: "Automatisieren mit PickMyTrade" },
+    { type: "paragraph",html: "Sie möchten die Automatisierung, ohne selbst eine OAuth-App zu bauen? <strong class='text-white'>PickMyTrade verbindet TradingView für Sie mit Tradovate</strong>, sodass Sie Alarme an Ihr Konto weiterleiten können, ohne eine Zeile OAuth-Code zu schreiben." },
+  ], es: [
+    { type: "paragraph",html: "Si está creando una herramienta que otros operadores conectarán a sus cuentas de Tradovate, no querrá pedirle a cada uno su nombre de usuario y contraseña. Ese es precisamente el sentido de OAuth. Registrar una aplicación OAuth le da a su integración un client ID y un client secret, y permite que sus usuarios concedan acceso mediante una pantalla de inicio de sesión adecuada en lugar de entregar credenciales en bruto. Así se configura una desde su propia cuenta." },
+    { type: "paragraph",html: "Una comprobación rápida antes de empezar: si solo automatiza su propia cuenta, probablemente no necesite OAuth en absoluto. Una simple clave API con el flujo de autenticación de usuario y contraseña es más sencilla y cumple su función. OAuth cobra sentido cuando terceros inician sesión a través de <em>su</em> aplicación." },
+    { type: "heading",text: "Lo que necesita primero" },
+    {
+      type: "list",
+      items: [
+        "Una cuenta de Tradovate activa que tenga acceso a la API disponible.",
+        "Los términos de la API firmados (un paso rápido y único, explicado más abajo).",
+        "Un URI de redirección, que es la URL de retorno en la que su aplicación escucha después de que un usuario inicia sesión.",
+      ],
+    },
+    { type: "paragraph",html: "Una advertencia sobre las cuentas de prop firms y de evaluación: la disponibilidad de API y OAuth varía según la firma y el tipo de cuenta, así que consulte las reglas actuales de su firma antes de contar con ello." },
+    { type: "heading",text: "Registrar una aplicación OAuth en Tradovate: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Firme los términos de la API", html: "Antes de que aparezcan las opciones de OAuth, Tradovate le pide completar una autocertificación y firmar el acuerdo digital que recoge los términos y condiciones de su API. Es un paso único. Léalo, acéptelo y se abrirán las opciones para desarrolladores." },
+        { title: "Abra API Access y elija el registro de OAuth", html: "Abra Application Settings y vaya a la pestaña <strong class='text-white'>API Access</strong>. Allí verá las opciones de la API. Elija <strong class='text-white'>OAuth Registration</strong> para iniciar una nueva aplicación. Es la misma área de configuración que usaría para generar una clave API estándar, así que si ya ha estado allí le resultará familiar." },
+        { title: "Complete los detalles de la aplicación", html: "El formulario de registro pide dos campos obligatorios: <strong class='text-white'>App Title</strong>, el nombre que los usuarios ven en la pantalla de consentimiento al autorizar su aplicación, y <strong class='text-white'>Redirect URI</strong>, adonde Tradovate devuelve al usuario después de iniciar sesión. Debe coincidir, carácter por carácter, con el URI de redirección que su aplicación envíe después en la solicitud de autorización. Una barra final o un puerto incorrecto bastan para romper el flujo. También puede añadir un enlace a la política de privacidad, un enlace a los términos y condiciones y subir un logotipo. Son opcionales, pero hacen que la pantalla de consentimiento parezca legítima, lo cual importa si desconocidos confían a su aplicación el acceso a su cuenta." },
+        { title: "Defina los permisos", html: "Más abajo en el formulario elige los permisos que los usuarios concederán al autorizar a través de su aplicación. Sea estricto. Solicite solo lo que su integración realmente utiliza. Los alcances reducidos inspiran más confianza y son más fáciles de analizar si algo llega a salir mal." },
+        { title: "Genere y guarde sus claves", html: "Cuando el formulario esté correcto, haga clic en Generate. Tradovate le muestra la clave <strong class='text-white'>una sola vez</strong>. Copie de inmediato el client ID y el secret y guárdelos en un lugar seguro, como un gestor de secretos o un archivo de entorno del lado del servidor. Nunca suba el secret a un repositorio público. Si lo pierde, tendrá que registrarse de nuevo desde cero." },
+      ],
+    },
+    { type: "heading",text: "Cómo usar las credenciales" },
+    { type: "paragraph",html: "Una vez que tenga el client ID y el secret, el flujo es un intercambio estándar de código de autorización de OAuth. Envíe al usuario a la URL de autorización, capture el código de un solo uso en su URI de redirección y luego cámbielo por un token de acceso desde el servidor." },
+    { type: "quote",html: "<code>URL de autorización:</code> <code>https://trader.tradovate.com/oauth</code> con <code>response_type=code</code>, <code>client_id</code> y <code>redirect_uri</code><br><br><code>URL de intercambio de token:</code> <code>https://live.tradovateapi.com/auth/oauthtoken</code><br><br><code>Cuerpo del intercambio de token:</code> <code>grant_type=authorization_code</code>, <code>client_id</code>, <code>client_secret</code>, <code>redirect_uri</code>, <code>code</code>" },
+    { type: "paragraph",html: "El URI de redirección en el intercambio de token debe coincidir con el de la solicitud de autorización, que a su vez debe coincidir con el que registró en el paso 3. Los tokens de acceso caducan, así que incorpore una rutina de renovación en lugar de volver a autorizar a los usuarios constantemente." },
+    { type: "heading",text: "Un par de cosas que suelen causar problemas" },
+    { type: "paragraph",html: "Las discrepancias en el URI de redirección son la causa número uno de que una aplicación OAuth nueva no complete el protocolo de enlace, así que resuélvalo primero. La otra es la clave de un solo uso: muchos pasan rápido por la pantalla Generate, pierden el secret y tienen que rehacerlo todo. Trate esa pantalla como si fuera la única vez que la va a ver, porque lo es." },
+    { type: "heading",text: "Automatice esto con PickMyTrade" },
+    { type: "paragraph",html: "¿Quiere la automatización sin crear usted mismo una aplicación OAuth? <strong class='text-white'>PickMyTrade conecta TradingView con Tradovate por usted</strong>, de modo que puede enviar alertas a su cuenta sin escribir una línea de código OAuth." },
+  ], fr: [
+    { type: "paragraph",html: "Si vous développez un outil que d'autres traders connecteront à leur compte Tradovate, vous ne voulez pas demander à chacun son identifiant et son mot de passe. C'est tout l'intérêt d'OAuth. L'enregistrement d'une application OAuth fournit à votre intégration un client ID et un client secret, et permet à vos utilisateurs d'accorder l'accès via un véritable écran de connexion plutôt que de vous confier leurs identifiants bruts. Voici comment en configurer une depuis votre propre compte." },
+    { type: "paragraph",html: "Un petit rappel avant de commencer : si vous n'automatisez que votre propre compte, vous n'avez probablement pas besoin d'OAuth. Une simple clé API avec le flux d'authentification par identifiant et mot de passe est plus simple et fait très bien l'affaire. OAuth prend tout son sens lorsque des tiers se connectent via <em>votre</em> application." },
+    { type: "heading",text: "Ce dont vous avez besoin au préalable" },
+    {
+      type: "list",
+      items: [
+        "Un compte Tradovate actif disposant d'un accès à l'API.",
+        "Les conditions de l'API signées (une étape rapide et unique, détaillée ci-dessous).",
+        "Un URI de redirection, c'est-à-dire l'URL de rappel sur laquelle votre application écoute après la connexion d'un utilisateur.",
+      ],
+    },
+    { type: "paragraph",html: "Une réserve concernant les comptes de prop firms et d'évaluation : la disponibilité de l'API et d'OAuth varie selon la société et le type de compte ; vérifiez donc les règles actuelles de votre société avant de compter dessus." },
+    { type: "heading",text: "Enregistrer une application OAuth dans Tradovate : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Signer les conditions de l'API", html: "Avant que les options OAuth n'apparaissent, Tradovate vous demande de remplir une auto-attestation et de signer l'accord numérique couvrant les conditions générales de son API. C'est une étape unique. Lisez-le, acceptez-le, et les options pour développeurs s'ouvrent." },
+        { title: "Ouvrir API Access et choisir l'enregistrement OAuth", html: "Ouvrez Application Settings, puis rendez-vous dans l'onglet <strong class='text-white'>API Access</strong>. Vous y verrez les options de l'API. Choisissez <strong class='text-white'>OAuth Registration</strong> pour créer une nouvelle application. C'est la même zone de paramètres que celle utilisée pour générer une clé API standard ; si vous y êtes déjà allé, elle vous sera familière." },
+        { title: "Renseigner les détails de l'application", html: "Le formulaire d'enregistrement demande deux champs obligatoires : <strong class='text-white'>App Title</strong>, le nom que les utilisateurs voient sur l'écran de consentement lorsqu'ils autorisent votre application, et <strong class='text-white'>Redirect URI</strong>, l'adresse vers laquelle Tradovate renvoie l'utilisateur après sa connexion. Elle doit correspondre, caractère pour caractère, à l'URI de redirection que votre application enverra plus tard dans la demande d'autorisation. Une barre oblique finale ou un mauvais port suffisent à casser le flux. Vous pouvez aussi ajouter un lien vers une politique de confidentialité, un lien vers des conditions générales et téléverser un logo. Ces éléments sont facultatifs, mais ils donnent un aspect légitime à l'écran de consentement, ce qui compte lorsque des inconnus confient à votre application l'accès à leur compte." },
+        { title: "Définir les autorisations", html: "Plus bas dans le formulaire, vous choisissez les autorisations que les utilisateurs accorderont en passant par votre application. Restez strict. Ne demandez que ce que votre intégration utilise réellement. Des périmètres restreints inspirent davantage confiance et sont plus faciles à analyser si un problème survient." },
+        { title: "Générer et conserver vos clés", html: "Lorsque le formulaire est correct, cliquez sur Generate. Tradovate vous affiche la clé <strong class='text-white'>une seule fois</strong>. Copiez immédiatement le client ID et le secret et placez-les en lieu sûr, par exemple dans un gestionnaire de secrets ou un fichier d'environnement côté serveur. Ne publiez jamais le secret dans un dépôt public. Si vous le perdez, vous devrez tout recommencer depuis le début." },
+      ],
+    },
+    { type: "heading",text: "Mettre les identifiants au travail" },
+    { type: "paragraph",html: "Une fois que vous avez le client ID et le secret, le flux est un échange classique de code d'autorisation OAuth. Envoyez l'utilisateur vers l'URL d'autorisation, récupérez le code à usage unique sur votre URI de redirection, puis échangez ce code contre un jeton d'accès côté serveur." },
+    { type: "quote",html: "<code>URL d'autorisation :</code> <code>https://trader.tradovate.com/oauth</code> avec <code>response_type=code</code>, <code>client_id</code> et <code>redirect_uri</code><br><br><code>URL d'échange de jeton :</code> <code>https://live.tradovateapi.com/auth/oauthtoken</code><br><br><code>Corps de l'échange de jeton :</code> <code>grant_type=authorization_code</code>, <code>client_id</code>, <code>client_secret</code>, <code>redirect_uri</code>, <code>code</code>" },
+    { type: "paragraph",html: "L'URI de redirection dans l'échange de jeton doit correspondre à celui de la demande d'autorisation, qui doit lui-même correspondre à celui que vous avez enregistré à l'étape 3. Les jetons d'accès expirent ; prévoyez donc une routine de renouvellement plutôt que de réautoriser sans cesse les utilisateurs." },
+    { type: "heading",text: "Quelques pièges fréquents" },
+    { type: "paragraph",html: "Les incohérences d'URI de redirection sont la première cause d'échec de la négociation d'une nouvelle application OAuth ; verrouillez donc ce point en priorité. L'autre piège est la clé à affichage unique : beaucoup passent l'écran Generate sans y prêter attention, perdent le secret et doivent tout refaire. Considérez cet écran comme la seule fois où vous le verrez, car c'est exactement le cas." },
+    { type: "heading",text: "Automatiser avec PickMyTrade" },
+    { type: "paragraph",html: "Vous voulez l'automatisation sans créer vous-même une application OAuth ? <strong class='text-white'>PickMyTrade connecte TradingView à Tradovate pour vous</strong>, afin que vous puissiez acheminer des alertes vers votre compte sans écrire une seule ligne de code OAuth." },
+  ], it: [
+    { type: "paragraph",html: "Se sta sviluppando uno strumento che altri trader collegheranno ai loro account Tradovate, non vuole chiedere a ciascuno nome utente e password. È proprio questo lo scopo di OAuth. Registrare un'app OAuth fornisce alla Sua integrazione un client ID e un client secret e consente ai Suoi utenti di concedere l'accesso tramite una vera schermata di login, anziché consegnare le credenziali in chiaro. Ecco come configurarne una dal Suo account." },
+    { type: "paragraph",html: "Un rapido controllo prima di iniziare: se automatizza solo il Suo account, probabilmente non Le serve affatto OAuth. Una semplice chiave API con il flusso di autenticazione tramite nome utente e password è più semplice e svolge il lavoro. OAuth è utile quando terze parti accedono tramite <em>la Sua</em> app." },
+    { type: "heading",text: "Cosa Le serve prima di iniziare" },
+    {
+      type: "list",
+      items: [
+        "Un account Tradovate attivo con accesso API disponibile.",
+        "I termini dell'API firmati (un breve passaggio una tantum, descritto di seguito).",
+        "Un redirect URI, ovvero l'URL di callback su cui la Sua app resta in ascolto dopo il login di un utente.",
+      ],
+    },
+    { type: "paragraph",html: "Un'avvertenza sugli account prop firm e di valutazione: la disponibilità di API e OAuth varia in base alla società e al tipo di account, quindi verifichi le regole attuali della Sua società prima di farvi affidamento." },
+    { type: "heading",text: "Registrare un'app OAuth in Tradovate: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Firmi i termini dell'API", html: "Prima che compaiano le opzioni OAuth, Tradovate Le chiede di completare un'autocertificazione e di firmare l'accordo digitale relativo ai termini e alle condizioni dell'API. È un passaggio una tantum. Lo legga, lo accetti e le opzioni per sviluppatori si apriranno." },
+        { title: "Apra API Access e scelga la registrazione OAuth", html: "Apra Application Settings e vada alla scheda <strong class='text-white'>API Access</strong>. Lì vedrà le opzioni API. Scelga <strong class='text-white'>OAuth Registration</strong> per avviare una nuova app. È la stessa area delle impostazioni che userebbe per generare una chiave API standard, quindi se c'è già stato Le risulterà familiare." },
+        { title: "Compili i dettagli dell'app", html: "Il modulo di registrazione richiede due campi obbligatori: <strong class='text-white'>App Title</strong>, il nome che gli utenti vedono nella schermata di consenso quando autorizzano la Sua app, e <strong class='text-white'>Redirect URI</strong>, dove Tradovate rimanda l'utente dopo il login. Deve corrispondere, carattere per carattere, al redirect URI che la Sua app invierà in seguito nella richiesta di autorizzazione. Una barra finale o una porta errata bastano a interrompere il flusso. Può anche aggiungere un link all'informativa sulla privacy, un link ai termini e condizioni e caricare un logo. Sono facoltativi, ma fanno apparire legittima la schermata di consenso, cosa importante se degli estranei affidano alla Sua app l'accesso al proprio account." },
+        { title: "Imposti i permessi", html: "Più in basso nel modulo sceglie i permessi che gli utenti concederanno autorizzando tramite la Sua app. Sia essenziale. Richieda solo ciò che la Sua integrazione utilizza davvero. Ambiti ristretti ispirano più fiducia e sono più facili da valutare se qualcosa dovesse andare storto." },
+        { title: "Generi e conservi le chiavi", html: "Quando il modulo è corretto, clicchi su Generate. Tradovate Le mostra la chiave <strong class='text-white'>una sola volta</strong>. Copi subito il client ID e il secret e li conservi in un luogo sicuro, come un gestore di segreti o un file di ambiente lato server. Non pubblichi mai il secret in un repository pubblico. Se lo perde, dovrà registrarsi di nuovo da zero." },
+      ],
+    },
+    { type: "heading",text: "Mettere in uso le credenziali" },
+    { type: "paragraph",html: "Una volta ottenuti il client ID e il secret, il flusso è un normale scambio di codice di autorizzazione OAuth. Indirizzi l'utente all'URL di autorizzazione, acquisisca il codice monouso sul Suo redirect URI, quindi lo scambi lato server con un token di accesso." },
+    { type: "quote",html: "<code>URL di autorizzazione:</code> <code>https://trader.tradovate.com/oauth</code> con <code>response_type=code</code>, <code>client_id</code> e <code>redirect_uri</code><br><br><code>URL di scambio del token:</code> <code>https://live.tradovateapi.com/auth/oauthtoken</code><br><br><code>Corpo dello scambio del token:</code> <code>grant_type=authorization_code</code>, <code>client_id</code>, <code>client_secret</code>, <code>redirect_uri</code>, <code>code</code>" },
+    { type: "paragraph",html: "Il redirect URI nello scambio del token deve corrispondere a quello della richiesta di autorizzazione, che a sua volta deve corrispondere a quello registrato al passaggio 3. I token di accesso scadono, quindi preveda una routine di aggiornamento anziché riautorizzare continuamente gli utenti." },
+    { type: "heading",text: "Un paio di cose che fanno inciampare" },
+    { type: "paragraph",html: "Le discrepanze nel redirect URI sono la causa numero uno per cui una nuova app OAuth non completa l'handshake, quindi sistemi prima di tutto questo aspetto. L'altra è la chiave monouso: molti passano oltre la schermata Generate, perdono il secret e devono rifare tutto. Tratti quella schermata come se fosse l'unica volta in cui la vedrà, perché è così." },
+    { type: "heading",text: "Automatizzi tutto con PickMyTrade" },
+    { type: "paragraph",html: "Vuole l'automazione senza costruire da sé un'app OAuth? <strong class='text-white'>PickMyTrade collega TradingView a Tradovate per Lei</strong>, così può instradare gli alert al Suo account senza scrivere una riga di codice OAuth." },
+  ] },
+  ctaHeading: { en: "Skip Building Your Own OAuth App", de: "Verzichten Sie auf die eigene OAuth-App", es: "Evite crear su propia aplicación OAuth", fr: "Évitez de créer votre propre application OAuth", it: "Eviti di creare la Sua app OAuth" },
+  ctaText: { en: "Let PickMyTrade connect TradingView to Tradovate for you, no OAuth code required.", de: "Lassen Sie PickMyTrade TradingView für Sie mit Tradovate verbinden, ganz ohne OAuth-Code.", es: "Deje que PickMyTrade conecte TradingView con Tradovate por usted, sin código OAuth.", fr: "Laissez PickMyTrade connecter TradingView à Tradovate pour vous, sans aucun code OAuth.", it: "Lasci che PickMyTrade colleghi TradingView a Tradovate per Lei, senza alcun codice OAuth." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [], de: [], es: [], fr: [], it: [] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von dieser weder unterstützt noch gesponsert. \"Tradovate\" und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und Schritte ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, avalada ni patrocinada por Tradovate, Inc. \"Tradovate\" y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni uniquement à des fins éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ni parrainée par cette dernière. « Tradovate » ainsi que tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure actuelle sur la plateforme et dans la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a ogni investitore. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. \"Tradovate\" e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

@@ -1,0 +1,284 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-api-liquidate";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Flatten & Liquidate Positions via Tradovate API";
+const META_DESCRIPTION =
+  "Close open futures positions programmatically with the liquidatePosition API call. Find your account and contract IDs, then flatten every open contract.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Positionen über die Tradovate-API glattstellen und liquidieren", es: "Cerrar y liquidar posiciones mediante la API de Tradovate", fr: "Clôturer et liquider des positions via l'API Tradovate", it: "Chiudere e liquidare le posizioni tramite l'API di Tradovate" },
+  dek: { en: "There's a moment every automated trader knows: your strategy is holding a position and you need out of everything now. Here's how the Tradovate API's liquidatePosition call zeros out an open contract, from grabbing your account ID to flattening the whole account.", de: "Jeder automatisierte Trader kennt diesen Moment: Ihre Strategie hält eine Position, und Sie müssen sofort raus aus allem. So setzt der liquidatePosition-Aufruf der Tradovate-API einen offenen Kontrakt auf null – von der Abfrage Ihrer Konto-ID bis zum Glattstellen des gesamten Kontos.", es: "Todo trader automatizado conoce ese momento: su estrategia mantiene una posición y necesita salir de todo ahora. Así es como la llamada liquidatePosition de la API de Tradovate deja a cero un contrato abierto, desde obtener el ID de su cuenta hasta cerrar toda la cuenta.", fr: "Tout trader automatisé connaît ce moment : votre stratégie détient une position et vous devez sortir de tout, immédiatement. Voici comment l'appel liquidatePosition de l'API Tradovate remet un contrat ouvert à zéro, de la récupération de l'ID de votre compte à la clôture de l'ensemble du compte.", it: "Ogni trader automatizzato conosce quel momento: la sua strategia detiene una posizione e lei deve uscire da tutto subito. Ecco come la chiamata liquidatePosition dell'API di Tradovate azzera un contratto aperto, dal recupero dell'ID del conto alla chiusura dell'intero conto." },
+  readTime: { en: "6 min read", de: "6 Min. Lesezeit", es: "Lectura de 6 min", fr: "Lecture : 6 min", it: "Lettura di 6 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "There's a moment every automated trader knows: your strategy is holding a position, the market's turning against you, and you need out of everything <em>now</em>. Hunting for the flatten button on a web page is too slow. That's exactly what the Tradovate API's <code>liquidatePosition</code> call is for. One request zeros out an open contract, no manual DOM clicks required. This guide walks the whole path, from grabbing your account ID to looping over every open position so the account ends up completely flat." },
+    { type: "paragraph", html: "A quick word on what this endpoint actually does. It doesn't cancel a resting order or \"sell some contracts.\" It looks up the net position you're holding on a contract and submits a market order in the opposite direction to bring that net to zero. Because it's a live order, it only fills while the contract's session is open." },
+    { type: "heading", text: "Before You Start" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>API access and a live token.</strong> You need API Access enabled on the account and a valid access token. If you haven't set that up, start with <a href='https://pickmytrade.trade/how-to/tradovate-api-access/'>getting Tradovate API access and a key</a>.",
+        "<strong class='text-white'>The right environment.</strong> Demo and live are separate hosts: <code>demo.tradovateapi.com/v1</code> for simulation, <code>live.tradovateapi.com/v1</code> for real money. Point a demo token at the live host (or vice versa) and you'll get \"Access is denied.\"",
+        "<strong class='text-white'>Order permission on that account.</strong> The token has to belong to a user who can place orders on the account you're flattening.",
+        "<strong class='text-white'>Prop-account rules.</strong> Some prop firms disable direct API automation on their evaluation accounts. Check your firm's current rules before you build against a funded account.",
+      ],
+    },
+    { type: "heading", text: "Flatten & Liquidate Positions via Tradovate API: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authenticate and Hold Onto Your Token", html: "Every call needs a bearer token. Send your credentials to <code>/auth/accessTokenRequest</code> and pull the <code>accessToken</code> out of the response. Tokens don't live forever, so if your process runs for a while, call <code>/auth/renewAccessToken</code> before the current one lapses rather than waiting for a 401. On every request after this, attach the header <code>Authorization: Bearer YOUR_ACCESS_TOKEN</code>." },
+        { title: "Get Your Numeric Account ID", html: "Liquidation is keyed to a numeric account ID, not the account nickname you see in the app. Send a <code>GET</code> to <code>/account/list</code> and you'll get back an array of the accounts your user can see. Grab the <code>id</code> field (a number like <code>2100</code>) for the account you want to flatten. If you have several accounts, match on the <code>name</code> field, then use that row's <code>id</code>." },
+        { title: "Find Your Open Positions and Their Contract IDs", html: "You can't liquidate a contract you can't name. Call <code>/position/list</code> and look at two fields on each row: <code>contractId</code> and <code>netPos</code>. <code>netPos</code> is the signed number of contracts you're holding. Positive means long, negative means short, and zero means you're already flat on that contract. Any row where <code>netPos</code> isn't zero is an open position you may want to close. Note the <code>contractId</code>. If you want a human-readable symbol to log, pass that ID to <code>/contract/item?id={contractId}</code>." },
+        { title: "Fire the Liquidation", html: "Now the actual call. <code>POST</code> to <code>/order/liquidatePosition</code> with the account ID and contract ID you just collected, sending <code>accountId</code>, <code>contractId</code>, and an <code>admin</code> boolean in the body. A few things that trip people up here." },
+        { title: "Flatten Everything, Then Confirm", html: "There's no single \"close all\" button in the REST API. To flatten the whole account, you loop. Pull <code>/position/list</code>, keep the rows where <code>netPos</code> isn't zero, and call <code>/order/liquidatePosition</code> once per <code>contractId</code>. Two contracts open? Two calls. Then verify. Re-pull <code>/position/list</code> and every <code>netPos</code> should read <code>0</code>. It's also worth hitting <code>/order/list</code> to make sure any bracket or OCO orders tied to those positions actually cleared, so a leftover stop doesn't reopen you later." },
+      ],
+    },
+    {
+      type: "table",
+      headers: ["Field", "What it is"],
+      rows: [
+        ["accountId", "Required. The numeric id from Step 2."],
+        ["contractId", "Required, and it has to be greater than 0. Passing 0 throws \"contractId must be &gt; 0\". Use the real ID from /position/list."],
+        ["admin", "A boolean the body expects. Regular accounts pass false. Leaving it out is the classic cause of a 400."],
+        ["customTag50", "Optional. A short string tag you can attach for your own tracking."],
+      ],
+    },
+    { type: "paragraph", html: "The server works out your net position itself and submits the market order to close it. If the position already went flat between your position check and this call, you get a harmless no-op instead of an accidental opposite trade, so you don't have to race it perfectly." },
+    { type: "heading", text: "When It Doesn't Work" },
+    { type: "paragraph", html: "Most failures come down to three things. A <strong class='text-white'>401 \"Access is denied\"</strong> almost always means the wrong environment host, the wrong account ID, or a user without order permission on that account. <code>contractId must be &gt; 0</code> means you sent a placeholder instead of a real ID. And a plain <strong class='text-white'>401 with an expired token</strong> just needs a renew. If the liquidation order itself gets rejected, the reason is usually the same one that blocks any order, so it's worth checking the general <a href='https://pickmytrade.trade/debugging/api-access-denied-place-order/'>access-denied on place order</a> guidance and confirming the market is open." },
+    { type: "heading", text: "Automate This with PickMyTrade" },
+    { type: "paragraph", html: "Don't want to babysit tokens, position loops, and liquidation logic yourself? <strong class='text-white'>PickMyTrade connects your TradingView alerts straight to Tradovate</strong>, so entries, exits, and flatten commands fire automatically without you writing a line of API code." },
+  ], de: [
+    { type: "paragraph",html: "Jeder automatisierte Trader kennt diesen Moment: Ihre Strategie hält eine Position, der Markt dreht gegen Sie, und Sie müssen <em>jetzt</em> aus allem raus. Die Flatten-Schaltfläche auf einer Webseite zu suchen, ist zu langsam. Genau dafür gibt es den <code>liquidatePosition</code>-Aufruf der Tradovate-API. Eine einzige Anfrage setzt einen offenen Kontrakt auf null – ohne manuelle Klicks im DOM. Diese Anleitung führt Sie durch den gesamten Weg, von der Abfrage Ihrer Konto-ID bis zur Schleife über alle offenen Positionen, sodass das Konto am Ende komplett glatt ist." },
+    { type: "paragraph",html: "Kurz zur Einordnung, was dieser Endpunkt tatsächlich tut: Er storniert keine ruhende Order und „verkauft“ auch nicht einfach ein paar Kontrakte. Er ermittelt die Nettoposition, die Sie in einem Kontrakt halten, und sendet eine Market-Order in Gegenrichtung, um diese Nettoposition auf null zu bringen. Da es sich um eine Live-Order handelt, wird sie nur ausgeführt, solange die Handelssitzung des Kontrakts geöffnet ist." },
+    { type: "heading",text: "Bevor Sie beginnen" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>API-Zugang und ein gültiges Token.</strong> Für das Konto muss API Access aktiviert sein, und Sie benötigen ein gültiges Access-Token. Falls Sie das noch nicht eingerichtet haben, beginnen Sie mit <a href='https://pickmytrade.trade/how-to/tradovate-api-access/'>Tradovate-API-Zugang und Schlüssel erhalten</a>.",
+        "<strong class='text-white'>Die richtige Umgebung.</strong> Demo und Live sind getrennte Hosts: <code>demo.tradovateapi.com/v1</code> für die Simulation, <code>live.tradovateapi.com/v1</code> für echtes Geld. Wenn Sie ein Demo-Token gegen den Live-Host verwenden (oder umgekehrt), erhalten Sie „Access is denied“.",
+        "<strong class='text-white'>Orderberechtigung für dieses Konto.</strong> Das Token muss zu einem Benutzer gehören, der auf dem glattzustellenden Konto Orders platzieren darf.",
+        "<strong class='text-white'>Regeln für Prop-Konten.</strong> Einige Prop-Firmen deaktivieren die direkte API-Automatisierung auf ihren Evaluierungskonten. Prüfen Sie die aktuellen Regeln Ihrer Firma, bevor Sie auf ein finanziertes Konto hin entwickeln.",
+      ],
+    },
+    { type: "heading",text: "Positionen über die Tradovate-API glattstellen und liquidieren: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authentifizieren und Token aufbewahren", html: "Jeder Aufruf benötigt ein Bearer-Token. Senden Sie Ihre Zugangsdaten an <code>/auth/accessTokenRequest</code> und entnehmen Sie der Antwort den <code>accessToken</code>. Token sind nicht ewig gültig. Läuft Ihr Prozess länger, rufen Sie <code>/auth/renewAccessToken</code> auf, bevor das aktuelle Token abläuft, statt auf einen 401 zu warten. Fügen Sie bei jeder weiteren Anfrage den Header <code>Authorization: Bearer YOUR_ACCESS_TOKEN</code> hinzu." },
+        { title: "Numerische Konto-ID abrufen", html: "Die Liquidation bezieht sich auf eine numerische Konto-ID, nicht auf den Kontonamen, den Sie in der App sehen. Senden Sie ein <code>GET</code> an <code>/account/list</code>, und Sie erhalten ein Array der Konten, die Ihr Benutzer sehen kann. Übernehmen Sie das Feld <code>id</code> (eine Zahl wie <code>2100</code>) des Kontos, das Sie glattstellen möchten. Bei mehreren Konten gleichen Sie über das Feld <code>name</code> ab und verwenden dann die <code>id</code> dieser Zeile." },
+        { title: "Offene Positionen und ihre Kontrakt-IDs finden", html: "Einen Kontrakt, den Sie nicht benennen können, können Sie nicht liquidieren. Rufen Sie <code>/position/list</code> auf und sehen Sie sich zwei Felder jeder Zeile an: <code>contractId</code> und <code>netPos</code>. <code>netPos</code> ist die vorzeichenbehaftete Anzahl der gehaltenen Kontrakte. Positiv bedeutet Long, negativ Short, null bedeutet, dass Sie in diesem Kontrakt bereits glatt sind. Jede Zeile, in der <code>netPos</code> nicht null ist, ist eine offene Position, die Sie ggf. schließen möchten. Notieren Sie die <code>contractId</code>. Möchten Sie ein lesbares Symbol für Ihr Log, übergeben Sie diese ID an <code>/contract/item?id={contractId}</code>." },
+        { title: "Die Liquidation auslösen", html: "Jetzt der eigentliche Aufruf. Senden Sie ein <code>POST</code> an <code>/order/liquidatePosition</code> mit der soeben ermittelten Konto-ID und Kontrakt-ID und übergeben Sie im Body <code>accountId</code>, <code>contractId</code> und einen booleschen Wert <code>admin</code>. Hier stolpern viele über ein paar Details." },
+        { title: "Alles glattstellen, dann bestätigen", html: "Die REST-API kennt keine einzelne Schaltfläche „alles schließen“. Um das gesamte Konto glattzustellen, durchlaufen Sie eine Schleife. Rufen Sie <code>/position/list</code> ab, behalten Sie die Zeilen mit <code>netPos</code> ungleich null und rufen Sie <code>/order/liquidatePosition</code> einmal pro <code>contractId</code> auf. Zwei offene Kontrakte? Zwei Aufrufe. Prüfen Sie anschließend: Rufen Sie <code>/position/list</code> erneut ab, und jedes <code>netPos</code> sollte <code>0</code> anzeigen. Außerdem lohnt sich ein Blick in <code>/order/list</code>, um sicherzustellen, dass alle mit diesen Positionen verknüpften Bracket- oder OCO-Orders tatsächlich verschwunden sind, damit ein übrig gebliebener Stop Sie später nicht wieder in eine Position bringt." },
+      ],
+    },
+    { type: "table", headers: ["Feld","Bedeutung"], rows: [
+      ["accountId","Erforderlich. Die numerische id aus Schritt 2."],
+      ["contractId","Erforderlich und muss größer als 0 sein. Die Übergabe von 0 löst „contractId must be &gt; 0“ aus. Verwenden Sie die echte ID aus /position/list."],
+      ["admin","Ein boolescher Wert, den der Body erwartet. Reguläre Konten übergeben false. Wird er weggelassen, ist das die klassische Ursache für einen 400-Fehler."],
+      ["customTag50","Optional. Eine kurze Zeichenfolge als Tag für Ihr eigenes Tracking."],
+    ] },
+    { type: "paragraph",html: "Der Server ermittelt Ihre Nettoposition selbst und sendet die Market-Order zum Schließen. Falls die Position zwischen Ihrer Positionsprüfung und diesem Aufruf bereits glatt wurde, erhalten Sie statt eines versehentlichen Gegengeschäfts ein harmloses No-Op, sodass Sie das Timing nicht perfekt treffen müssen." },
+    { type: "heading",text: "Wenn es nicht funktioniert" },
+    { type: "paragraph",html: "Die meisten Fehler lassen sich auf drei Ursachen zurückführen. Ein <strong class='text-white'>401 „Access is denied“</strong> bedeutet fast immer den falschen Umgebungs-Host, die falsche Konto-ID oder einen Benutzer ohne Orderberechtigung für dieses Konto. <code>contractId must be &gt; 0</code> bedeutet, dass Sie einen Platzhalter statt einer echten ID gesendet haben. Und ein einfacher <strong class='text-white'>401 bei abgelaufenem Token</strong> erfordert lediglich eine Erneuerung. Wird die Liquidations-Order selbst abgelehnt, ist der Grund meist derselbe, der jede Order blockiert. Prüfen Sie daher die allgemeinen Hinweise zu <a href='https://pickmytrade.trade/debugging/api-access-denied-place-order/'>Access denied bei Place Order</a> und vergewissern Sie sich, dass der Markt geöffnet ist." },
+    { type: "heading",text: "Automatisieren Sie dies mit PickMyTrade" },
+    { type: "paragraph",html: "Sie möchten sich nicht selbst um Token, Positionsschleifen und Liquidationslogik kümmern? <strong class='text-white'>PickMyTrade verbindet Ihre TradingView-Alerts direkt mit Tradovate</strong>, sodass Einstiege, Ausstiege und Glattstellungsbefehle automatisch ausgeführt werden, ohne dass Sie eine Zeile API-Code schreiben." },
+  ], es: [
+    { type: "paragraph",html: "Todo trader automatizado conoce ese momento: su estrategia mantiene una posición, el mercado gira en su contra y necesita salir de todo <em>ahora</em>. Buscar el botón de cierre en una página web es demasiado lento. Para eso sirve precisamente la llamada <code>liquidatePosition</code> de la API de Tradovate. Una sola solicitud deja a cero un contrato abierto, sin clics manuales en el DOM. Esta guía recorre todo el camino, desde obtener el ID de su cuenta hasta recorrer en bucle todas las posiciones abiertas para que la cuenta quede completamente cerrada." },
+    { type: "paragraph",html: "Una breve aclaración sobre lo que hace realmente este endpoint: no cancela una orden pendiente ni «vende unos cuantos contratos». Busca la posición neta que mantiene en un contrato y envía una orden de mercado en dirección opuesta para llevar esa posición neta a cero. Como es una orden en vivo, solo se ejecuta mientras la sesión del contrato esté abierta." },
+    { type: "heading",text: "Antes de empezar" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Acceso a la API y un token válido.</strong> Necesita tener API Access activado en la cuenta y un token de acceso válido. Si aún no lo ha configurado, empiece por <a href='https://pickmytrade.trade/how-to/tradovate-api-access/'>obtener acceso a la API de Tradovate y una clave</a>.",
+        "<strong class='text-white'>El entorno correcto.</strong> Demo y real son hosts independientes: <code>demo.tradovateapi.com/v1</code> para simulación y <code>live.tradovateapi.com/v1</code> para dinero real. Si usa un token de demo contra el host real (o al revés), obtendrá «Access is denied».",
+        "<strong class='text-white'>Permiso de órdenes en esa cuenta.</strong> El token debe pertenecer a un usuario que pueda colocar órdenes en la cuenta que va a cerrar.",
+        "<strong class='text-white'>Reglas de las cuentas prop.</strong> Algunas prop firms desactivan la automatización directa por API en sus cuentas de evaluación. Consulte las reglas vigentes de su firma antes de desarrollar contra una cuenta fondeada.",
+      ],
+    },
+    { type: "heading",text: "Cerrar y liquidar posiciones mediante la API de Tradovate: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Autentíquese y conserve su token", html: "Cada llamada necesita un token Bearer. Envíe sus credenciales a <code>/auth/accessTokenRequest</code> y extraiga el <code>accessToken</code> de la respuesta. Los tokens no duran para siempre, así que si su proceso se ejecuta durante un tiempo, llame a <code>/auth/renewAccessToken</code> antes de que caduque el actual en lugar de esperar a un 401. En cada solicitud posterior, adjunte el encabezado <code>Authorization: Bearer YOUR_ACCESS_TOKEN</code>." },
+        { title: "Obtenga el ID numérico de su cuenta", html: "La liquidación se basa en un ID de cuenta numérico, no en el alias de cuenta que ve en la aplicación. Envíe un <code>GET</code> a <code>/account/list</code> y recibirá un array con las cuentas que su usuario puede ver. Tome el campo <code>id</code> (un número como <code>2100</code>) de la cuenta que desea cerrar. Si tiene varias cuentas, busque la coincidencia en el campo <code>name</code> y use después el <code>id</code> de esa fila." },
+        { title: "Localice sus posiciones abiertas y sus IDs de contrato", html: "No puede liquidar un contrato que no puede nombrar. Llame a <code>/position/list</code> y fíjese en dos campos de cada fila: <code>contractId</code> y <code>netPos</code>. <code>netPos</code> es el número con signo de contratos que mantiene. Positivo significa largo, negativo significa corto y cero significa que ya está sin posición en ese contrato. Cualquier fila donde <code>netPos</code> no sea cero es una posición abierta que quizá desee cerrar. Anote el <code>contractId</code>. Si quiere un símbolo legible para su registro, pase ese ID a <code>/contract/item?id={contractId}</code>." },
+        { title: "Lance la liquidación", html: "Ahora, la llamada en sí. Envíe un <code>POST</code> a <code>/order/liquidatePosition</code> con el ID de cuenta y el ID de contrato que acaba de obtener, enviando en el cuerpo <code>accountId</code>, <code>contractId</code> y un booleano <code>admin</code>. Hay algunos detalles en los que mucha gente tropieza." },
+        { title: "Cierre todo y confirme", html: "La API REST no tiene un único botón de «cerrar todo». Para dejar toda la cuenta sin posiciones, debe hacer un bucle. Obtenga <code>/position/list</code>, conserve las filas donde <code>netPos</code> no sea cero y llame a <code>/order/liquidatePosition</code> una vez por cada <code>contractId</code>. ¿Dos contratos abiertos? Dos llamadas. Después, verifique. Vuelva a obtener <code>/position/list</code> y cada <code>netPos</code> debería mostrar <code>0</code>. También conviene consultar <code>/order/list</code> para asegurarse de que las órdenes bracket u OCO asociadas a esas posiciones realmente se hayan cancelado, de modo que un stop olvidado no le vuelva a abrir una posición más tarde." },
+      ],
+    },
+    { type: "table", headers: ["Campo","Qué es"], rows: [
+      ["accountId","Obligatorio. El id numérico del paso 2."],
+      ["contractId","Obligatorio y debe ser mayor que 0. Pasar 0 genera «contractId must be &gt; 0». Use el ID real de /position/list."],
+      ["admin","Un booleano que el cuerpo espera. Las cuentas normales pasan false. Omitirlo es la causa clásica de un 400."],
+      ["customTag50","Opcional. Una cadena corta que puede adjuntar como etiqueta para su propio seguimiento."],
+    ] },
+    { type: "paragraph",html: "El servidor calcula por sí mismo su posición neta y envía la orden de mercado para cerrarla. Si la posición ya quedó cerrada entre su comprobación y esta llamada, obtiene una operación nula inofensiva en lugar de una operación opuesta accidental, de modo que no necesita sincronizarlo a la perfección." },
+    { type: "heading",text: "Cuando no funciona" },
+    { type: "paragraph",html: "La mayoría de los fallos se reducen a tres causas. Un <strong class='text-white'>401 «Access is denied»</strong> casi siempre significa host de entorno incorrecto, ID de cuenta incorrecto o un usuario sin permiso de órdenes en esa cuenta. <code>contractId must be &gt; 0</code> significa que envió un marcador de posición en lugar de un ID real. Y un simple <strong class='text-white'>401 con un token caducado</strong> solo necesita una renovación. Si la propia orden de liquidación es rechazada, el motivo suele ser el mismo que bloquea cualquier orden, así que conviene revisar la guía general sobre <a href='https://pickmytrade.trade/debugging/api-access-denied-place-order/'>access denied al colocar una orden</a> y confirmar que el mercado está abierto." },
+    { type: "heading",text: "Automatice esto con PickMyTrade" },
+    { type: "paragraph",html: "¿No quiere ocuparse usted mismo de tokens, bucles de posiciones y lógica de liquidación? <strong class='text-white'>PickMyTrade conecta sus alertas de TradingView directamente con Tradovate</strong>, de modo que las entradas, las salidas y los comandos de cierre se ejecutan automáticamente sin que escriba una sola línea de código de API." },
+  ], fr: [
+    { type: "paragraph",html: "Tout trader automatisé connaît ce moment : votre stratégie détient une position, le marché se retourne contre vous et vous devez sortir de tout <em>maintenant</em>. Chercher le bouton de clôture sur une page web est trop lent. C'est précisément le rôle de l'appel <code>liquidatePosition</code> de l'API Tradovate. Une seule requête remet un contrat ouvert à zéro, sans aucun clic manuel dans le DOM. Ce guide vous accompagne sur tout le parcours, de la récupération de l'ID de votre compte jusqu'à la boucle sur toutes les positions ouvertes, pour que le compte finisse totalement à plat." },
+    { type: "paragraph",html: "Un mot sur ce que fait réellement ce point d'accès : il n'annule pas un ordre en attente et ne « vend » pas simplement quelques contrats. Il recherche la position nette que vous détenez sur un contrat et soumet un ordre au marché en sens inverse pour ramener cette position nette à zéro. Comme il s'agit d'un ordre réel, il n'est exécuté que lorsque la session du contrat est ouverte." },
+    { type: "heading",text: "Avant de commencer" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Un accès API et un jeton valide.</strong> Vous devez avoir activé API Access sur le compte et disposer d'un jeton d'accès valide. Si ce n'est pas encore fait, commencez par <a href='https://pickmytrade.trade/how-to/tradovate-api-access/'>obtenir l'accès à l'API Tradovate et une clé</a>.",
+        "<strong class='text-white'>Le bon environnement.</strong> Démo et réel sont des hôtes distincts : <code>demo.tradovateapi.com/v1</code> pour la simulation, <code>live.tradovateapi.com/v1</code> pour l'argent réel. Si vous utilisez un jeton de démo sur l'hôte réel (ou l'inverse), vous obtiendrez « Access is denied ».",
+        "<strong class='text-white'>L'autorisation d'ordre sur ce compte.</strong> Le jeton doit appartenir à un utilisateur autorisé à passer des ordres sur le compte que vous clôturez.",
+        "<strong class='text-white'>Règles des comptes prop.</strong> Certaines prop firms désactivent l'automatisation API directe sur leurs comptes d'évaluation. Vérifiez les règles actuelles de votre firme avant de développer sur un compte financé.",
+      ],
+    },
+    { type: "heading",text: "Clôturer et liquider des positions via l'API Tradovate : pas à pas" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authentifiez-vous et conservez votre jeton", html: "Chaque appel nécessite un jeton Bearer. Envoyez vos identifiants à <code>/auth/accessTokenRequest</code> et extrayez l'<code>accessToken</code> de la réponse. Les jetons n'ont pas une durée illimitée : si votre processus tourne longtemps, appelez <code>/auth/renewAccessToken</code> avant l'expiration du jeton actuel plutôt que d'attendre un 401. Sur chaque requête suivante, joignez l'en-tête <code>Authorization: Bearer YOUR_ACCESS_TOKEN</code>." },
+        { title: "Récupérez l'ID numérique de votre compte", html: "La liquidation repose sur un ID de compte numérique, et non sur le surnom du compte affiché dans l'application. Envoyez un <code>GET</code> à <code>/account/list</code> et vous obtiendrez un tableau des comptes visibles par votre utilisateur. Récupérez le champ <code>id</code> (un nombre comme <code>2100</code>) du compte à clôturer. Si vous avez plusieurs comptes, faites la correspondance sur le champ <code>name</code>, puis utilisez l'<code>id</code> de cette ligne." },
+        { title: "Trouvez vos positions ouvertes et leurs ID de contrat", html: "Vous ne pouvez pas liquider un contrat que vous ne pouvez pas nommer. Appelez <code>/position/list</code> et regardez deux champs sur chaque ligne : <code>contractId</code> et <code>netPos</code>. <code>netPos</code> est le nombre signé de contrats détenus. Positif signifie long, négatif signifie short, et zéro signifie que vous êtes déjà à plat sur ce contrat. Toute ligne dont <code>netPos</code> n'est pas nul est une position ouverte que vous pouvez vouloir clôturer. Notez le <code>contractId</code>. Si vous souhaitez un symbole lisible pour vos journaux, transmettez cet ID à <code>/contract/item?id={contractId}</code>." },
+        { title: "Déclenchez la liquidation", html: "Voici l'appel proprement dit. Envoyez un <code>POST</code> à <code>/order/liquidatePosition</code> avec l'ID de compte et l'ID de contrat que vous venez de récupérer, en envoyant dans le corps <code>accountId</code>, <code>contractId</code> et un booléen <code>admin</code>. Quelques points font souvent trébucher ici." },
+        { title: "Tout clôturer, puis confirmer", html: "L'API REST ne propose pas de bouton unique « tout fermer ». Pour mettre tout le compte à plat, vous devez boucler. Récupérez <code>/position/list</code>, gardez les lignes dont <code>netPos</code> n'est pas nul et appelez <code>/order/liquidatePosition</code> une fois par <code>contractId</code>. Deux contrats ouverts ? Deux appels. Ensuite, vérifiez. Récupérez de nouveau <code>/position/list</code> et chaque <code>netPos</code> doit afficher <code>0</code>. Il est aussi utile de consulter <code>/order/list</code> pour vous assurer que les ordres bracket ou OCO liés à ces positions ont bien été supprimés, afin qu'un stop résiduel ne vous rouvre pas une position plus tard." },
+      ],
+    },
+    { type: "table", headers: ["Champ","Description"], rows: [
+      ["accountId","Obligatoire. L'id numérique de l'étape 2."],
+      ["contractId","Obligatoire, et doit être supérieur à 0. Passer 0 déclenche « contractId must be &gt; 0 ». Utilisez l'ID réel provenant de /position/list."],
+      ["admin","Un booléen attendu dans le corps. Les comptes ordinaires passent false. L'omettre est la cause classique d'une erreur 400."],
+      ["customTag50","Facultatif. Une courte chaîne servant d'étiquette pour votre propre suivi."],
+    ] },
+    { type: "paragraph",html: "Le serveur détermine lui-même votre position nette et soumet l'ordre au marché pour la clôturer. Si la position est déjà revenue à plat entre votre vérification et cet appel, vous obtenez une opération sans effet plutôt qu'un trade inverse accidentel : inutile donc de synchroniser parfaitement les deux." },
+    { type: "heading",text: "Quand ça ne fonctionne pas" },
+    { type: "paragraph",html: "La plupart des échecs se résument à trois causes. Une erreur <strong class='text-white'>401 « Access is denied »</strong> signifie presque toujours un mauvais hôte d'environnement, un mauvais ID de compte ou un utilisateur sans autorisation d'ordre sur ce compte. <code>contractId must be &gt; 0</code> signifie que vous avez envoyé une valeur factice au lieu d'un vrai ID. Et une simple <strong class='text-white'>erreur 401 avec un jeton expiré</strong> demande seulement un renouvellement. Si l'ordre de liquidation lui-même est rejeté, la raison est généralement celle qui bloque n'importe quel ordre : consultez donc le guide général sur <a href='https://pickmytrade.trade/debugging/api-access-denied-place-order/'>access denied lors d'un place order</a> et vérifiez que le marché est ouvert." },
+    { type: "heading",text: "Automatisez tout cela avec PickMyTrade" },
+    { type: "paragraph",html: "Vous ne voulez pas gérer vous-même les jetons, les boucles de positions et la logique de liquidation ? <strong class='text-white'>PickMyTrade relie vos alertes TradingView directement à Tradovate</strong> : entrées, sorties et commandes de clôture s'exécutent automatiquement, sans que vous écriviez une seule ligne de code API." },
+  ], it: [
+    { type: "paragraph",html: "Ogni trader automatizzato conosce quel momento: la sua strategia detiene una posizione, il mercato si sta girando contro di lei e deve uscire da tutto <em>adesso</em>. Cercare il pulsante di chiusura su una pagina web è troppo lento. È esattamente a questo che serve la chiamata <code>liquidatePosition</code> dell'API di Tradovate. Una sola richiesta azzera un contratto aperto, senza clic manuali nel DOM. Questa guida percorre l'intero cammino, dal recupero dell'ID del conto al ciclo su tutte le posizioni aperte, in modo che il conto risulti completamente flat." },
+    { type: "paragraph",html: "Una precisazione su ciò che fa davvero questo endpoint: non annulla un ordine in attesa e non «vende qualche contratto». Cerca la posizione netta che detiene su un contratto e invia un ordine a mercato in direzione opposta per portare quella posizione netta a zero. Poiché è un ordine reale, viene eseguito solo mentre la sessione del contratto è aperta." },
+    { type: "heading",text: "Prima di iniziare" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Accesso API e un token valido.</strong> Deve avere API Access abilitato sul conto e un token di accesso valido. Se non l'ha ancora configurato, inizi da <a href='https://pickmytrade.trade/how-to/tradovate-api-access/'>come ottenere l'accesso API di Tradovate e una chiave</a>.",
+        "<strong class='text-white'>L'ambiente corretto.</strong> Demo e live sono host separati: <code>demo.tradovateapi.com/v1</code> per la simulazione, <code>live.tradovateapi.com/v1</code> per il denaro reale. Se usa un token demo sull'host live (o viceversa), otterrà «Access is denied».",
+        "<strong class='text-white'>Permesso di inserire ordini su quel conto.</strong> Il token deve appartenere a un utente che può inserire ordini sul conto che sta chiudendo.",
+        "<strong class='text-white'>Regole dei conti prop.</strong> Alcune prop firm disattivano l'automazione API diretta sui loro conti di valutazione. Controlli le regole attuali della sua società prima di sviluppare su un conto finanziato.",
+      ],
+    },
+    { type: "heading",text: "Chiudere e liquidare le posizioni tramite l'API di Tradovate: guida passo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Si autentichi e conservi il token", html: "Ogni chiamata richiede un token Bearer. Invii le sue credenziali a <code>/auth/accessTokenRequest</code> ed estragga l'<code>accessToken</code> dalla risposta. I token non durano per sempre: se il suo processo resta attivo a lungo, chiami <code>/auth/renewAccessToken</code> prima della scadenza del token corrente, invece di attendere un 401. A ogni richiesta successiva alleghi l'header <code>Authorization: Bearer YOUR_ACCESS_TOKEN</code>." },
+        { title: "Ottenga l'ID numerico del conto", html: "La liquidazione fa riferimento a un ID conto numerico, non al nome del conto che vede nell'app. Invii un <code>GET</code> a <code>/account/list</code> e riceverà un array dei conti visibili al suo utente. Prenda il campo <code>id</code> (un numero come <code>2100</code>) del conto che vuole chiudere. Se ha più conti, cerchi la corrispondenza sul campo <code>name</code> e usi poi l'<code>id</code> di quella riga." },
+        { title: "Trovi le posizioni aperte e i loro ID contratto", html: "Non può liquidare un contratto che non sa nominare. Chiami <code>/position/list</code> e guardi due campi di ogni riga: <code>contractId</code> e <code>netPos</code>. <code>netPos</code> è il numero con segno dei contratti detenuti. Positivo significa long, negativo significa short e zero significa che è già flat su quel contratto. Ogni riga in cui <code>netPos</code> non è zero è una posizione aperta che potrebbe voler chiudere. Annoti il <code>contractId</code>. Se desidera un simbolo leggibile per il log, passi quell'ID a <code>/contract/item?id={contractId}</code>." },
+        { title: "Avvii la liquidazione", html: "Ora la chiamata vera e propria. Invii un <code>POST</code> a <code>/order/liquidatePosition</code> con l'ID conto e l'ID contratto appena raccolti, inviando nel body <code>accountId</code>, <code>contractId</code> e un booleano <code>admin</code>. Qui ci sono alcuni dettagli su cui molti inciampano." },
+        { title: "Chiuda tutto, poi verifichi", html: "L'API REST non ha un unico pulsante «chiudi tutto». Per portare l'intero conto a flat deve eseguire un ciclo. Recuperi <code>/position/list</code>, tenga le righe in cui <code>netPos</code> non è zero e chiami <code>/order/liquidatePosition</code> una volta per ogni <code>contractId</code>. Due contratti aperti? Due chiamate. Poi verifichi: recuperi di nuovo <code>/position/list</code> e ogni <code>netPos</code> dovrebbe essere <code>0</code>. Vale anche la pena consultare <code>/order/list</code> per assicurarsi che gli ordini bracket o OCO collegati a quelle posizioni siano stati effettivamente cancellati, così che uno stop residuo non la riporti in posizione più tardi." },
+      ],
+    },
+    { type: "table", headers: ["Campo","Che cos'è"], rows: [
+      ["accountId","Obbligatorio. L'id numerico del passaggio 2."],
+      ["contractId","Obbligatorio e deve essere maggiore di 0. Passare 0 genera «contractId must be &gt; 0». Usi il vero ID da /position/list."],
+      ["admin","Un booleano che il body si aspetta. I conti normali passano false. Ometterlo è la classica causa di un 400."],
+      ["customTag50","Facoltativo. Una breve stringa da allegare come tag per il suo tracciamento."],
+    ] },
+    { type: "paragraph",html: "Il server calcola da solo la sua posizione netta e invia l'ordine a mercato per chiuderla. Se la posizione è già tornata flat tra il suo controllo e questa chiamata, ottiene un'operazione nulla innocua anziché un'operazione opposta accidentale, quindi non deve sincronizzarsi alla perfezione." },
+    { type: "heading",text: "Quando non funziona" },
+    { type: "paragraph",html: "La maggior parte degli errori si riduce a tre cause. Un <strong class='text-white'>401 «Access is denied»</strong> significa quasi sempre host dell'ambiente sbagliato, ID conto errato o utente senza permesso di inserire ordini su quel conto. <code>contractId must be &gt; 0</code> significa che ha inviato un segnaposto anziché un ID reale. E un semplice <strong class='text-white'>401 con token scaduto</strong> richiede solo un rinnovo. Se è l'ordine di liquidazione stesso a essere rifiutato, il motivo è di solito lo stesso che blocca qualsiasi ordine: consulti quindi la guida generale su <a href='https://pickmytrade.trade/debugging/api-access-denied-place-order/'>access denied al place order</a> e verifichi che il mercato sia aperto." },
+    { type: "heading",text: "Automatizzi tutto questo con PickMyTrade" },
+    { type: "paragraph",html: "Non vuole occuparsi di persona di token, cicli sulle posizioni e logica di liquidazione? <strong class='text-white'>PickMyTrade collega i suoi alert di TradingView direttamente a Tradovate</strong>, così ingressi, uscite e comandi di chiusura vengono eseguiti automaticamente senza che lei scriva una sola riga di codice API." },
+  ] },
+  ctaHeading: { en: "Skip the Liquidation Loops", de: "Verzichten Sie auf Liquidations-Schleifen", es: "Olvídese de los bucles de liquidación", fr: "Oubliez les boucles de liquidation", it: "Dimentichi i cicli di liquidazione" },
+  ctaText: { en: "Let PickMyTrade connect your TradingView alerts straight to Tradovate, entries, exits, and flatten commands fire automatically.", de: "Lassen Sie PickMyTrade Ihre TradingView-Alerts direkt mit Tradovate verbinden – Einstiege, Ausstiege und Glattstellungsbefehle werden automatisch ausgeführt.", es: "Deje que PickMyTrade conecte sus alertas de TradingView directamente con Tradovate: las entradas, las salidas y los comandos de cierre se ejecutan automáticamente.", fr: "Laissez PickMyTrade relier vos alertes TradingView directement à Tradovate : entrées, sorties et commandes de clôture s'exécutent automatiquement.", it: "Lasci che PickMyTrade colleghi i suoi alert di TradingView direttamente a Tradovate: ingressi, uscite e comandi di chiusura vengono eseguiti automaticamente." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does liquidatePosition return a 401 Access is denied?", a: "Usually the wrong environment host, the wrong account ID, or a user without order permission on that account. Demo tokens only work against demo.tradovateapi.com/v1, and live tokens only against live.tradovateapi.com/v1." },
+    { q: "Why do I get \"contractId must be > 0\"?", a: "You sent a placeholder instead of a real contract ID. Pull the actual contractId from /position/list before calling liquidatePosition." },
+    { q: "Does liquidatePosition cancel my resting orders too?", a: "No. It only looks up your net position on a contract and submits an opposite-side market order to zero it. After liquidating, check /order/list separately to confirm any bracket or OCO legs tied to that position actually cleared." },
+  ], de: [
+    { q: "Warum liefert liquidatePosition einen 401-Fehler „Access is denied“?", a: "Meist liegt es am falschen Umgebungs-Host, an der falschen Konto-ID oder an einem Benutzer ohne Orderberechtigung für dieses Konto. Demo-Token funktionieren nur mit demo.tradovateapi.com/v1, Live-Token nur mit live.tradovateapi.com/v1." },
+    { q: "Warum erhalte ich „contractId must be > 0“?", a: "Sie haben einen Platzhalter statt einer echten Kontrakt-ID gesendet. Holen Sie die tatsächliche contractId aus /position/list, bevor Sie liquidatePosition aufrufen." },
+    { q: "Storniert liquidatePosition auch meine offenen Orders?", a: "Nein. Der Aufruf ermittelt nur Ihre Nettoposition in einem Kontrakt und sendet eine Market-Order in Gegenrichtung, um sie auf null zu bringen. Prüfen Sie nach der Liquidation separat über /order/list, ob alle mit dieser Position verknüpften Bracket- oder OCO-Orders tatsächlich verschwunden sind." },
+  ], es: [
+    { q: "¿Por qué liquidatePosition devuelve un 401 «Access is denied»?", a: "Normalmente se debe a un host de entorno incorrecto, a un ID de cuenta incorrecto o a un usuario sin permiso de órdenes en esa cuenta. Los tokens de demo solo funcionan con demo.tradovateapi.com/v1 y los tokens reales solo con live.tradovateapi.com/v1." },
+    { q: "¿Por qué recibo «contractId must be > 0»?", a: "Envió un marcador de posición en lugar de un ID de contrato real. Obtenga el contractId real de /position/list antes de llamar a liquidatePosition." },
+    { q: "¿liquidatePosition cancela también mis órdenes pendientes?", a: "No. Solo busca su posición neta en un contrato y envía una orden de mercado en sentido contrario para dejarla a cero. Después de liquidar, compruebe por separado /order/list para confirmar que las órdenes bracket u OCO asociadas a esa posición realmente se hayan cancelado." },
+  ], fr: [
+    { q: "Pourquoi liquidatePosition renvoie-t-il une erreur 401 « Access is denied » ?", a: "Le plus souvent, il s'agit d'un mauvais hôte d'environnement, d'un mauvais ID de compte ou d'un utilisateur sans autorisation d'ordre sur ce compte. Les jetons de démo ne fonctionnent qu'avec demo.tradovateapi.com/v1, et les jetons réels uniquement avec live.tradovateapi.com/v1." },
+    { q: "Pourquoi obtiens-je « contractId must be > 0 » ?", a: "Vous avez envoyé une valeur factice au lieu d'un véritable ID de contrat. Récupérez le contractId réel depuis /position/list avant d'appeler liquidatePosition." },
+    { q: "liquidatePosition annule-t-il aussi mes ordres en attente ?", a: "Non. Il ne fait que rechercher votre position nette sur un contrat et soumettre un ordre au marché de sens opposé pour la ramener à zéro. Après la liquidation, vérifiez séparément /order/list pour confirmer que les ordres bracket ou OCO liés à cette position ont bien été supprimés." },
+  ], it: [
+    { q: "Perché liquidatePosition restituisce un 401 «Access is denied»?", a: "Di solito dipende dall'host dell'ambiente sbagliato, dall'ID conto errato o da un utente senza permesso di inserire ordini su quel conto. I token demo funzionano solo con demo.tradovateapi.com/v1 e i token live solo con live.tradovateapi.com/v1." },
+    { q: "Perché ricevo «contractId must be > 0»?", a: "Ha inviato un segnaposto invece di un vero ID contratto. Recuperi il contractId effettivo da /position/list prima di chiamare liquidatePosition." },
+    { q: "liquidatePosition annulla anche i miei ordini in attesa?", a: "No. Cerca soltanto la sua posizione netta su un contratto e invia un ordine a mercato di segno opposto per azzerarla. Dopo la liquidazione, controlli separatamente /order/list per confermare che gli ordini bracket o OCO collegati a quella posizione siano stati effettivamente cancellati." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten ist mit einem erheblichen Verlustrisiko verbunden und nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von Tradovate, Inc. unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso vigente en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. « Tradovate » ainsi que tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

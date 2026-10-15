@@ -1,0 +1,638 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "chart-drawings-disappearing-not-syncing";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Chart Drawings Disappear / Won't Sync";
+const META_DESCRIPTION =
+  "Tradovate chart drawings disappearing or not syncing? Scroll back to their creation date to reload lines and extend them forward so they stay visible.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { de: "Tradovate: Chart-Zeichnungen verschwinden, kein Sync", es: "Tradovate: dibujos del gráfico desaparecen o no sincronizan", fr: "Tradovate : dessins du graphique disparus ou désynchronisés", it: "Tradovate: disegni del grafico scomparsi o non sincronizzati" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Chart-Zeichnungen verschwinden / synchronisieren nicht", es: "Los dibujos del gráfico de Tradovate desaparecen o no se sincronizan", fr: "Les dessins du graphique Tradovate disparaissent ou ne se synchronisent pas", it: "I disegni del grafico Tradovate scompaiono o non si sincronizzano" },
+  dek: { en: "Your support and resistance lines just vanish, on lower timeframes, after a restart, or on mobile. In almost every case they aren't deleted, the chart just hasn't loaded the bars they're anchored to.", de: "Ihre Unterstützungs- und Widerstandslinien verschwinden einfach, auf niedrigeren Zeitrahmen, nach einem Neustart oder auf dem Handy. In fast allen Fällen sind sie nicht gelöscht, der Chart hat nur die Kerzen, an denen sie verankert sind, noch nicht geladen.", es: "Sus líneas de soporte y resistencia simplemente desaparecen, en marcos temporales más bajos, tras un reinicio o en el móvil. En casi todos los casos no se han eliminado, el gráfico simplemente no ha cargado las velas a las que están ancladas.", fr: "Vos lignes de support et de résistance disparaissent tout simplement, sur des unités de temps plus courtes, après un redémarrage ou sur mobile. Dans presque tous les cas, elles ne sont pas supprimées, le graphique n'a simplement pas chargé les bougies auxquelles elles sont ancrées.", it: "Le tue linee di supporto e resistenza semplicemente scompaiono, su timeframe più bassi, dopo un riavvio o su mobile. In quasi tutti i casi non sono state eliminate, il grafico semplicemente non ha ancora caricato le candele a cui sono ancorate." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Few things kill a trading routine faster than opening your Tradovate chart and finding your carefully placed support and resistance lines just gone. Disappearing drawings are one of the platform's oldest and most reported charting quirks, and it was still happening in 2026. You'll see it in a few flavors: horizontal lines that vanish after an app restart, drawings that won't show on lower timeframes, and levels you drew on your desktop that never turn up on the mobile app. Here's the reassuring part. In almost every case the drawings aren't deleted at all. They just aren't being rendered, because the chart hasn't loaded the bars they're pinned to. This guide walks through why it happens, how to fix each version of it, and how automating off levels stored somewhere reliable keeps a vanished line from costing you a trade." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Missing Tradovate Drawings",
+      items: [
+        "<strong class='text-white'>Scroll back in time first</strong>, pan the chart left toward the drawing's creation date; anchored lines re-render the moment those bars load.",
+        "<strong class='text-white'>Extend the line's right edge into the future</strong>, drag or edit the end point far forward so the drawing stays in view across timeframes and sessions.",
+        "<strong class='text-white'>Raise &ldquo;Minimum Bars to Load&rdquo;</strong>, the default is low, so only recent history renders; increase it and save a chart template so more history preloads automatically.",
+        "<strong class='text-white'>Color-link your charts, then turn on Sync Charts</strong>, so a drawing added on one chart shows up on the others in the same linked group.",
+        "<strong class='text-white'>Don't expect desktop drawings on mobile</strong>, Tradovate doesn't natively sync drawings across devices, so keep mission-critical levels somewhere that does.",
+        "<strong class='text-white'>Use the current &ldquo;Chart&rdquo; module</strong>, the newer chart engine caches data locally and behaves differently from the older &ldquo;Legacy Chart.&rdquo;",
+      ],
+    },
+    { type: "heading", text: "What “Drawings Keep Disappearing and Re-Appearing” Means" },
+    { type: "paragraph", html: "When your marked-up levels randomly go away and only come back after you scroll back and forth, that's not a corruption bug and it isn't deleting your work. A Tradovate drawing is <strong class='text-white'>anchored to a specific bar, a specific point in time</strong> on the chart. If the chart window isn't scrolled to where the drawing starts, the line won't show, because it's pinned to where you created it." },
+    { type: "paragraph", html: "When you open a chart, Tradovate doesn't load your entire price history at once. It loads a limited window of the most recent bars to keep the platform fast. Any drawing whose anchor sits outside that loaded window has nothing to render against, so it stays invisible until those underlying bars are pulled into memory. Scroll left far enough to reach the anchor and the line reappears exactly where you left it. Restart the app, switch chart tabs, or drop to a much shorter timeframe, and the loaded window resets to recent data, which is why the same lines seem to &ldquo;disappear&rdquo; all over again." },
+    { type: "paragraph", html: "That one mechanism explains nearly every variant of the problem: lines gone after a restart, drawings missing on a 1-minute chart, and levels that only pop back when you pan to the day you drew them. There's a separate, related limitation, <strong class='text-white'>cross-device and cross-chart syncing</strong>, which Tradovate handles through a specific setting rather than automatically. More on that in the fixes below." },
+    { type: "heading", text: "Top Causes of Disappearing Chart Drawings in 2026" },
+    { type: "heading", text: "1. The drawing is anchored to bars the chart hasn't loaded" },
+    { type: "paragraph", html: "This is the main one. Your line, ray, Fibonacci, or rectangle is pinned to the bar where you first clicked. If the current chart view starts <em>after</em> that bar and the older bars aren't loaded, the drawing has no anchor on screen and doesn't get drawn. It's not missing from your workspace, it's off-screen and un-rendered." },
+    { type: "heading", text: "2. Only recent bars load by default (“Minimum Bars to Load”)" },
+    { type: "paragraph", html: "Every new chart tab opens with a low &ldquo;Minimum Bars to Load&rdquo; value, commonly around 100 bars. That keeps charts snappy, but it also means older history, and any drawing anchored to it, isn't present until you scroll back or raise the setting. Draw weekly levels on a 5-minute chart and you can end up scrolling days and days to the left before an old line reappears." },
+    { type: "heading", text: "3. Restarting the app or switching tabs unloads old drawings" },
+    { type: "paragraph", html: "Because the loaded window resets to recent bars on a fresh session, drawings from previous days routinely disappear after the desktop app restarts and only reappear when you pan back to the day they were created. It behaves like a deliberate performance optimization, the platform unloads old lines it assumes you aren't using. Either way, the practical effect is the same: after a restart or tab switch, you may need to reload the history to see old levels." },
+    { type: "heading", text: "4. Drawings don't automatically carry to every timeframe" },
+    { type: "paragraph", html: "A trend line or channel drawn on the daily or 4-hour chart may not appear when you switch down to a 1-minute or 3-minute chart, because the shorter timeframe loads far less calendar history in its initial window. In practice, drawings tend to hold up reliably down to about the 15-minute timeframe, then vanish on the fastest charts until you scroll the history in." },
+    { type: "heading", text: "5. Drawings don't sync across devices by default" },
+    { type: "paragraph", html: "Lines drawn on the web or desktop platform on a laptop are frequently absent on the Tradovate mobile app for the same account and chart. Tradovate doesn't natively push drawings from desktop to phone, and cross-device drawing sync is still an open, long-standing request rather than a shipped feature. If you rely on a level while away from your desk, assume it won't follow you to mobile." },
+    { type: "heading", text: "How to Fix Disappearing Drawings in Tradovate: Step-by-Step" },
+    { type: "heading", text: "Fixing Cause 1 & 3: Scroll back to reload the drawing" },
+    { type: "paragraph", html: "The fastest recovery is also the simplest." },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the chart", html: "Open the chart where the drawing should be." },
+        { title: "Pan left toward the creation date", html: "Click and drag the chart to the <strong class='text-white'>left</strong>, or use the horizontal scroll, panning back toward the date you originally drew the line." },
+        { title: "Keep panning until it loads", html: "Keep panning until the older bars load, the platform fetches history as you scroll, and the drawing re-renders at its anchor." },
+        { title: "It stays visible for the session", html: "Once it's loaded, it stays visible for the rest of that session as you scroll forward again." },
+      ],
+    },
+    { type: "heading", text: "Fixing Cause 4: Extend the line far into the future" },
+    { type: "paragraph", html: "If you want a level to stay visible across timeframes and sessions without scrolling, stop anchoring it to old bars and stretch it forward instead." },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the drawing's edit handles", html: "Double-click the drawing to open its editing handles (or its settings)." },
+        { title: "Drag the right handle forward", html: "Drag the <strong class='text-white'>right handle</strong> as far into the future as the chart allows, or edit the line's end date to a point well ahead of the current session." },
+        { title: "It renders on lower timeframes too", html: "Because part of the drawing now lives inside the recently-loaded bars, it renders immediately on lower timeframes and after restarts far more often." },
+      ],
+    },
+    { type: "paragraph", html: "A quick way to apply this: pull up your levels on a higher timeframe like 4-hour, move the right handle as far into the future as it'll go, and the lines stay in view across timeframes for much longer." },
+    { type: "heading", text: "Fixing Cause 2: Raise Minimum Bars to Load and save a template" },
+    { type: "paragraph", html: "Make more history preload every time so old anchors are already in memory." },
+    {
+      type: "steps",
+      items: [
+        { title: "Open the Minimum Bars to Load setting", html: "Open the chart's settings and find the <strong class='text-white'>Minimum Bars to Load</strong> value." },
+        { title: "Increase it well beyond default", html: "Increase it well beyond the default, several thousand bars is a reasonable target." },
+        { title: "Save it as a template", html: "Save the configured chart as a <strong class='text-white'>template</strong> and load that template first for new charts, so every chart opens with the larger history window." },
+      ],
+    },
+    { type: "paragraph", html: "This cuts down how often you need to scroll back, but treat it as a mitigation rather than a guaranteed cure. It helps a lot in most cases, though very old lines can still drop off, so combine it with the extend-forward habit above." },
+    { type: "heading", text: "Fixing Cause 5: Sync drawings across linked charts" },
+    { type: "paragraph", html: "Tradovate can mirror drawings between charts that belong to the same color-linked group." },
+    {
+      type: "steps",
+      items: [
+        { title: "Assign the same link color", html: "Assign the same <strong class='text-white'>link color</strong> to the charts you want to share drawings between." },
+        { title: "Enable Sync Charts", html: "Open the <strong class='text-white'>Drawing Tools</strong> menu on one of those charts and enable the <strong class='text-white'>Sync Charts</strong> option." },
+        { title: "Drawings mirror across the group", html: "With sync on, a drawing you add to one chart is reflected on all synced charts, and removing a drawing from one removes it from all." },
+      ],
+    },
+    { type: "paragraph", html: "This synchronizes drawings <strong class='text-white'>between open, color-linked chart windows</strong>. It's not a substitute for cross-device syncing to mobile, which Tradovate still doesn't do automatically. Menu wording shifts between platform updates, so if Sync Charts isn't where you expect, check the current Drawing Tools menu." },
+    { type: "heading", text: "Keeping critical levels device-independent" },
+    { type: "paragraph", html: "Because desktop drawings don't follow you to the Tradovate mobile app, keep your most important levels somewhere that syncs on its own, a charting service that stores drawings server-side, or a written list of prices you can re-plot in seconds, so a phone-only session never leaves you blind to a key level." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "What it means", "Fix"],
+      rows: [
+        ["“Drawings keep disappearing and re-appearing”", "Chart hasn't loaded the bars the drawing is anchored to", "Scroll left to the creation date to reload the history"],
+        ["Horizontal lines gone after app restart", "New session reset the loaded window to recent bars", "Extend the line's end date forward; raise Minimum Bars to Load"],
+        ["Trend lines missing on 1-min / 3-min charts", "Shorter timeframe loads far less history at first", "Scroll back, or draw at recent price and extend left/right"],
+        ["Drawings on 4H don't show on lower timeframes", "Anchor sits outside the low-timeframe window", "Drag the right handle far into the future"],
+        ["Levels on desktop absent on mobile", "No native cross-device drawing sync", "Keep critical levels in a device-syncing tool or a written list"],
+        ["Drawing on one chart not on the linked chart", "Sync Charts not enabled for the color group", "Color-link the charts and turn on Sync Charts in Drawing Tools"],
+        ["Old lines drop off after weeks", "Platform unloads older, seemingly-unused drawings", "Re-extend the end date; reload history by scrolling back"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "If your strategy actually <em>trades</em> off those levels, a line that vanishes at the wrong moment is more than a nuisance, it's a missed or mistimed entry. PickMyTrade keeps execution independent of Tradovate's fragile drawing persistence:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Define levels once in TradingView</strong>, TradingView stores drawings server-side and mirrors them across every device, so your levels don't vanish or get stuck on one machine.",
+        "<strong class='text-white'>Alerts fire from your saved levels</strong>, a price touching your line triggers an alert instead of relying on Tradovate re-rendering the drawing.",
+        "<strong class='text-white'>Automated execution to Tradovate</strong>, that alert becomes a live order on your Tradovate account with no manual clicks, at the exact moment it matters.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirror the same automated entry across several Tradovate accounts at once, so a disappearing chart line never causes an inconsistent fill.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Wenig killt eine Trading-Routine schneller, als den Tradovate-Chart zu öffnen und festzustellen, dass Ihre sorgfältig platzierten Unterstützungs- und Widerstandslinien einfach weg sind. Verschwindende Zeichnungen gehören zu den ältesten und meistgemeldeten Charting-Eigenheiten der Plattform, und das war 2026 immer noch der Fall. Sie treten in mehreren Varianten auf: horizontale Linien, die nach einem App-Neustart verschwinden, Zeichnungen, die auf niedrigeren Zeitrahmen nicht angezeigt werden, und Level, die Sie auf dem Desktop gezeichnet haben und die auf der mobilen App nie auftauchen. Das Beruhigende daran: In fast allen Fällen sind die Zeichnungen überhaupt nicht gelöscht. Sie werden nur nicht gerendert, weil der Chart die Kerzen, an denen sie hängen, noch nicht geladen hat. Dieser Leitfaden erklärt, warum das passiert, wie Sie jede Variante beheben, und wie das Automatisieren anhand von zuverlässig gespeicherten Levels verhindert, dass eine verschwundene Linie Sie einen Trade kostet." },
+    {
+      type: "checklist",
+      heading: "Schnelle Checkliste für fehlende Tradovate-Zeichnungen",
+      items: [
+        "<strong class='text-white'>Zuerst zeitlich zurückscrollen</strong>, den Chart nach links zum Erstellungsdatum der Zeichnung schieben; verankerte Linien werden sofort neu gerendert, sobald diese Kerzen geladen sind.",
+        "<strong class='text-white'>Den rechten Rand der Linie in die Zukunft verlängern</strong>, den Endpunkt weit nach vorne ziehen oder bearbeiten, damit die Zeichnung über Zeitrahmen und Sitzungen hinweg sichtbar bleibt.",
+        "<strong class='text-white'>&ldquo;Minimum Bars to Load&rdquo; erhöhen</strong>, der Standardwert ist niedrig, sodass nur die jüngste Historie gerendert wird; erhöhen Sie ihn und speichern Sie eine Chart-Vorlage, damit mehr Historie automatisch vorgeladen wird.",
+        "<strong class='text-white'>Ihre Charts farblich verknüpfen und dann Sync Charts aktivieren</strong>, damit eine auf einem Chart hinzugefügte Zeichnung auf den anderen Charts derselben verknüpften Gruppe erscheint.",
+        "<strong class='text-white'>Erwarten Sie keine Desktop-Zeichnungen auf dem Handy</strong>, Tradovate synchronisiert Zeichnungen nicht nativ geräteübergreifend, bewahren Sie unternehmenskritische Levels also an einem Ort auf, der das tut.",
+        "<strong class='text-white'>Das aktuelle &ldquo;Chart&rdquo;-Modul verwenden</strong>, die neuere Chart-Engine speichert Daten lokal zwischen und verhält sich anders als der ältere &ldquo;Legacy Chart.&rdquo;",
+      ],
+    },
+    { type: "heading", text: "Was „Zeichnungen verschwinden und tauchen wieder auf“ bedeutet" },
+    { type: "paragraph", html: "Wenn Ihre markierten Levels zufällig verschwinden und erst nach Hin- und Herscrollen zurückkehren, ist das kein Beschädigungsfehler und löscht auch nicht Ihre Arbeit. Eine Tradovate-Zeichnung ist <strong class='text-white'>an einer bestimmten Kerze, einem bestimmten Zeitpunkt</strong> im Chart verankert. Wenn das Chart-Fenster nicht dorthin gescrollt ist, wo die Zeichnung beginnt, wird die Linie nicht angezeigt, weil sie dort verankert ist, wo Sie sie erstellt haben." },
+    { type: "paragraph", html: "Wenn Sie einen Chart öffnen, lädt Tradovate nicht Ihre gesamte Kurshistorie auf einmal. Es lädt ein begrenztes Fenster der jüngsten Kerzen, um die Plattform schnell zu halten. Jede Zeichnung, deren Anker außerhalb dieses geladenen Fensters liegt, hat nichts, wogegen sie gerendert werden könnte, und bleibt daher unsichtbar, bis diese zugrunde liegenden Kerzen in den Speicher geladen werden. Scrollen Sie weit genug nach links, um den Anker zu erreichen, und die Linie erscheint wieder genau dort, wo Sie sie verlassen haben. Starten Sie die App neu, wechseln Sie Chart-Tabs oder wechseln Sie zu einem viel kürzeren Zeitrahmen, und das geladene Fenster setzt sich auf aktuelle Daten zurück, weshalb dieselben Linien scheinbar immer wieder &ldquo;verschwinden&rdquo;." },
+    { type: "paragraph", html: "Dieser eine Mechanismus erklärt fast jede Variante des Problems: Linien, die nach einem Neustart weg sind, Zeichnungen, die auf einem 1-Minuten-Chart fehlen, und Levels, die erst wieder auftauchen, wenn Sie zu dem Tag zurückscrollen, an dem Sie sie gezeichnet haben. Es gibt eine separate, verwandte Einschränkung, <strong class='text-white'>geräte- und chartübergreifende Synchronisierung</strong>, die Tradovate über eine spezielle Einstellung und nicht automatisch handhabt. Mehr dazu bei den Lösungen weiter unten." },
+    { type: "heading", text: "Häufigste Ursachen für verschwindende Chart-Zeichnungen im Jahr 2026" },
+    { type: "heading", text: "1. Die Zeichnung ist an Kerzen verankert, die der Chart nicht geladen hat" },
+    { type: "paragraph", html: "Das ist die Hauptursache. Ihre Linie, Ihr Strahl, Fibonacci oder Rechteck ist an der Kerze verankert, auf die Sie zuerst geklickt haben. Wenn die aktuelle Chart-Ansicht <em>nach</em> dieser Kerze beginnt und die älteren Kerzen nicht geladen sind, hat die Zeichnung keinen Anker auf dem Bildschirm und wird nicht gezeichnet. Sie fehlt nicht aus Ihrem Arbeitsbereich, sie ist einfach außerhalb des Bildschirms und ungerendert." },
+    { type: "heading", text: "2. Standardmäßig werden nur aktuelle Kerzen geladen („Minimum Bars to Load“)" },
+    { type: "paragraph", html: "Jeder neue Chart-Tab öffnet sich mit einem niedrigen &ldquo;Minimum Bars to Load&rdquo;-Wert, üblicherweise um die 100 Kerzen. Das hält Charts flott, bedeutet aber auch, dass ältere Historie – und jede daran verankerte Zeichnung – erst vorhanden ist, wenn Sie zurückscrollen oder die Einstellung erhöhen. Zeichnen Sie wöchentliche Levels auf einem 5-Minuten-Chart, können Sie am Ende tagelang nach links scrollen müssen, bevor eine alte Linie wieder auftaucht." },
+    { type: "heading", text: "3. Ein Neustart der App oder ein Tab-Wechsel entlädt alte Zeichnungen" },
+    { type: "paragraph", html: "Da sich das geladene Fenster bei einer neuen Sitzung auf aktuelle Kerzen zurücksetzt, verschwinden Zeichnungen aus vorherigen Tagen routinemäßig nach einem Neustart der Desktop-App und tauchen erst wieder auf, wenn Sie zu dem Tag zurückblättern, an dem sie erstellt wurden. Es wirkt wie eine bewusste Performance-Optimierung, die Plattform entlädt alte Linien, von denen sie annimmt, dass Sie sie nicht nutzen. So oder so ist der praktische Effekt derselbe: Nach einem Neustart oder Tab-Wechsel müssen Sie unter Umständen die Historie neu laden, um alte Levels zu sehen." },
+    { type: "heading", text: "4. Zeichnungen werden nicht automatisch auf jeden Zeitrahmen übertragen" },
+    { type: "paragraph", html: "Eine Trendlinie oder ein Kanal, die auf dem Tages- oder 4-Stunden-Chart gezeichnet wurden, erscheinen möglicherweise nicht, wenn Sie zu einem 1-Minuten- oder 3-Minuten-Chart wechseln, weil der kürzere Zeitrahmen in seinem anfänglichen Fenster deutlich weniger Kalenderhistorie lädt. In der Praxis halten sich Zeichnungen zuverlässig bis etwa zum 15-Minuten-Zeitrahmen, verschwinden dann aber auf den schnellsten Charts, bis Sie die Historie einscrollen." },
+    { type: "heading", text: "5. Zeichnungen werden standardmäßig nicht geräteübergreifend synchronisiert" },
+    { type: "paragraph", html: "Linien, die auf der Web- oder Desktop-Plattform auf einem Laptop gezeichnet wurden, fehlen häufig in der Tradovate-Mobile-App für dasselbe Konto und denselben Chart. Tradovate überträgt Zeichnungen nicht nativ vom Desktop auf das Telefon, und die geräteübergreifende Zeichnungssynchronisierung ist nach wie vor eine offene, seit Langem bestehende Anfrage und keine ausgelieferte Funktion. Wenn Sie sich unterwegs auf ein Level verlassen, gehen Sie davon aus, dass es Sie nicht auf das Mobilgerät begleitet." },
+    { type: "heading", text: "So beheben Sie verschwindende Zeichnungen in Tradovate: Schritt für Schritt" },
+    { type: "heading", text: "Ursache 1 & 3 beheben: Zurückscrollen, um die Zeichnung neu zu laden" },
+    { type: "paragraph", html: "Die schnellste Lösung ist auch die einfachste." },
+    {
+      type: "steps",
+      items: [
+        { title: "Chart öffnen", html: "Öffnen Sie den Chart, auf dem sich die Zeichnung befinden sollte." },
+        { title: "Nach links zum Erstellungsdatum verschieben", html: "Klicken und ziehen Sie den Chart nach <strong class='text-white'>links</strong>, oder nutzen Sie den horizontalen Scroll, um zu dem Datum zurückzugehen, an dem Sie die Linie ursprünglich gezeichnet haben." },
+        { title: "Weiter scrollen, bis geladen wird", html: "Scrollen Sie weiter, bis die älteren Kerzen laden, die Plattform ruft die Historie beim Scrollen ab, und die Zeichnung wird an ihrem Anker neu gerendert." },
+        { title: "Bleibt für die Sitzung sichtbar", html: "Sobald sie geladen ist, bleibt sie für den Rest dieser Sitzung sichtbar, während Sie wieder nach vorne scrollen." },
+      ],
+    },
+    { type: "heading", text: "Ursache 4 beheben: Die Linie weit in die Zukunft verlängern" },
+    { type: "paragraph", html: "Wenn ein Level ohne Scrollen über Zeitrahmen und Sitzungen hinweg sichtbar bleiben soll, verankern Sie es nicht mehr an alten Kerzen, sondern strecken Sie es stattdessen nach vorne." },
+    {
+      type: "steps",
+      items: [
+        { title: "Bearbeitungspunkte der Zeichnung öffnen", html: "Doppelklicken Sie auf die Zeichnung, um ihre Bearbeitungspunkte (oder ihre Einstellungen) zu öffnen." },
+        { title: "Den rechten Griff nach vorne ziehen", html: "Ziehen Sie den <strong class='text-white'>rechten Griff</strong> so weit in die Zukunft, wie es der Chart zulässt, oder bearbeiten Sie das Enddatum der Linie auf einen Zeitpunkt weit nach der aktuellen Sitzung." },
+        { title: "Wird auch auf niedrigeren Zeitrahmen gerendert", html: "Da sich ein Teil der Zeichnung jetzt innerhalb der kürzlich geladenen Kerzen befindet, wird sie sofort auf niedrigeren Zeitrahmen gerendert und bleibt auch nach Neustarts viel häufiger sichtbar." },
+      ],
+    },
+    { type: "paragraph", html: "Eine schnelle Methode, dies anzuwenden: Rufen Sie Ihre Levels auf einem höheren Zeitrahmen wie 4-Stunden auf, bewegen Sie den rechten Griff so weit wie möglich in die Zukunft, und die Linien bleiben über Zeitrahmen hinweg deutlich länger sichtbar." },
+    { type: "heading", text: "Ursache 2 beheben: Minimum Bars to Load erhöhen und eine Vorlage speichern" },
+    { type: "paragraph", html: "Sorgen Sie dafür, dass jedes Mal mehr Historie vorgeladen wird, damit alte Anker bereits im Speicher sind." },
+    {
+      type: "steps",
+      items: [
+        { title: "Die Einstellung Minimum Bars to Load öffnen", html: "Öffnen Sie die Chart-Einstellungen und suchen Sie den Wert <strong class='text-white'>Minimum Bars to Load</strong>." },
+        { title: "Weit über den Standardwert erhöhen", html: "Erhöhen Sie ihn weit über den Standardwert hinaus, mehrere Tausend Kerzen sind ein vernünftiges Ziel." },
+        { title: "Als Vorlage speichern", html: "Speichern Sie den konfigurierten Chart als <strong class='text-white'>Vorlage</strong> und laden Sie diese Vorlage zuerst für neue Charts, damit jeder Chart mit dem größeren Historienfenster geöffnet wird." },
+      ],
+    },
+    { type: "paragraph", html: "Das reduziert, wie oft Sie zurückscrollen müssen, aber betrachten Sie es eher als Milderung denn als garantiertes Heilmittel. Es hilft in den meisten Fällen sehr, doch sehr alte Linien können trotzdem noch abfallen, kombinieren Sie es also mit der oben beschriebenen Gewohnheit, nach vorne zu verlängern." },
+    { type: "heading", text: "Ursache 5 beheben: Zeichnungen über verknüpfte Charts synchronisieren" },
+    { type: "paragraph", html: "Tradovate kann Zeichnungen zwischen Charts spiegeln, die derselben farblich verknüpften Gruppe angehören." },
+    {
+      type: "steps",
+      items: [
+        { title: "Dieselbe Verknüpfungsfarbe zuweisen", html: "Weisen Sie den Charts, zwischen denen Sie Zeichnungen teilen möchten, dieselbe <strong class='text-white'>Verknüpfungsfarbe</strong> zu." },
+        { title: "Sync Charts aktivieren", html: "Öffnen Sie das Menü <strong class='text-white'>Drawing Tools</strong> auf einem dieser Charts und aktivieren Sie die Option <strong class='text-white'>Sync Charts</strong>." },
+        { title: "Zeichnungen spiegeln sich über die Gruppe", html: "Bei aktivierter Synchronisierung wird eine Zeichnung, die Sie zu einem Chart hinzufügen, auf allen synchronisierten Charts angezeigt, und das Entfernen einer Zeichnung von einem Chart entfernt sie von allen." },
+      ],
+    },
+    { type: "paragraph", html: "Dies synchronisiert Zeichnungen <strong class='text-white'>zwischen offenen, farblich verknüpften Chart-Fenstern</strong>. Es ist kein Ersatz für die geräteübergreifende Synchronisierung auf das Mobilgerät, die Tradovate weiterhin nicht automatisch durchführt. Die Menübezeichnungen ändern sich zwischen Plattform-Updates, wenn Sync Charts also nicht dort ist, wo Sie es erwarten, prüfen Sie das aktuelle Drawing Tools-Menü." },
+    { type: "heading", text: "Kritische Levels geräteunabhängig aufbewahren" },
+    { type: "paragraph", html: "Da Desktop-Zeichnungen Sie nicht in die Tradovate-Mobile-App begleiten, bewahren Sie Ihre wichtigsten Levels an einem Ort auf, der von selbst synchronisiert, ein Charting-Dienst, der Zeichnungen serverseitig speichert, oder eine schriftliche Preisliste, die Sie in Sekunden neu einzeichnen können, damit eine reine Handy-Sitzung Sie nie blind für ein Schlüssellevel macht." },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Was es bedeutet", "Lösung"],
+      rows: [
+        ["„Zeichnungen verschwinden und tauchen immer wieder auf“", "Der Chart hat die Kerzen, an denen die Zeichnung verankert ist, nicht geladen", "Nach links zum Erstellungsdatum scrollen, um die Historie neu zu laden"],
+        ["Horizontale Linien nach App-Neustart verschwunden", "Neue Sitzung hat das geladene Fenster auf aktuelle Kerzen zurückgesetzt", "Enddatum der Linie nach vorne verlängern; Minimum Bars to Load erhöhen"],
+        ["Trendlinien fehlen auf 1-Min- / 3-Min-Charts", "Kürzerer Zeitrahmen lädt anfangs deutlich weniger Historie", "Zurückscrollen oder am aktuellen Preis zeichnen und nach links/rechts verlängern"],
+        ["Zeichnungen auf 4H werden auf niedrigeren Zeitrahmen nicht angezeigt", "Anker liegt außerhalb des Fensters des niedrigen Zeitrahmens", "Den rechten Griff weit in die Zukunft ziehen"],
+        ["Levels auf dem Desktop fehlen auf dem Handy", "Keine native geräteübergreifende Zeichnungssynchronisierung", "Kritische Levels in einem geräteübergreifend synchronisierenden Tool oder einer schriftlichen Liste aufbewahren"],
+        ["Zeichnung auf einem Chart nicht auf dem verknüpften Chart", "Sync Charts für die Farbgruppe nicht aktiviert", "Charts farblich verknüpfen und Sync Charts in Drawing Tools aktivieren"],
+        ["Alte Linien fallen nach Wochen weg", "Plattform entlädt ältere, scheinbar ungenutzte Zeichnungen", "Enddatum erneut verlängern; Historie durch Zurückscrollen neu laden"],
+      ],
+    },
+    { type: "heading", text: "Das mit PickMyTrade verhindern" },
+    { type: "paragraph", html: "Wenn Ihre Strategie tatsächlich anhand dieser Levels <em>handelt</em>, ist eine Linie, die im falschen Moment verschwindet, mehr als nur ein Ärgernis, es ist ein verpasster oder falsch getimter Einstieg. PickMyTrade hält die Ausführung unabhängig von Tradovates fragiler Zeichnungspersistenz:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Levels einmal in TradingView definieren</strong>, TradingView speichert Zeichnungen serverseitig und spiegelt sie auf jedes Gerät, sodass Ihre Levels nicht verschwinden oder auf einem Gerät hängen bleiben.",
+        "<strong class='text-white'>Alerts werden von Ihren gespeicherten Levels ausgelöst</strong>, ein Preis, der Ihre Linie berührt, löst einen Alert aus, statt sich darauf zu verlassen, dass Tradovate die Zeichnung neu rendert.",
+        "<strong class='text-white'>Automatisierte Ausführung an Tradovate</strong>, dieser Alert wird ohne manuelle Klicks zu einer Live-Order auf Ihrem Tradovate-Konto, genau in dem Moment, in dem es darauf ankommt.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, spiegeln Sie denselben automatisierten Einstieg gleichzeitig auf mehrere Tradovate-Konten, damit eine verschwindende Chart-Linie nie zu einer inkonsistenten Ausführung führt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Pocas cosas arruinan una rutina de trading tan rápido como abrir el gráfico de Tradovate y descubrir que sus líneas de soporte y resistencia, cuidadosamente colocadas, simplemente han desaparecido. Los dibujos que desaparecen son una de las peculiaridades de gráficos más antiguas y reportadas de la plataforma, y en 2026 seguía ocurriendo. Se presenta de varias formas: líneas horizontales que desaparecen tras reiniciar la aplicación, dibujos que no se muestran en marcos temporales más bajos, y niveles que dibujó en su escritorio que nunca aparecen en la aplicación móvil. La parte tranquilizadora es esta: en casi todos los casos los dibujos no se eliminan en absoluto. Simplemente no se están renderizando, porque el gráfico no ha cargado las velas a las que están fijados. Esta guía explica por qué ocurre, cómo solucionar cada variante, y cómo automatizar a partir de niveles almacenados en un lugar fiable evita que una línea desaparecida le cueste una operación." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para dibujos de Tradovate ausentes",
+      items: [
+        "<strong class='text-white'>Primero desplácese hacia atrás en el tiempo</strong>, mueva el gráfico hacia la izquierda hasta la fecha de creación del dibujo; las líneas ancladas se vuelven a renderizar en cuanto esas velas se cargan.",
+        "<strong class='text-white'>Extienda el borde derecho de la línea hacia el futuro</strong>, arrastre o edite el punto final muy hacia adelante para que el dibujo permanezca visible en todos los marcos temporales y sesiones.",
+        "<strong class='text-white'>Aumente &ldquo;Minimum Bars to Load&rdquo;</strong>, el valor predeterminado es bajo, por lo que solo se renderiza el historial reciente; auméntelo y guarde una plantilla de gráfico para que se precargue automáticamente más historial.",
+        "<strong class='text-white'>Vincule sus gráficos por color y luego active Sync Charts</strong>, para que un dibujo añadido en un gráfico aparezca en los demás del mismo grupo vinculado.",
+        "<strong class='text-white'>No espere que los dibujos del escritorio aparezcan en el móvil</strong>, Tradovate no sincroniza dibujos entre dispositivos de forma nativa, así que mantenga los niveles críticos en un lugar que sí lo haga.",
+        "<strong class='text-white'>Use el módulo &ldquo;Chart&rdquo; actual</strong>, el motor de gráficos más reciente almacena datos en caché localmente y se comporta de forma distinta al antiguo &ldquo;Legacy Chart.&rdquo;",
+      ],
+    },
+    { type: "heading", text: "Qué significa que “los dibujos sigan desapareciendo y reapareciendo”" },
+    { type: "paragraph", html: "Cuando sus niveles marcados desaparecen aleatoriamente y solo vuelven después de desplazarse hacia adelante y atrás, no se trata de un error de corrupción ni de que se esté eliminando su trabajo. Un dibujo de Tradovate está <strong class='text-white'>anclado a una vela específica, a un punto concreto en el tiempo</strong> del gráfico. Si la ventana del gráfico no está desplazada hasta donde comienza el dibujo, la línea no se mostrará, porque está fijada al lugar donde la creó." },
+    { type: "paragraph", html: "Al abrir un gráfico, Tradovate no carga todo su historial de precios de una vez. Carga una ventana limitada de las velas más recientes para mantener la plataforma rápida. Cualquier dibujo cuyo anclaje se encuentre fuera de esa ventana cargada no tiene nada contra qué renderizarse, por lo que permanece invisible hasta que esas velas subyacentes se cargan en memoria. Desplácese hacia la izquierda lo suficiente para alcanzar el anclaje y la línea reaparece exactamente donde la dejó. Reinicie la aplicación, cambie de pestaña de gráfico o baje a un marco temporal mucho más corto, y la ventana cargada se restablece a los datos recientes, razón por la cual las mismas líneas parecen &ldquo;desaparecer&rdquo; una y otra vez." },
+    { type: "paragraph", html: "Ese único mecanismo explica casi todas las variantes del problema: líneas que desaparecen tras un reinicio, dibujos ausentes en un gráfico de 1 minuto y niveles que solo vuelven a aparecer cuando se desplaza hasta el día en que los dibujó. Existe una limitación aparte y relacionada, <strong class='text-white'>la sincronización entre dispositivos y entre gráficos</strong>, que Tradovate gestiona mediante un ajuste específico en lugar de automáticamente. Más sobre esto en las soluciones a continuación." },
+    { type: "heading", text: "Principales causas de la desaparición de dibujos en el gráfico en 2026" },
+    { type: "heading", text: "1. El dibujo está anclado a velas que el gráfico no ha cargado" },
+    { type: "paragraph", html: "Esta es la causa principal. Su línea, rayo, Fibonacci o rectángulo está fijado a la vela en la que hizo clic por primera vez. Si la vista actual del gráfico comienza <em>después</em> de esa vela y las velas más antiguas no están cargadas, el dibujo no tiene ningún anclaje en pantalla y no se dibuja. No falta en su espacio de trabajo, simplemente está fuera de pantalla y sin renderizar." },
+    { type: "heading", text: "2. Por defecto solo se cargan las velas recientes (“Minimum Bars to Load”)" },
+    { type: "paragraph", html: "Cada nueva pestaña de gráfico se abre con un valor bajo de &ldquo;Minimum Bars to Load&rdquo;, normalmente alrededor de 100 velas. Eso mantiene los gráficos ágiles, pero también significa que el historial más antiguo, y cualquier dibujo anclado a él, no está presente hasta que se desplaza hacia atrás o aumenta el ajuste. Dibuje niveles semanales en un gráfico de 5 minutos y puede acabar desplazándose días y días hacia la izquierda antes de que reaparezca una línea antigua." },
+    { type: "heading", text: "3. Reiniciar la aplicación o cambiar de pestaña descarga los dibujos antiguos" },
+    { type: "paragraph", html: "Como la ventana cargada se restablece a las velas recientes en una sesión nueva, los dibujos de días anteriores desaparecen habitualmente tras reiniciar la aplicación de escritorio y solo reaparecen cuando se desplaza de vuelta al día en que se crearon. Se comporta como una optimización de rendimiento deliberada, la plataforma descarga las líneas antiguas que supone que no está usando. En cualquier caso, el efecto práctico es el mismo: tras un reinicio o un cambio de pestaña, puede que tenga que recargar el historial para ver los niveles antiguos." },
+    { type: "heading", text: "4. Los dibujos no se trasladan automáticamente a todos los marcos temporales" },
+    { type: "paragraph", html: "Una línea de tendencia o un canal dibujado en el gráfico diario o de 4 horas puede no aparecer al cambiar a un gráfico de 1 o 3 minutos, porque el marco temporal más corto carga muchísimo menos historial de calendario en su ventana inicial. En la práctica, los dibujos tienden a mantenerse de forma fiable hasta aproximadamente el marco temporal de 15 minutos, y luego desaparecen en los gráficos más rápidos hasta que se desplaza el historial hacia dentro." },
+    { type: "heading", text: "5. Los dibujos no se sincronizan entre dispositivos por defecto" },
+    { type: "paragraph", html: "Las líneas dibujadas en la plataforma web o de escritorio en un portátil suelen estar ausentes en la aplicación móvil de Tradovate para la misma cuenta y gráfico. Tradovate no transfiere de forma nativa los dibujos del escritorio al teléfono, y la sincronización de dibujos entre dispositivos sigue siendo una solicitud abierta y de larga data, no una función implementada. Si depende de un nivel estando fuera de su escritorio, asuma que no le seguirá al móvil." },
+    { type: "heading", text: "Cómo solucionar los dibujos que desaparecen en Tradovate: paso a paso" },
+    { type: "heading", text: "Cómo solucionar las causas 1 y 3: desplazarse hacia atrás para recargar el dibujo" },
+    { type: "paragraph", html: "La solución más rápida es también la más sencilla." },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra el gráfico", html: "Abra el gráfico donde debería estar el dibujo." },
+        { title: "Desplácese a la izquierda hacia la fecha de creación", html: "Haga clic y arrastre el gráfico hacia la <strong class='text-white'>izquierda</strong>, o use el desplazamiento horizontal, retrocediendo hacia la fecha en la que originalmente dibujó la línea." },
+        { title: "Siga desplazándose hasta que cargue", html: "Siga desplazándose hasta que se carguen las velas más antiguas, la plataforma recupera el historial a medida que se desplaza, y el dibujo se vuelve a renderizar en su anclaje." },
+        { title: "Permanece visible durante la sesión", html: "Una vez cargado, permanece visible durante el resto de esa sesión mientras se desplaza de nuevo hacia adelante." },
+      ],
+    },
+    { type: "heading", text: "Cómo solucionar la causa 4: extender la línea muy hacia el futuro" },
+    { type: "paragraph", html: "Si quiere que un nivel permanezca visible en todos los marcos temporales y sesiones sin necesidad de desplazarse, deje de anclarlo a velas antiguas y en su lugar extiéndalo hacia adelante." },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra los controladores de edición del dibujo", html: "Haga doble clic en el dibujo para abrir sus controladores de edición (o su configuración)." },
+        { title: "Arrastre el controlador derecho hacia adelante", html: "Arrastre el <strong class='text-white'>controlador derecho</strong> lo más lejos posible hacia el futuro que el gráfico permita, o edite la fecha final de la línea a un punto muy por delante de la sesión actual." },
+        { title: "También se renderiza en marcos temporales más bajos", html: "Como parte del dibujo ahora se encuentra dentro de las velas cargadas recientemente, se renderiza de inmediato en marcos temporales más bajos y con mucha más frecuencia tras los reinicios." },
+      ],
+    },
+    { type: "paragraph", html: "Una forma rápida de aplicar esto: abra sus niveles en un marco temporal más alto, como el de 4 horas, mueva el controlador derecho tan lejos como sea posible hacia el futuro, y las líneas permanecerán visibles en todos los marcos temporales mucho más tiempo." },
+    { type: "heading", text: "Cómo solucionar la causa 2: aumentar Minimum Bars to Load y guardar una plantilla" },
+    { type: "paragraph", html: "Haga que se precargue más historial cada vez, para que los anclajes antiguos ya estén en memoria." },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra el ajuste Minimum Bars to Load", html: "Abra la configuración del gráfico y busque el valor <strong class='text-white'>Minimum Bars to Load</strong>." },
+        { title: "Auméntelo bastante por encima del valor predeterminado", html: "Auméntelo muy por encima del valor predeterminado, varios miles de velas es un objetivo razonable." },
+        { title: "Guárdelo como plantilla", html: "Guarde el gráfico configurado como <strong class='text-white'>plantilla</strong> y cargue esa plantilla primero para los nuevos gráficos, de modo que cada gráfico se abra con la ventana de historial más amplia." },
+      ],
+    },
+    { type: "paragraph", html: "Esto reduce la frecuencia con la que necesita desplazarse hacia atrás, pero trátelo como una mitigación y no como una cura garantizada. Ayuda mucho en la mayoría de los casos, aunque las líneas muy antiguas todavía pueden caerse, así que combínelo con el hábito de extender hacia adelante descrito anteriormente." },
+    { type: "heading", text: "Cómo solucionar la causa 5: sincronizar dibujos entre gráficos vinculados" },
+    { type: "paragraph", html: "Tradovate puede replicar dibujos entre gráficos que pertenecen al mismo grupo vinculado por color." },
+    {
+      type: "steps",
+      items: [
+        { title: "Asigne el mismo color de vínculo", html: "Asigne el mismo <strong class='text-white'>color de vínculo</strong> a los gráficos entre los que desea compartir dibujos." },
+        { title: "Active Sync Charts", html: "Abra el menú <strong class='text-white'>Drawing Tools</strong> en uno de esos gráficos y active la opción <strong class='text-white'>Sync Charts</strong>." },
+        { title: "Los dibujos se replican en todo el grupo", html: "Con la sincronización activada, un dibujo que añada a un gráfico se refleja en todos los gráficos sincronizados, y eliminar un dibujo de uno lo elimina de todos." },
+      ],
+    },
+    { type: "paragraph", html: "Esto sincroniza los dibujos <strong class='text-white'>entre ventanas de gráficos abiertas y vinculadas por color</strong>. No sustituye a la sincronización entre dispositivos hacia el móvil, algo que Tradovate todavía no hace automáticamente. La redacción del menú cambia entre actualizaciones de la plataforma, así que si Sync Charts no está donde lo espera, revise el menú actual de Drawing Tools." },
+    { type: "heading", text: "Cómo mantener los niveles críticos independientes del dispositivo" },
+    { type: "paragraph", html: "Como los dibujos del escritorio no le siguen a la aplicación móvil de Tradovate, mantenga sus niveles más importantes en un lugar que se sincronice por sí mismo, un servicio de gráficos que almacene los dibujos en el servidor, o una lista escrita de precios que pueda volver a trazar en segundos, para que una sesión únicamente móvil nunca le deje ciego ante un nivel clave." },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Qué significa", "Solución"],
+      rows: [
+        ["“Los dibujos siguen desapareciendo y reapareciendo”", "El gráfico no ha cargado las velas a las que está anclado el dibujo", "Desplazarse a la izquierda hasta la fecha de creación para recargar el historial"],
+        ["Líneas horizontales desaparecidas tras reiniciar la aplicación", "La nueva sesión restableció la ventana cargada a las velas recientes", "Extender la fecha final de la línea hacia adelante; aumentar Minimum Bars to Load"],
+        ["Líneas de tendencia ausentes en gráficos de 1 / 3 minutos", "El marco temporal más corto carga mucho menos historial al principio", "Desplazarse hacia atrás, o dibujar en el precio reciente y extender a izquierda/derecha"],
+        ["Los dibujos en 4H no se muestran en marcos temporales más bajos", "El anclaje se encuentra fuera de la ventana del marco temporal bajo", "Arrastrar el controlador derecho muy hacia el futuro"],
+        ["Niveles del escritorio ausentes en el móvil", "Sin sincronización nativa de dibujos entre dispositivos", "Mantener los niveles críticos en una herramienta que sincronice entre dispositivos o en una lista escrita"],
+        ["Dibujo en un gráfico ausente en el gráfico vinculado", "Sync Charts no está activado para el grupo de color", "Vincular los gráficos por color y activar Sync Charts en Drawing Tools"],
+        ["Las líneas antiguas desaparecen tras semanas", "La plataforma descarga los dibujos antiguos que parecen no usarse", "Volver a extender la fecha final; recargar el historial desplazándose hacia atrás"],
+      ],
+    },
+    { type: "heading", text: "Cómo evitar esto con PickMyTrade" },
+    { type: "paragraph", html: "Si su estrategia realmente <em>opera</em> a partir de esos niveles, una línea que desaparece en el momento equivocado es más que una molestia, es una entrada perdida o mal cronometrada. PickMyTrade mantiene la ejecución independiente de la frágil persistencia de dibujos de Tradovate:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Defina los niveles una vez en TradingView</strong>, TradingView almacena los dibujos en el servidor y los replica en todos los dispositivos, para que sus niveles no desaparezcan ni queden atrapados en una sola máquina.",
+        "<strong class='text-white'>Las alertas se disparan a partir de sus niveles guardados</strong>, un precio que toca su línea activa una alerta en lugar de depender de que Tradovate vuelva a renderizar el dibujo.",
+        "<strong class='text-white'>Ejecución automatizada en Tradovate</strong>, esa alerta se convierte en una orden en vivo en su cuenta de Tradovate sin clics manuales, en el momento exacto en que importa.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, replique la misma entrada automatizada en varias cuentas de Tradovate a la vez, para que una línea del gráfico que desaparece nunca provoque una ejecución inconsistente.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Peu de choses tuent une routine de trading aussi vite que d'ouvrir votre graphique Tradovate et de découvrir que vos lignes de support et de résistance, soigneusement placées, ont tout simplement disparu. Les dessins qui disparaissent comptent parmi les particularités de charting les plus anciennes et les plus signalées de la plateforme, et cela se produisait encore en 2026. Vous le constaterez sous plusieurs formes : des lignes horizontales qui disparaissent après un redémarrage de l'application, des dessins qui ne s'affichent pas sur des unités de temps plus courtes, et des niveaux tracés sur votre ordinateur qui n'apparaissent jamais sur l'application mobile. Voici la partie rassurante : dans presque tous les cas, les dessins ne sont absolument pas supprimés. Ils ne sont tout simplement pas rendus, car le graphique n'a pas chargé les bougies auxquelles ils sont épinglés. Ce guide explique pourquoi cela se produit, comment corriger chaque variante, et comment l'automatisation à partir de niveaux stockés de manière fiable évite qu'une ligne disparue ne vous coûte un trade." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour les dessins Tradovate manquants",
+      items: [
+        "<strong class='text-white'>Faites d'abord défiler vers le passé</strong>, déplacez le graphique vers la gauche jusqu'à la date de création du dessin ; les lignes ancrées se réaffichent dès que ces bougies se chargent.",
+        "<strong class='text-white'>Étendez le bord droit de la ligne vers l'avenir</strong>, faites glisser ou modifiez le point final loin devant afin que le dessin reste visible sur toutes les unités de temps et sessions.",
+        "<strong class='text-white'>Augmentez &ldquo;Minimum Bars to Load&rdquo;</strong>, la valeur par défaut est faible, donc seul l'historique récent s'affiche ; augmentez-la et enregistrez un modèle de graphique pour que davantage d'historique se précharge automatiquement.",
+        "<strong class='text-white'>Liez vos graphiques par couleur, puis activez Sync Charts</strong>, afin qu'un dessin ajouté sur un graphique apparaisse sur les autres graphiques du même groupe lié.",
+        "<strong class='text-white'>Ne vous attendez pas à retrouver les dessins du bureau sur mobile</strong>, Tradovate ne synchronise pas nativement les dessins entre appareils ; conservez donc vos niveaux essentiels dans un outil qui le fait.",
+        "<strong class='text-white'>Utilisez le module &ldquo;Chart&rdquo; actuel</strong>, le nouveau moteur graphique met les données en cache localement et se comporte différemment de l'ancien &ldquo;Legacy Chart.&rdquo;",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie « les dessins disparaissent et réapparaissent sans cesse »" },
+    { type: "paragraph", html: "Lorsque vos niveaux marqués disparaissent de façon aléatoire et ne reviennent qu'après avoir fait défiler le graphique dans un sens puis dans l'autre, il ne s'agit ni d'un bug de corruption ni d'une suppression de votre travail. Un dessin Tradovate est <strong class='text-white'>ancré à une bougie précise, un point précis dans le temps</strong> sur le graphique. Si la fenêtre du graphique n'est pas défilée jusqu'à l'endroit où le dessin commence, la ligne ne s'affichera pas, car elle est épinglée à l'endroit où vous l'avez créée." },
+    { type: "paragraph", html: "Lorsque vous ouvrez un graphique, Tradovate ne charge pas tout votre historique de prix en une seule fois. Il charge une fenêtre limitée des bougies les plus récentes pour garder la plateforme réactive. Tout dessin dont l'ancrage se trouve en dehors de cette fenêtre chargée n'a rien contre quoi s'afficher, il reste donc invisible tant que ces bougies sous-jacentes ne sont pas chargées en mémoire. Faites défiler suffisamment vers la gauche pour atteindre l'ancrage et la ligne réapparaît exactement là où vous l'avez laissée. Redémarrez l'application, changez d'onglet de graphique ou passez à une unité de temps beaucoup plus courte, et la fenêtre chargée revient aux données récentes, ce qui explique pourquoi les mêmes lignes semblent &ldquo;disparaître&rdquo; encore et encore." },
+    { type: "paragraph", html: "Ce seul mécanisme explique presque toutes les variantes du problème : des lignes disparues après un redémarrage, des dessins absents sur un graphique de 1 minute, et des niveaux qui ne réapparaissent que lorsque vous faites défiler jusqu'au jour où vous les avez tracés. Il existe une limitation distincte mais liée, <strong class='text-white'>la synchronisation entre appareils et entre graphiques</strong>, que Tradovate gère via un réglage spécifique plutôt qu'automatiquement. Plus de détails dans les solutions ci-dessous." },
+    { type: "heading", text: "Principales causes de la disparition des dessins de graphique en 2026" },
+    { type: "heading", text: "1. Le dessin est ancré à des bougies que le graphique n'a pas chargées" },
+    { type: "paragraph", html: "C'est la cause principale. Votre ligne, rayon, Fibonacci ou rectangle est épinglé à la bougie sur laquelle vous avez d'abord cliqué. Si la vue actuelle du graphique commence <em>après</em> cette bougie et que les bougies plus anciennes ne sont pas chargées, le dessin n'a aucun ancrage à l'écran et n'est pas tracé. Il n'a pas disparu de votre espace de travail, il est simplement hors écran et non rendu." },
+    { type: "heading", text: "2. Seules les bougies récentes se chargent par défaut (« Minimum Bars to Load »)" },
+    { type: "paragraph", html: "Chaque nouvel onglet de graphique s'ouvre avec une valeur faible de &ldquo;Minimum Bars to Load&rdquo;, généralement autour de 100 bougies. Cela garde les graphiques réactifs, mais signifie aussi que l'historique plus ancien, et tout dessin qui y est ancré, n'est pas présent tant que vous ne faites pas défiler en arrière ou n'augmentez pas ce réglage. Tracez des niveaux hebdomadaires sur un graphique en 5 minutes et vous pourriez finir par faire défiler des jours et des jours vers la gauche avant qu'une ancienne ligne ne réapparaisse." },
+    { type: "heading", text: "3. Redémarrer l'application ou changer d'onglet décharge les anciens dessins" },
+    { type: "paragraph", html: "Comme la fenêtre chargée revient aux bougies récentes lors d'une nouvelle session, les dessins des jours précédents disparaissent régulièrement après un redémarrage de l'application de bureau et ne réapparaissent que lorsque vous faites défiler jusqu'au jour où ils ont été créés. Cela ressemble à une optimisation des performances délibérée : la plateforme décharge les anciennes lignes qu'elle suppose que vous n'utilisez pas. Dans tous les cas, l'effet pratique est le même : après un redémarrage ou un changement d'onglet, vous devrez peut-être recharger l'historique pour voir les anciens niveaux." },
+    { type: "heading", text: "4. Les dessins ne se transposent pas automatiquement à toutes les unités de temps" },
+    { type: "paragraph", html: "Une ligne de tendance ou un canal tracé sur le graphique journalier ou en 4 heures peut ne pas apparaître lorsque vous passez à un graphique en 1 minute ou 3 minutes, car l'unité de temps plus courte charge beaucoup moins d'historique calendaire dans sa fenêtre initiale. En pratique, les dessins ont tendance à tenir de manière fiable jusqu'à environ l'unité de temps de 15 minutes, puis disparaissent sur les graphiques les plus rapides jusqu'à ce que vous fassiez défiler l'historique." },
+    { type: "heading", text: "5. Les dessins ne se synchronisent pas entre appareils par défaut" },
+    { type: "paragraph", html: "Les lignes tracées sur la plateforme web ou de bureau depuis un ordinateur portable sont souvent absentes de l'application mobile Tradovate pour le même compte et le même graphique. Tradovate ne transfère pas nativement les dessins du bureau vers le téléphone, et la synchronisation des dessins entre appareils reste une demande ouverte et de longue date plutôt qu'une fonctionnalité livrée. Si vous comptez sur un niveau en étant loin de votre bureau, partez du principe qu'il ne vous suivra pas sur mobile." },
+    { type: "heading", text: "Comment corriger la disparition des dessins dans Tradovate : étape par étape" },
+    { type: "heading", text: "Corriger les causes 1 et 3 : faire défiler en arrière pour recharger le dessin" },
+    { type: "paragraph", html: "La solution la plus rapide est aussi la plus simple." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez le graphique", html: "Ouvrez le graphique où le dessin devrait se trouver." },
+        { title: "Faites défiler vers la gauche jusqu'à la date de création", html: "Cliquez et faites glisser le graphique vers la <strong class='text-white'>gauche</strong>, ou utilisez le défilement horizontal, en revenant vers la date à laquelle vous avez tracé la ligne à l'origine." },
+        { title: "Continuez à défiler jusqu'au chargement", html: "Continuez à faire défiler jusqu'à ce que les anciennes bougies se chargent, la plateforme récupère l'historique au fur et à mesure du défilement, et le dessin se réaffiche à son ancrage." },
+        { title: "Reste visible pour la session", html: "Une fois chargé, il reste visible pour le reste de cette session lorsque vous faites à nouveau défiler vers l'avant." },
+      ],
+    },
+    { type: "heading", text: "Corriger la cause 4 : étendre la ligne loin dans le futur" },
+    { type: "paragraph", html: "Si vous souhaitez qu'un niveau reste visible sur toutes les unités de temps et sessions sans avoir à faire défiler, cessez de l'ancrer à d'anciennes bougies et étirez-le plutôt vers l'avant." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez les poignées d'édition du dessin", html: "Double-cliquez sur le dessin pour ouvrir ses poignées d'édition (ou ses paramètres)." },
+        { title: "Faites glisser la poignée droite vers l'avant", html: "Faites glisser la <strong class='text-white'>poignée droite</strong> aussi loin que possible dans le futur, dans la limite autorisée par le graphique, ou modifiez la date de fin de la ligne à un point bien au-delà de la session actuelle." },
+        { title: "Il s'affiche aussi sur les unités de temps plus courtes", html: "Comme une partie du dessin se trouve désormais dans les bougies récemment chargées, il s'affiche immédiatement sur les unités de temps plus courtes et beaucoup plus souvent après un redémarrage." },
+      ],
+    },
+    { type: "paragraph", html: "Un moyen rapide d'appliquer ceci : ouvrez vos niveaux sur une unité de temps plus haute comme le 4 heures, déplacez la poignée droite aussi loin que possible dans le futur, et les lignes resteront visibles sur toutes les unités de temps beaucoup plus longtemps." },
+    { type: "heading", text: "Corriger la cause 2 : augmenter Minimum Bars to Load et enregistrer un modèle" },
+    { type: "paragraph", html: "Faites en sorte que davantage d'historique se précharge à chaque fois, afin que les anciens ancrages soient déjà en mémoire." },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez le paramètre Minimum Bars to Load", html: "Ouvrez les paramètres du graphique et trouvez la valeur <strong class='text-white'>Minimum Bars to Load</strong>." },
+        { title: "Augmentez-le bien au-delà de la valeur par défaut", html: "Augmentez-le bien au-delà de la valeur par défaut, plusieurs milliers de bougies constituent un objectif raisonnable." },
+        { title: "Enregistrez-le comme modèle", html: "Enregistrez le graphique configuré comme <strong class='text-white'>modèle</strong> et chargez ce modèle en premier pour les nouveaux graphiques, afin que chaque graphique s'ouvre avec la fenêtre d'historique plus large." },
+      ],
+    },
+    { type: "paragraph", html: "Cela réduit la fréquence à laquelle vous devez faire défiler en arrière, mais considérez-le comme une atténuation plutôt qu'un remède garanti. Cela aide beaucoup dans la plupart des cas, même si les très anciennes lignes peuvent encore disparaître, combinez donc cela avec l'habitude d'étendre vers l'avant décrite ci-dessus." },
+    { type: "heading", text: "Corriger la cause 5 : synchroniser les dessins entre graphiques liés" },
+    { type: "paragraph", html: "Tradovate peut refléter les dessins entre les graphiques appartenant au même groupe lié par couleur." },
+    {
+      type: "steps",
+      items: [
+        { title: "Attribuez la même couleur de liaison", html: "Attribuez la même <strong class='text-white'>couleur de liaison</strong> aux graphiques entre lesquels vous souhaitez partager des dessins." },
+        { title: "Activez Sync Charts", html: "Ouvrez le menu <strong class='text-white'>Drawing Tools</strong> sur l'un de ces graphiques et activez l'option <strong class='text-white'>Sync Charts</strong>." },
+        { title: "Les dessins se reflètent sur tout le groupe", html: "Une fois la synchronisation activée, un dessin ajouté sur un graphique se répercute sur tous les graphiques synchronisés, et la suppression d'un dessin sur l'un le supprime sur tous." },
+      ],
+    },
+    { type: "paragraph", html: "Cela synchronise les dessins <strong class='text-white'>entre des fenêtres de graphique ouvertes et liées par couleur</strong>. Ce n'est pas un substitut à la synchronisation entre appareils vers le mobile, que Tradovate ne fait toujours pas automatiquement. La formulation du menu change d'une mise à jour de la plateforme à l'autre, donc si Sync Charts ne se trouve pas où vous l'attendez, vérifiez le menu Drawing Tools actuel." },
+    { type: "heading", text: "Rendre les niveaux critiques indépendants de l'appareil" },
+    { type: "paragraph", html: "Comme les dessins du bureau ne vous suivent pas sur l'application mobile Tradovate, conservez vos niveaux les plus importants dans un endroit qui se synchronise de lui-même, un service de graphiques qui stocke les dessins côté serveur, ou une liste écrite de prix que vous pouvez retracer en quelques secondes, afin qu'une session uniquement mobile ne vous laisse jamais aveugle face à un niveau clé." },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Ce que cela signifie", "Solution"],
+      rows: [
+        ["« Les dessins disparaissent et réapparaissent sans cesse »", "Le graphique n'a pas chargé les bougies auxquelles le dessin est ancré", "Faire défiler vers la gauche jusqu'à la date de création pour recharger l'historique"],
+        ["Lignes horizontales disparues après redémarrage de l'application", "La nouvelle session a réinitialisé la fenêtre chargée aux bougies récentes", "Étendre la date de fin de la ligne vers l'avant ; augmenter Minimum Bars to Load"],
+        ["Lignes de tendance absentes sur les graphiques en 1 / 3 minutes", "L'unité de temps plus courte charge beaucoup moins d'historique au départ", "Faire défiler en arrière, ou tracer au prix récent et étendre à gauche/droite"],
+        ["Les dessins en 4H ne s'affichent pas sur les unités de temps plus courtes", "L'ancrage se situe en dehors de la fenêtre de l'unité de temps courte", "Faire glisser la poignée droite loin dans le futur"],
+        ["Niveaux du bureau absents sur mobile", "Pas de synchronisation native des dessins entre appareils", "Conserver les niveaux critiques dans un outil de synchronisation entre appareils ou une liste écrite"],
+        ["Dessin sur un graphique absent du graphique lié", "Sync Charts non activé pour le groupe de couleur", "Lier les graphiques par couleur et activer Sync Charts dans Drawing Tools"],
+        ["Les anciennes lignes disparaissent après plusieurs semaines", "La plateforme décharge les anciens dessins apparemment inutilisés", "Réétendre la date de fin ; recharger l'historique en faisant défiler en arrière"],
+      ],
+    },
+    { type: "heading", text: "Comment éviter cela avec PickMyTrade" },
+    { type: "paragraph", html: "Si votre stratégie <em>trade</em> réellement à partir de ces niveaux, une ligne qui disparaît au mauvais moment est plus qu'une nuisance, c'est une entrée manquée ou mal chronométrée. PickMyTrade maintient l'exécution indépendante de la persistance fragile des dessins de Tradovate :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Définissez vos niveaux une fois dans TradingView</strong>, TradingView stocke les dessins côté serveur et les reflète sur tous les appareils, afin que vos niveaux ne disparaissent pas et ne restent pas coincés sur une seule machine.",
+        "<strong class='text-white'>Les alertes se déclenchent à partir de vos niveaux enregistrés</strong>, un prix qui touche votre ligne déclenche une alerte au lieu de dépendre du fait que Tradovate réaffiche le dessin.",
+        "<strong class='text-white'>Exécution automatisée vers Tradovate</strong>, cette alerte devient un ordre en direct sur votre compte Tradovate sans aucun clic manuel, au moment exact où cela compte.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, répliquez la même entrée automatisée sur plusieurs comptes Tradovate à la fois, afin qu'une ligne de graphique disparue ne provoque jamais une exécution incohérente.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Poche cose rovinano una routine di trading più in fretta che aprire il grafico Tradovate e scoprire che le tue linee di supporto e resistenza, posizionate con cura, sono semplicemente sparite. I disegni che scompaiono sono una delle stranezze di charting più vecchie e più segnalate della piattaforma, e nel 2026 accadeva ancora. La vedrai in diverse forme: linee orizzontali che svaniscono dopo un riavvio dell'app, disegni che non compaiono sui timeframe più bassi e livelli disegnati sul desktop che non compaiono mai sull'app mobile. Ecco la parte rassicurante: in quasi tutti i casi i disegni non vengono affatto eliminati. Semplicemente non vengono renderizzati, perché il grafico non ha caricato le candele a cui sono ancorati. Questa guida spiega perché succede, come risolvere ogni variante, e come automatizzare a partire da livelli salvati in modo affidabile eviti che una linea scomparsa ti costi un trade." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per i disegni Tradovate mancanti",
+      items: [
+        "<strong class='text-white'>Prima scorri indietro nel tempo</strong>, sposta il grafico verso sinistra fino alla data di creazione del disegno; le linee ancorate vengono ridisegnate non appena quelle candele si caricano.",
+        "<strong class='text-white'>Estendi il bordo destro della linea verso il futuro</strong>, trascina o modifica il punto finale ben in avanti in modo che il disegno resti visibile su tutti i timeframe e le sessioni.",
+        "<strong class='text-white'>Aumenta &ldquo;Minimum Bars to Load&rdquo;</strong>, il valore predefinito è basso, quindi viene renderizzato solo lo storico recente; aumentalo e salva un template del grafico in modo che venga precaricato automaticamente più storico.",
+        "<strong class='text-white'>Collega i grafici per colore, poi attiva Sync Charts</strong>, così un disegno aggiunto su un grafico compare anche sugli altri dello stesso gruppo collegato.",
+        "<strong class='text-white'>Non aspettarti di trovare sul mobile i disegni fatti sul desktop</strong>, Tradovate non sincronizza nativamente i disegni tra dispositivi, quindi conserva i livelli critici in un posto che lo faccia.",
+        "<strong class='text-white'>Usa il modulo &ldquo;Chart&rdquo; attuale</strong>, il motore grafico più recente memorizza i dati localmente nella cache e si comporta diversamente dal vecchio &ldquo;Legacy Chart.&rdquo;",
+      ],
+    },
+    { type: "heading", text: "Cosa significa che “i disegni continuano a scomparire e ricomparire”" },
+    { type: "paragraph", html: "Quando i tuoi livelli tracciati scompaiono in modo casuale e tornano solo dopo aver scorso avanti e indietro, non si tratta di un bug di corruzione né dell'eliminazione del tuo lavoro. Un disegno Tradovate è <strong class='text-white'>ancorato a una candela specifica, un punto preciso nel tempo</strong> sul grafico. Se la finestra del grafico non è scorsa fino al punto in cui inizia il disegno, la linea non verrà mostrata, perché è fissata al punto in cui l'hai creata." },
+    { type: "paragraph", html: "Quando apri un grafico, Tradovate non carica tutta la cronologia dei prezzi in una volta sola. Carica una finestra limitata delle candele più recenti per mantenere la piattaforma veloce. Qualsiasi disegno il cui ancoraggio si trovi al di fuori di quella finestra caricata non ha nulla su cui renderizzarsi, quindi resta invisibile finché quelle candele sottostanti non vengono caricate in memoria. Scorri abbastanza a sinistra da raggiungere l'ancoraggio e la linea riappare esattamente dove l'avevi lasciata. Riavvia l'app, cambia scheda del grafico o passa a un timeframe molto più breve, e la finestra caricata torna ai dati recenti, motivo per cui le stesse linee sembrano &ldquo;scomparire&rdquo; di nuovo." },
+    { type: "paragraph", html: "Questo unico meccanismo spiega quasi tutte le varianti del problema: linee sparite dopo un riavvio, disegni mancanti su un grafico a 1 minuto e livelli che ricompaiono solo quando scorri fino al giorno in cui li hai disegnati. C'è un limite separato ma correlato, <strong class='text-white'>la sincronizzazione tra dispositivi e tra grafici</strong>, che Tradovate gestisce tramite un'impostazione specifica anziché automaticamente. Ne parliamo più avanti nelle soluzioni." },
+    { type: "heading", text: "Le principali cause dei disegni del grafico che scompaiono nel 2026" },
+    { type: "heading", text: "1. Il disegno è ancorato a candele che il grafico non ha caricato" },
+    { type: "paragraph", html: "Questa è la causa principale. La tua linea, semiretta, Fibonacci o rettangolo è fissato alla candela su cui hai cliccato per primo. Se la vista attuale del grafico inizia <em>dopo</em> quella candela e le candele più vecchie non sono caricate, il disegno non ha alcun ancoraggio a schermo e non viene disegnato. Non è sparito dal tuo workspace, è semplicemente fuori schermo e non renderizzato." },
+    { type: "heading", text: "2. Per impostazione predefinita vengono caricate solo le candele recenti (“Minimum Bars to Load”)" },
+    { type: "paragraph", html: "Ogni nuova scheda del grafico si apre con un valore basso di &ldquo;Minimum Bars to Load&rdquo;, generalmente intorno a 100 candele. Questo mantiene i grafici scattanti, ma significa anche che lo storico più vecchio, e qualsiasi disegno ad esso ancorato, non è presente finché non scorri indietro o aumenti l'impostazione. Disegna livelli settimanali su un grafico a 5 minuti e potresti finire per scorrere giorni e giorni verso sinistra prima che una vecchia linea riappaia." },
+    { type: "heading", text: "3. Riavviare l'app o cambiare scheda scarica i disegni vecchi" },
+    { type: "paragraph", html: "Poiché la finestra caricata torna alle candele recenti a ogni nuova sessione, i disegni dei giorni precedenti scompaiono regolarmente dopo il riavvio dell'app desktop e ricompaiono solo quando scorri indietro fino al giorno in cui sono stati creati. Si comporta come un'ottimizzazione delle prestazioni deliberata: la piattaforma scarica le vecchie linee che presume tu non stia usando. In ogni caso, l'effetto pratico è lo stesso: dopo un riavvio o un cambio di scheda, potresti dover ricaricare lo storico per vedere i vecchi livelli." },
+    { type: "heading", text: "4. I disegni non vengono trasferiti automaticamente su tutti i timeframe" },
+    { type: "paragraph", html: "Una linea di tendenza o un canale disegnato sul grafico giornaliero o a 4 ore potrebbe non comparire quando passi a un grafico a 1 o 3 minuti, perché il timeframe più breve carica molto meno storico di calendario nella sua finestra iniziale. In pratica, i disegni tendono a reggere in modo affidabile fino a circa il timeframe di 15 minuti, per poi svanire sui grafici più veloci finché non scorri lo storico." },
+    { type: "heading", text: "5. I disegni non si sincronizzano tra dispositivi per impostazione predefinita" },
+    { type: "paragraph", html: "Le linee disegnate sulla piattaforma web o desktop su un laptop sono spesso assenti nell'app mobile Tradovate per lo stesso account e lo stesso grafico. Tradovate non trasferisce nativamente i disegni dal desktop al telefono, e la sincronizzazione dei disegni tra dispositivi resta una richiesta aperta e di lunga data, non una funzionalità rilasciata. Se fai affidamento su un livello mentre sei lontano dalla scrivania, dai per scontato che non ti seguirà sul mobile." },
+    { type: "heading", text: "Come risolvere i disegni che scompaiono in Tradovate: passo dopo passo" },
+    { type: "heading", text: "Risolvere le cause 1 e 3: scorrere indietro per ricaricare il disegno" },
+    { type: "paragraph", html: "La soluzione più rapida è anche la più semplice." },
+    {
+      type: "steps",
+      items: [
+        { title: "Apri il grafico", html: "Apri il grafico in cui dovrebbe trovarsi il disegno." },
+        { title: "Scorri a sinistra fino alla data di creazione", html: "Clicca e trascina il grafico verso <strong class='text-white'>sinistra</strong>, oppure usa lo scorrimento orizzontale, tornando indietro fino alla data in cui hai disegnato originariamente la linea." },
+        { title: "Continua a scorrere finché non si carica", html: "Continua a scorrere finché le candele più vecchie non si caricano, la piattaforma recupera lo storico man mano che scorri, e il disegno viene ridisegnato al suo punto di ancoraggio." },
+        { title: "Resta visibile per la sessione", html: "Una volta caricato, resta visibile per il resto di quella sessione mentre scorri di nuovo in avanti." },
+      ],
+    },
+    { type: "heading", text: "Risolvere la causa 4: estendere la linea ben oltre nel futuro" },
+    { type: "paragraph", html: "Se vuoi che un livello resti visibile su tutti i timeframe e le sessioni senza dover scorrere, smetti di ancorarlo a candele vecchie e invece estendilo in avanti." },
+    {
+      type: "steps",
+      items: [
+        { title: "Apri le maniglie di modifica del disegno", html: "Fai doppio clic sul disegno per aprire le sue maniglie di modifica (o le sue impostazioni)." },
+        { title: "Trascina la maniglia destra in avanti", html: "Trascina la <strong class='text-white'>maniglia destra</strong> il più avanti possibile nel futuro, per quanto il grafico lo consenta, oppure modifica la data di fine della linea a un punto ben oltre la sessione corrente." },
+        { title: "Viene renderizzato anche sui timeframe più bassi", html: "Poiché parte del disegno ora si trova all'interno delle candele caricate di recente, viene renderizzato immediatamente sui timeframe più bassi e molto più spesso anche dopo i riavvii." },
+      ],
+    },
+    { type: "paragraph", html: "Un modo rapido per applicarlo: richiama i tuoi livelli su un timeframe più alto come quello a 4 ore, sposta la maniglia destra il più avanti possibile nel futuro, e le linee resteranno visibili su tutti i timeframe molto più a lungo." },
+    { type: "heading", text: "Risolvere la causa 2: aumentare Minimum Bars to Load e salvare un template" },
+    { type: "paragraph", html: "Fai in modo che venga precaricato più storico ogni volta, così i vecchi ancoraggi sono già in memoria." },
+    {
+      type: "steps",
+      items: [
+        { title: "Apri l'impostazione Minimum Bars to Load", html: "Apri le impostazioni del grafico e trova il valore <strong class='text-white'>Minimum Bars to Load</strong>." },
+        { title: "Aumentalo ben oltre il valore predefinito", html: "Aumentalo ben oltre il valore predefinito, alcune migliaia di candele sono un obiettivo ragionevole." },
+        { title: "Salvalo come template", html: "Salva il grafico configurato come <strong class='text-white'>template</strong> e carica quel template per primo per i nuovi grafici, così ogni grafico si apre con la finestra di storico più ampia." },
+      ],
+    },
+    { type: "paragraph", html: "Questo riduce la frequenza con cui devi scorrere indietro, ma trattalo come un'attenuazione e non come una cura garantita. Aiuta molto nella maggior parte dei casi, anche se le linee molto vecchie possono ancora sparire, quindi combinalo con l'abitudine di estendere in avanti descritta sopra." },
+    { type: "heading", text: "Risolvere la causa 5: sincronizzare i disegni tra grafici collegati" },
+    { type: "paragraph", html: "Tradovate può replicare i disegni tra grafici che appartengono allo stesso gruppo collegato per colore." },
+    {
+      type: "steps",
+      items: [
+        { title: "Assegna lo stesso colore di collegamento", html: "Assegna lo stesso <strong class='text-white'>colore di collegamento</strong> ai grafici tra cui vuoi condividere i disegni." },
+        { title: "Attiva Sync Charts", html: "Apri il menu <strong class='text-white'>Drawing Tools</strong> su uno di quei grafici e attiva l'opzione <strong class='text-white'>Sync Charts</strong>." },
+        { title: "I disegni si replicano su tutto il gruppo", html: "Con la sincronizzazione attiva, un disegno aggiunto a un grafico si riflette su tutti i grafici sincronizzati, e rimuovere un disegno da uno lo rimuove da tutti." },
+      ],
+    },
+    { type: "paragraph", html: "Questo sincronizza i disegni <strong class='text-white'>tra finestre di grafico aperte e collegate per colore</strong>. Non è un sostituto della sincronizzazione cross-device verso il mobile, che Tradovate ancora non esegue automaticamente. La formulazione del menu cambia tra un aggiornamento della piattaforma e l'altro, quindi se Sync Charts non si trova dove ti aspetti, controlla l'attuale menu Drawing Tools." },
+    { type: "heading", text: "Mantenere i livelli critici indipendenti dal dispositivo" },
+    { type: "paragraph", html: "Poiché i disegni del desktop non ti seguono sull'app mobile di Tradovate, conserva i tuoi livelli più importanti in un posto che si sincronizza da solo, un servizio di charting che memorizza i disegni lato server, oppure un elenco scritto di prezzi che puoi ridisegnare in pochi secondi, così una sessione solo da mobile non ti lascia mai alla cieca davanti a un livello chiave." },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Cosa significa", "Soluzione"],
+      rows: [
+        ["“I disegni continuano a scomparire e ricomparire”", "Il grafico non ha caricato le candele a cui è ancorato il disegno", "Scorrere a sinistra fino alla data di creazione per ricaricare lo storico"],
+        ["Linee orizzontali sparite dopo il riavvio dell'app", "La nuova sessione ha ripristinato la finestra caricata sulle candele recenti", "Estendere in avanti la data di fine della linea; aumentare Minimum Bars to Load"],
+        ["Linee di tendenza mancanti sui grafici a 1 / 3 minuti", "Il timeframe più breve carica molto meno storico all'inizio", "Scorrere indietro, oppure disegnare al prezzo recente ed estendere a sinistra/destra"],
+        ["I disegni su 4H non compaiono sui timeframe più bassi", "L'ancoraggio si trova al di fuori della finestra del timeframe basso", "Trascinare la maniglia destra ben avanti nel futuro"],
+        ["Livelli del desktop assenti sul mobile", "Nessuna sincronizzazione nativa dei disegni tra dispositivi", "Conservare i livelli critici in uno strumento che sincronizza tra dispositivi o in un elenco scritto"],
+        ["Disegno su un grafico assente sul grafico collegato", "Sync Charts non attivato per il gruppo di colore", "Collegare i grafici per colore e attivare Sync Charts in Drawing Tools"],
+        ["Le linee vecchie spariscono dopo settimane", "La piattaforma scarica i disegni più vecchi apparentemente inutilizzati", "Estendere di nuovo la data di fine; ricaricare lo storico scorrendo indietro"],
+      ],
+    },
+    { type: "heading", text: "Evitarlo con PickMyTrade" },
+    { type: "paragraph", html: "Se la tua strategia <em>fa trading</em> effettivamente su quei livelli, una linea che scompare nel momento sbagliato è più di un fastidio, è un ingresso mancato o mal temporizzato. PickMyTrade mantiene l'esecuzione indipendente dalla fragile persistenza dei disegni di Tradovate:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Definisci i livelli una sola volta in TradingView</strong>, TradingView memorizza i disegni lato server e li replica su ogni dispositivo, così i tuoi livelli non spariscono né restano bloccati su una sola macchina.",
+        "<strong class='text-white'>Gli avvisi scattano dai tuoi livelli salvati</strong>, un prezzo che tocca la tua linea attiva un avviso invece di dipendere dal fatto che Tradovate ridisegni il tracciato.",
+        "<strong class='text-white'>Esecuzione automatizzata su Tradovate</strong>, quell'avviso diventa un ordine live sul tuo account Tradovate senza clic manuali, esattamente nel momento in cui conta.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, replica lo stesso ingresso automatizzato su più account Tradovate contemporaneamente, così una linea del grafico che scompare non causa mai un'esecuzione incoerente.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Your Levels, Even When the Line Vanishes", de: "Traden Sie Ihre Levels, selbst wenn die Linie verschwindet", es: "Opere sus niveles, incluso cuando la línea desaparece", fr: "Tradez vos niveaux, même quand la ligne disparaît", it: "Fai trading sui tuoi livelli, anche quando la linea scompare" },
+  ctaText: { en: "Define your levels once in TradingView, where they're stored server-side, and let PickMyTrade fire the order to Tradovate the moment price touches them.", de: "Definieren Sie Ihre Levels einmal in TradingView, wo sie serverseitig gespeichert werden, und lassen Sie PickMyTrade die Order an Tradovate senden, sobald der Preis sie berührt.", es: "Defina sus niveles una vez en TradingView, donde se almacenan en el servidor, y deje que PickMyTrade envíe la orden a Tradovate en el momento en que el precio los toque.", fr: "Définissez vos niveaux une fois dans TradingView, où ils sont stockés côté serveur, et laissez PickMyTrade envoyer l'ordre à Tradovate dès que le prix les touche.", it: "Definisci i tuoi livelli una sola volta in TradingView, dove vengono memorizzati lato server, e lascia che PickMyTrade invii l'ordine a Tradovate nel momento in cui il prezzo li tocca." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Inizia la tua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Are my Tradovate drawings deleted when they disappear?", a: "In almost all cases, no. The drawing is anchored to a specific bar and simply isn't rendered while the chart hasn't loaded that part of history. Scroll back to its creation date and it reappears." },
+    { q: "Why do my lines come back when I scroll left?", a: "Scrolling left forces Tradovate to load older bars. Once the bar your drawing is anchored to is loaded into the chart, the drawing has something to render against and becomes visible again." },
+    { q: "Do Tradovate drawings sync across timeframes automatically?", a: "Only partially. A drawing shows on any timeframe whose loaded window includes its anchor. On very short timeframes, less history loads at first, so extend the line's right edge into the future or scroll back to bring it into view." },
+    { q: "Do drawings sync between the desktop and the mobile app?", a: "Not natively. Lines drawn on web or desktop frequently don't appear on the Tradovate mobile app, and cross-device drawing sync remains an outstanding feature request as of 2026." },
+    { q: "How do I stop lines from disappearing after a restart?", a: "Combine two habits: extend each line's end point far into the future so part of it always sits in the recently-loaded bars, and raise the Minimum Bars to Load value (saved as a template) so more history preloads on launch." },
+    { q: "Does the new chart or the Legacy Chart handle drawings better?", a: "As of 2026 the newer module (now just called Chart, formerly the beta charts) is the default and added a local data cache; the older engine is available as Legacy Chart. Behavior differs between them, so if one is giving you trouble, test your workflow on the other." },
+    { q: "Will increasing Minimum Bars to Load fix it completely?", a: "It helps by preloading more history, but it's a mitigation, not a guaranteed cure. Some very old lines can still drop off, so pair it with extending your drawings forward in time." },
+    { q: "Has Tradovate officially fixed drawings disappearing?", a: "This has shown up across many platform versions and, as of 2026, there is no confirmed permanent fix. The reliable path is the reload-and-extend workflow rather than waiting for the lines to persist on their own." },
+  ], de: [
+    { q: "Werden meine Tradovate-Zeichnungen gelöscht, wenn sie verschwinden?", a: "In fast allen Fällen nein. Die Zeichnung ist an einer bestimmten Kerze verankert und wird einfach nicht gerendert, solange der Chart diesen Teil der Historie nicht geladen hat. Scrollen Sie zu ihrem Erstellungsdatum zurück, und sie erscheint wieder." },
+    { q: "Warum tauchen meine Linien wieder auf, wenn ich nach links scrolle?", a: "Das Scrollen nach links zwingt Tradovate, ältere Kerzen zu laden. Sobald die Kerze, an der Ihre Zeichnung verankert ist, in den Chart geladen ist, hat die Zeichnung etwas, wogegen sie gerendert werden kann, und wird wieder sichtbar." },
+    { q: "Synchronisieren sich Tradovate-Zeichnungen automatisch über Zeitrahmen hinweg?", a: "Nur teilweise. Eine Zeichnung wird auf jedem Zeitrahmen angezeigt, dessen geladenes Fenster ihren Anker enthält. Auf sehr kurzen Zeitrahmen lädt anfangs weniger Historie, verlängern Sie also den rechten Rand der Linie in die Zukunft oder scrollen Sie zurück, um sie sichtbar zu machen." },
+    { q: "Synchronisieren sich Zeichnungen zwischen Desktop und der mobilen App?", a: "Nicht nativ. Linien, die im Web oder auf dem Desktop gezeichnet wurden, erscheinen häufig nicht in der Tradovate-Mobile-App, und die geräteübergreifende Zeichnungssynchronisierung bleibt Stand 2026 eine offene Funktionsanfrage." },
+    { q: "Wie verhindere ich, dass Linien nach einem Neustart verschwinden?", a: "Kombinieren Sie zwei Gewohnheiten: Verlängern Sie den Endpunkt jeder Linie weit in die Zukunft, damit ein Teil davon immer in den kürzlich geladenen Kerzen liegt, und erhöhen Sie den Wert Minimum Bars to Load (als Vorlage gespeichert), damit beim Start mehr Historie vorgeladen wird." },
+    { q: "Handhabt der neue Chart oder der Legacy Chart Zeichnungen besser?", a: "Stand 2026 ist das neuere Modul (jetzt einfach Chart genannt, früher die Beta-Charts) die Standardoption und hat einen lokalen Datencache hinzugefügt; die ältere Engine ist als Legacy Chart verfügbar. Ihr Verhalten unterscheidet sich, wenn also eines Probleme bereitet, testen Sie Ihren Workflow auf dem anderen." },
+    { q: "Löst das Erhöhen von Minimum Bars to Load das Problem vollständig?", a: "Es hilft, indem mehr Historie vorgeladen wird, ist aber eine Milderung, kein garantiertes Heilmittel. Manche sehr alten Linien können trotzdem noch abfallen, kombinieren Sie es also mit dem zeitlichen Verlängern Ihrer Zeichnungen." },
+    { q: "Hat Tradovate das Verschwinden von Zeichnungen offiziell behoben?", a: "Das ist über viele Plattformversionen hinweg aufgetreten, und Stand 2026 gibt es keine bestätigte dauerhafte Lösung. Der zuverlässige Weg ist der Neuladen-und-Verlängern-Workflow, statt darauf zu warten, dass die Linien von selbst bestehen bleiben." },
+  ], es: [
+    { q: "¿Se eliminan mis dibujos de Tradovate cuando desaparecen?", a: "En casi todos los casos, no. El dibujo está anclado a una vela específica y simplemente no se renderiza mientras el gráfico no haya cargado esa parte del historial. Desplácese hacia atrás hasta su fecha de creación y reaparecerá." },
+    { q: "¿Por qué vuelven mis líneas cuando me desplazo hacia la izquierda?", a: "Desplazarse hacia la izquierda obliga a Tradovate a cargar velas más antiguas. En cuanto se carga en el gráfico la vela a la que está anclado su dibujo, el dibujo tiene algo contra qué renderizarse y vuelve a ser visible." },
+    { q: "¿Se sincronizan automáticamente los dibujos de Tradovate entre marcos temporales?", a: "Solo parcialmente. Un dibujo se muestra en cualquier marco temporal cuya ventana cargada incluya su anclaje. En marcos temporales muy cortos, al principio se carga menos historial, así que extienda el borde derecho de la línea hacia el futuro o desplácese hacia atrás para que vuelva a estar visible." },
+    { q: "¿Se sincronizan los dibujos entre el escritorio y la aplicación móvil?", a: "No de forma nativa. Las líneas dibujadas en la web o el escritorio a menudo no aparecen en la aplicación móvil de Tradovate, y la sincronización de dibujos entre dispositivos sigue siendo, a 2026, una solicitud de función pendiente." },
+    { q: "¿Cómo evito que las líneas desaparezcan tras un reinicio?", a: "Combine dos hábitos: extienda el punto final de cada línea muy hacia el futuro para que una parte siempre esté dentro de las velas cargadas recientemente, y aumente el valor de Minimum Bars to Load (guardado como plantilla) para que se precargue más historial al iniciar." },
+    { q: "¿El nuevo gráfico o el Legacy Chart gestionan mejor los dibujos?", a: "A partir de 2026, el módulo más reciente (ahora llamado simplemente Chart, antes los gráficos beta) es el predeterminado y añadió una caché de datos local; el motor anterior está disponible como Legacy Chart. Su comportamiento difiere entre ambos, así que si uno le da problemas, pruebe su flujo de trabajo en el otro." },
+    { q: "¿Aumentar Minimum Bars to Load lo solucionará por completo?", a: "Ayuda al precargar más historial, pero es una mitigación, no una cura garantizada. Algunas líneas muy antiguas todavía pueden caerse, así que combínelo con extender sus dibujos hacia adelante en el tiempo." },
+    { q: "¿Ha corregido Tradovate oficialmente la desaparición de dibujos?", a: "Esto se ha presentado en muchas versiones de la plataforma y, a 2026, no existe una solución permanente confirmada. El camino fiable es el flujo de recargar y extender, en lugar de esperar a que las líneas persistan por sí solas." },
+  ], fr: [
+    { q: "Mes dessins Tradovate sont-ils supprimés lorsqu'ils disparaissent ?", a: "Dans presque tous les cas, non. Le dessin est ancré à une bougie précise et n'est simplement pas rendu tant que le graphique n'a pas chargé cette partie de l'historique. Faites défiler en arrière jusqu'à sa date de création et il réapparaît." },
+    { q: "Pourquoi mes lignes reviennent-elles quand je fais défiler vers la gauche ?", a: "Faire défiler vers la gauche oblige Tradovate à charger des bougies plus anciennes. Dès que la bougie à laquelle votre dessin est ancré est chargée dans le graphique, le dessin a quelque chose contre quoi s'afficher et redevient visible." },
+    { q: "Les dessins Tradovate se synchronisent-ils automatiquement entre les unités de temps ?", a: "Seulement en partie. Un dessin s'affiche sur toute unité de temps dont la fenêtre chargée inclut son ancrage. Sur les unités de temps très courtes, moins d'historique se charge au départ, donc étendez le bord droit de la ligne vers l'avenir ou faites défiler en arrière pour le rendre visible." },
+    { q: "Les dessins se synchronisent-ils entre le bureau et l'application mobile ?", a: "Pas nativement. Les lignes tracées sur le web ou le bureau n'apparaissent souvent pas sur l'application mobile Tradovate, et la synchronisation des dessins entre appareils reste, en 2026, une demande de fonctionnalité en attente." },
+    { q: "Comment empêcher les lignes de disparaître après un redémarrage ?", a: "Combinez deux habitudes : étendez le point final de chaque ligne loin dans le futur afin qu'une partie se trouve toujours dans les bougies récemment chargées, et augmentez la valeur de Minimum Bars to Load (enregistrée comme modèle) pour que davantage d'historique se précharge au lancement." },
+    { q: "Le nouveau graphique ou le Legacy Chart gèrent-ils mieux les dessins ?", a: "En 2026, le module le plus récent (désormais simplement appelé Chart, auparavant les graphiques bêta) est celui par défaut et a ajouté un cache de données local ; l'ancien moteur reste disponible sous le nom de Legacy Chart. Leur comportement diffère, donc si l'un vous pose problème, testez votre flux de travail sur l'autre." },
+    { q: "Augmenter Minimum Bars to Load résoudra-t-il complètement le problème ?", a: "Cela aide en préchargeant davantage d'historique, mais c'est une atténuation, pas un remède garanti. Certaines très anciennes lignes peuvent encore disparaître, associez-le donc à l'extension de vos dessins vers l'avenir." },
+    { q: "Tradovate a-t-il officiellement corrigé la disparition des dessins ?", a: "Ce problème s'est manifesté sur de nombreuses versions de la plateforme et, en 2026, il n'existe aucun correctif permanent confirmé. La méthode fiable reste le flux recharger-et-étendre, plutôt que d'attendre que les lignes persistent d'elles-mêmes." },
+  ], it: [
+    { q: "I miei disegni Tradovate vengono eliminati quando scompaiono?", a: "In quasi tutti i casi, no. Il disegno è ancorato a una candela specifica e semplicemente non viene renderizzato finché il grafico non ha caricato quella parte di storico. Scorri indietro fino alla sua data di creazione e ricompare." },
+    { q: "Perché le mie linee ritornano quando scorro a sinistra?", a: "Scorrere a sinistra costringe Tradovate a caricare candele più vecchie. Non appena la candela a cui è ancorato il tuo disegno viene caricata nel grafico, il disegno ha qualcosa su cui renderizzarsi e torna visibile." },
+    { q: "I disegni Tradovate si sincronizzano automaticamente tra i timeframe?", a: "Solo in parte. Un disegno compare su qualsiasi timeframe la cui finestra caricata include il suo ancoraggio. Sui timeframe molto brevi, all'inizio si carica meno storico, quindi estendi il bordo destro della linea verso il futuro oppure scorri indietro per renderla visibile." },
+    { q: "I disegni si sincronizzano tra desktop e app mobile?", a: "Non nativamente. Le linee disegnate sul web o sul desktop spesso non compaiono nell'app mobile di Tradovate, e la sincronizzazione dei disegni tra dispositivi resta, nel 2026, una richiesta di funzionalità ancora aperta." },
+    { q: "Come evito che le linee scompaiano dopo un riavvio?", a: "Combina due abitudini: estendi il punto finale di ogni linea ben avanti nel futuro in modo che una parte si trovi sempre tra le candele caricate di recente, e aumenta il valore di Minimum Bars to Load (salvato come template) in modo che venga precaricato più storico all'avvio." },
+    { q: "Il nuovo grafico o il Legacy Chart gestiscono meglio i disegni?", a: "A partire dal 2026 il modulo più recente (ora chiamato semplicemente Chart, prima i grafici beta) è quello predefinito e ha aggiunto una cache dati locale; il motore precedente è disponibile come Legacy Chart. Il loro comportamento differisce, quindi se uno ti dà problemi, prova il tuo flusso di lavoro sull'altro." },
+    { q: "Aumentare Minimum Bars to Load risolverà completamente il problema?", a: "Aiuta precaricando più storico, ma è un'attenuazione, non una cura garantita. Alcune linee molto vecchie possono comunque sparire, quindi abbinalo all'estensione dei tuoi disegni in avanti nel tempo." },
+    { q: "Tradovate ha risolto ufficialmente il problema dei disegni che scompaiono?", a: "Questo si è manifestato in molte versioni della piattaforma e, a partire dal 2026, non esiste una soluzione permanente confermata. Il percorso affidabile è il flusso di ricarica ed estensione, piuttosto che aspettare che le linee persistano da sole." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap, wird nicht von ihnen unterstützt oder gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie den aktuellen Ablauf daher stets in der offiziellen Plattform-Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de futures et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni parrainée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent dans le temps, confirmez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha uno scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifica sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

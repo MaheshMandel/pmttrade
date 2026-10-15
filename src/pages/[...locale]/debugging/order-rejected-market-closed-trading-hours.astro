@@ -1,0 +1,434 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "order-rejected-market-closed-trading-hours";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate 'MarketClosed' Order Rejection Explained";
+const META_DESCRIPTION =
+  "Tradovate 'MarketClosed' rejection means you ordered outside session hours. Learn futures trading times, maintenance breaks and holidays to trade clean.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Ablehnung „MarketClosed“ erklärt", es: "Rechazo «MarketClosed» de Tradovate explicado", fr: "Le rejet « MarketClosed » de Tradovate expliqué", it: "Il rifiuto «MarketClosed» di Tradovate spiegato" },
+  dek: { en: "A clean entry on ES or NQ bounces back as MarketClosed. Nine times out of ten it's about timing, not your account. Here's every window that triggers it and how to fix your automation.", de: "Ein sauberer Einstieg bei ES oder NQ kommt als MarketClosed zurück. In neun von zehn Fällen liegt es am Timing, nicht an Ihrem Konto. Hier sind alle Zeitfenster, die den Fehler auslösen, und so korrigieren Sie Ihre Automatisierung.", es: "Una entrada limpia en ES o NQ rebota como MarketClosed. En nueve de cada diez casos se trata del horario, no de su cuenta. Estas son todas las franjas que lo provocan y cómo corregir su automatización.", fr: "Une entrée propre sur ES ou NQ est renvoyée avec le motif MarketClosed. Neuf fois sur dix, c'est une question d'horaire, pas de compte. Voici toutes les plages qui le déclenchent et comment corriger votre automatisation.", it: "Un ingresso pulito su ES o NQ torna indietro come MarketClosed. Nove volte su dieci dipende dall'orario, non dal Suo conto. Ecco tutte le fasce che lo causano e come correggere la Sua automazione." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You line up a clean entry on ES or NQ, hit buy, and Tradovate bounces it right back with a blunt reason code: <strong class='text-white'>MarketClosed</strong>. It's one of the most common rejections you'll ever see on the platform, and nine times out of ten it comes down to one thing, timing. The contract you're trying to trade simply isn't in an open session at the instant your order reaches the exchange. Maybe it's the nightly maintenance break. Maybe it's the weekend gap, a market holiday, or an instrument whose hours don't line up with the equity-index futures you usually trade." },
+    { type: "paragraph", html: "Here's the reassuring part: unlike a risk block or a margin rejection, MarketClosed is almost never about your account. It's about the clock. This guide walks through exactly what the error means, the causes that trigger it, how to clear each one, and how to stop it from quietly killing your automated orders overnight." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for MarketClosed Rejections",
+      items: [
+        "<strong class='text-white'>Confirm the session is actually open</strong>, CME Globex runs Sunday 5:00 PM CT through Friday 4:00 PM CT. Anything outside that window rejects.",
+        "<strong class='text-white'>Mind the daily maintenance break</strong>, no trading from 4:00 PM to 5:00 PM CT, Monday through Thursday.",
+        "<strong class='text-white'>Check the specific instrument, not just \"futures\"</strong>, energy, metals, agricultural and crypto contracts keep their own hours that differ from S&amp;P and Nasdaq futures.",
+        "<strong class='text-white'>Watch for holidays and early closes</strong>, exchange closures and shortened sessions change every year, so pull the current calendar.",
+        "<strong class='text-white'>Read the real reject reason</strong>, open the rejected order in the Orders module and confirm it says MarketClosed, not a look-alike like a risk, margin, or expired-contract block.",
+        "<strong class='text-white'>On prop or evaluation accounts, confirm the firm's trading window</strong>, some firms restrict hours further, and those rules vary by firm and account.",
+      ],
+    },
+    { type: "heading", text: "What \"MarketClosed\" Means" },
+    { type: "paragraph", html: "MarketClosed is the reason Tradovate hands back when the exchange's matching engine for that product isn't accepting orders at the instant your order lands. Futures don't trade continuously around the clock. Every contract has a defined session, plus scheduled breaks and holiday closures. Submit an order into one of those gaps and the exchange refuses it, Tradovate just relays that refusal back to you as MarketClosed." },
+    { type: "paragraph", html: "The nuance worth understanding: this schedule is set by the exchange, not by Tradovate. For most Tradovate products that's CME Group's Globex platform. Tradovate is only the messenger. That's why you can't &ldquo;fix&rdquo; a MarketClosed rejection by flipping an account setting, the market genuinely isn't open. It's also why the same order that bounces at 4:30 PM CT sails straight through at 5:05 PM CT once the session reopens." },
+    { type: "paragraph", html: "MarketClosed is easy to confuse with other rejections that also stop an order dead, an expired or wrong-month contract, a risk-parameter block, or a &ldquo;no quote available&rdquo; message. Those need different fixes. So before you troubleshoot, open the order and read the exact reason string. Solve the right problem." },
+    { type: "heading", text: "Top Causes of MarketClosed Rejections" },
+    { type: "heading", text: "1. You Placed the Order Outside the Instrument's Regular Session" },
+    { type: "paragraph", html: "The most frequent cause, by a wide margin. CME Globex equity-index futures, ES, MES, NQ, MNQ, trade Sunday 5:00 PM CT to Friday 4:00 PM CT. If your order lands after Friday's close, before Sunday's reopen, or during any daily break, it rejects as MarketClosed." },
+    { type: "heading", text: "2. The Daily Maintenance Break (4:00–5:00 PM CT)" },
+    { type: "paragraph", html: "Globex takes a one-hour maintenance break from 4:00 PM to 5:00 PM CT, Monday through Thursday. It's a hard stop, no orders accepted, no exceptions. If you're scalping the late-afternoon move you'll get caught by this constantly, especially with an automated strategy that keeps firing after 4:00 PM." },
+    { type: "heading", text: "3. The Weekend Gap (Friday 4:00 PM to Sunday 5:00 PM CT)" },
+    { type: "paragraph", html: "Once Friday's 4:00 PM CT close hits, the market stays shut all weekend and doesn't reopen until Sunday 5:00 PM CT. Anything you submit in that roughly 49-hour window, including alerts that fire on stale weekend data, gets rejected." },
+    { type: "heading", text: "4. Market Holidays and Early Closes" },
+    { type: "paragraph", html: "Exchanges close fully on certain U.S. holidays and shorten the session, an early close, around others. The exact dates and early-close times shift every year and vary by product, so a session that's normally open can be closed or truncated on a given day. Check the current exchange holiday calendar rather than assuming last year's schedule still holds." },
+    { type: "heading", text: "5. A Product with Different Hours or a Scheduled Halt" },
+    { type: "paragraph", html: "Not every futures contract shares equity-index hours. Energy (NYMEX), metals (COMEX), agricultural (CBOT) and crypto products each run their own sessions and pauses. Equity-index futures also observe a brief settlement halt from 3:15 PM to 3:30 PM CT on the last business day of each month. If one symbol rejects while another trades fine, odds are you're sitting inside that specific product's closed window." },
+    { type: "heading", text: "How to Fix MarketClosed Rejections: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirm it is really MarketClosed", html: "Don't guess. Open the <strong class='text-white'>Orders</strong> module, click the rejected order, and read the reason in the order details. Make sure it's MarketClosed and not a look-alike like a risk block or an expired contract, each of those has a different fix. If you prefer, pull the order up in the Reports module by its order number to see the full detail." },
+        { title: "Check the instrument against its trading hours", html: "Compare the current Central Time to the contract's published session. Open the instrument's contract specifications, or its info panel, to confirm the exact trading hours for that specific product, energy, metals, ag and crypto contracts don't follow equity-index hours. If you're outside the window, that's your answer. Wait for the session to open." },
+        { title: "Rule out the maintenance break, weekend, or holiday", html: "If the clock reads between 4:00 PM and 5:00 PM CT (Mon&ndash;Thu), wait until 5:00 PM CT and resend. If it's the weekend, the market reopens Sunday at 5:00 PM CT. If it's a holiday or early-close day, check the current exchange holiday calendar, and on a prop account, your firm's announcements, to see when the session resumes. A fast sanity check is the quotes tab: a live, moving bid/ask means the market is open; a frozen or empty quote usually means it's closed." },
+        { title: "Fix your automation's timing", html: "If a bot, TradingView strategy, or bridge keeps firing into a closed market, the rejection repeats every single time. Add a time filter to your strategy so it only sends orders during the instrument's live session, pause automation across the maintenance break and weekend, and account for holidays. This is the single biggest source of overnight MarketClosed spam you'll find in your logs." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / Scenario", "Meaning", "Fix"],
+      rows: [
+        ["<strong class='text-white'>MarketClosed</strong>", "The instrument's exchange session isn't open right now", "Wait for the session to open; only submit orders within trading hours"],
+        ["Rejected between 4:00&ndash;5:00 PM CT (Mon&ndash;Thu)", "Daily Globex maintenance break", "Resend after the 5:00 PM CT reopen"],
+        ["Rejected Friday evening, Saturday, or Sunday before 5:00 PM CT", "Weekend gap", "Wait for the Sunday 5:00 PM CT reopen"],
+        ["MarketClosed on a normal trading day", "Market holiday or early close", "Check the current exchange holiday calendar; timing varies by year and product"],
+        ["MarketClosed on one symbol but not another", "That product has different hours or a scheduled halt", "Verify that specific contract's session and any daily pause"],
+        ["&ldquo;Liquidation Only&rdquo; / &ldquo;Contract about to expire&rdquo; (look-alike)", "Not an hours issue, rollover or expiry", "Roll to the active front-month contract"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "If TradingView is the brain behind your Tradovate orders, PickMyTrade is the wiring that carries each signal to your account, and a cleaner pipeline means fewer avoidable rejections:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Fires only when your strategy triggers</strong>, orders go out only when your TradingView alert actually fires, so a session-based strategy is far less likely to shoot into a closed market.",
+        "<strong class='text-white'>Symbol &amp; quantity validation</strong>, catches wrong-contract or malformed symbols before they're routed, so a bad symbol never masquerades as a market issue.",
+        "<strong class='text-white'>Multi-account sync</strong>, mirrors each valid order across every linked Tradovate account in one step instead of firing them one at a time.",
+        "<strong class='text-white'>Rate-limit-safe routing</strong>, spaces out order flow on reconnects so a burst of alerts doesn't bounce.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie haben einen sauberen Einstieg bei ES oder NQ vorbereitet, klicken auf Kaufen, und Tradovate schickt die Order sofort mit einem knappen Fehlercode zurück: <strong class='text-white'>MarketClosed</strong>. Es ist eine der häufigsten Ablehnungen auf der Plattform, und in neun von zehn Fällen liegt es an einer Sache, dem Timing. Der Kontrakt, den Sie handeln möchten, befindet sich im Moment, in dem Ihre Order die Börse erreicht, schlicht nicht in einer offenen Sitzung. Vielleicht ist es die nächtliche Wartungspause. Vielleicht die Wochenendlücke, ein Börsenfeiertag oder ein Instrument, dessen Handelszeiten nicht zu den Aktienindex-Futures passen, die Sie sonst handeln." },
+    { type: "paragraph",html: "Das Beruhigende daran: Anders als eine Risikosperre oder eine Margin-Ablehnung hat MarketClosed fast nie etwas mit Ihrem Konto zu tun. Es geht um die Uhrzeit. Diese Anleitung erklärt genau, was der Fehler bedeutet, welche Ursachen ihn auslösen, wie Sie jede davon beheben und wie Sie verhindern, dass er Ihre automatisierten Orders über Nacht stillschweigend ausbremst." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste bei MarketClosed-Ablehnungen",
+      items: [
+        "<strong class='text-white'>Prüfen Sie, ob die Sitzung tatsächlich geöffnet ist</strong>, CME Globex läuft von Sonntag 17:00 Uhr CT bis Freitag 16:00 Uhr CT. Alles außerhalb dieses Fensters wird abgelehnt.",
+        "<strong class='text-white'>Beachten Sie die tägliche Wartungspause</strong>, kein Handel von 16:00 bis 17:00 Uhr CT, Montag bis Donnerstag.",
+        "<strong class='text-white'>Prüfen Sie das konkrete Instrument, nicht nur „Futures“</strong>, Energie-, Metall-, Agrar- und Krypto-Kontrakte haben eigene Handelszeiten, die sich von S&amp;P- und Nasdaq-Futures unterscheiden.",
+        "<strong class='text-white'>Achten Sie auf Feiertage und vorzeitige Schließungen</strong>, Börsenschließungen und verkürzte Sitzungen ändern sich jedes Jahr, rufen Sie daher den aktuellen Kalender ab.",
+        "<strong class='text-white'>Lesen Sie den tatsächlichen Ablehnungsgrund</strong>, öffnen Sie die abgelehnte Order im Modul „Orders“ und bestätigen Sie, dass dort MarketClosed steht und nicht eine ähnliche Sperre wegen Risiko, Margin oder abgelaufenem Kontrakt.",
+        "<strong class='text-white'>Prüfen Sie bei Prop- oder Evaluierungskonten das Handelsfenster der Firma</strong>, manche Firmen schränken die Handelszeiten weiter ein, und diese Regeln unterscheiden sich je nach Firma und Konto.",
+      ],
+    },
+    { type: "heading",text: "Was „MarketClosed“ bedeutet" },
+    { type: "paragraph",html: "MarketClosed ist der Grund, den Tradovate zurückgibt, wenn die Matching-Engine der Börse für dieses Produkt im Moment des Orderzugangs keine Orders annimmt. Futures werden nicht rund um die Uhr durchgehend gehandelt. Jeder Kontrakt hat eine definierte Sitzung sowie geplante Pausen und Feiertagsschließungen. Wenn Sie eine Order in eine dieser Lücken senden, lehnt die Börse sie ab, und Tradovate gibt diese Ablehnung lediglich als MarketClosed an Sie weiter." },
+    { type: "paragraph",html: "Die Nuance, die man verstehen sollte: Dieser Zeitplan wird von der Börse festgelegt, nicht von Tradovate. Für die meisten Tradovate-Produkte ist das die Globex-Plattform der CME Group. Tradovate ist nur der Bote. Deshalb lässt sich eine MarketClosed-Ablehnung nicht durch eine Kontoeinstellung &ldquo;beheben&rdquo;, der Markt ist tatsächlich nicht geöffnet. Es ist auch der Grund, warum dieselbe Order, die um 16:30 Uhr CT abprallt, um 17:05 Uhr CT nach der Wiedereröffnung der Sitzung problemlos durchgeht." },
+    { type: "paragraph",html: "MarketClosed lässt sich leicht mit anderen Ablehnungen verwechseln, die eine Order ebenfalls stoppen, etwa ein abgelaufener oder falscher Kontraktmonat, eine Risikoparameter-Sperre oder die Meldung &ldquo;no quote available&rdquo;. Diese erfordern andere Lösungen. Öffnen Sie daher vor der Fehlersuche die Order und lesen Sie den genauen Grund. Lösen Sie das richtige Problem." },
+    { type: "heading",text: "Häufigste Ursachen für MarketClosed-Ablehnungen" },
+    { type: "heading",text: "1. Sie haben die Order außerhalb der regulären Sitzung des Instruments platziert" },
+    { type: "paragraph",html: "Die mit Abstand häufigste Ursache. CME-Globex-Aktienindex-Futures, ES, MES, NQ, MNQ, werden von Sonntag 17:00 Uhr CT bis Freitag 16:00 Uhr CT gehandelt. Trifft Ihre Order nach dem Freitagsschluss, vor der Sonntagseröffnung oder während einer täglichen Pause ein, wird sie als MarketClosed abgelehnt." },
+    { type: "heading",text: "2. Die tägliche Wartungspause (16:00–17:00 Uhr CT)" },
+    { type: "paragraph",html: "Globex legt von Montag bis Donnerstag eine einstündige Wartungspause von 16:00 bis 17:00 Uhr CT ein. Das ist ein harter Stopp, keine Orders werden angenommen, keine Ausnahmen. Wenn Sie die Bewegung am späten Nachmittag scalpen, werden Sie dadurch ständig erwischt, besonders mit einer automatisierten Strategie, die nach 16:00 Uhr weiter feuert." },
+    { type: "heading",text: "3. Die Wochenendlücke (Freitag 16:00 Uhr bis Sonntag 17:00 Uhr CT)" },
+    { type: "paragraph",html: "Sobald der Freitagsschluss um 16:00 Uhr CT erreicht ist, bleibt der Markt das ganze Wochenende geschlossen und öffnet erst am Sonntag um 17:00 Uhr CT wieder. Alles, was Sie in diesem rund 49-stündigen Fenster senden, einschließlich Alerts, die auf veralteten Wochenenddaten auslösen, wird abgelehnt." },
+    { type: "heading",text: "4. Börsenfeiertage und vorzeitige Schließungen" },
+    { type: "paragraph",html: "Börsen schließen an bestimmten US-Feiertagen vollständig und verkürzen die Sitzung, eine vorzeitige Schließung, an anderen. Die genauen Termine und Zeiten der vorzeitigen Schließung ändern sich jedes Jahr und variieren je nach Produkt, sodass eine normalerweise geöffnete Sitzung an einem bestimmten Tag geschlossen oder verkürzt sein kann. Prüfen Sie den aktuellen Börsen-Feiertagskalender, statt davon auszugehen, dass der Plan des Vorjahres noch gilt." },
+    { type: "heading",text: "5. Ein Produkt mit anderen Handelszeiten oder einer geplanten Unterbrechung" },
+    { type: "paragraph",html: "Nicht jeder Futures-Kontrakt teilt die Zeiten der Aktienindizes. Energie (NYMEX), Metalle (COMEX), Agrar (CBOT) und Krypto-Produkte haben jeweils eigene Sitzungen und Pausen. Aktienindex-Futures haben außerdem am letzten Geschäftstag jedes Monats eine kurze Abrechnungspause von 15:15 bis 15:30 Uhr CT. Wird ein Symbol abgelehnt, während ein anderes problemlos handelbar ist, befinden Sie sich sehr wahrscheinlich im Schließfenster genau dieses Produkts." },
+    { type: "heading",text: "MarketClosed-Ablehnungen beheben: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Bestätigen Sie, dass es wirklich MarketClosed ist", html: "Raten Sie nicht. Öffnen Sie das Modul <strong class='text-white'>Orders</strong>, klicken Sie auf die abgelehnte Order und lesen Sie den Grund in den Orderdetails. Stellen Sie sicher, dass es MarketClosed ist und nicht eine ähnliche Sperre wie eine Risikosperre oder ein abgelaufener Kontrakt, jede davon hat eine andere Lösung. Wenn Sie möchten, rufen Sie die Order im Modul „Reports“ anhand ihrer Ordernummer auf, um alle Details zu sehen." },
+        { title: "Prüfen Sie das Instrument anhand seiner Handelszeiten", html: "Vergleichen Sie die aktuelle Central Time mit der veröffentlichten Sitzung des Kontrakts. Öffnen Sie die Kontraktspezifikationen oder das Infofenster des Instruments, um die genauen Handelszeiten für dieses Produkt zu bestätigen, Energie-, Metall-, Agrar- und Krypto-Kontrakte folgen nicht den Zeiten der Aktienindizes. Liegen Sie außerhalb des Fensters, ist das Ihre Antwort. Warten Sie, bis die Sitzung öffnet." },
+        { title: "Schließen Sie Wartungspause, Wochenende oder Feiertag aus", html: "Wenn die Uhr zwischen 16:00 und 17:00 Uhr CT (Mo&ndash;Do) anzeigt, warten Sie bis 17:00 Uhr CT und senden Sie die Order erneut. Am Wochenende öffnet der Markt am Sonntag um 17:00 Uhr CT wieder. An einem Feiertag oder Tag mit vorzeitigem Schluss prüfen Sie den aktuellen Börsen-Feiertagskalender und bei einem Prop-Konto die Mitteilungen Ihrer Firma, um zu sehen, wann die Sitzung wieder beginnt. Ein schneller Plausibilitätscheck ist der Quotes-Tab: Ein lebendiges, sich bewegendes Bid/Ask bedeutet, dass der Markt offen ist; eine eingefrorene oder leere Quote bedeutet meist, dass er geschlossen ist." },
+        { title: "Korrigieren Sie das Timing Ihrer Automatisierung", html: "Wenn ein Bot, eine TradingView-Strategie oder eine Bridge weiter in einen geschlossenen Markt feuert, wiederholt sich die Ablehnung jedes Mal. Fügen Sie Ihrer Strategie einen Zeitfilter hinzu, damit sie nur während der Live-Sitzung des Instruments Orders sendet, pausieren Sie die Automatisierung während der Wartungspause und am Wochenende und berücksichtigen Sie Feiertage. Das ist die größte Quelle für nächtlichen MarketClosed-Spam, den Sie in Ihren Logs finden werden." },
+      ],
+    },
+    { type: "heading",text: "Fehlerbehebungstabelle" },
+    { type: "table", headers: ["Fehler / Szenario","Bedeutung","Lösung"], rows: [
+      ["<strong class='text-white'>MarketClosed</strong>","Die Börsensitzung des Instruments ist gerade nicht geöffnet","Warten Sie, bis die Sitzung öffnet; senden Sie Orders nur innerhalb der Handelszeiten"],
+      ["Abgelehnt zwischen 16:00&ndash;17:00 Uhr CT (Mo&ndash;Do)","Tägliche Globex-Wartungspause","Senden Sie die Order nach der Wiedereröffnung um 17:00 Uhr CT erneut"],
+      ["Abgelehnt am Freitagabend, Samstag oder Sonntag vor 17:00 Uhr CT","Wochenendlücke","Warten Sie auf die Wiedereröffnung am Sonntag um 17:00 Uhr CT"],
+      ["MarketClosed an einem normalen Handelstag","Börsenfeiertag oder vorzeitige Schließung","Prüfen Sie den aktuellen Börsen-Feiertagskalender; die Zeiten variieren je nach Jahr und Produkt"],
+      ["MarketClosed bei einem Symbol, bei einem anderen nicht","Dieses Produkt hat andere Handelszeiten oder eine geplante Unterbrechung","Prüfen Sie die Sitzung dieses konkreten Kontrakts und jede tägliche Pause"],
+      ["&ldquo;Liquidation Only&rdquo; / &ldquo;Contract about to expire&rdquo; (ähnlicher Fehler)","Kein Problem der Handelszeiten, sondern Rollover oder Verfall","Wechseln Sie auf den aktiven Front-Month-Kontrakt"],
+    ] },
+    { type: "heading",text: "Vermeiden Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Wenn TradingView das Gehirn hinter Ihren Tradovate-Orders ist, dann ist PickMyTrade die Verkabelung, die jedes Signal zu Ihrem Konto trägt, und eine sauberere Pipeline bedeutet weniger vermeidbare Ablehnungen:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Feuert nur, wenn Ihre Strategie auslöst</strong>, Orders werden nur gesendet, wenn Ihr TradingView-Alert tatsächlich auslöst, sodass eine sitzungsbasierte Strategie viel seltener in einen geschlossenen Markt feuert.",
+        "<strong class='text-white'>Validierung von Symbol &amp; Menge</strong>, erkennt falsche Kontrakte oder fehlerhafte Symbole, bevor sie geroutet werden, sodass ein falsches Symbol nie als Marktproblem erscheint.",
+        "<strong class='text-white'>Multi-Account-Sync</strong>, spiegelt jede gültige Order in einem Schritt auf alle verknüpften Tradovate-Konten, statt sie einzeln abzufeuern.",
+        "<strong class='text-white'>Ratenlimit-sicheres Routing</strong>, verteilt den Orderfluss bei Wiederverbindungen, damit ein Schwall von Alerts nicht abprallt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Prepara una entrada limpia en ES o NQ, pulsa comprar, y Tradovate se la devuelve al instante con un código de motivo seco: <strong class='text-white'>MarketClosed</strong>. Es uno de los rechazos más comunes que verá en la plataforma, y en nueve de cada diez casos se debe a una sola cosa, el horario. El contrato que intenta operar simplemente no está en una sesión abierta en el instante en que su orden llega al mercado. Quizá sea la pausa nocturna de mantenimiento. Quizá el hueco del fin de semana, un festivo bursátil o un instrumento cuyo horario no coincide con el de los futuros de índices que suele operar." },
+    { type: "paragraph",html: "Lo tranquilizador: a diferencia de un bloqueo de riesgo o de un rechazo por margen, MarketClosed casi nunca tiene que ver con su cuenta. Tiene que ver con el reloj. Esta guía explica exactamente qué significa el error, las causas que lo provocan, cómo resolver cada una y cómo evitar que arruine en silencio sus órdenes automatizadas durante la noche." },
+    {
+      type: "checklist",
+      heading: "Lista de comprobación rápida para rechazos MarketClosed",
+      items: [
+        "<strong class='text-white'>Confirme que la sesión está realmente abierta</strong>, CME Globex funciona de domingo a las 5:00 PM CT hasta viernes a las 4:00 PM CT. Todo lo que quede fuera de esa ventana se rechaza.",
+        "<strong class='text-white'>Tenga en cuenta la pausa diaria de mantenimiento</strong>, no hay negociación de 4:00 PM a 5:00 PM CT, de lunes a jueves.",
+        "<strong class='text-white'>Compruebe el instrumento concreto, no solo «futuros»</strong>, los contratos de energía, metales, agrícolas y cripto tienen horarios propios que difieren de los futuros del S&amp;P y del Nasdaq.",
+        "<strong class='text-white'>Vigile festivos y cierres anticipados</strong>, los cierres del mercado y las sesiones reducidas cambian cada año, así que consulte el calendario vigente.",
+        "<strong class='text-white'>Lea el motivo real del rechazo</strong>, abra la orden rechazada en el módulo Orders y confirme que dice MarketClosed, no un bloqueo parecido por riesgo, margen o contrato vencido.",
+        "<strong class='text-white'>En cuentas prop o de evaluación, confirme la ventana de trading de la firma</strong>, algunas firmas restringen aún más el horario, y esas reglas varían según la firma y la cuenta.",
+      ],
+    },
+    { type: "heading",text: "Qué significa «MarketClosed»" },
+    { type: "paragraph",html: "MarketClosed es el motivo que Tradovate devuelve cuando el motor de casamiento del mercado para ese producto no acepta órdenes en el instante en que llega la suya. Los futuros no cotizan de forma continua las 24 horas. Cada contrato tiene una sesión definida, además de pausas programadas y cierres por festivos. Si envía una orden a uno de esos huecos, el mercado la rechaza y Tradovate simplemente le transmite ese rechazo como MarketClosed." },
+    { type: "paragraph",html: "El matiz que conviene entender: este horario lo fija el mercado, no Tradovate. Para la mayoría de los productos de Tradovate se trata de la plataforma Globex de CME Group. Tradovate es solo el mensajero. Por eso no puede &ldquo;arreglar&rdquo; un rechazo MarketClosed cambiando un ajuste de la cuenta, el mercado realmente no está abierto. También explica por qué la misma orden que rebota a las 4:30 PM CT pasa sin problema a las 5:05 PM CT, cuando la sesión reabre." },
+    { type: "paragraph",html: "MarketClosed se confunde fácilmente con otros rechazos que también detienen una orden, un contrato vencido o del mes equivocado, un bloqueo por parámetros de riesgo o un mensaje de &ldquo;no quote available&rdquo;. Esos requieren soluciones distintas. Por eso, antes de diagnosticar, abra la orden y lea la cadena exacta del motivo. Resuelva el problema correcto." },
+    { type: "heading",text: "Principales causas de los rechazos MarketClosed" },
+    { type: "heading",text: "1. Envió la orden fuera de la sesión regular del instrumento" },
+    { type: "paragraph",html: "La causa más frecuente, con diferencia. Los futuros de índices bursátiles de CME Globex, ES, MES, NQ, MNQ, cotizan de domingo a las 5:00 PM CT hasta viernes a las 4:00 PM CT. Si su orden llega después del cierre del viernes, antes de la reapertura del domingo o durante cualquier pausa diaria, se rechaza como MarketClosed." },
+    { type: "heading",text: "2. La pausa diaria de mantenimiento (4:00–5:00 PM CT)" },
+    { type: "paragraph",html: "Globex hace una pausa de mantenimiento de una hora, de 4:00 PM a 5:00 PM CT, de lunes a jueves. Es una parada total, no se aceptan órdenes, sin excepciones. Si hace scalping en el movimiento de última hora de la tarde, le sorprenderá constantemente, sobre todo con una estrategia automatizada que sigue disparando después de las 4:00 PM." },
+    { type: "heading",text: "3. El hueco del fin de semana (viernes 4:00 PM a domingo 5:00 PM CT)" },
+    { type: "paragraph",html: "Cuando llega el cierre del viernes a las 4:00 PM CT, el mercado permanece cerrado todo el fin de semana y no reabre hasta el domingo a las 5:00 PM CT. Todo lo que envíe en esa ventana de unas 49 horas, incluidas las alertas que se disparan con datos obsoletos del fin de semana, se rechaza." },
+    { type: "heading",text: "4. Festivos bursátiles y cierres anticipados" },
+    { type: "paragraph",html: "Los mercados cierran por completo en ciertos festivos de EE. UU. y acortan la sesión, un cierre anticipado, en otros. Las fechas exactas y los horarios de cierre anticipado cambian cada año y varían según el producto, por lo que una sesión normalmente abierta puede estar cerrada o recortada un día concreto. Consulte el calendario de festivos del mercado vigente en lugar de dar por sentado que sigue valiendo el del año pasado." },
+    { type: "heading",text: "5. Un producto con horario distinto o una pausa programada" },
+    { type: "paragraph",html: "No todos los contratos de futuros comparten el horario de los índices bursátiles. Los productos de energía (NYMEX), metales (COMEX), agrícolas (CBOT) y cripto tienen sus propias sesiones y pausas. Los futuros de índices también observan una breve pausa de liquidación de 3:15 PM a 3:30 PM CT el último día hábil de cada mes. Si un símbolo se rechaza mientras otro cotiza sin problema, lo más probable es que esté dentro de la ventana de cierre de ese producto concreto." },
+    { type: "heading",text: "Cómo corregir los rechazos MarketClosed: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirme que realmente es MarketClosed", html: "No adivine. Abra el módulo <strong class='text-white'>Orders</strong>, haga clic en la orden rechazada y lea el motivo en los detalles de la orden. Asegúrese de que es MarketClosed y no un bloqueo parecido, como un bloqueo de riesgo o un contrato vencido, cada uno tiene una solución distinta. Si lo prefiere, abra la orden en el módulo Reports por su número de orden para ver todo el detalle." },
+        { title: "Compruebe el instrumento frente a su horario de negociación", html: "Compare la hora central actual con la sesión publicada del contrato. Abra las especificaciones del contrato o su panel de información para confirmar el horario exacto de ese producto, los contratos de energía, metales, agrícolas y cripto no siguen el horario de los índices bursátiles. Si está fuera de la ventana, ahí tiene la respuesta. Espere a que abra la sesión." },
+        { title: "Descarte la pausa de mantenimiento, el fin de semana o un festivo", html: "Si el reloj marca entre las 4:00 PM y las 5:00 PM CT (lun&ndash;jue), espere hasta las 5:00 PM CT y vuelva a enviarla. Si es fin de semana, el mercado reabre el domingo a las 5:00 PM CT. Si es un festivo o un día de cierre anticipado, consulte el calendario de festivos del mercado vigente y, en una cuenta prop, los comunicados de su firma, para saber cuándo se reanuda la sesión. Una comprobación rápida es la pestaña de cotizaciones: un bid/ask en movimiento indica que el mercado está abierto; una cotización congelada o vacía suele indicar que está cerrado." },
+        { title: "Corrija el horario de su automatización", html: "Si un bot, una estrategia de TradingView o un puente sigue disparando contra un mercado cerrado, el rechazo se repite cada vez. Añada un filtro horario a su estrategia para que solo envíe órdenes durante la sesión activa del instrumento, pause la automatización durante la pausa de mantenimiento y el fin de semana, y tenga en cuenta los festivos. Es la mayor fuente del spam nocturno de MarketClosed que encontrará en sus registros." },
+      ],
+    },
+    { type: "heading",text: "Tabla de resolución de problemas" },
+    { type: "table", headers: ["Error / escenario","Significado","Solución"], rows: [
+      ["<strong class='text-white'>MarketClosed</strong>","La sesión del instrumento en el mercado no está abierta ahora mismo","Espere a que abra la sesión; envíe órdenes solo dentro del horario de negociación"],
+      ["Rechazada entre las 4:00&ndash;5:00 PM CT (lun&ndash;jue)","Pausa diaria de mantenimiento de Globex","Vuelva a enviarla tras la reapertura de las 5:00 PM CT"],
+      ["Rechazada el viernes por la tarde, sábado o domingo antes de las 5:00 PM CT","Hueco del fin de semana","Espere a la reapertura del domingo a las 5:00 PM CT"],
+      ["MarketClosed en un día normal de negociación","Festivo bursátil o cierre anticipado","Consulte el calendario de festivos del mercado vigente; el horario varía según el año y el producto"],
+      ["MarketClosed en un símbolo pero no en otro","Ese producto tiene un horario distinto o una pausa programada","Verifique la sesión de ese contrato concreto y cualquier pausa diaria"],
+      ["&ldquo;Liquidation Only&rdquo; / &ldquo;Contract about to expire&rdquo; (error parecido)","No es un problema de horario, sino de renovación o vencimiento","Pase al contrato activo del mes más cercano"],
+    ] },
+    { type: "heading",text: "Evítelo con PickMyTrade" },
+    { type: "paragraph",html: "Si TradingView es el cerebro de sus órdenes en Tradovate, PickMyTrade es el cableado que lleva cada señal a su cuenta, y una canalización más limpia significa menos rechazos evitables:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Dispara solo cuando su estrategia se activa</strong>, las órdenes salen únicamente cuando su alerta de TradingView se dispara de verdad, por lo que una estrategia basada en sesiones tiene muchas menos probabilidades de disparar contra un mercado cerrado.",
+        "<strong class='text-white'>Validación de símbolo y cantidad</strong>, detecta contratos equivocados o símbolos mal formados antes de enrutarlos, para que un símbolo erróneo nunca se haga pasar por un problema de mercado.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replica cada orden válida en todas las cuentas de Tradovate vinculadas en un solo paso, en lugar de enviarlas una a una.",
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de frecuencia</strong>, espacia el flujo de órdenes en las reconexiones para que una ráfaga de alertas no rebote.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous préparez une entrée propre sur ES ou NQ, vous cliquez sur acheter, et Tradovate vous la renvoie aussitôt avec un code de motif sec : <strong class='text-white'>MarketClosed</strong>. C'est l'un des rejets les plus courants de la plateforme, et neuf fois sur dix, il tient à une seule chose, l'horaire. Le contrat que vous tentez de négocier n'est tout simplement pas en session ouverte à l'instant où votre ordre atteint la bourse. Peut-être est-ce la pause de maintenance nocturne. Peut-être l'intervalle du week-end, un jour férié boursier, ou un instrument dont les horaires ne correspondent pas à ceux des contrats sur indices actions que vous négociez d'habitude." },
+    { type: "paragraph",html: "Voici le côté rassurant : contrairement à un blocage de risque ou à un rejet pour marge, MarketClosed n'a presque jamais de rapport avec votre compte. Il s'agit de l'horloge. Ce guide explique précisément ce que signifie l'erreur, les causes qui la déclenchent, comment résoudre chacune d'elles et comment l'empêcher de neutraliser discrètement vos ordres automatisés la nuit." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour les rejets MarketClosed",
+      items: [
+        "<strong class='text-white'>Vérifiez que la session est bien ouverte</strong>, CME Globex fonctionne du dimanche 17h00 CT au vendredi 16h00 CT. Tout ce qui tombe en dehors de cette fenêtre est rejeté.",
+        "<strong class='text-white'>Tenez compte de la pause de maintenance quotidienne</strong>, pas de trading de 16h00 à 17h00 CT, du lundi au jeudi.",
+        "<strong class='text-white'>Vérifiez l'instrument précis, pas seulement « les contrats à terme »</strong>, les contrats sur l'énergie, les métaux, les produits agricoles et les cryptos ont leurs propres horaires, différents de ceux des contrats sur le S&amp;P et le Nasdaq.",
+        "<strong class='text-white'>Surveillez les jours fériés et les fermetures anticipées</strong>, les fermetures de la bourse et les séances raccourcies changent chaque année, consultez donc le calendrier en vigueur.",
+        "<strong class='text-white'>Lisez la vraie raison du rejet</strong>, ouvrez l'ordre rejeté dans le module Orders et vérifiez qu'il indique MarketClosed, et non un blocage voisin lié au risque, à la marge ou à un contrat expiré.",
+        "<strong class='text-white'>Sur les comptes prop ou d'évaluation, vérifiez la fenêtre de trading de la firme</strong>, certaines firmes restreignent encore les horaires, et ces règles varient selon la firme et le compte.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « MarketClosed »" },
+    { type: "paragraph",html: "MarketClosed est la raison que Tradovate renvoie lorsque le moteur d'appariement de la bourse pour ce produit n'accepte pas d'ordres à l'instant où le vôtre arrive. Les contrats à terme ne se négocient pas en continu 24 h sur 24. Chaque contrat a une session définie, ainsi que des pauses programmées et des fermetures les jours fériés. Si vous soumettez un ordre dans l'un de ces intervalles, la bourse le refuse, et Tradovate ne fait que vous relayer ce refus sous la forme MarketClosed." },
+    { type: "paragraph",html: "La nuance qu'il faut comprendre : ce calendrier est fixé par la bourse, pas par Tradovate. Pour la plupart des produits Tradovate, il s'agit de la plateforme Globex de CME Group. Tradovate n'est que le messager. C'est pourquoi vous ne pouvez pas &ldquo;corriger&rdquo; un rejet MarketClosed en modifiant un paramètre du compte, le marché n'est réellement pas ouvert. C'est aussi pourquoi le même ordre qui est rejeté à 16h30 CT passe sans problème à 17h05 CT, une fois la session rouverte." },
+    { type: "paragraph",html: "MarketClosed se confond facilement avec d'autres rejets qui bloquent aussi un ordre, un contrat expiré ou du mauvais mois, un blocage par paramètres de risque ou un message &ldquo;no quote available&rdquo;. Ceux-ci demandent d'autres corrections. Avant de dépanner, ouvrez donc l'ordre et lisez la chaîne exacte de la raison. Résolvez le bon problème." },
+    { type: "heading",text: "Principales causes des rejets MarketClosed" },
+    { type: "heading",text: "1. Vous avez passé l'ordre en dehors de la session régulière de l'instrument" },
+    { type: "paragraph",html: "La cause la plus fréquente, de loin. Les contrats à terme sur indices actions de CME Globex, ES, MES, NQ, MNQ, se négocient du dimanche 17h00 CT au vendredi 16h00 CT. Si votre ordre arrive après la clôture du vendredi, avant la réouverture du dimanche ou pendant une pause quotidienne, il est rejeté avec le motif MarketClosed." },
+    { type: "heading",text: "2. La pause de maintenance quotidienne (16h00–17h00 CT)" },
+    { type: "paragraph",html: "Globex observe une pause de maintenance d'une heure, de 16h00 à 17h00 CT, du lundi au jeudi. C'est un arrêt strict, aucun ordre accepté, aucune exception. Si vous faites du scalping sur le mouvement de fin d'après-midi, vous serez constamment pris au piège, surtout avec une stratégie automatisée qui continue de tirer après 16h00." },
+    { type: "heading",text: "3. L'intervalle du week-end (vendredi 16h00 à dimanche 17h00 CT)" },
+    { type: "paragraph",html: "Une fois la clôture du vendredi à 16h00 CT atteinte, le marché reste fermé tout le week-end et ne rouvre que le dimanche à 17h00 CT. Tout ce que vous soumettez dans cette fenêtre d'environ 49 heures, y compris les alertes déclenchées par des données périmées du week-end, est rejeté." },
+    { type: "heading",text: "4. Jours fériés boursiers et fermetures anticipées" },
+    { type: "paragraph",html: "Les bourses ferment entièrement certains jours fériés américains et raccourcissent la séance, une fermeture anticipée, à d'autres occasions. Les dates exactes et les heures de fermeture anticipée changent chaque année et varient selon le produit, de sorte qu'une session normalement ouverte peut être fermée ou écourtée un jour donné. Consultez le calendrier des jours fériés de la bourse en vigueur plutôt que de supposer que celui de l'an dernier s'applique encore." },
+    { type: "heading",text: "5. Un produit avec des horaires différents ou une interruption programmée" },
+    { type: "paragraph",html: "Tous les contrats à terme ne partagent pas les horaires des indices actions. L'énergie (NYMEX), les métaux (COMEX), les produits agricoles (CBOT) et les cryptos ont chacun leurs propres sessions et pauses. Les contrats sur indices actions observent aussi une brève interruption de règlement de 15h15 à 15h30 CT le dernier jour ouvrable de chaque mois. Si un symbole est rejeté alors qu'un autre se négocie normalement, il est probable que vous vous trouviez dans la fenêtre de fermeture de ce produit précis." },
+    { type: "heading",text: "Corriger les rejets MarketClosed : pas à pas" },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifiez qu'il s'agit bien de MarketClosed", html: "Ne devinez pas. Ouvrez le module <strong class='text-white'>Orders</strong>, cliquez sur l'ordre rejeté et lisez la raison dans les détails de l'ordre. Assurez-vous qu'il s'agit de MarketClosed et non d'un blocage voisin comme un blocage de risque ou un contrat expiré, chacun a une correction différente. Si vous préférez, ouvrez l'ordre dans le module Reports grâce à son numéro d'ordre pour voir tous les détails." },
+        { title: "Comparez l'instrument à ses horaires de trading", html: "Comparez l'heure centrale actuelle à la session publiée du contrat. Ouvrez les spécifications du contrat ou son panneau d'informations pour confirmer les horaires exacts de ce produit, les contrats sur l'énergie, les métaux, les produits agricoles et les cryptos ne suivent pas les horaires des indices actions. Si vous êtes hors de la fenêtre, vous avez votre réponse. Attendez l'ouverture de la session." },
+        { title: "Écartez la pause de maintenance, le week-end ou un jour férié", html: "Si l'horloge indique entre 16h00 et 17h00 CT (lun&ndash;jeu), attendez 17h00 CT et renvoyez l'ordre. Si c'est le week-end, le marché rouvre le dimanche à 17h00 CT. S'il s'agit d'un jour férié ou d'une fermeture anticipée, consultez le calendrier des jours fériés de la bourse en vigueur et, sur un compte prop, les annonces de votre firme, pour savoir quand la session reprend. Une vérification rapide : l'onglet des cotations. Un bid/ask vivant et mobile signifie que le marché est ouvert ; une cotation figée ou vide indique généralement qu'il est fermé." },
+        { title: "Corrigez l'horaire de votre automatisation", html: "Si un bot, une stratégie TradingView ou un bridge continue de tirer sur un marché fermé, le rejet se répète à chaque fois. Ajoutez un filtre horaire à votre stratégie pour qu'elle n'envoie des ordres que pendant la session active de l'instrument, mettez l'automatisation en pause pendant la pause de maintenance et le week-end, et tenez compte des jours fériés. C'est la plus grande source du spam MarketClosed nocturne que vous trouverez dans vos journaux." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Erreur / scénario","Signification","Solution"], rows: [
+      ["<strong class='text-white'>MarketClosed</strong>","La session de la bourse pour l'instrument n'est pas ouverte en ce moment","Attendez l'ouverture de la session ; ne soumettez des ordres que pendant les horaires de trading"],
+      ["Rejeté entre 16h00&ndash;17h00 CT (lun&ndash;jeu)","Pause de maintenance quotidienne de Globex","Renvoyez l'ordre après la réouverture de 17h00 CT"],
+      ["Rejeté le vendredi soir, le samedi ou le dimanche avant 17h00 CT","Intervalle du week-end","Attendez la réouverture du dimanche à 17h00 CT"],
+      ["MarketClosed un jour de trading normal","Jour férié boursier ou fermeture anticipée","Consultez le calendrier des jours fériés de la bourse en vigueur ; les horaires varient selon l'année et le produit"],
+      ["MarketClosed sur un symbole mais pas sur un autre","Ce produit a des horaires différents ou une interruption programmée","Vérifiez la session de ce contrat précis et toute pause quotidienne"],
+      ["&ldquo;Liquidation Only&rdquo; / &ldquo;Contract about to expire&rdquo; (erreur voisine)","Pas un problème d'horaires, mais de roulement ou d'expiration","Passez au contrat actif du mois le plus proche"],
+    ] },
+    { type: "heading",text: "Évitez-le avec PickMyTrade" },
+    { type: "paragraph",html: "Si TradingView est le cerveau derrière vos ordres Tradovate, PickMyTrade est le câblage qui achemine chaque signal vers votre compte, et un pipeline plus propre signifie moins de rejets évitables :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ne tire que lorsque votre stratégie se déclenche</strong>, les ordres ne partent que lorsque votre alerte TradingView se déclenche réellement, si bien qu'une stratégie basée sur les sessions a bien moins de chances de tirer sur un marché fermé.",
+        "<strong class='text-white'>Validation du symbole &amp; de la quantité</strong>, détecte les contrats erronés ou les symboles mal formés avant leur routage, de sorte qu'un mauvais symbole ne se fait jamais passer pour un problème de marché.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, reproduit chaque ordre valide sur tous les comptes Tradovate liés en une seule étape au lieu de les envoyer un par un.",
+        "<strong class='text-white'>Routage respectueux des limites de débit</strong>, espace le flux d'ordres lors des reconnexions afin qu'une rafale d'alertes ne soit pas rejetée.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Prepara un ingresso pulito su ES o NQ, clicca su acquista, e Tradovate lo rimanda indietro subito con un secco codice motivo: <strong class='text-white'>MarketClosed</strong>. È uno dei rifiuti più comuni che incontrerà sulla piattaforma, e nove volte su dieci dipende da una sola cosa, l'orario. Il contratto che sta cercando di negoziare semplicemente non è in una sessione aperta nell'istante in cui il Suo ordine raggiunge la borsa. Forse è la pausa di manutenzione notturna. Forse l'intervallo del fine settimana, un giorno festivo di borsa o uno strumento i cui orari non coincidono con quelli dei futures sugli indici azionari che di solito negozia." },
+    { type: "paragraph",html: "La parte rassicurante: a differenza di un blocco di rischio o di un rifiuto per margine, MarketClosed non riguarda quasi mai il Suo conto. Riguarda l'orologio. Questa guida spiega esattamente che cosa significa l'errore, quali cause lo provocano, come risolvere ciascuna e come evitare che blocchi silenziosamente i Suoi ordini automatizzati durante la notte." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per i rifiuti MarketClosed",
+      items: [
+        "<strong class='text-white'>Confermi che la sessione sia effettivamente aperta</strong>, CME Globex opera dalla domenica alle 17:00 CT al venerdì alle 16:00 CT. Tutto ciò che cade fuori da questa finestra viene rifiutato.",
+        "<strong class='text-white'>Tenga conto della pausa di manutenzione giornaliera</strong>, nessuna negoziazione dalle 16:00 alle 17:00 CT, dal lunedì al giovedì.",
+        "<strong class='text-white'>Controlli lo strumento specifico, non solo i «futures»</strong>, i contratti su energia, metalli, prodotti agricoli e criptovalute hanno orari propri, diversi da quelli dei futures su S&amp;P e Nasdaq.",
+        "<strong class='text-white'>Faccia attenzione ai giorni festivi e alle chiusure anticipate</strong>, le chiusure della borsa e le sessioni abbreviate cambiano ogni anno, quindi consulti il calendario aggiornato.",
+        "<strong class='text-white'>Legga il vero motivo del rifiuto</strong>, apra l'ordine rifiutato nel modulo Orders e confermi che indichi MarketClosed e non un blocco simile dovuto a rischio, margine o contratto scaduto.",
+        "<strong class='text-white'>Sui conti prop o di valutazione, confermi la finestra di trading della società</strong>, alcune società restringono ulteriormente gli orari, e queste regole variano in base alla società e al conto.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significa «MarketClosed»" },
+    { type: "paragraph",html: "MarketClosed è il motivo che Tradovate restituisce quando il motore di abbinamento della borsa per quel prodotto non accetta ordini nell'istante in cui arriva il Suo. I futures non si negoziano ininterrottamente 24 ore su 24. Ogni contratto ha una sessione definita, oltre a pause programmate e chiusure per giorni festivi. Se invia un ordine in uno di questi intervalli, la borsa lo rifiuta e Tradovate si limita a inoltrarLe tale rifiuto come MarketClosed." },
+    { type: "paragraph",html: "La sfumatura che vale la pena capire: questo calendario è stabilito dalla borsa, non da Tradovate. Per la maggior parte dei prodotti Tradovate si tratta della piattaforma Globex di CME Group. Tradovate è solo il messaggero. Ecco perché non può &ldquo;correggere&rdquo; un rifiuto MarketClosed cambiando un'impostazione del conto, il mercato non è davvero aperto. È anche il motivo per cui lo stesso ordine che viene respinto alle 16:30 CT passa senza problemi alle 17:05 CT, quando la sessione riapre." },
+    { type: "paragraph",html: "MarketClosed si confonde facilmente con altri rifiuti che bloccano ugualmente un ordine, un contratto scaduto o del mese sbagliato, un blocco per parametri di rischio o un messaggio &ldquo;no quote available&rdquo;. Questi richiedono soluzioni diverse. Perciò, prima di risolvere il problema, apra l'ordine e legga la stringa esatta del motivo. Risolva il problema giusto." },
+    { type: "heading",text: "Cause principali dei rifiuti MarketClosed" },
+    { type: "heading",text: "1. Ha inviato l'ordine fuori dalla sessione regolare dello strumento" },
+    { type: "paragraph",html: "La causa più frequente, di gran lunga. I futures sugli indici azionari di CME Globex, ES, MES, NQ, MNQ, si negoziano dalla domenica alle 17:00 CT al venerdì alle 16:00 CT. Se il Suo ordine arriva dopo la chiusura del venerdì, prima della riapertura della domenica o durante una pausa giornaliera, viene rifiutato come MarketClosed." },
+    { type: "heading",text: "2. La pausa di manutenzione giornaliera (16:00–17:00 CT)" },
+    { type: "paragraph",html: "Globex osserva una pausa di manutenzione di un'ora, dalle 16:00 alle 17:00 CT, dal lunedì al giovedì. È uno stop totale, nessun ordine accettato, nessuna eccezione. Se fa scalping sul movimento del tardo pomeriggio, ne resterà coinvolto continuamente, soprattutto con una strategia automatizzata che continua a sparare dopo le 16:00." },
+    { type: "heading",text: "3. L'intervallo del fine settimana (venerdì 16:00 – domenica 17:00 CT)" },
+    { type: "paragraph",html: "Una volta raggiunta la chiusura del venerdì alle 16:00 CT, il mercato resta chiuso per tutto il fine settimana e non riapre fino alla domenica alle 17:00 CT. Qualsiasi cosa invii in questa finestra di circa 49 ore, compresi gli alert che scattano su dati obsoleti del fine settimana, viene rifiutata." },
+    { type: "heading",text: "4. Giorni festivi di borsa e chiusure anticipate" },
+    { type: "paragraph",html: "Le borse chiudono completamente in alcuni giorni festivi statunitensi e accorciano la sessione, una chiusura anticipata, in altri. Le date esatte e gli orari di chiusura anticipata cambiano ogni anno e variano in base al prodotto, quindi una sessione normalmente aperta può essere chiusa o abbreviata in un determinato giorno. Consulti il calendario aggiornato dei giorni festivi di borsa invece di dare per scontato che valga ancora quello dell'anno scorso." },
+    { type: "heading",text: "5. Un prodotto con orari diversi o una sospensione programmata" },
+    { type: "paragraph",html: "Non tutti i contratti futures condividono gli orari degli indici azionari. Energia (NYMEX), metalli (COMEX), prodotti agricoli (CBOT) e criptovalute hanno ciascuno sessioni e pause proprie. I futures sugli indici azionari osservano inoltre una breve sospensione per il regolamento dalle 15:15 alle 15:30 CT nell'ultimo giorno lavorativo di ogni mese. Se un simbolo viene rifiutato mentre un altro si negozia regolarmente, è probabile che si trovi nella finestra di chiusura di quello specifico prodotto." },
+    { type: "heading",text: "Come correggere i rifiuti MarketClosed: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confermi che si tratti davvero di MarketClosed", html: "Non tiri a indovinare. Apra il modulo <strong class='text-white'>Orders</strong>, clicchi sull'ordine rifiutato e legga il motivo nei dettagli dell'ordine. Si assicuri che sia MarketClosed e non un blocco simile come un blocco di rischio o un contratto scaduto, ciascuno ha una soluzione diversa. Se preferisce, apra l'ordine nel modulo Reports tramite il suo numero d'ordine per vedere tutti i dettagli." },
+        { title: "Verifichi lo strumento rispetto ai suoi orari di negoziazione", html: "Confronti l'ora centrale attuale con la sessione pubblicata del contratto. Apra le specifiche del contratto o il suo pannello informativo per confermare gli orari esatti di quel prodotto, i contratti su energia, metalli, prodotti agricoli e criptovalute non seguono gli orari degli indici azionari. Se è fuori dalla finestra, ha la Sua risposta. Attenda l'apertura della sessione." },
+        { title: "Escluda la pausa di manutenzione, il fine settimana o un giorno festivo", html: "Se l'orologio segna tra le 16:00 e le 17:00 CT (lun&ndash;gio), attenda le 17:00 CT e reinvii l'ordine. Se è il fine settimana, il mercato riapre la domenica alle 17:00 CT. Se è un giorno festivo o di chiusura anticipata, consulti il calendario aggiornato dei giorni festivi di borsa e, su un conto prop, gli annunci della Sua società, per sapere quando riprende la sessione. Un rapido controllo è la scheda delle quotazioni: un bid/ask vivo e in movimento significa che il mercato è aperto; una quotazione ferma o vuota di solito significa che è chiuso." },
+        { title: "Corregga la tempistica della Sua automazione", html: "Se un bot, una strategia TradingView o un bridge continua a sparare su un mercato chiuso, il rifiuto si ripete ogni singola volta. Aggiunga un filtro orario alla Sua strategia in modo che invii ordini solo durante la sessione attiva dello strumento, metta in pausa l'automazione durante la pausa di manutenzione e il fine settimana e tenga conto dei giorni festivi. È la più grande fonte dello spam MarketClosed notturno che troverà nei Suoi log." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Errore / scenario","Significato","Soluzione"], rows: [
+      ["<strong class='text-white'>MarketClosed</strong>","La sessione di borsa dello strumento non è aperta in questo momento","Attenda l'apertura della sessione; invii ordini solo entro gli orari di negoziazione"],
+      ["Rifiutato tra le 16:00&ndash;17:00 CT (lun&ndash;gio)","Pausa di manutenzione giornaliera di Globex","Reinvii dopo la riapertura delle 17:00 CT"],
+      ["Rifiutato il venerdì sera, il sabato o la domenica prima delle 17:00 CT","Intervallo del fine settimana","Attenda la riapertura della domenica alle 17:00 CT"],
+      ["MarketClosed in un normale giorno di negoziazione","Giorno festivo di borsa o chiusura anticipata","Consulti il calendario aggiornato dei giorni festivi di borsa; gli orari variano in base all'anno e al prodotto"],
+      ["MarketClosed su un simbolo ma non su un altro","Quel prodotto ha orari diversi o una sospensione programmata","Verifichi la sessione di quello specifico contratto e ogni pausa giornaliera"],
+      ["&ldquo;Liquidation Only&rdquo; / &ldquo;Contract about to expire&rdquo; (errore simile)","Non è un problema di orari, ma di rollover o scadenza","Passi al contratto attivo del mese più vicino"],
+    ] },
+    { type: "heading",text: "Lo eviti con PickMyTrade" },
+    { type: "paragraph",html: "Se TradingView è il cervello dietro i Suoi ordini Tradovate, PickMyTrade è il cablaggio che porta ogni segnale al Suo conto, e una pipeline più pulita significa meno rifiuti evitabili:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Spara solo quando la Sua strategia scatta</strong>, gli ordini partono solo quando il Suo alert TradingView scatta davvero, quindi una strategia basata sulle sessioni ha molte meno probabilità di sparare su un mercato chiuso.",
+        "<strong class='text-white'>Validazione di simbolo &amp; quantità</strong>, intercetta contratti errati o simboli malformati prima dell'instradamento, così un simbolo sbagliato non si spaccia mai per un problema di mercato.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replica ogni ordine valido su tutti i conti Tradovate collegati in un solo passaggio invece di inviarli uno alla volta.",
+        "<strong class='text-white'>Instradamento a prova di limiti di frequenza</strong>, distanzia il flusso di ordini alle riconnessioni in modo che una raffica di alert non venga respinta.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Handeln Sie ohne Ablehnungen", es: "Opere sin rechazos", fr: "Tradez sans rejets", it: "Operi senza rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and trade rejection-free.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, verknüpfen Sie noch heute Ihre Alerts und handeln Sie ohne Ablehnungen.", es: "Comience su prueba gratuita de 7 días, vincule sus alertas hoy mismo y opere sin rechazos.", fr: "Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et tradez sans rejets.", it: "Inizi la prova gratuita di 7 giorni, colleghi i Suoi alert oggi stesso e operi senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does MarketClosed mean on Tradovate?", a: "It means the exchange's matching engine for that contract wasn't accepting orders at the moment you submitted, because the session was closed, on a break, or on holiday. It's a timing issue, not an account problem." },
+    { q: "What are the standard futures trading hours on Tradovate?", a: "Most CME Globex products, including equity-index futures like ES and NQ, trade Sunday 5:00 PM CT through Friday 4:00 PM CT, with a daily maintenance break from 4:00 PM to 5:00 PM CT, Monday through Thursday." },
+    { q: "Why did my order reject right around 4:00 PM CT?", a: "You almost certainly hit the daily maintenance break. Globex halts new orders from 4:00 PM to 5:00 PM CT, Monday through Thursday. Wait for the 5:00 PM CT reopen and resend." },
+    { q: "Do all futures contracts have the same trading hours?", a: "No. Energy, metals, agricultural and crypto contracts keep their own sessions and pauses, and equity-index futures add a brief settlement halt on the last business day of each month. Always check the specific instrument's hours." },
+    { q: "Can I trade on Tradovate over the weekend?", a: "No. The market closes Friday at 4:00 PM CT and doesn't reopen until Sunday at 5:00 PM CT. Any order sent in that gap rejects as MarketClosed." },
+    { q: "How do I find the exact reason my order was rejected?", a: "Open the Orders module and click the rejected order to see the reason in the order details, or look it up by order number in the Reports module. That confirms whether it's MarketClosed or a different block." },
+    { q: "Does a MarketClosed rejection mean something is wrong with my account?", a: "Usually not. It reflects the exchange schedule, not your account status. If orders reject during confirmed open hours, look at risk settings, market data, or the contract month instead." },
+    { q: "How do I stop my automated orders from rejecting overnight and on holidays?", a: "Add a time filter to your strategy so it only sends orders during the instrument's live session, pause it across the maintenance break and weekend, and account for holidays. Routing through a disciplined bridge that only forwards genuine alerts also cuts down the noise." },
+  ], de: [
+    { q: "Was bedeutet MarketClosed bei Tradovate?", a: "Es bedeutet, dass die Matching-Engine der Börse für diesen Kontrakt im Moment Ihrer Orderübermittlung keine Orders angenommen hat, weil die Sitzung geschlossen war, pausierte oder ein Feiertag war. Es ist ein Timing-Problem, kein Kontoproblem." },
+    { q: "Wie sind die üblichen Handelszeiten für Futures bei Tradovate?", a: "Die meisten CME-Globex-Produkte, einschließlich Aktienindex-Futures wie ES und NQ, werden von Sonntag 17:00 Uhr CT bis Freitag 16:00 Uhr CT gehandelt, mit einer täglichen Wartungspause von 16:00 bis 17:00 Uhr CT, Montag bis Donnerstag." },
+    { q: "Warum wurde meine Order genau um 16:00 Uhr CT abgelehnt?", a: "Sehr wahrscheinlich haben Sie die tägliche Wartungspause erwischt. Globex nimmt von Montag bis Donnerstag zwischen 16:00 und 17:00 Uhr CT keine neuen Orders an. Warten Sie auf die Wiedereröffnung um 17:00 Uhr CT und senden Sie die Order erneut." },
+    { q: "Haben alle Futures-Kontrakte dieselben Handelszeiten?", a: "Nein. Energie-, Metall-, Agrar- und Krypto-Kontrakte haben eigene Sitzungen und Pausen, und Aktienindex-Futures haben am letzten Geschäftstag jedes Monats zusätzlich eine kurze Abrechnungspause. Prüfen Sie immer die Handelszeiten des jeweiligen Instruments." },
+    { q: "Kann ich bei Tradovate am Wochenende handeln?", a: "Nein. Der Markt schließt am Freitag um 16:00 Uhr CT und öffnet erst wieder am Sonntag um 17:00 Uhr CT. Jede Order in dieser Lücke wird als MarketClosed abgelehnt." },
+    { q: "Wie finde ich den genauen Grund für die Ablehnung meiner Order?", a: "Öffnen Sie das Modul „Orders“ und klicken Sie auf die abgelehnte Order, um den Grund in den Orderdetails zu sehen, oder suchen Sie sie anhand der Ordernummer im Modul „Reports“. So sehen Sie, ob es MarketClosed ist oder eine andere Sperre." },
+    { q: "Bedeutet eine MarketClosed-Ablehnung, dass mit meinem Konto etwas nicht stimmt?", a: "Normalerweise nicht. Sie spiegelt den Börsenhandelsplan wider, nicht den Status Ihres Kontos. Wenn Orders während bestätigter Handelszeiten abgelehnt werden, prüfen Sie stattdessen Risikoeinstellungen, Marktdaten oder den Kontraktmonat." },
+    { q: "Wie verhindere ich, dass meine automatisierten Orders über Nacht und an Feiertagen abgelehnt werden?", a: "Fügen Sie Ihrer Strategie einen Zeitfilter hinzu, sodass sie nur während der Live-Sitzung des Instruments Orders sendet, pausieren Sie sie während der Wartungspause und am Wochenende und berücksichtigen Sie Feiertage. Auch eine diszipliniert arbeitende Bridge, die nur echte Alerts weiterleitet, reduziert das Rauschen." },
+  ], es: [
+    { q: "¿Qué significa MarketClosed en Tradovate?", a: "Significa que el motor de casamiento de órdenes del mercado para ese contrato no aceptaba órdenes en el momento en que usted la envió, porque la sesión estaba cerrada, en pausa o en festivo. Es un problema de horario, no de la cuenta." },
+    { q: "¿Cuál es el horario estándar de negociación de futuros en Tradovate?", a: "La mayoría de los productos de CME Globex, incluidos los futuros de índices bursátiles como ES y NQ, cotizan de domingo a las 5:00 PM CT hasta viernes a las 4:00 PM CT, con una pausa diaria de mantenimiento de 4:00 PM a 5:00 PM CT, de lunes a jueves." },
+    { q: "¿Por qué se rechazó mi orden justo alrededor de las 4:00 PM CT?", a: "Casi con seguridad coincidió con la pausa diaria de mantenimiento. Globex detiene las órdenes nuevas de 4:00 PM a 5:00 PM CT, de lunes a jueves. Espere a la reapertura de las 5:00 PM CT y vuelva a enviarla." },
+    { q: "¿Todos los contratos de futuros tienen el mismo horario?", a: "No. Los contratos de energía, metales, agrícolas y cripto tienen sus propias sesiones y pausas, y los futuros de índices bursátiles añaden una breve pausa de liquidación el último día hábil de cada mes. Consulte siempre el horario del instrumento concreto." },
+    { q: "¿Puedo operar en Tradovate durante el fin de semana?", a: "No. El mercado cierra el viernes a las 4:00 PM CT y no reabre hasta el domingo a las 5:00 PM CT. Cualquier orden enviada en ese intervalo se rechaza como MarketClosed." },
+    { q: "¿Cómo averiguo el motivo exacto del rechazo de mi orden?", a: "Abra el módulo Orders y haga clic en la orden rechazada para ver el motivo en los detalles de la orden, o búsquela por número de orden en el módulo Reports. Así confirmará si es MarketClosed o un bloqueo distinto." },
+    { q: "¿Un rechazo MarketClosed significa que algo va mal en mi cuenta?", a: "Normalmente no. Refleja el horario del mercado, no el estado de su cuenta. Si las órdenes se rechazan durante horas de apertura confirmadas, revise la configuración de riesgo, los datos de mercado o el mes del contrato." },
+    { q: "¿Cómo evito que mis órdenes automatizadas se rechacen de noche y en festivos?", a: "Añada un filtro horario a su estrategia para que solo envíe órdenes durante la sesión activa del instrumento, páusela durante la pausa de mantenimiento y el fin de semana, y tenga en cuenta los festivos. Usar un puente disciplinado que solo reenvía alertas genuinas también reduce el ruido." },
+  ], fr: [
+    { q: "Que signifie MarketClosed sur Tradovate ?", a: "Cela signifie que le moteur d'appariement de la bourse pour ce contrat n'acceptait pas d'ordres au moment où vous avez soumis le vôtre, parce que la session était fermée, en pause ou en jour férié. C'est un problème d'horaire, pas un problème de compte." },
+    { q: "Quels sont les horaires de trading standard des contrats à terme sur Tradovate ?", a: "La plupart des produits CME Globex, y compris les contrats à terme sur indices actions comme ES et NQ, se négocient du dimanche 17h00 CT au vendredi 16h00 CT, avec une pause de maintenance quotidienne de 16h00 à 17h00 CT, du lundi au jeudi." },
+    { q: "Pourquoi mon ordre a-t-il été rejeté juste autour de 16h00 CT ?", a: "Vous avez presque certainement touché la pause de maintenance quotidienne. Globex suspend les nouveaux ordres de 16h00 à 17h00 CT, du lundi au jeudi. Attendez la réouverture de 17h00 CT et renvoyez l'ordre." },
+    { q: "Tous les contrats à terme ont-ils les mêmes horaires de trading ?", a: "Non. Les contrats sur l'énergie, les métaux, les produits agricoles et les cryptos ont leurs propres sessions et pauses, et les contrats sur indices actions ajoutent une brève interruption de règlement le dernier jour ouvrable de chaque mois. Vérifiez toujours les horaires de l'instrument concerné." },
+    { q: "Puis-je trader sur Tradovate pendant le week-end ?", a: "Non. Le marché ferme le vendredi à 16h00 CT et ne rouvre que le dimanche à 17h00 CT. Tout ordre envoyé dans cet intervalle est rejeté avec le motif MarketClosed." },
+    { q: "Comment trouver la raison exacte du rejet de mon ordre ?", a: "Ouvrez le module Orders et cliquez sur l'ordre rejeté pour voir la raison dans les détails de l'ordre, ou recherchez-le par numéro d'ordre dans le module Reports. Vous verrez ainsi s'il s'agit de MarketClosed ou d'un autre blocage." },
+    { q: "Un rejet MarketClosed signifie-t-il qu'il y a un problème avec mon compte ?", a: "En général, non. Il reflète le calendrier de la bourse, pas l'état de votre compte. Si des ordres sont rejetés pendant des heures d'ouverture confirmées, examinez plutôt les paramètres de risque, les données de marché ou le mois du contrat." },
+    { q: "Comment empêcher le rejet de mes ordres automatisés la nuit et les jours fériés ?", a: "Ajoutez un filtre horaire à votre stratégie pour qu'elle n'envoie des ordres que pendant la session active de l'instrument, mettez-la en pause pendant la pause de maintenance et le week-end, et tenez compte des jours fériés. Passer par un bridge rigoureux qui ne transmet que les alertes authentiques réduit aussi le bruit." },
+  ], it: [
+    { q: "Che cosa significa MarketClosed su Tradovate?", a: "Significa che il motore di abbinamento della borsa per quel contratto non accettava ordini nel momento in cui Lei lo ha inviato, perché la sessione era chiusa, in pausa o in giorno festivo. È un problema di orario, non del conto." },
+    { q: "Quali sono gli orari di negoziazione standard dei futures su Tradovate?", a: "La maggior parte dei prodotti CME Globex, compresi i futures sugli indici azionari come ES e NQ, si negozia dalla domenica alle 17:00 CT al venerdì alle 16:00 CT, con una pausa di manutenzione giornaliera dalle 16:00 alle 17:00 CT, dal lunedì al giovedì." },
+    { q: "Perché il mio ordine è stato rifiutato proprio intorno alle 16:00 CT?", a: "Quasi certamente ha incontrato la pausa di manutenzione giornaliera. Globex sospende i nuovi ordini dalle 16:00 alle 17:00 CT, dal lunedì al giovedì. Attenda la riapertura delle 17:00 CT e reinvii l'ordine." },
+    { q: "Tutti i contratti futures hanno gli stessi orari di negoziazione?", a: "No. I contratti su energia, metalli, prodotti agricoli e criptovalute hanno sessioni e pause proprie, e i futures sugli indici azionari prevedono una breve sospensione per il regolamento nell'ultimo giorno lavorativo di ogni mese. Verifichi sempre gli orari dello specifico strumento." },
+    { q: "Posso operare su Tradovate durante il fine settimana?", a: "No. Il mercato chiude il venerdì alle 16:00 CT e non riapre fino alla domenica alle 17:00 CT. Qualsiasi ordine inviato in questo intervallo viene rifiutato come MarketClosed." },
+    { q: "Come trovo il motivo esatto per cui il mio ordine è stato rifiutato?", a: "Apra il modulo Orders e clicchi sull'ordine rifiutato per vedere il motivo nei dettagli dell'ordine, oppure lo cerchi per numero d'ordine nel modulo Reports. In questo modo potrà confermare se si tratta di MarketClosed o di un altro blocco." },
+    { q: "Un rifiuto MarketClosed significa che c'è qualcosa che non va nel mio conto?", a: "Di solito no. Riflette il calendario della borsa, non lo stato del Suo conto. Se gli ordini vengono rifiutati durante orari di apertura confermati, verifichi invece le impostazioni di rischio, i dati di mercato o il mese del contratto." },
+    { q: "Come impedisco che i miei ordini automatizzati vengano rifiutati di notte e nei giorni festivi?", a: "Aggiunga un filtro orario alla Sua strategia in modo che invii ordini solo durante la sessione attiva dello strumento, la metta in pausa durante la pausa di manutenzione e il fine settimana e tenga conto dei giorni festivi. Anche passare da un bridge rigoroso che inoltra solo alert autentici riduce il rumore." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Ähnliche Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von Tradovate, Inc. unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit, bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente scopo educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, pertanto confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

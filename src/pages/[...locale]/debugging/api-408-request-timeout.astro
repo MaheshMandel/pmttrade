@@ -1,0 +1,503 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-408-request-timeout";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API 408 Request Timeout (1 Connection)";
+const META_DESCRIPTION =
+  "Tradovate API 408 Request Timeout means you exceeded your one concurrent connection, close Trader, kill duplicate sessions, and keep the socket alive.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate API 408 Request Timeout (1 conexión)", it: "API Tradovate: errore 408 Request Timeout (1 connessione)" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API 408 Request Timeout (1 Verbindung)", es: "Error 408 Request Timeout de la API de Tradovate (1 conexión)", fr: "Erreur 408 Request Timeout de l'API Tradovate (1 connexion)", it: "Errore 408 Request Timeout dell'API Tradovate (1 connessione)" },
+  dek: { en: "A 408 on Tradovate isn't a slow-network timeout. It means you've blown past the number of connections your account is allowed to hold at once, and a standard account only gets one.", de: "Ein 408-Fehler bei Tradovate ist kein Timeout durch ein langsames Netzwerk. Er bedeutet, dass Sie die Anzahl der Verbindungen überschritten haben, die Ihr Konto gleichzeitig halten darf, und ein Standardkonto erhält nur eine.", es: "Un 408 en Tradovate no es un tiempo de espera agotado por una red lenta. Significa que ha superado el número de conexiones que su cuenta puede mantener a la vez, y una cuenta estándar solo dispone de una.", fr: "Une erreur 408 sur Tradovate n'est pas un délai d'attente dû à un réseau lent. Elle signifie que vous avez dépassé le nombre de connexions que votre compte est autorisé à maintenir en même temps, et un compte standard n'en dispose que d'une seule.", it: "Un errore 408 su Tradovate non è un timeout dovuto a una rete lenta. Significa che ha superato il numero di connessioni che il Suo account può mantenere contemporaneamente, e un account standard ne ha diritto a una sola." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You've got a bot talking to the Tradovate API, orders are flowing, and then out of nowhere the calls start coming back <strong class='text-white'>408 Request Timeout</strong>. On most servers a 408 means &ldquo;you were too slow, I gave up waiting.&rdquo; On Tradovate it means something completely different, and once you know what it's really telling you, the fix takes about thirty seconds. A 408 here is Tradovate's way of saying you've blown past the number of connections your account is allowed to hold at once. A standard account gets exactly <strong class='text-white'>one</strong> concurrent connection. If the Trader web app, a REST session, and your automation are all fighting for that single slot, the extras get bounced with a 408. Close whatever else is logged in as you, make sure only one thing connects at a time, and the error clears. A managed bridge like PickMyTrade sidesteps the whole problem by holding one clean connection for you." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for the 408 Request Timeout Error",
+      items: [
+        "<strong class='text-white'>Close the Trader UI.</strong> If you've got Tradovate Trader open in a browser tab, the desktop app, or on your phone, it's holding your one connection, shut it down before your bot runs.",
+        "<strong class='text-white'>Kill duplicate instances.</strong> A crashed or restarted script that never logged out leaves a ghost session. Confirm only one copy of your app is authenticating.",
+        "<strong class='text-white'>One login at a time.</strong> Don't fire two logins for the same account in parallel, stagger startup so the old session drops before the new one connects.",
+        "<strong class='text-white'>Renew, don't re-auth.</strong> Use <code>/auth/renewAccessToken</code> to extend your session instead of logging in fresh every cycle, which piles on connection churn.",
+        "<strong class='text-white'>Need both? Get the second slot.</strong> To watch Trader <em>and</em> run a bot at once, you need the two-connection add-on, one slot can't do both.",
+        "<strong class='text-white'>Keep the socket alive.</strong> Send a heartbeat every 2.5 seconds so an idle WebSocket doesn't get cut and force a messy reconnect.",
+      ],
+    },
+    { type: "heading", text: "What \"408 Request Timeout\" Means on Tradovate" },
+    { type: "paragraph", html: "In plain HTTP, <code>408 Request Timeout</code> is the server telling a client it waited too long for the request to arrive and closed the door. Tradovate reuses that status code for its own purpose. On this API, a 408 is what you get when you exceed the maximum number of concurrent connections tied to your user. It's not about network latency or a slow request body, it's a capacity signal. The platform is saying, &ldquo;too many of you are logged in as you right now.&rdquo;" },
+    { type: "paragraph", html: "That reframing matters, because if you chase a 408 like a normal timeout, bumping request timeouts, retrying harder, blaming your VPS, you'll get nowhere. The number to look at isn't your latency. It's how many things are authenticated against your account at the exact moment the error fires." },
+    { type: "heading", text: "You Get One Connection. That's the Whole Story." },
+    { type: "paragraph", html: "Here's the rule that explains almost every 408: a standard Tradovate user gets a single established connection to the API per account. That one slot is shared by <em>everything</em> that authenticates as you, the Trader web app, the Trader desktop app, the mobile app, a REST session, and the market-data WebSocket your bot opens. They don't each get their own line. They all reach for the same one." },
+    { type: "paragraph", html: "Tradovate spells out the consequence directly: logging on to Tradovate Trader ends your REST API and WebSocket session, and the reverse is true too. So if your bot is happily streaming quotes and you pop open Trader in a browser tab to eyeball a fill, one of them has to lose. The one that gets bumped starts throwing 408s. Flip it around, your bot reconnects while Trader is open, and now Trader is the one that drops. It feels random until you realize there was only ever room for one." },
+    { type: "heading", text: "Top Causes of the Tradovate 408" },
+    { type: "heading", text: "1. The Trader App Is Open While Your Bot Runs" },
+    { type: "paragraph", html: "This is the everyday culprit. You leave Tradovate Trader open on a second monitor, a phone, or a forgotten browser tab, then start your automation. The bot connects, takes the slot, and Trader, or the bot, depending on timing, starts getting 408s. Anything that shows a live Tradovate session counts, including the mobile app running quietly in the background." },
+    { type: "heading", text: "2. A Restart or Crash Left a Ghost Session" },
+    { type: "paragraph", html: "Your script dies, restarts, and logs in again, but the previous session never cleanly logged out on the server side. For a short window you're holding two sessions against a one-slot account, and the new connection collects 408s until the old one times out. Auto-restart loops make this worse, because they can stack login after login before any of them expire." },
+    { type: "heading", text: "3. The Same API Key Running From Two Places" },
+    { type: "paragraph", html: "Cloud deployments are notorious for this. An auto-scaling group spins up a second container, or you leave a copy running on your laptop and another on a VPS, and both authenticate with the same credentials. Each new login fights the others for the single connection, and the 408s never settle down because nothing ever backs off." },
+    { type: "heading", text: "4. A Tight Reconnect Loop" },
+    { type: "paragraph", html: "When a socket drops, a naive client reconnects immediately, and if it's dropping for another reason (a missed heartbeat, say), you end up hammering login. That flood of connect attempts both trips the connection ceiling and racks up request traffic, so the 408s can get tangled up with rate-limit penalties on top." },
+    { type: "heading", text: "How to Fix the 408 Request Timeout: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Free up your one connection", html: "Close everything else that logs in as you. Sign out of Tradovate Trader in every browser tab, quit the desktop app, and close the mobile app fully (not just background it). Give it a few seconds so the session actually releases on the server. This single step clears the majority of 408s, because most of the time the &ldquo;extra&rdquo; connection is just Trader sitting open." },
+        { title: "Hunt down duplicate sessions", html: "Check for a stale copy of your own app. If your bot crashed and relaunched, an old process may still be authenticated. On a server, list running processes and confirm exactly one instance is live. In a scaled cloud setup, make sure only a single node ever authenticates for a given account, pin the connection to one worker instead of letting every replica log in." },
+        { title: "Stagger your logins and renew, don't re-auth", html: "Design your startup so a new session waits for the old one to drop before connecting. And instead of calling the login endpoint every cycle, which spins up fresh connection churn, extend the session you already have. Send a <code>POST</code> to <code>/auth/renewAccessToken</code> with your still-valid token to get a new expiry without opening a brand-new session. Fewer logins means fewer chances to trip the connection ceiling." },
+        { title: "If you truly need two things at once, add the second slot", html: "Some workflows genuinely need Trader open <em>and</em> a bot running, you want eyes on the ladder while automation manages exits. One connection can't do that. Tradovate offers a paid add-on that raises your ceiling to two concurrent connections; watching Trader plus one API app then fits comfortably. You enable it from your Tradovate account's subscription or add-on settings, the exact menu label has shifted over the years, so open your account management area and look for the connection or subscription add-on that mentions concurrent or dual connections, and confirm it's active before you rely on it." },
+      ],
+    },
+    { type: "quote", html: "One caveat worth burning into memory: even with two slots, a sloppy restart that briefly holds three sessions still throws 408. Two is the ceiling on that plan, not an invitation to open connections freely. The discipline of &ldquo;one clean login at a time&rdquo; still applies, you just have a little more headroom." },
+    { type: "heading", text: "Keep the Connection Alive So It Doesn't Drop" },
+    { type: "paragraph", html: "Half the 408 pain comes from connections dropping and reconnecting badly. Keep the socket healthy and you stop generating the churn that trips the limit in the first place." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeat every 2.5 seconds.</strong> The Tradovate WebSocket expects a heartbeat frame, an empty <code>[]</code> payload, at least every 2.5 seconds, or the server closes it for inactivity. A server that's actively streaming market data won't send its own heartbeats, so it's on you to keep the pulse going.",
+        "<strong class='text-white'>Don't lean on <code>setInterval</code> in a browser.</strong> Background tabs throttle timers, which silently starves your heartbeat and drops the connection. Timestamp each message you receive and send a heartbeat once 2,500 ms have passed since the last one.",
+        "<strong class='text-white'>Use unique request IDs.</strong> Reusing the same integer ID on concurrent requests can confuse the socket and drop it.",
+        "<strong class='text-white'>Reconnect before ~24 hours.</strong> Long-lived sockets get cut around the 24-hour mark, so plan a graceful reconnect rather than waiting for the server to sever it mid-session.",
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Likely Cause", "Fix"],
+      rows: [
+        ["408 the moment the bot connects", "Trader UI (web, desktop, or mobile) is already holding the slot", "Sign out of Trader everywhere, then connect the bot"],
+        ["408 right after a crash or restart", "Ghost session from the previous run hasn't timed out", "Wait for the stale session to expire; ensure one instance logs in"],
+        ["408 that never settles", "Same API key authenticating from two machines or replicas", "Pin the connection to a single node/process"],
+        ["408 even with the add-on", "Three+ sessions briefly held (e.g., overlapping restart)", "Stagger logins; still keep it to one login at a time"],
+        ["Socket drops, then 408 on reconnect", "Missed heartbeats causing a reconnect flood", "Send an empty [] heartbeat every 2.5 s; back off retries"],
+        ["429, not 408", "Too many requests too fast (rate limit)", "Throttle request rate, different problem, different fix"],
+      ],
+    },
+    { type: "heading", text: "Where PickMyTrade Fits" },
+    { type: "paragraph", html: "Juggling a single connection slot by hand is fragile, one stray Trader tab or one messy restart and your automation starts bouncing 408s at the worst possible moment. PickMyTrade sits between TradingView and Tradovate and holds one clean, managed connection so you're never fighting yourself for the slot:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>One managed connection</strong>, the bridge keeps a single, stable session to Tradovate, so duplicate logins and ghost sessions don't stack up against your limit.",
+        "<strong class='text-white'>Automatic session upkeep</strong>, tokens are renewed on schedule and heartbeats keep the socket alive, so it doesn't drop and trigger a reconnect storm.",
+        "<strong class='text-white'>No raw connection plumbing</strong>, you route TradingView alerts and let the platform handle the connect/authenticate/reconnect cycle you'd otherwise babysit in code.",
+        "<strong class='text-white'>Rate-limit-aware routing</strong>, requests are paced so you don't trade a 408 for a 429 penalty.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Ihr Bot kommuniziert mit der Tradovate-API, Orders laufen durch, und dann kommen die Aufrufe plötzlich mit <strong class='text-white'>408 Request Timeout</strong> zurück. Auf den meisten Servern bedeutet ein 408: &ldquo;Sie waren zu langsam, ich habe das Warten aufgegeben.&rdquo; Bei Tradovate bedeutet er etwas völlig anderes, und sobald Sie wissen, was er wirklich sagt, dauert die Behebung etwa dreißig Sekunden. Ein 408 bedeutet hier, dass Sie die Anzahl der Verbindungen überschritten haben, die Ihr Konto gleichzeitig halten darf. Ein Standardkonto erhält genau <strong class='text-white'>eine</strong> gleichzeitige Verbindung. Wenn die Trader-Web-App, eine REST-Sitzung und Ihre Automatisierung alle um diesen einen Platz konkurrieren, werden die zusätzlichen mit einem 408 abgewiesen. Schließen Sie alles andere, was als Sie angemeldet ist, stellen Sie sicher, dass immer nur eine Verbindung besteht, und der Fehler verschwindet. Eine verwaltete Brücke wie PickMyTrade umgeht das gesamte Problem, indem sie eine saubere Verbindung für Sie hält." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste für den Fehler 408 Request Timeout",
+      items: [
+        "<strong class='text-white'>Schließen Sie die Trader-Oberfläche.</strong> Wenn Tradovate Trader in einem Browser-Tab, in der Desktop-App oder auf Ihrem Smartphone geöffnet ist, belegt es Ihre eine Verbindung, beenden Sie es, bevor Ihr Bot läuft.",
+        "<strong class='text-white'>Beenden Sie doppelte Instanzen.</strong> Ein abgestürztes oder neu gestartetes Skript, das sich nie abgemeldet hat, hinterlässt eine Geistersitzung. Stellen Sie sicher, dass sich nur eine Kopie Ihrer App authentifiziert.",
+        "<strong class='text-white'>Nur ein Login gleichzeitig.</strong> Starten Sie nicht zwei Logins für dasselbe Konto parallel, staffeln Sie den Start so, dass die alte Sitzung endet, bevor die neue sich verbindet.",
+        "<strong class='text-white'>Erneuern statt neu anmelden.</strong> Nutzen Sie <code>/auth/renewAccessToken</code>, um Ihre Sitzung zu verlängern, statt sich jeden Zyklus neu anzumelden, was zusätzliche Verbindungswechsel verursacht.",
+        "<strong class='text-white'>Beides nötig? Holen Sie sich den zweiten Platz.</strong> Um Trader <em>und</em> gleichzeitig einen Bot laufen zu lassen, benötigen Sie das Zwei-Verbindungen-Add-on, ein Platz reicht dafür nicht.",
+        "<strong class='text-white'>Halten Sie den Socket am Leben.</strong> Senden Sie alle 2,5 Sekunden einen Heartbeat, damit ein inaktiver WebSocket nicht getrennt wird und einen unsauberen Reconnect erzwingt.",
+      ],
+    },
+    { type: "heading", text: "Was \"408 Request Timeout\" bei Tradovate bedeutet" },
+    { type: "paragraph", html: "In reinem HTTP teilt <code>408 Request Timeout</code> einem Client mit, dass der Server zu lange auf den Eingang der Anfrage gewartet und die Verbindung geschlossen hat. Tradovate verwendet diesen Statuscode für einen eigenen Zweck. Bei dieser API erhalten Sie einen 408, wenn Sie die maximale Anzahl gleichzeitiger Verbindungen für Ihren Benutzer überschreiten. Es geht nicht um Netzwerklatenz oder einen langsamen Request-Body, sondern um ein Kapazitätssignal. Die Plattform sagt damit: &ldquo;Zu viele von Ihnen sind gerade als Sie angemeldet.&rdquo;" },
+    { type: "paragraph", html: "Diese Umdeutung ist wichtig, denn wenn Sie einen 408 wie ein normales Timeout behandeln, Request-Timeouts erhöhen, härter erneut versuchen, Ihren VPS beschuldigen, kommen Sie nicht weiter. Die entscheidende Zahl ist nicht Ihre Latenz. Es ist die Anzahl der Dinge, die genau in dem Moment, in dem der Fehler auftritt, gegen Ihr Konto authentifiziert sind." },
+    { type: "heading", text: "Sie erhalten eine Verbindung. Das ist die ganze Geschichte." },
+    { type: "paragraph", html: "Hier ist die Regel, die fast jeden 408 erklärt: Ein Standard-Tradovate-Nutzer erhält pro Konto eine einzige aktive Verbindung zur API. Dieser eine Platz wird von <em>allem</em> geteilt, was sich als Sie authentifiziert, der Trader-Web-App, der Trader-Desktop-App, der mobilen App, einer REST-Sitzung und dem Marktdaten-WebSocket, den Ihr Bot öffnet. Sie bekommen nicht jeweils eine eigene Leitung. Alle greifen nach derselben." },
+    { type: "paragraph", html: "Tradovate erklärt die Konsequenz direkt: Die Anmeldung bei Tradovate Trader beendet Ihre REST-API- und WebSocket-Sitzung, und umgekehrt gilt dasselbe. Wenn Ihr Bot also gerade fröhlich Kurse streamt und Sie Trader in einem Browser-Tab öffnen, um einen Fill zu prüfen, muss eines von beiden verlieren. Dasjenige, das verdrängt wird, beginnt, 408-Fehler zu werfen. Umgekehrt genauso: Ihr Bot verbindet sich neu, während Trader geöffnet ist, und nun ist Trader dasjenige, das die Verbindung verliert. Es fühlt sich zufällig an, bis Sie erkennen, dass immer nur Platz für eine Verbindung war." },
+    { type: "heading", text: "Häufigste Ursachen für den Tradovate-408" },
+    { type: "heading", text: "1. Die Trader-App ist geöffnet, während Ihr Bot läuft" },
+    { type: "paragraph", html: "Das ist der alltägliche Übeltäter. Sie lassen Tradovate Trader auf einem zweiten Monitor, einem Smartphone oder in einem vergessenen Browser-Tab geöffnet und starten dann Ihre Automatisierung. Der Bot verbindet sich, belegt den Platz, und Trader, oder der Bot, je nach Timing, erhält 408-Fehler. Alles, was eine aktive Tradovate-Sitzung zeigt, zählt, einschließlich der mobilen App, die still im Hintergrund läuft." },
+    { type: "heading", text: "2. Ein Neustart oder Absturz hat eine Geistersitzung hinterlassen" },
+    { type: "paragraph", html: "Ihr Skript stürzt ab, startet neu und meldet sich erneut an, aber die vorherige Sitzung hat sich serverseitig nie sauber abgemeldet. Für ein kurzes Zeitfenster halten Sie zwei Sitzungen gegen ein Konto mit nur einem Platz, und die neue Verbindung sammelt 408-Fehler, bis die alte abläuft. Automatische Neustart-Schleifen verschlimmern das, weil sie Login um Login stapeln können, bevor einer davon abläuft." },
+    { type: "heading", text: "3. Derselbe API-Schlüssel läuft an zwei Orten" },
+    { type: "paragraph", html: "Cloud-Deployments sind dafür berüchtigt. Eine Auto-Scaling-Gruppe startet einen zweiten Container, oder Sie lassen eine Kopie auf Ihrem Laptop und eine weitere auf einem VPS laufen, und beide authentifizieren sich mit denselben Zugangsdaten. Jeder neue Login konkurriert mit den anderen um die einzige Verbindung, und die 408-Fehler beruhigen sich nie, weil nichts jemals zurücksteckt." },
+    { type: "heading", text: "4. Eine zu enge Reconnect-Schleife" },
+    { type: "paragraph", html: "Wenn eine Verbindung abbricht, verbindet sich ein naiver Client sofort neu, und wenn sie aus einem anderen Grund abbricht (etwa einem verpassten Heartbeat), hämmern Sie ständig gegen den Login. Diese Flut von Verbindungsversuchen sprengt sowohl die Verbindungsgrenze als auch die Anfragenlast, sodass sich die 408-Fehler zusätzlich mit Rate-Limit-Strafen vermischen können." },
+    { type: "heading", text: "So beheben Sie 408 Request Timeout: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Machen Sie Ihre eine Verbindung frei", html: "Schließen Sie alles andere, was sich als Sie anmeldet. Melden Sie sich in jedem Browser-Tab von Tradovate Trader ab, beenden Sie die Desktop-App und schließen Sie die mobile App vollständig (nicht nur in den Hintergrund legen). Geben Sie ihr ein paar Sekunden, damit die Sitzung serverseitig tatsächlich freigegeben wird. Dieser eine Schritt behebt die meisten 408-Fehler, denn meistens ist die &ldquo;zusätzliche&rdquo; Verbindung einfach nur ein geöffnetes Trader." },
+        { title: "Spüren Sie doppelte Sitzungen auf", html: "Prüfen Sie auf eine veraltete Kopie Ihrer eigenen App. Wenn Ihr Bot abgestürzt ist und neu gestartet wurde, könnte ein alter Prozess noch authentifiziert sein. Listen Sie auf einem Server die laufenden Prozesse auf und bestätigen Sie, dass genau eine Instanz aktiv ist. In einem skalierten Cloud-Setup stellen Sie sicher, dass sich immer nur ein einzelner Knoten für ein bestimmtes Konto authentifiziert, binden Sie die Verbindung an einen Worker, statt jede Replik sich anmelden zu lassen." },
+        { title: "Staffeln Sie Ihre Logins und erneuern Sie, statt sich neu zu authentifizieren", html: "Gestalten Sie Ihren Start so, dass eine neue Sitzung wartet, bis die alte beendet ist, bevor sie sich verbindet. Und statt bei jedem Zyklus den Login-Endpunkt aufzurufen, was zusätzlichen Verbindungswechsel erzeugt, verlängern Sie die Sitzung, die Sie bereits haben. Senden Sie ein <code>POST</code> an <code>/auth/renewAccessToken</code> mit Ihrem noch gültigen Token, um eine neue Ablaufzeit zu erhalten, ohne eine völlig neue Sitzung zu eröffnen. Weniger Logins bedeuten weniger Gelegenheiten, die Verbindungsgrenze zu reißen." },
+        { title: "Wenn Sie wirklich beides gleichzeitig brauchen, holen Sie sich den zweiten Platz", html: "Manche Workflows brauchen wirklich Trader geöffnet <em>und</em> einen laufenden Bot, Sie wollen die Ladder im Blick behalten, während die Automatisierung Exits verwaltet. Eine Verbindung schafft das nicht. Tradovate bietet ein kostenpflichtiges Add-on, das Ihre Grenze auf zwei gleichzeitige Verbindungen anhebt; Trader plus eine API-App zu beobachten, passt dann problemlos. Sie aktivieren es in den Abonnement- oder Add-on-Einstellungen Ihres Tradovate-Kontos, die genaue Menübezeichnung hat sich im Lauf der Jahre verschoben, öffnen Sie also Ihren Kontobereich und suchen Sie nach dem Verbindungs- oder Abonnement-Add-on, das gleichzeitige oder doppelte Verbindungen erwähnt, und bestätigen Sie, dass es aktiv ist, bevor Sie sich darauf verlassen." },
+      ],
+    },
+    { type: "quote", html: "Ein Vorbehalt, den Sie sich einprägen sollten: Selbst mit zwei Plätzen wirft ein unsauberer Neustart, der kurzzeitig drei Sitzungen hält, immer noch einen 408. Zwei ist die Obergrenze dieses Plans, keine Einladung, Verbindungen beliebig zu öffnen. Die Disziplin von &ldquo;immer nur ein sauberer Login gleichzeitig&rdquo; gilt weiterhin, Sie haben nur etwas mehr Spielraum." },
+    { type: "heading", text: "Halten Sie die Verbindung aktiv, damit sie nicht abbricht" },
+    { type: "paragraph", html: "Ein Großteil des 408-Ärgers entsteht durch Verbindungen, die schlecht abbrechen und sich neu verbinden. Halten Sie den Socket gesund, dann erzeugen Sie erst gar nicht den Wechsel, der das Limit auslöst." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeat alle 2,5 Sekunden.</strong> Der Tradovate-WebSocket erwartet mindestens alle 2,5 Sekunden einen Heartbeat-Frame, ein leeres <code>[]</code>-Payload, sonst schließt der Server ihn wegen Inaktivität. Ein Server, der aktiv Marktdaten streamt, sendet keine eigenen Heartbeats, also liegt es an Ihnen, den Puls am Laufen zu halten.",
+        "<strong class='text-white'>Verlassen Sie sich im Browser nicht auf <code>setInterval</code>.</strong> Hintergrund-Tabs drosseln Timer, was Ihren Heartbeat unbemerkt aushungert und die Verbindung trennt. Versehen Sie jede empfangene Nachricht mit einem Zeitstempel und senden Sie einen Heartbeat, sobald 2.500 ms seit dem letzten vergangen sind.",
+        "<strong class='text-white'>Verwenden Sie eindeutige Request-IDs.</strong> Die Wiederverwendung derselben Integer-ID bei gleichzeitigen Anfragen kann den Socket verwirren und ihn trennen.",
+        "<strong class='text-white'>Verbinden Sie sich vor ~24 Stunden neu.</strong> Langlebige Sockets werden um die 24-Stunden-Marke herum getrennt, planen Sie also einen kontrollierten Reconnect, statt darauf zu warten, dass der Server ihn mitten in der Sitzung kappt.",
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Wahrscheinliche Ursache", "Lösung"],
+      rows: [
+        ["408 im Moment der Bot-Verbindung", "Trader-Oberfläche (Web, Desktop oder mobil) belegt bereits den Platz", "Überall bei Trader abmelden, dann den Bot verbinden"],
+        ["408 direkt nach einem Absturz oder Neustart", "Geistersitzung aus dem vorherigen Lauf ist noch nicht abgelaufen", "Auf das Ablaufen der veralteten Sitzung warten; sicherstellen, dass sich nur eine Instanz anmeldet"],
+        ["408, das sich nie beruhigt", "Derselbe API-Schlüssel authentifiziert sich von zwei Maschinen oder Repliken", "Die Verbindung an einen einzigen Knoten/Prozess binden"],
+        ["408 sogar mit Add-on", "Kurzzeitig drei oder mehr Sitzungen gehalten (z. B. überlappender Neustart)", "Logins staffeln; weiterhin nur ein Login gleichzeitig"],
+        ["Verbindung bricht ab, dann 408 beim Reconnect", "Verpasste Heartbeats verursachen eine Reconnect-Flut", "Alle 2,5 s einen leeren []-Heartbeat senden; Wiederholungen drosseln"],
+        ["429 statt 408", "Zu viele Anfragen zu schnell (Rate-Limit)", "Anfragerate drosseln, anderes Problem, andere Lösung"],
+      ],
+    },
+    { type: "heading", text: "Wo PickMyTrade ansetzt" },
+    { type: "paragraph", html: "Einen einzigen Verbindungsplatz von Hand zu jonglieren ist fragil, ein einzelner vergessener Trader-Tab oder ein unsauberer Neustart, und Ihre Automatisierung beginnt im ungünstigsten Moment mit 408-Fehlern zu kämpfen. PickMyTrade sitzt zwischen TradingView und Tradovate und hält eine saubere, verwaltete Verbindung, sodass Sie nie mit sich selbst um den Platz konkurrieren:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Eine verwaltete Verbindung</strong>, die Brücke hält eine einzige, stabile Sitzung zu Tradovate, sodass sich doppelte Logins und Geistersitzungen nicht gegen Ihr Limit anhäufen.",
+        "<strong class='text-white'>Automatische Sitzungspflege</strong>, Tokens werden planmäßig erneuert und Heartbeats halten den Socket am Leben, sodass er nicht abbricht und einen Reconnect-Sturm auslöst.",
+        "<strong class='text-white'>Keine rohe Verbindungsverwaltung</strong>, Sie leiten TradingView-Alerts weiter und überlassen der Plattform den Verbinden/Authentifizieren/Reconnect-Zyklus, den Sie sonst im Code betreuen müssten.",
+        "<strong class='text-white'>Ratenlimit-bewusstes Routing</strong>, Anfragen werden getaktet, damit Sie einen 408 nicht gegen eine 429-Strafe eintauschen.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Tiene un bot que se comunica con la API de Tradovate, las órdenes fluyen y, de repente, las llamadas empiezan a devolver <strong class='text-white'>408 Request Timeout</strong>. En la mayoría de los servidores, un 408 significa &ldquo;fue demasiado lento, dejé de esperar&rdquo;. En Tradovate significa algo completamente distinto, y en cuanto sepa qué le está diciendo realmente, la solución tarda unos treinta segundos. Aquí, un 408 es la forma que tiene Tradovate de decir que ha superado el número de conexiones que su cuenta puede mantener a la vez. Una cuenta estándar dispone exactamente de <strong class='text-white'>una</strong> conexión simultánea. Si la aplicación web de Trader, una sesión REST y su automatización compiten por ese único puesto, las sesiones adicionales son rechazadas con un 408. Cierre todo lo demás que esté conectado como usted, asegúrese de que solo una cosa se conecte a la vez, y el error desaparece. Un puente gestionado como PickMyTrade evita todo el problema manteniendo una conexión limpia por usted." },
+    {
+      type: "checklist",
+      heading: "Lista rápida de verificación para el error 408 Request Timeout",
+      items: [
+        "<strong class='text-white'>Cierre la interfaz de Trader.</strong> Si tiene Tradovate Trader abierto en una pestaña del navegador, en la aplicación de escritorio o en su teléfono, está ocupando su única conexión, ciérrelo antes de ejecutar su bot.",
+        "<strong class='text-white'>Elimine las instancias duplicadas.</strong> Un script que falló o se reinició sin cerrar sesión deja una sesión fantasma. Confirme que solo una copia de su aplicación se está autenticando.",
+        "<strong class='text-white'>Un inicio de sesión a la vez.</strong> No inicie dos sesiones en paralelo para la misma cuenta, escalone el arranque para que la sesión antigua se cierre antes de que la nueva se conecte.",
+        "<strong class='text-white'>Renueve, no vuelva a autenticarse.</strong> Use <code>/auth/renewAccessToken</code> para prolongar su sesión en lugar de iniciar sesión de nuevo en cada ciclo, lo que genera más rotación de conexiones.",
+        "<strong class='text-white'>¿Necesita ambas cosas? Consiga el segundo puesto.</strong> Para ver Trader <em>y</em> ejecutar un bot a la vez, necesita el complemento de dos conexiones, un solo puesto no puede hacer ambas cosas.",
+        "<strong class='text-white'>Mantenga el socket activo.</strong> Envíe un heartbeat cada 2,5 segundos para que un WebSocket inactivo no se corte y provoque una reconexión desordenada.",
+      ],
+    },
+    { type: "heading", text: "Qué significa \"408 Request Timeout\" en Tradovate" },
+    { type: "paragraph", html: "En HTTP estándar, <code>408 Request Timeout</code> es el servidor indicando a un cliente que esperó demasiado tiempo a que llegara la solicitud y cerró la conexión. Tradovate reutiliza ese código de estado con su propio propósito. En esta API, un 408 es lo que obtiene cuando supera el número máximo de conexiones simultáneas asociadas a su usuario. No se trata de la latencia de red ni de un cuerpo de solicitud lento, es una señal de capacidad. La plataforma le está diciendo: &ldquo;demasiados de ustedes están conectados como usted en este momento&rdquo;." },
+    { type: "paragraph", html: "Ese cambio de enfoque importa, porque si persigue un 408 como si fuera un tiempo de espera normal, aumentando los tiempos de espera de las solicitudes, reintentando con más fuerza, culpando a su VPS, no llegará a ninguna parte. El número que debe observar no es su latencia. Es cuántas cosas están autenticadas contra su cuenta en el momento exacto en que se produce el error." },
+    { type: "heading", text: "Dispone de una conexión. Esa es toda la historia." },
+    { type: "paragraph", html: "Esta es la regla que explica casi todos los 408: un usuario estándar de Tradovate obtiene una única conexión establecida con la API por cuenta. Ese único puesto lo comparte <em>todo</em> lo que se autentica como usted, la aplicación web de Trader, la aplicación de escritorio de Trader, la aplicación móvil, una sesión REST y el WebSocket de datos de mercado que abre su bot. No tienen cada uno su propia línea. Todos compiten por la misma." },
+    { type: "paragraph", html: "Tradovate expone la consecuencia directamente: iniciar sesión en Tradovate Trader finaliza su sesión de API REST y WebSocket, y a la inversa también es cierto. Así que, si su bot está transmitiendo cotizaciones tranquilamente y usted abre Trader en una pestaña del navegador para revisar una ejecución, uno de los dos tiene que perder. El que queda desplazado empieza a lanzar 408. A la inversa, su bot se reconecta mientras Trader está abierto, y ahora Trader es el que se desconecta. Parece aleatorio hasta que se da cuenta de que siempre solo hubo espacio para uno." },
+    { type: "heading", text: "Principales causas del 408 en Tradovate" },
+    { type: "heading", text: "1. La aplicación Trader está abierta mientras su bot se ejecuta" },
+    { type: "paragraph", html: "Este es el culpable habitual. Deja Tradovate Trader abierto en un segundo monitor, un teléfono o una pestaña olvidada del navegador, y luego inicia su automatización. El bot se conecta, ocupa el puesto, y Trader, o el bot, según el momento, empieza a recibir 408. Todo lo que muestre una sesión activa de Tradovate cuenta, incluida la aplicación móvil ejecutándose silenciosamente en segundo plano." },
+    { type: "heading", text: "2. Un reinicio o fallo dejó una sesión fantasma" },
+    { type: "paragraph", html: "Su script falla, se reinicia y vuelve a iniciar sesión, pero la sesión anterior nunca cerró sesión correctamente en el servidor. Durante una breve ventana mantiene dos sesiones contra una cuenta con un solo puesto, y la nueva conexión acumula 408 hasta que la antigua expira. Los bucles de reinicio automático empeoran esto, porque pueden apilar inicio de sesión tras inicio de sesión antes de que ninguno expire." },
+    { type: "heading", text: "3. La misma clave de API ejecutándose desde dos lugares" },
+    { type: "paragraph", html: "Los despliegues en la nube son notorios por esto. Un grupo de autoescalado lanza un segundo contenedor, o deja una copia ejecutándose en su portátil y otra en un VPS, y ambas se autentican con las mismas credenciales. Cada nuevo inicio de sesión compite con los demás por la única conexión, y los 408 nunca se calman porque nada cede nunca." },
+    { type: "heading", text: "4. Un bucle de reconexión demasiado agresivo" },
+    { type: "paragraph", html: "Cuando un socket se cae, un cliente ingenuo se reconecta de inmediato, y si se está cayendo por otro motivo (un heartbeat perdido, por ejemplo), termina martillando el inicio de sesión. Esa avalancha de intentos de conexión tanto supera el límite de conexiones como incrementa el tráfico de solicitudes, así que los 408 pueden mezclarse además con penalizaciones por límite de tasa." },
+    { type: "heading", text: "Cómo solucionar el 408 Request Timeout: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Libere su única conexión", html: "Cierre todo lo demás que inicie sesión como usted. Cierre sesión en Tradovate Trader en cada pestaña del navegador, salga de la aplicación de escritorio y cierre completamente la aplicación móvil (no solo envíela a segundo plano). Espere unos segundos para que la sesión se libere realmente en el servidor. Este único paso resuelve la mayoría de los 408, porque la mayoría de las veces la conexión &ldquo;adicional&rdquo; es simplemente Trader abierto." },
+        { title: "Localice sesiones duplicadas", html: "Compruebe si hay una copia obsoleta de su propia aplicación. Si su bot falló y se reinició, un proceso antiguo puede seguir autenticado. En un servidor, liste los procesos en ejecución y confirme que exactamente una instancia está activa. En una configuración en la nube escalada, asegúrese de que solo un único nodo se autentique para una cuenta determinada, fije la conexión a un worker en lugar de dejar que cada réplica inicie sesión." },
+        { title: "Escalone sus inicios de sesión y renueve, no vuelva a autenticarse", html: "Diseñe su arranque para que una nueva sesión espere a que la antigua se cierre antes de conectarse. Y en lugar de llamar al endpoint de inicio de sesión en cada ciclo, lo que genera nueva rotación de conexiones, prolongue la sesión que ya tiene. Envíe un <code>POST</code> a <code>/auth/renewAccessToken</code> con su token aún válido para obtener una nueva expiración sin abrir una sesión completamente nueva. Menos inicios de sesión significan menos ocasiones de superar el límite de conexiones." },
+        { title: "Si realmente necesita ambas cosas a la vez, añada el segundo puesto", html: "Algunos flujos de trabajo realmente necesitan Trader abierto <em>y</em> un bot en ejecución, quiere tener la vista puesta en la ladder mientras la automatización gestiona las salidas. Una conexión no puede hacer eso. Tradovate ofrece un complemento de pago que eleva su límite a dos conexiones simultáneas; observar Trader más una aplicación de API entonces encaja cómodamente. Lo activa desde la configuración de suscripción o complementos de su cuenta de Tradovate, la etiqueta exacta del menú ha cambiado con los años, así que abra el área de gestión de su cuenta y busque el complemento de conexión o suscripción que mencione conexiones simultáneas o dobles, y confirme que esté activo antes de confiar en él." },
+      ],
+    },
+    { type: "quote", html: "Una advertencia que vale la pena recordar: incluso con dos puestos, un reinicio descuidado que mantiene brevemente tres sesiones sigue arrojando un 408. Dos es el límite de ese plan, no una invitación a abrir conexiones libremente. La disciplina de &ldquo;un solo inicio de sesión limpio a la vez&rdquo; sigue aplicándose, solo tiene un poco más de margen." },
+    { type: "heading", text: "Mantenga la conexión activa para que no se caiga" },
+    { type: "paragraph", html: "Buena parte del dolor de los 408 proviene de conexiones que se caen y se reconectan mal. Mantenga el socket saludable y dejará de generar la rotación que dispara el límite en primer lugar." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeat cada 2,5 segundos.</strong> El WebSocket de Tradovate espera un frame de heartbeat, un payload vacío <code>[]</code>, al menos cada 2,5 segundos, o el servidor lo cierra por inactividad. Un servidor que está transmitiendo activamente datos de mercado no enviará sus propios heartbeats, así que depende de usted mantener el pulso.",
+        "<strong class='text-white'>No dependa de <code>setInterval</code> en un navegador.</strong> Las pestañas en segundo plano limitan los temporizadores, lo que silenciosamente priva a su heartbeat y corta la conexión. Marque con tiempo cada mensaje que reciba y envíe un heartbeat en cuanto hayan pasado 2500 ms desde el último.",
+        "<strong class='text-white'>Use identificadores de solicitud únicos.</strong> Reutilizar el mismo ID entero en solicitudes simultáneas puede confundir al socket y cortarlo.",
+        "<strong class='text-white'>Reconecte antes de las ~24 horas.</strong> Los sockets de larga duración se cortan alrededor de la marca de las 24 horas, así que planifique una reconexión ordenada en lugar de esperar a que el servidor lo corte a mitad de sesión.",
+      ],
+    },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Causa probable", "Solución"],
+      rows: [
+        ["408 en el momento en que el bot se conecta", "La interfaz de Trader (web, escritorio o móvil) ya ocupa el puesto", "Cierre sesión en Trader en todas partes y luego conecte el bot"],
+        ["408 justo después de un fallo o reinicio", "La sesión fantasma de la ejecución anterior no ha expirado", "Espere a que la sesión obsoleta expire; asegúrese de que solo una instancia inicia sesión"],
+        ["408 que nunca se calma", "La misma clave de API se autentica desde dos máquinas o réplicas", "Fije la conexión a un único nodo/proceso"],
+        ["408 incluso con el complemento", "Se mantienen brevemente tres o más sesiones (p. ej., reinicio superpuesto)", "Escalone los inicios de sesión; mantenga siempre un solo inicio de sesión a la vez"],
+        ["El socket se cae y luego 408 al reconectar", "Los heartbeats perdidos provocan una avalancha de reconexiones", "Envíe un heartbeat vacío [] cada 2,5 s; reduzca los reintentos"],
+        ["429, no 408", "Demasiadas solicitudes demasiado rápido (límite de tasa)", "Regule la tasa de solicitudes, problema diferente, solución diferente"],
+      ],
+    },
+    { type: "heading", text: "Dónde encaja PickMyTrade" },
+    { type: "paragraph", html: "Manejar un único puesto de conexión a mano es frágil, una pestaña de Trader olvidada o un reinicio descuidado, y su automatización empieza a rebotar 408 en el peor momento posible. PickMyTrade se sitúa entre TradingView y Tradovate y mantiene una conexión limpia y gestionada para que nunca compita consigo mismo por el puesto:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Una conexión gestionada</strong>, el puente mantiene una única sesión estable con Tradovate, de modo que los inicios de sesión duplicados y las sesiones fantasma no se acumulan contra su límite.",
+        "<strong class='text-white'>Mantenimiento automático de la sesión</strong>, los tokens se renuevan según lo programado y los heartbeats mantienen el socket activo, de modo que no se cae ni desencadena una tormenta de reconexiones.",
+        "<strong class='text-white'>Sin gestión manual de la conexión</strong>, usted enruta las alertas de TradingView y deja que la plataforma gestione el ciclo de conectar/autenticar/reconectar que de otro modo tendría que supervisar en el código.",
+        "<strong class='text-white'>Enrutamiento consciente del límite de tasa</strong>, las solicitudes se ritman para que no cambie un 408 por una penalización 429.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous avez un bot qui communique avec l'API Tradovate, les ordres circulent, puis, sans crier gare, les appels commencent à renvoyer <strong class='text-white'>408 Request Timeout</strong>. Sur la plupart des serveurs, un 408 signifie &ldquo;vous étiez trop lent, j'ai arrêté d'attendre&rdquo;. Sur Tradovate, cela signifie tout autre chose, et une fois que vous savez ce que cela vous indique réellement, la correction prend environ trente secondes. Ici, un 408 est la façon dont Tradovate vous dit que vous avez dépassé le nombre de connexions que votre compte est autorisé à maintenir à la fois. Un compte standard dispose exactement d'<strong class='text-white'>une</strong> connexion simultanée. Si l'application web Trader, une session REST et votre automatisation se disputent tous cette place unique, les connexions en trop sont rejetées avec un 408. Fermez tout ce qui d'autre est connecté en tant que vous, assurez-vous qu'une seule chose se connecte à la fois, et l'erreur disparaît. Un pont géré comme PickMyTrade contourne tout le problème en maintenant une connexion propre pour vous." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide pour l'erreur 408 Request Timeout",
+      items: [
+        "<strong class='text-white'>Fermez l'interface Trader.</strong> Si Tradovate Trader est ouvert dans un onglet du navigateur, dans l'application de bureau ou sur votre téléphone, il occupe votre unique connexion, fermez-le avant de lancer votre bot.",
+        "<strong class='text-white'>Éliminez les instances en double.</strong> Un script planté ou redémarré qui ne s'est jamais déconnecté laisse une session fantôme. Vérifiez qu'une seule copie de votre application s'authentifie.",
+        "<strong class='text-white'>Une seule connexion à la fois.</strong> Ne lancez pas deux connexions en parallèle pour le même compte, échelonnez le démarrage pour que l'ancienne session se termine avant que la nouvelle ne se connecte.",
+        "<strong class='text-white'>Renouvelez, ne vous ré-authentifiez pas.</strong> Utilisez <code>/auth/renewAccessToken</code> pour prolonger votre session au lieu de vous reconnecter à chaque cycle, ce qui accumule du renouvellement de connexions.",
+        "<strong class='text-white'>Besoin des deux ? Obtenez la seconde place.</strong> Pour surveiller Trader <em>et</em> faire tourner un bot en même temps, vous avez besoin de l'add-on à deux connexions, une seule place ne peut pas faire les deux.",
+        "<strong class='text-white'>Maintenez le socket actif.</strong> Envoyez un heartbeat toutes les 2,5 secondes pour qu'un WebSocket inactif ne soit pas coupé et ne force pas une reconnexion désordonnée.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie \"408 Request Timeout\" sur Tradovate" },
+    { type: "paragraph", html: "En HTTP classique, <code>408 Request Timeout</code> signifie que le serveur indique à un client qu'il a attendu trop longtemps l'arrivée de la requête et a fermé la porte. Tradovate réutilise ce code de statut à ses propres fins. Sur cette API, un 408 survient lorsque vous dépassez le nombre maximal de connexions simultanées associées à votre utilisateur. Il ne s'agit pas de latence réseau ni d'un corps de requête lent, c'est un signal de capacité. La plateforme dit en substance : &ldquo;trop de connexions sont ouvertes en votre nom en ce moment&rdquo;." },
+    { type: "paragraph", html: "Ce recadrage compte, car si vous traitez un 408 comme un délai d'attente normal, en augmentant les délais de requête, en réessayant plus fort, en accusant votre VPS, vous n'aboutirez à rien. Le chiffre à surveiller n'est pas votre latence. C'est le nombre d'éléments authentifiés sur votre compte au moment précis où l'erreur se déclenche." },
+    { type: "heading", text: "Vous disposez d'une seule connexion. Voilà toute l'histoire." },
+    { type: "paragraph", html: "Voici la règle qui explique presque tous les 408 : un utilisateur Tradovate standard dispose d'une seule connexion établie à l'API par compte. Cette unique place est partagée par <em>tout</em> ce qui s'authentifie en tant que vous, l'application web Trader, l'application de bureau Trader, l'application mobile, une session REST et le WebSocket de données de marché ouvert par votre bot. Ils n'ont pas chacun leur propre ligne. Tous se disputent la même." },
+    { type: "paragraph", html: "Tradovate expose la conséquence directement : se connecter à Tradovate Trader met fin à votre session API REST et WebSocket, et l'inverse est également vrai. Ainsi, si votre bot diffuse tranquillement des cotations et que vous ouvrez Trader dans un onglet du navigateur pour vérifier une exécution, l'un des deux doit céder. Celui qui est évincé commence à renvoyer des 408. À l'inverse, votre bot se reconnecte pendant que Trader est ouvert, et c'est alors Trader qui se déconnecte. Cela semble aléatoire jusqu'à ce que vous réalisiez qu'il n'y a jamais eu de place que pour un seul." },
+    { type: "heading", text: "Principales causes du 408 sur Tradovate" },
+    { type: "heading", text: "1. L'application Trader est ouverte pendant que votre bot tourne" },
+    { type: "paragraph", html: "C'est le coupable habituel. Vous laissez Tradovate Trader ouvert sur un second écran, un téléphone ou un onglet de navigateur oublié, puis vous démarrez votre automatisation. Le bot se connecte, occupe la place, et Trader, ou le bot, selon le moment, commence à recevoir des 408. Tout ce qui affiche une session Tradovate active compte, y compris l'application mobile tournant discrètement en arrière-plan." },
+    { type: "heading", text: "2. Un redémarrage ou un plantage a laissé une session fantôme" },
+    { type: "paragraph", html: "Votre script plante, redémarre et se reconnecte, mais la session précédente ne s'est jamais correctement déconnectée côté serveur. Pendant une courte fenêtre, vous maintenez deux sessions contre un compte à une seule place, et la nouvelle connexion accumule des 408 jusqu'à ce que l'ancienne expire. Les boucles de redémarrage automatique aggravent cela, car elles peuvent empiler connexion après connexion avant qu'aucune n'expire." },
+    { type: "heading", text: "3. La même clé API tournant depuis deux endroits" },
+    { type: "paragraph", html: "Les déploiements cloud sont notoires pour cela. Un groupe d'auto-scaling lance un second conteneur, ou vous laissez une copie tourner sur votre ordinateur portable et une autre sur un VPS, et les deux s'authentifient avec les mêmes identifiants. Chaque nouvelle connexion se dispute l'unique connexion avec les autres, et les 408 ne se calment jamais parce que rien ne cède jamais." },
+    { type: "heading", text: "4. Une boucle de reconnexion trop agressive" },
+    { type: "paragraph", html: "Lorsqu'un socket se coupe, un client naïf se reconnecte immédiatement, et s'il se coupe pour une autre raison (un heartbeat manqué, par exemple), vous finissez par marteler la connexion. Ce flot de tentatives de connexion fait à la fois dépasser le plafond de connexions et gonfle le trafic de requêtes, si bien que les 408 peuvent s'entremêler avec des pénalités de limite de débit." },
+    { type: "heading", text: "Comment corriger le 408 Request Timeout : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Libérez votre unique connexion", html: "Fermez tout ce qui d'autre se connecte en tant que vous. Déconnectez-vous de Tradovate Trader dans chaque onglet de navigateur, quittez l'application de bureau et fermez complètement l'application mobile (pas seulement en arrière-plan). Laissez passer quelques secondes pour que la session soit réellement libérée côté serveur. Cette seule étape résout la majorité des 408, car la plupart du temps la connexion &ldquo;en trop&rdquo; n'est autre que Trader resté ouvert." },
+        { title: "Traquez les sessions en double", html: "Vérifiez s'il existe une copie obsolète de votre propre application. Si votre bot a planté puis a redémarré, un ancien processus peut être encore authentifié. Sur un serveur, listez les processus en cours et confirmez qu'une seule instance est active. Dans une configuration cloud à l'échelle, assurez-vous qu'un seul nœud s'authentifie pour un compte donné, fixez la connexion à un worker plutôt que de laisser chaque réplique se connecter." },
+        { title: "Échelonnez vos connexions et renouvelez, ne vous ré-authentifiez pas", html: "Concevez votre démarrage pour qu'une nouvelle session attende que l'ancienne se termine avant de se connecter. Et au lieu d'appeler le point de terminaison de connexion à chaque cycle, ce qui génère un nouveau renouvellement de connexions, prolongez la session que vous avez déjà. Envoyez un <code>POST</code> à <code>/auth/renewAccessToken</code> avec votre jeton encore valide pour obtenir une nouvelle expiration sans ouvrir une toute nouvelle session. Moins de connexions signifie moins d'occasions de dépasser le plafond de connexions." },
+        { title: "Si vous avez vraiment besoin des deux à la fois, ajoutez la seconde place", html: "Certains flux de travail ont vraiment besoin que Trader soit ouvert <em>et</em> qu'un bot tourne, vous voulez garder un œil sur la ladder pendant que l'automatisation gère les sorties. Une seule connexion ne peut pas faire cela. Tradovate propose un add-on payant qui relève votre plafond à deux connexions simultanées ; surveiller Trader plus une application API tient alors confortablement. Vous l'activez depuis les paramètres d'abonnement ou d'add-on de votre compte Tradovate, l'intitulé exact du menu a changé au fil des ans, ouvrez donc la zone de gestion de votre compte et cherchez l'add-on de connexion ou d'abonnement mentionnant les connexions simultanées ou doubles, et confirmez qu'il est actif avant d'y compter." },
+      ],
+    },
+    { type: "quote", html: "Une mise en garde à retenir : même avec deux places, un redémarrage bâclé qui maintient brièvement trois sessions déclenche quand même un 408. Deux est le plafond de ce plan, pas une invitation à ouvrir des connexions librement. La discipline consistant à n'avoir &ldquo;qu'une seule connexion propre à la fois&rdquo; s'applique toujours, vous avez simplement un peu plus de marge." },
+    { type: "heading", text: "Maintenez la connexion active pour qu'elle ne se coupe pas" },
+    { type: "paragraph", html: "La moitié des ennuis liés aux 408 vient de connexions qui se coupent et se reconnectent mal. Gardez le socket sain, et vous cesserez de générer le renouvellement qui déclenche la limite en premier lieu." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeat toutes les 2,5 secondes.</strong> Le WebSocket Tradovate attend une trame heartbeat, un payload vide <code>[]</code>, au moins toutes les 2,5 secondes, sinon le serveur le ferme pour inactivité. Un serveur diffusant activement des données de marché n'envoie pas ses propres heartbeats, c'est donc à vous de maintenir le pouls.",
+        "<strong class='text-white'>Ne vous appuyez pas sur <code>setInterval</code> dans un navigateur.</strong> Les onglets en arrière-plan limitent les temporisateurs, ce qui affame silencieusement votre heartbeat et coupe la connexion. Horodatez chaque message reçu et envoyez un heartbeat dès que 2 500 ms se sont écoulées depuis le dernier.",
+        "<strong class='text-white'>Utilisez des identifiants de requête uniques.</strong> Réutiliser le même identifiant entier sur des requêtes simultanées peut désorienter le socket et le faire tomber.",
+        "<strong class='text-white'>Reconnectez-vous avant ~24 heures.</strong> Les sockets de longue durée sont coupés autour de la barre des 24 heures, prévoyez donc une reconnexion en douceur plutôt que d'attendre que le serveur la coupe en pleine session.",
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Cause probable", "Solution"],
+      rows: [
+        ["408 dès que le bot se connecte", "L'interface Trader (web, bureau ou mobile) occupe déjà la place", "Déconnectez-vous de Trader partout, puis connectez le bot"],
+        ["408 juste après un plantage ou un redémarrage", "La session fantôme de l'exécution précédente n'a pas expiré", "Attendez que la session obsolète expire ; assurez-vous qu'une seule instance se connecte"],
+        ["408 qui ne se calme jamais", "La même clé API s'authentifie depuis deux machines ou répliques", "Fixez la connexion à un seul nœud/processus"],
+        ["408 même avec l'add-on", "Trois sessions ou plus maintenues brièvement (ex. redémarrage qui se chevauche)", "Échelonnez les connexions ; conservez toujours une seule connexion à la fois"],
+        ["Le socket se coupe, puis 408 à la reconnexion", "Des heartbeats manqués provoquent un flot de reconnexions", "Envoyez un heartbeat vide [] toutes les 2,5 s ; ralentissez les tentatives"],
+        ["429, pas 408", "Trop de requêtes trop vite (limite de débit)", "Régulez le débit des requêtes, problème différent, solution différente"],
+      ],
+    },
+    { type: "heading", text: "Où PickMyTrade s'intègre" },
+    { type: "paragraph", html: "Jongler à la main avec une seule place de connexion est fragile, un onglet Trader oublié ou un redémarrage bâclé, et votre automatisation se met à essuyer des 408 au pire moment possible. PickMyTrade se place entre TradingView et Tradovate et maintient une connexion unique, propre et gérée, afin que vous ne vous disputiez jamais la place avec vous-même :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Une connexion gérée</strong>, le pont maintient une session unique et stable vers Tradovate, afin que les connexions en double et les sessions fantômes ne s'accumulent pas contre votre limite.",
+        "<strong class='text-white'>Entretien automatique de la session</strong>, les jetons sont renouvelés selon un calendrier et les heartbeats maintiennent le socket actif, afin qu'il ne se coupe pas et ne déclenche pas une tempête de reconnexions.",
+        "<strong class='text-white'>Aucune gestion manuelle de la connexion</strong>, vous acheminez les alertes TradingView et laissez la plateforme gérer le cycle connexion/authentification/reconnexion que vous devriez sinon superviser dans le code.",
+        "<strong class='text-white'>Routage tenant compte des limites de débit</strong>, les requêtes sont cadencées pour que vous n'échangiez pas un 408 contre une pénalité 429.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Ha un bot che comunica con l'API di Tradovate, gli ordini scorrono regolarmente, e poi all'improvviso le chiamate iniziano a restituire <strong class='text-white'>408 Request Timeout</strong>. Sulla maggior parte dei server, un 408 significa &ldquo;è stato troppo lento, ho smesso di aspettare&rdquo;. Su Tradovate significa qualcosa di completamente diverso, e una volta capito cosa le sta davvero dicendo, la soluzione richiede circa trenta secondi. Qui un 408 è il modo in cui Tradovate le dice che ha superato il numero di connessioni che il Suo account può mantenere contemporaneamente. Un account standard ottiene esattamente <strong class='text-white'>una</strong> connessione simultanea. Se l'app web Trader, una sessione REST e la Sua automazione competono tutte per quell'unico posto, le connessioni in eccesso vengono respinte con un 408. Chiuda tutto ciò che è connesso come Lei, si assicuri che si connetta una sola cosa alla volta, e l'errore scompare. Un bridge gestito come PickMyTrade evita del tutto il problema mantenendo per Lei una connessione pulita." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per l'errore 408 Request Timeout",
+      items: [
+        "<strong class='text-white'>Chiuda l'interfaccia Trader.</strong> Se ha Tradovate Trader aperto in una scheda del browser, nell'app desktop o sul telefono, sta occupando la Sua unica connessione, lo chiuda prima di avviare il bot.",
+        "<strong class='text-white'>Elimini le istanze duplicate.</strong> Uno script che si è bloccato o riavviato senza disconnettersi lascia una sessione fantasma. Verifichi che solo una copia della Sua app si stia autenticando.",
+        "<strong class='text-white'>Un accesso alla volta.</strong> Non avvii due accessi in parallelo per lo stesso account, scaglioni l'avvio in modo che la vecchia sessione termini prima che la nuova si connetta.",
+        "<strong class='text-white'>Rinnovi, non riautentichi.</strong> Usi <code>/auth/renewAccessToken</code> per estendere la sessione invece di accedere di nuovo a ogni ciclo, il che accumula un maggiore ricambio di connessioni.",
+        "<strong class='text-white'>Le servono entrambi? Ottenga il secondo posto.</strong> Per osservare Trader <em>e</em> far girare un bot contemporaneamente, serve il componente aggiuntivo a due connessioni, un solo posto non basta per entrambi.",
+        "<strong class='text-white'>Mantenga il socket attivo.</strong> Invii un heartbeat ogni 2,5 secondi affinché un WebSocket inattivo non venga interrotto forzando una riconnessione disordinata.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa \"408 Request Timeout\" su Tradovate" },
+    { type: "paragraph", html: "Nell'HTTP standard, <code>408 Request Timeout</code> indica che il server ha comunicato al client di aver atteso troppo a lungo l'arrivo della richiesta e ha chiuso la connessione. Tradovate riutilizza questo codice di stato per uno scopo proprio. Su questa API, un 408 si verifica quando si supera il numero massimo di connessioni simultanee associate al proprio utente. Non riguarda la latenza di rete né un corpo della richiesta lento, è un segnale di capacità. La piattaforma sta dicendo: &ldquo;troppi accessi risultano attivi con le Sue credenziali in questo momento&rdquo;." },
+    { type: "paragraph", html: "Questo cambio di prospettiva è importante, perché se insegue un 408 come un normale timeout, aumentando i timeout delle richieste, riprovando con più insistenza, incolpando il Suo VPS, non arriverà da nessuna parte. Il numero da osservare non è la latenza. È quante cose risultano autenticate sul Suo account nell'esatto momento in cui si verifica l'errore." },
+    { type: "heading", text: "Una sola connessione. Questa è tutta la storia." },
+    { type: "paragraph", html: "Ecco la regola che spiega quasi ogni 408: un utente Tradovate standard ottiene una singola connessione stabilita con l'API per account. Quell'unico posto è condiviso da <em>tutto</em> ciò che si autentica come Lei, l'app web Trader, l'app desktop Trader, l'app mobile, una sessione REST e il WebSocket dei dati di mercato aperto dal Suo bot. Non hanno ciascuno una propria linea. Competono tutti per la stessa." },
+    { type: "paragraph", html: "Tradovate spiega direttamente la conseguenza: accedere a Tradovate Trader termina la Sua sessione API REST e WebSocket, e vale anche il contrario. Quindi, se il Suo bot sta tranquillamente trasmettendo quotazioni e Lei apre Trader in una scheda del browser per controllare un'esecuzione, uno dei due deve cedere. Quello che viene estromesso inizia a restituire 408. Al contrario, il bot si riconnette mentre Trader è aperto, e ora è Trader a disconnettersi. Sembra casuale finché non si rende conto che c'è sempre stato spazio per uno solo." },
+    { type: "heading", text: "Principali cause del 408 su Tradovate" },
+    { type: "heading", text: "1. L'app Trader è aperta mentre il bot è in esecuzione" },
+    { type: "paragraph", html: "Questo è il colpevole più comune. Lascia Tradovate Trader aperto su un secondo monitor, sul telefono o in una scheda del browser dimenticata, poi avvia l'automazione. Il bot si connette, occupa il posto, e Trader, o il bot, a seconda dei tempi, inizia a ricevere 408. Conta qualsiasi cosa mostri una sessione Tradovate attiva, inclusa l'app mobile in esecuzione silenziosa in background." },
+    { type: "heading", text: "2. Un riavvio o un crash ha lasciato una sessione fantasma" },
+    { type: "paragraph", html: "Lo script si blocca, si riavvia e accede di nuovo, ma la sessione precedente non si è mai disconnessa correttamente lato server. Per una breve finestra temporale mantiene due sessioni contro un account con un solo posto, e la nuova connessione accumula 408 finché quella vecchia non scade. I cicli di riavvio automatico peggiorano la situazione, perché possono accumulare accesso dopo accesso prima che uno di essi scada." },
+    { type: "heading", text: "3. La stessa chiave API in esecuzione da due luoghi" },
+    { type: "paragraph", html: "Le distribuzioni cloud sono note per questo. Un gruppo di auto-scaling avvia un secondo container, oppure lascia una copia in esecuzione sul portatile e un'altra su un VPS, ed entrambe si autenticano con le stesse credenziali. Ogni nuovo accesso compete con gli altri per l'unica connessione, e i 408 non si placano mai perché nulla cede mai." },
+    { type: "heading", text: "4. Un ciclo di riconnessione troppo aggressivo" },
+    { type: "paragraph", html: "Quando un socket si interrompe, un client ingenuo si riconnette immediatamente, e se si interrompe per un altro motivo (un heartbeat mancato, ad esempio), finisce per martellare l'accesso. Quel flusso di tentativi di connessione fa sia superare il limite di connessioni sia aumentare il traffico delle richieste, quindi i 408 possono mescolarsi anche a penalità di rate limit." },
+    { type: "heading", text: "Come risolvere il 408 Request Timeout: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Liberi la Sua unica connessione", html: "Chiuda tutto il resto che accede come Lei. Esca da Tradovate Trader in ogni scheda del browser, chiuda l'app desktop e chiuda completamente l'app mobile (non solo in background). Attenda qualche secondo affinché la sessione venga effettivamente rilasciata sul server. Questo unico passaggio risolve la maggior parte dei 408, perché il più delle volte la connessione &ldquo;extra&rdquo; è semplicemente Trader rimasto aperto." },
+        { title: "Individui le sessioni duplicate", html: "Verifichi la presenza di una copia obsoleta della Sua app. Se il bot si è bloccato ed è stato riavviato, un vecchio processo potrebbe essere ancora autenticato. Su un server, elenchi i processi in esecuzione e confermi che è attiva esattamente un'istanza. In una configurazione cloud scalata, si assicuri che un solo nodo si autentichi mai per un dato account, fissi la connessione a un worker invece di lasciare che ogni replica effettui l'accesso." },
+        { title: "Scaglioni gli accessi e rinnovi, non riautentichi", html: "Progetti l'avvio in modo che una nuova sessione attenda che quella vecchia termini prima di connettersi. E invece di chiamare l'endpoint di accesso a ogni ciclo, il che genera nuovo ricambio di connessioni, estenda la sessione che ha già. Invii una <code>POST</code> a <code>/auth/renewAccessToken</code> con il token ancora valido per ottenere una nuova scadenza senza aprire una sessione del tutto nuova. Meno accessi significano meno occasioni di superare il limite di connessioni." },
+        { title: "Se ha davvero bisogno di entrambe le cose insieme, aggiunga il secondo posto", html: "Alcuni flussi di lavoro hanno davvero bisogno di Trader aperto <em>e</em> di un bot in esecuzione, vuole tenere d'occhio la ladder mentre l'automazione gestisce le uscite. Una sola connessione non può farlo. Tradovate offre un componente aggiuntivo a pagamento che alza il limite a due connessioni simultanee; osservare Trader più un'app API rientra allora comodamente nel limite. Lo attiva dalle impostazioni di abbonamento o dei componenti aggiuntivi del Suo account Tradovate, l'etichetta esatta del menu è cambiata nel corso degli anni, quindi apra l'area di gestione dell'account e cerchi il componente aggiuntivo di connessione o abbonamento che menziona connessioni simultanee o doppie, e confermi che sia attivo prima di farci affidamento." },
+      ],
+    },
+    { type: "quote", html: "Un avvertimento da tenere bene a mente: anche con due posti, un riavvio approssimativo che mantiene brevemente tre sessioni genera comunque un 408. Due è il limite massimo di quel piano, non un invito ad aprire connessioni liberamente. La disciplina di &ldquo;un solo accesso pulito alla volta&rdquo; resta valida, si ha solo un po' più di margine." },
+    { type: "heading", text: "Mantenga la connessione attiva perché non si interrompa" },
+    { type: "paragraph", html: "Metà dei problemi legati al 408 deriva da connessioni che si interrompono e si riconnettono male. Mantenga il socket sano e smetterà di generare il ricambio che fa scattare il limite in primo luogo." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeat ogni 2,5 secondi.</strong> Il WebSocket di Tradovate si aspetta un frame di heartbeat, un payload vuoto <code>[]</code>, almeno ogni 2,5 secondi, altrimenti il server lo chiude per inattività. Un server che sta trasmettendo attivamente dati di mercato non invierà i propri heartbeat, quindi spetta a Lei mantenere il battito.",
+        "<strong class='text-white'>Non si affidi a <code>setInterval</code> in un browser.</strong> Le schede in background limitano i timer, il che affama silenziosamente l'heartbeat e interrompe la connessione. Assegni un timestamp a ogni messaggio ricevuto e invii un heartbeat non appena sono trascorsi 2.500 ms dall'ultimo.",
+        "<strong class='text-white'>Usi ID di richiesta univoci.</strong> Riutilizzare lo stesso ID intero su richieste simultanee può confondere il socket e interromperlo.",
+        "<strong class='text-white'>Si riconnetta prima di ~24 ore.</strong> I socket di lunga durata vengono interrotti intorno alla soglia delle 24 ore, pianifichi quindi una riconnessione controllata invece di attendere che il server la interrompa a metà sessione.",
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Causa probabile", "Soluzione"],
+      rows: [
+        ["408 nel momento in cui il bot si connette", "L'interfaccia Trader (web, desktop o mobile) sta già occupando il posto", "Esca da Trader ovunque, poi connetta il bot"],
+        ["408 subito dopo un crash o un riavvio", "La sessione fantasma dell'esecuzione precedente non è ancora scaduta", "Attenda che la sessione obsoleta scada; si assicuri che acceda una sola istanza"],
+        ["408 che non si placa mai", "La stessa chiave API si autentica da due macchine o repliche", "Fissi la connessione a un unico nodo/processo"],
+        ["408 anche con il componente aggiuntivo", "Tre o più sessioni mantenute brevemente (ad es. riavvio sovrapposto)", "Scaglioni gli accessi; mantenga comunque un solo accesso alla volta"],
+        ["Il socket si interrompe, poi 408 alla riconnessione", "Heartbeat mancati causano un'ondata di riconnessioni", "Invii un heartbeat vuoto [] ogni 2,5 s; riduca i tentativi di ripetizione"],
+        ["429, non 408", "Troppe richieste troppo velocemente (rate limit)", "Limiti la frequenza delle richieste, problema diverso, soluzione diversa"],
+      ],
+    },
+    { type: "heading", text: "Dove si inserisce PickMyTrade" },
+    { type: "paragraph", html: "Gestire manualmente un unico posto di connessione è fragile, una scheda Trader dimenticata o un riavvio approssimativo, e la Sua automazione inizia a incassare 408 nel momento peggiore possibile. PickMyTrade si colloca tra TradingView e Tradovate e mantiene un'unica connessione pulita e gestita, così non compete mai con Se stesso per il posto:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Una connessione gestita</strong>, il bridge mantiene un'unica sessione stabile con Tradovate, così accessi duplicati e sessioni fantasma non si accumulano rispetto al Suo limite.",
+        "<strong class='text-white'>Manutenzione automatica della sessione</strong>, i token vengono rinnovati secondo pianificazione e gli heartbeat mantengono attivo il socket, così non si interrompe né innesca un'ondata di riconnessioni.",
+        "<strong class='text-white'>Nessuna gestione manuale della connessione</strong>, Lei instrada gli avvisi di TradingView e lascia che la piattaforma gestisca il ciclo di connessione/autenticazione/riconnessione che altrimenti dovrebbe supervisionare nel codice.",
+        "<strong class='text-white'>Instradamento attento al rate limit</strong>, le richieste vengono scandite in modo da non scambiare un 408 con una penalità 429.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Wrangling API Connections", de: "Schluss mit dem Kampf um API-Verbindungen", es: "Deje de lidiar con las conexiones de la API", fr: "Arrêtez de vous battre avec les connexions API", it: "Basta lottare con le connessioni API" },
+  ctaText: { en: "Start your free trial, connect TradingView to Tradovate without wrangling API connections.", de: "Starten Sie Ihre kostenlose Testversion und verbinden Sie TradingView mit Tradovate, ohne sich mit API-Verbindungen herumzuschlagen.", es: "Inicie su prueba gratuita y conecte TradingView con Tradovate sin lidiar con conexiones de API.", fr: "Démarrez votre essai gratuit et connectez TradingView à Tradovate sans vous battre avec les connexions API.", it: "Avvii la Sua prova gratuita e colleghi TradingView a Tradovate senza dover gestire le connessioni API." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvii la Sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does a 408 Request Timeout mean on the Tradovate API?", a: "On the Tradovate API a 408 almost always means you've exceeded the maximum number of concurrent connections for your user. A standard account gets one connection slot, so if the Trader app, a REST session, and your bot all try to hold it at once, the extra sessions start returning 408." },
+    { q: "How many connections does a Tradovate account get?", a: "A standard user gets a single established connection to the Tradovate API per account. Logging on to Tradovate Trader ends your REST API and WebSocket session, and vice versa. A paid add-on raises the ceiling to two concurrent connections so you can watch Trader and run an app at the same time." },
+    { q: "Does opening Tradovate Trader disconnect my API bot?", a: "Yes. On a single-connection account, signing into the Trader web or desktop app takes the one slot and ends your API session. When your bot reconnects, it kicks Trader off. Only one of them can hold the connection at a time unless you have the two-connection add-on." },
+    { q: "Will the Dual Connections add-on stop the 408 errors?", a: "It gives you a second slot, so watching Trader plus running one API app fits inside the limit. It won't help if your own code opens more than two sessions at once, a duplicate bot instance left running after a restart still pushes you over the ceiling and the 408s return." },
+    { q: "Why do I still get 408 right after connecting?", a: "Usually a phantom session. A crash or hard restart left an old login active on the server, so when your new instance authenticates you briefly hold one session too many. Wait a minute for the stale session to time out, make sure only one instance logs in, then reconnect." },
+    { q: "How do I keep the API WebSocket from dropping?", a: "Send a heartbeat frame, an empty [] payload, every 2.5 seconds, use unique request IDs, avoid firing calls in tight bursts, and reconnect before the roughly 24-hour connection cap. In a browser, don't rely on setInterval for the heartbeat; background tabs throttle it and the socket dies." },
+    { q: "Is a 408 the same as a 429 rate-limit error?", a: "No. A 429 means you sent too many requests too fast and hit a rate limit. A 408 on Tradovate points at the concurrent-connection ceiling, too many simultaneous sessions, not too many requests. They have different fixes, so read the status code before you react." },
+  ], de: [
+    { q: "Was bedeutet ein 408 Request Timeout bei der Tradovate-API?", a: "Bei der Tradovate-API bedeutet ein 408 fast immer, dass Sie die maximale Anzahl gleichzeitiger Verbindungen für Ihren Nutzer überschritten haben. Ein Standardkonto erhält einen Verbindungsplatz. Wenn also die Trader-App, eine REST-Sitzung und Ihr Bot alle gleichzeitig darum kämpfen, erhalten die zusätzlichen Sitzungen einen 408." },
+    { q: "Wie viele Verbindungen erhält ein Tradovate-Konto?", a: "Ein Standardnutzer erhält pro Konto eine einzige aktive Verbindung zur Tradovate-API. Die Anmeldung bei Tradovate Trader beendet Ihre REST-API- und WebSocket-Sitzung, und umgekehrt genauso. Ein kostenpflichtiges Add-on hebt die Grenze auf zwei gleichzeitige Verbindungen an, sodass Sie Trader beobachten und gleichzeitig eine App laufen lassen können." },
+    { q: "Trennt das Öffnen von Tradovate Trader meinen API-Bot?", a: "Ja. Bei einem Konto mit einer Verbindung belegt die Anmeldung in der Trader-Web- oder Desktop-App den einen Platz und beendet Ihre API-Sitzung. Wenn sich Ihr Bot neu verbindet, wirft er Trader hinaus. Nur eines von beiden kann die Verbindung gleichzeitig halten, es sei denn, Sie haben das Zwei-Verbindungen-Add-on." },
+    { q: "Stoppt das Dual-Connections-Add-on die 408-Fehler?", a: "Es gibt Ihnen einen zweiten Platz, sodass Trader beobachten plus eine API-App laufen lassen innerhalb des Limits passt. Es hilft nicht, wenn Ihr eigener Code mehr als zwei Sitzungen gleichzeitig öffnet, eine doppelte Bot-Instanz, die nach einem Neustart weiterläuft, drückt Sie weiterhin über die Grenze, und die 408-Fehler kehren zurück." },
+    { q: "Warum erhalte ich direkt nach der Verbindung immer noch 408?", a: "Meist eine Phantomsitzung. Ein Absturz oder harter Neustart hat einen alten Login serverseitig aktiv gelassen, sodass Sie beim Authentifizieren Ihrer neuen Instanz kurzzeitig eine Sitzung zu viel halten. Warten Sie eine Minute, bis die veraltete Sitzung abläuft, stellen Sie sicher, dass sich nur eine Instanz anmeldet, und verbinden Sie sich dann neu." },
+    { q: "Wie verhindere ich, dass der API-WebSocket abbricht?", a: "Senden Sie alle 2,5 Sekunden einen Heartbeat-Frame, ein leeres []-Payload, verwenden Sie eindeutige Request-IDs, vermeiden Sie Aufrufe in engen Bursts und verbinden Sie sich vor der etwa 24-stündigen Verbindungsgrenze neu. Verlassen Sie sich im Browser nicht auf setInterval für den Heartbeat, Hintergrund-Tabs drosseln ihn, und der Socket stirbt." },
+    { q: "Ist ein 408 dasselbe wie ein 429-Rate-Limit-Fehler?", a: "Nein. Ein 429 bedeutet, dass Sie zu viele Anfragen zu schnell gesendet und ein Rate-Limit erreicht haben. Ein 408 bei Tradovate weist auf die Grenze gleichzeitiger Verbindungen hin, zu viele gleichzeitige Sitzungen, nicht zu viele Anfragen. Sie haben unterschiedliche Lösungen, lesen Sie also den Statuscode, bevor Sie reagieren." },
+  ], es: [
+    { q: "¿Qué significa un 408 Request Timeout en la API de Tradovate?", a: "En la API de Tradovate, un 408 casi siempre significa que ha superado el número máximo de conexiones simultáneas para su usuario. Una cuenta estándar dispone de un puesto de conexión, así que si la aplicación Trader, una sesión REST y su bot intentan ocuparlo a la vez, las sesiones adicionales empiezan a devolver 408." },
+    { q: "¿Cuántas conexiones obtiene una cuenta de Tradovate?", a: "Un usuario estándar obtiene una única conexión establecida con la API de Tradovate por cuenta. Iniciar sesión en Tradovate Trader finaliza su sesión de API REST y WebSocket, y viceversa. Un complemento de pago eleva el límite a dos conexiones simultáneas para que pueda observar Trader y ejecutar una aplicación al mismo tiempo." },
+    { q: "¿Abrir Tradovate Trader desconecta mi bot de API?", a: "Sí. En una cuenta de una sola conexión, iniciar sesión en la aplicación web o de escritorio de Trader ocupa el único puesto y finaliza su sesión de API. Cuando su bot se reconecta, expulsa a Trader. Solo uno de los dos puede mantener la conexión a la vez, salvo que tenga el complemento de dos conexiones." },
+    { q: "¿El complemento de conexiones duales detendrá los errores 408?", a: "Le da un segundo puesto, de modo que observar Trader más ejecutar una aplicación de API encaja dentro del límite. No ayudará si su propio código abre más de dos sesiones a la vez, una instancia duplicada del bot que sigue ejecutándose tras un reinicio sigue empujándolo por encima del límite y los 408 regresan." },
+    { q: "¿Por qué sigo recibiendo un 408 justo después de conectarme?", a: "Normalmente es una sesión fantasma. Un fallo o reinicio forzado dejó un inicio de sesión antiguo activo en el servidor, así que al autenticar su nueva instancia mantiene brevemente una sesión de más. Espere un minuto a que la sesión obsoleta expire, asegúrese de que solo una instancia inicia sesión y luego reconéctese." },
+    { q: "¿Cómo evito que el WebSocket de la API se caiga?", a: "Envíe un frame de heartbeat, un payload vacío [], cada 2,5 segundos, use identificadores de solicitud únicos, evite lanzar llamadas en ráfagas apretadas y reconéctese antes del límite de conexión de aproximadamente 24 horas. En un navegador, no dependa de setInterval para el heartbeat; las pestañas en segundo plano lo limitan y el socket muere." },
+    { q: "¿Es un 408 lo mismo que un error de límite de tasa 429?", a: "No. Un 429 significa que envió demasiadas solicitudes demasiado rápido y alcanzó un límite de tasa. Un 408 en Tradovate apunta al límite de conexiones simultáneas, demasiadas sesiones a la vez, no demasiadas solicitudes. Tienen soluciones distintas, así que lea el código de estado antes de reaccionar." },
+  ], fr: [
+    { q: "Que signifie un 408 Request Timeout sur l'API Tradovate ?", a: "Sur l'API Tradovate, un 408 signifie presque toujours que vous avez dépassé le nombre maximal de connexions simultanées pour votre utilisateur. Un compte standard dispose d'une place de connexion, donc si l'application Trader, une session REST et votre bot tentent tous de l'occuper en même temps, les sessions en trop commencent à renvoyer un 408." },
+    { q: "Combien de connexions un compte Tradovate obtient-il ?", a: "Un utilisateur standard obtient une seule connexion établie à l'API Tradovate par compte. Se connecter à Tradovate Trader met fin à votre session API REST et WebSocket, et inversement. Un add-on payant relève le plafond à deux connexions simultanées afin que vous puissiez surveiller Trader et faire tourner une application en même temps." },
+    { q: "Ouvrir Tradovate Trader déconnecte-t-il mon bot API ?", a: "Oui. Sur un compte à connexion unique, se connecter à l'application web ou de bureau Trader occupe l'unique place et met fin à votre session API. Lorsque votre bot se reconnecte, il évince Trader. Un seul des deux peut maintenir la connexion à la fois, sauf si vous disposez de l'add-on à deux connexions." },
+    { q: "L'add-on Dual Connections arrêtera-t-il les erreurs 408 ?", a: "Il vous donne une seconde place, de sorte que surveiller Trader plus faire tourner une application API tient dans la limite. Cela n'aidera pas si votre propre code ouvre plus de deux sessions à la fois, une instance de bot en double qui continue de tourner après un redémarrage vous fait quand même dépasser le plafond et les 408 reviennent." },
+    { q: "Pourquoi est-ce que j'obtiens toujours un 408 juste après la connexion ?", a: "Généralement une session fantôme. Un plantage ou un redémarrage brutal a laissé une ancienne connexion active côté serveur, si bien qu'en authentifiant votre nouvelle instance, vous maintenez brièvement une session de trop. Attendez une minute que la session obsolète expire, assurez-vous qu'une seule instance se connecte, puis reconnectez-vous." },
+    { q: "Comment éviter que le WebSocket de l'API ne se coupe ?", a: "Envoyez une trame heartbeat, un payload vide [], toutes les 2,5 secondes, utilisez des identifiants de requête uniques, évitez de lancer des appels en rafales serrées, et reconnectez-vous avant le plafond de connexion d'environ 24 heures. Dans un navigateur, ne comptez pas sur setInterval pour le heartbeat ; les onglets en arrière-plan le limitent et le socket meurt." },
+    { q: "Un 408 est-il la même chose qu'une erreur de limite de débit 429 ?", a: "Non. Un 429 signifie que vous avez envoyé trop de requêtes trop vite et atteint une limite de débit. Un 408 sur Tradovate indique le plafond de connexions simultanées, trop de sessions en même temps, pas trop de requêtes. Ils ont des solutions différentes, lisez donc le code de statut avant de réagir." },
+  ], it: [
+    { q: "Cosa significa un 408 Request Timeout sull'API di Tradovate?", a: "Sull'API di Tradovate, un 408 significa quasi sempre che è stato superato il numero massimo di connessioni simultanee per il proprio utente. Un account standard ottiene un posto di connessione, quindi se l'app Trader, una sessione REST e il bot cercano di occuparlo tutti insieme, le sessioni in eccesso iniziano a restituire 408." },
+    { q: "Quante connessioni ottiene un account Tradovate?", a: "Un utente standard ottiene una singola connessione stabilita con l'API di Tradovate per account. Accedere a Tradovate Trader termina la sessione API REST e WebSocket, e vale anche il contrario. Un componente aggiuntivo a pagamento alza il limite a due connessioni simultanee, così è possibile osservare Trader e far girare un'app contemporaneamente." },
+    { q: "Aprire Tradovate Trader disconnette il mio bot API?", a: "Sì. Su un account a connessione singola, accedere all'app web o desktop di Trader occupa l'unico posto e termina la sessione API. Quando il bot si riconnette, estromette Trader. Solo uno dei due può mantenere la connessione alla volta, a meno che non si disponga del componente aggiuntivo a due connessioni." },
+    { q: "Il componente aggiuntivo Dual Connections fermerà gli errori 408?", a: "Offre un secondo posto, così osservare Trader più far girare un'app API rientra nel limite. Non aiuta se il proprio codice apre più di due sessioni contemporaneamente, un'istanza duplicata del bot rimasta in esecuzione dopo un riavvio continua a superare il limite e i 408 tornano." },
+    { q: "Perché continuo a ricevere un 408 subito dopo la connessione?", a: "Di solito è una sessione fantasma. Un crash o un riavvio forzato ha lasciato un vecchio accesso attivo sul server, quindi quando la nuova istanza si autentica, si mantiene brevemente una sessione di troppo. Attenda un minuto affinché la sessione obsoleta scada, si assicuri che acceda una sola istanza, quindi si riconnetta." },
+    { q: "Come evito che il WebSocket dell'API si interrompa?", a: "Invii un frame di heartbeat, un payload vuoto [], ogni 2,5 secondi, usi ID di richiesta univoci, eviti di lanciare chiamate in raffiche ravvicinate e si riconnetta prima del limite di connessione di circa 24 ore. In un browser, non faccia affidamento su setInterval per l'heartbeat; le schede in background lo limitano e il socket muore." },
+    { q: "Un 408 è la stessa cosa di un errore di rate limit 429?", a: "No. Un 429 significa che sono state inviate troppe richieste troppo velocemente, superando un rate limit. Un 408 su Tradovate indica il limite di connessioni simultanee, troppe sessioni contemporanee, non troppe richieste. Hanno soluzioni diverse, quindi legga il codice di stato prima di reagire." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und weder mit Tradovate, Inc. verbunden noch von diesem unterstützt oder gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie daher immer den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni parrainée par Tradovate, Inc. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel sur la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha uno scopo esclusivamente educativo e informativo e non costituisce una consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre il processo attuale sulla piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

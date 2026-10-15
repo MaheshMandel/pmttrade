@@ -1,0 +1,478 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-webhook-limit-order-slippage";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API/Webhook Limit Order Price Slippage";
+const META_DESCRIPTION =
+  "Limit orders filling a tick or half-tick off your target? Align order prices to the contract's tick size and verify routing to stop rounded fills.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate API/webhook: deslizamiento en órdenes limitadas", fr: "API/webhook Tradovate : glissement des ordres à cours limité", it: "API/webhook Tradovate: slittamento degli ordini limit" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API/Webhook Limit-Order-Preisabweichung beheben", es: "Cómo solucionar el deslizamiento de precio en órdenes limitadas vía API/webhook de Tradovate", fr: "Corriger le glissement de prix des ordres à cours limité via l'API/webhook Tradovate", it: "Come risolvere lo slittamento di prezzo negli ordini limit via API/webhook di Tradovate" },
+  dek: { en: "Your alert says 4100 and the working order shows 4100.50. Nothing crossed the market, the price just got rounded somewhere between your alert and the book. Here's why, and how to stop it.", de: "Ihr Alert sagt 4100, und die aktive Order zeigt 4100,50. Nichts hat den Markt gekreuzt, der Preis wurde irgendwo zwischen Ihrem Alert und dem Orderbuch nur gerundet. Hier erfahren Sie, warum, und wie Sie es stoppen.", es: "Su alerta dice 4100 y la orden activa muestra 4100.50. Nada cruzó el mercado, el precio simplemente se redondeó en algún punto entre su alerta y el libro. Esto es por qué, y cómo detenerlo.", fr: "Votre alerte indique 4100 et l'ordre en cours affiche 4100,50. Rien n'a traversé le marché, le prix a simplement été arrondi quelque part entre votre alerte et le carnet d'ordres. Voici pourquoi, et comment y remédier.", it: "Il vostro alert dice 4100 e l'ordine attivo mostra 4100,50. Niente ha attraversato il mercato, il prezzo è stato semplicemente arrotondato da qualche parte tra il vostro alert e il book. Ecco perché, e come fermarlo." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You set your strategy to close at 4100. The alert fires, the message plainly reads 4100, and yet the working order shows up at 4100.50. Nothing crossed the market, nothing filled at a bad price, the number just <em>changed</em> somewhere between your alert and the order book. That's maddening, and it's the kind of thing people call &ldquo;slippage&rdquo; while quietly knowing it isn't quite that." },
+    { type: "paragraph", html: "Here's the short version: futures prices don't live on a smooth number line. They exist only on a fixed grid of ticks. If the price your strategy hands off isn't an exact multiple of that grid, something has to round it, and the direction it rounds is rarely the one you had in your head. Fix where the price gets aligned, and make sure the limit isn't sitting on the wrong side of the market, and the phantom half-point goes away." },
+    { type: "paragraph", html: "This guide walks through why the price moves, how to pin down which of the three usual causes you're hitting, and exactly what to change so your limits land on the number you meant." },
+    { type: "heading", text: "What \"slippage\" actually means here" },
+    { type: "paragraph", html: "It's worth separating two very different things, because the fix depends on which one you have." },
+    { type: "paragraph", html: "<strong class='text-white'>Real slippage</strong> happens on a <em>market</em> order: you accept whatever the book gives you, and in a fast or thin market that's a few ticks worse than the last print. There's no price to protect, so there's nothing to debug, that's the trade you asked for." },
+    { type: "paragraph", html: "<strong class='text-white'>What you're seeing</strong> is different. A <em>limit</em> order carries a specific price, and that price is getting transformed before it rests on the book. The number in your alert and the number on the working order don't match. That's not the market moving against you; that's your price being reshaped in transit. Good news: reshaped prices are predictable, and predictable means fixable." },
+    { type: "heading", text: "Why the price moves off your target" },
+    { type: "paragraph", html: "Three mechanisms cause almost every case. They can stack, so it's worth knowing all three even if only one is biting you today." },
+    { type: "heading", text: "1. The price isn't on the tick grid" },
+    { type: "paragraph", html: "Every contract has a fixed minimum increment. Send a price that falls between two legal ticks and it gets rounded to the nearest one. That's not a bug, a price off the grid simply can't exist on the exchange, so it has to snap somewhere." },
+    { type: "paragraph", html: "The trouble is that different contracts snap at different sizes, and it's easy to assume the wrong one:" },
+    {
+      type: "table",
+      headers: ["Contract", "Tick size", "Legal prices near 4100 / 75.00 / 2050"],
+      rows: [
+        ["ES, NQ, MES, MNQ", "0.25", "4100.00, 4100.25, 4100.50, 4100.75"],
+        ["CL (crude oil)", "0.01", "75.00, 75.01, 75.02, 75.03"],
+        ["GC, MGC (gold)", "0.10", "2050.00, 2050.10, 2050.20"],
+        ["YM, MYM (Dow)", "1.0", "42100, 42101, 42102"],
+      ],
+    },
+    { type: "paragraph", html: "Say your logic computes a gold exit at 2050.05. There's no such price, GC moves in dimes, so it rounds to 2050.00 or 2050.10, and now your &ldquo;5 cents better&rdquo; exit is a dime off. Confirm the current increment on the exchange's contract spec page before you trust these numbers; the exchange can adjust a tick size, and micro contracts don't always match their full-size sibling." },
+    { type: "heading", text: "2. Floating-point math nudges you across a tick" },
+    { type: "paragraph", html: "This is the sneaky one, and it's usually behind the classic &ldquo;sent 4100, got 4100.50&rdquo; complaint. ES trades in quarters, so both 4100.00 and 4100.50 are perfectly legal. The price didn't round because it was off-grid, it rounded because the value your strategy actually computed wasn't the clean 4100 you saw in the alert text." },
+    { type: "paragraph", html: "Strategies rarely hard-code an exit. They calculate it: an entry minus an offset, a moving-average value, a percentage of a range. Do that in floating-point and you get numbers like 4100.4999999 or 4100.3700001. Round <em>that</em> to the nearest quarter and you can easily land a half-point away from where the round number in your alert made it look like you'd land. The alert message and the price field can even disagree, because one is display text and the other is the value being sent." },
+    { type: "heading", text: "3. The limit is already through the market" },
+    { type: "paragraph", html: "This one <em>is</em> real slippage wearing a limit-order costume. A buy limit priced above the current ask, or a sell limit priced below the current bid, is &ldquo;marketable&rdquo;, it can fill immediately at the best available price instead of resting. So if your strategy computes a limit on the wrong side of the market (a common sign flip: subtracting an offset when you meant to add it), the order crosses the spread and fills at a price that looks nothing like your number." },
+    { type: "paragraph", html: "The tell: rounding errors put you a tick or two off, always in a rounding-shaped way. A marketable limit puts you wherever the book was, which can be several ticks and always on the side that costs you. If the gap is bigger than one tick and consistently against you, suspect the side of the book, not the grid." },
+    { type: "heading", text: "How to fix it, step by step" },
+    {
+      type: "steps",
+      items: [
+        {
+          title: "Read the contract's real tick size",
+          html: "Don't assume, look it up for the exact contract you're trading. Pull the tick size from the platform's contract details, the exchange spec page, or the API, where each contract object exposes a <code>tickSize</code> field (alongside <code>priceFormat</code> and <code>priceFormatType</code> that tell you how the price is scaled and displayed). Micro and full-size contracts can share a tick but not always, and quarterly rolls don't change the tick but do change the symbol.",
+        },
+        {
+          title: "Round every price to the tick before it leaves your strategy",
+          html: "Make the rounding explicit and do it as the last step before you send. The pattern is the same in any language:<br><br><code>rounded = round(rawPrice / tickSize) * tickSize</code><br><br>For ES with a 0.25 tick, a raw value of 4100.37 becomes <code>round(4100.37 / 0.25) * 0.25 = round(16401.48) * 0.25 = 16401 * 0.25 = 4100.25</code>. Now you know precisely what price is going out, because you computed it, not the router. If you want to guarantee you never cross the market, round a buy limit <em>down</em> to the tick and a sell limit <em>up</em>, that keeps the order passive.",
+        },
+        {
+          title: "Kill the floating-point drift",
+          html: "Even after rounding, tiny binary-fraction errors can leave you with 4100.2500001. Snap the result to the contract's decimal precision before sending, format ES/NQ to two decimals, gold to two, crude to two, the Dow to zero. Send the price as a clean number in the field, and don't rely on the human-readable alert text to carry it; the value in the payload is what actually gets placed.",
+        },
+        {
+          title: "Check which side of the book the limit sits on",
+          html: "Before you blame rounding, confirm the direction. For a resting buy, the limit should be at or below the current price; for a resting sell, at or above it. If your computed price crosses that line, you've found a marketable limit, and the fix is in your offset math, check the sign and whether you're working in ticks versus points. Five &ldquo;ticks&rdquo; on ES is 1.25 points, not 5.00; mixing those up throws the price wildly off and often onto the wrong side entirely.",
+        },
+        {
+          title: "Verify the working order matches",
+          html: "Place one order in a simulated account and read it back. The price on the working order in the Orders panel should equal the number you rounded to, to the tick. If it does, you're done. If it doesn't, log the exact raw price, the tick size you used, and the rounded value you sent, then diff them, the mismatch is almost always one of those three inputs, not the platform.",
+        },
+      ],
+    },
+    { type: "heading", text: "If you're routing through a webhook or bridge" },
+    { type: "paragraph", html: "When a TradingView alert drives the order through a bridge, there's an extra handoff where the price can drift. The alert fires with a value, the bridge maps that value into an order payload, and the payload is what reaches the broker. Two things keep it honest." },
+    { type: "paragraph", html: "First, make the <em>strategy</em> the single source of truth for the price, round to the tick inside your Pine logic and pass that exact, pre-rounded number into the alert, rather than sending a raw close and hoping the downstream rounds it the way you'd want. Second, confirm the field the bridge reads is the price field, not a label." },
+    { type: "paragraph", html: "Tired of hand-rounding prices and chasing where a half-tick crept in? PickMyTrade routes your TradingView alerts to Tradovate and handles the tick alignment for you, so the limit that leaves your strategy is the limit that lands on the book." },
+    { type: "heading", text: "How to keep it from coming back" },
+    { type: "paragraph", html: "Once it's fixed, a few habits stop it recurring:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Round in the strategy, always.</strong> Never send a raw computed price and let something downstream decide the tick.",
+        "<strong class='text-white'>Log raw and rounded.</strong> Keep both values in your logs so a stray tick is a two-second diff, not a mystery.",
+        "<strong class='text-white'>Test in sim first.</strong> Fire the alert into a simulated account and eyeball the working price before you trust it with real size.",
+        "<strong class='text-white'>Work in ticks, not points, for offsets.</strong> Decide up front which unit your offsets are in and convert once, in one place.",
+        "<strong class='text-white'>Watch bracket legs too.</strong> Stop and target prices round the same way; if your protective legs land off, the same rounding fix applies. If those legs fail to attach at all, that's a different issue, see our guide on Tradovate API bracket (OSO/OCO) orders failing.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie stellen Ihre Strategie so ein, dass sie bei 4100 schließt. Der Alert feuert, die Nachricht liest eindeutig 4100, und dennoch erscheint die aktive Order bei 4100,50. Nichts hat den Markt gekreuzt, nichts wurde zu einem schlechten Preis gefüllt, die Zahl hat sich einfach irgendwo zwischen Ihrem Alert und dem Orderbuch <em>geändert</em>. Das ist zum Verrücktwerden, und es ist genau die Art von Sache, die Leute &ldquo;Slippage&rdquo; nennen, während sie insgeheim wissen, dass es das nicht ganz ist." },
+    { type: "paragraph", html: "Hier die Kurzfassung: Futures-Preise existieren nicht auf einer glatten Zahlengeraden. Sie existieren nur auf einem festen Raster von Ticks. Wenn der Preis, den Ihre Strategie übergibt, kein exaktes Vielfaches dieses Rasters ist, muss ihn etwas runden, und die Richtung, in die gerundet wird, ist selten die, die Sie im Kopf hatten. Beheben Sie, wo der Preis ausgerichtet wird, und stellen Sie sicher, dass das Limit nicht auf der falschen Marktseite sitzt, dann verschwindet der Phantom-Halbpunkt." },
+    { type: "paragraph", html: "Dieser Leitfaden geht durch, warum sich der Preis bewegt, wie Sie herausfinden, welche der drei üblichen Ursachen bei Ihnen zutrifft, und was Sie genau ändern müssen, damit Ihre Limits auf der Zahl landen, die Sie gemeint haben." },
+    { type: "heading", text: "Was „Slippage“ hier tatsächlich bedeutet" },
+    { type: "paragraph", html: "Es lohnt sich, zwei sehr unterschiedliche Dinge zu trennen, denn die Lösung hängt davon ab, welches der beiden Sie haben." },
+    { type: "paragraph", html: "<strong class='text-white'>Echte Slippage</strong> passiert bei einer <em>Market</em>-Order: Sie akzeptieren, was auch immer das Buch hergibt, und in einem schnellen oder dünnen Markt sind das ein paar Ticks schlechter als der letzte Print. Es gibt keinen Preis zu schützen, also gibt es nichts zu debuggen, das ist genau der Trade, um den Sie gebeten haben." },
+    { type: "paragraph", html: "<strong class='text-white'>Was Sie hier sehen</strong>, ist anders. Eine <em>Limit</em>-Order trägt einen bestimmten Preis, und dieser Preis wird umgeformt, bevor er im Buch liegt. Die Zahl in Ihrem Alert und die Zahl auf der aktiven Order stimmen nicht überein. Das ist nicht der Markt, der sich gegen Sie bewegt; das ist Ihr Preis, der unterwegs umgeformt wird. Die gute Nachricht: umgeformte Preise sind vorhersehbar, und vorhersehbar heißt behebbar." },
+    { type: "heading", text: "Warum sich der Preis von Ihrem Ziel entfernt" },
+    { type: "paragraph", html: "Drei Mechanismen verursachen fast jeden Fall. Sie können sich stapeln, daher lohnt es sich, alle drei zu kennen, selbst wenn heute nur einer Sie beißt." },
+    { type: "heading", text: "1. Der Preis liegt nicht auf dem Tick-Raster" },
+    { type: "paragraph", html: "Jeder Kontrakt hat ein festes Mindestinkrement. Senden Sie einen Preis, der zwischen zwei zulässigen Ticks liegt, wird er auf den nächstgelegenen gerundet. Das ist kein Bug, ein Preis außerhalb des Rasters kann an der Börse schlicht nicht existieren, also muss er irgendwo einrasten." },
+    { type: "paragraph", html: "Das Problem ist, dass verschiedene Kontrakte in unterschiedlichen Größen einrasten, und es ist leicht, die falsche anzunehmen:" },
+    {
+      type: "table",
+      headers: ["Kontrakt", "Tick-Größe", "Zulässige Preise nahe 4100 / 75,00 / 2050"],
+      rows: [
+        ["ES, NQ, MES, MNQ", "0,25", "4100,00, 4100,25, 4100,50, 4100,75"],
+        ["CL (Rohöl)", "0,01", "75,00, 75,01, 75,02, 75,03"],
+        ["GC, MGC (Gold)", "0,10", "2050,00, 2050,10, 2050,20"],
+        ["YM, MYM (Dow)", "1,0", "42100, 42101, 42102"],
+      ],
+    },
+    { type: "paragraph", html: "Nehmen wir an, Ihre Logik berechnet einen Gold-Ausstieg bei 2050,05. Diesen Preis gibt es nicht, GC bewegt sich in Zehntel-Schritten, sodass er auf 2050,00 oder 2050,10 gerundet wird, und jetzt ist Ihr „5 Cent besserer“ Ausstieg um einen ganzen Dime daneben. Bestätigen Sie das aktuelle Inkrement auf der Kontrakt-Spezifikationsseite der Börse, bevor Sie diesen Zahlen vertrauen; die Börse kann eine Tick-Größe anpassen, und Mikro-Kontrakte stimmen nicht immer mit ihrem vollformatigen Geschwisterkontrakt überein." },
+    { type: "heading", text: "2. Fließkomma-Mathematik schubst Sie über einen Tick" },
+    { type: "paragraph", html: "Das ist die hinterhältige Ursache, und sie steckt meist hinter der klassischen Beschwerde „4100 gesendet, 4100,50 erhalten“. ES handelt in Vierteln, sodass sowohl 4100,00 als auch 4100,50 vollkommen zulässig sind. Der Preis wurde nicht gerundet, weil er außerhalb des Rasters lag, er wurde gerundet, weil der Wert, den Ihre Strategie tatsächlich berechnet hat, nicht die glatte 4100 war, die Sie im Alert-Text gesehen haben." },
+    { type: "paragraph", html: "Strategien programmieren einen Ausstieg selten fest ein. Sie berechnen ihn: ein Einstieg minus ein Offset, ein gleitender Durchschnittswert, ein Prozentsatz einer Range. Machen Sie das in Fließkomma, erhalten Sie Zahlen wie 4100,4999999 oder 4100,3700001. Runden Sie <em>das</em> auf das nächste Viertel, können Sie leicht einen Halbpunkt von dort landen, wo die runde Zahl in Ihrem Alert es aussehen ließ, als würden Sie landen. Alert-Nachricht und Preisfeld können sogar voneinander abweichen, weil eines Anzeigetext ist und das andere der tatsächlich gesendete Wert." },
+    { type: "heading", text: "3. Das Limit ist bereits durch den Markt gegangen" },
+    { type: "paragraph", html: "Das <em>ist</em> tatsächlich echte Slippage im Kostüm einer Limit-Order. Ein Kauf-Limit, das über dem aktuellen Ask liegt, oder ein Verkaufs-Limit, das unter dem aktuellen Bid liegt, ist „marktfähig“, es kann sofort zum bestverfügbaren Preis gefüllt werden, statt zu liegen. Wenn Ihre Strategie also ein Limit auf der falschen Marktseite berechnet (ein häufiger Vorzeichenfehler: ein Offset subtrahieren, wenn Sie eigentlich addieren wollten), kreuzt die Order den Spread und wird zu einem Preis gefüllt, der Ihrer Zahl in nichts ähnelt." },
+    { type: "paragraph", html: "Der Hinweis: Rundungsfehler bringen Sie einen oder zwei Ticks daneben, immer in einer rundungsförmigen Art. Ein marktfähiges Limit bringt Sie dorthin, wo das Buch gerade stand, was mehrere Ticks sein können und immer auf der Seite, die Sie etwas kostet. Ist die Lücke größer als ein Tick und konsequent gegen Sie, vermuten Sie die Marktseite, nicht das Raster." },
+    { type: "heading", text: "So beheben Sie es, Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        {
+          title: "Die tatsächliche Tick-Größe des Kontrakts lesen",
+          html: "Nehmen Sie nichts an, schlagen Sie es für den genauen Kontrakt nach, den Sie handeln. Holen Sie die Tick-Größe aus den Kontraktdetails der Plattform, der Spezifikationsseite der Börse oder der API, wo jedes Kontraktobjekt ein Feld <code>tickSize</code> offenlegt (neben <code>priceFormat</code> und <code>priceFormatType</code>, die Ihnen sagen, wie der Preis skaliert und angezeigt wird). Mikro- und Vollformat-Kontrakte können sich einen Tick teilen, aber nicht immer, und Quartals-Rollovers ändern den Tick nicht, ändern aber das Symbol.",
+        },
+        {
+          title: "Jeden Preis vor Verlassen der Strategie auf den Tick runden",
+          html: "Machen Sie das Runden explizit und tun Sie es als letzten Schritt vor dem Senden. Das Muster ist in jeder Sprache dasselbe:<br><br><code>rounded = round(rawPrice / tickSize) * tickSize</code><br><br>Für ES mit einem 0,25-Tick wird aus einem Rohwert von 4100,37: <code>round(4100.37 / 0.25) * 0.25 = round(16401.48) * 0.25 = 16401 * 0.25 = 4100.25</code>. Jetzt wissen Sie genau, welcher Preis rausgeht, weil Sie ihn berechnet haben, nicht der Router. Wenn Sie garantieren wollen, dass Sie den Markt nie kreuzen, runden Sie ein Kauf-Limit auf den Tick <em>nach unten</em> und ein Verkaufs-Limit <em>nach oben</em>, das hält die Order passiv.",
+        },
+        {
+          title: "Die Fließkomma-Abweichung eliminieren",
+          html: "Selbst nach dem Runden können winzige Binärbruch-Fehler Ihnen 4100,2500001 hinterlassen. Rasten Sie das Ergebnis vor dem Senden auf die Dezimalgenauigkeit des Kontrakts ein, formatieren Sie ES/NQ auf zwei Dezimalstellen, Gold auf zwei, Rohöl auf zwei, den Dow auf null. Senden Sie den Preis als saubere Zahl im Feld, und verlassen Sie sich nicht darauf, dass der menschenlesbare Alert-Text ihn trägt; der Wert im Payload ist es, der tatsächlich platziert wird.",
+        },
+        {
+          title: "Prüfen, auf welcher Seite des Buchs das Limit liegt",
+          html: "Bevor Sie dem Runden die Schuld geben, bestätigen Sie die Richtung. Bei einem liegenden Kauf sollte das Limit auf oder unter dem aktuellen Preis liegen; bei einem liegenden Verkauf auf oder über ihm. Kreuzt Ihr berechneter Preis diese Linie, haben Sie ein marktfähiges Limit gefunden, und die Lösung liegt in Ihrer Offset-Mathematik, prüfen Sie das Vorzeichen und ob Sie in Ticks statt in Punkten rechnen. Fünf „Ticks“ bei ES sind 1,25 Punkte, nicht 5,00; das zu vermischen, wirft den Preis wild daneben und oft komplett auf die falsche Seite.",
+        },
+        {
+          title: "Prüfen, ob die aktive Order übereinstimmt",
+          html: "Platzieren Sie eine Order in einem simulierten Konto und lesen Sie sie zurück. Der Preis der aktiven Order im Orders-Panel sollte der Zahl entsprechen, auf die Sie gerundet haben, tickgenau. Falls ja, sind Sie fertig. Falls nicht, protokollieren Sie den exakten Rohpreis, die verwendete Tick-Größe und den gesendeten gerundeten Wert, und vergleichen Sie sie, die Abweichung liegt fast immer in einer dieser drei Eingaben, nicht in der Plattform.",
+        },
+      ],
+    },
+    { type: "heading", text: "Wenn Sie über einen Webhook oder eine Bridge routen" },
+    { type: "paragraph", html: "Wenn ein TradingView-Alert die Order über eine Bridge steuert, gibt es eine zusätzliche Übergabe, bei der der Preis abdriften kann. Der Alert feuert mit einem Wert, die Bridge bildet diesen Wert auf ein Order-Payload ab, und das Payload ist es, was den Broker erreicht. Zwei Dinge halten das sauber." },
+    { type: "paragraph", html: "Erstens: Machen Sie die <em>Strategie</em> zur einzigen Wahrheitsquelle für den Preis, runden Sie innerhalb Ihrer Pine-Logik auf den Tick und übergeben Sie diese exakte, vorab gerundete Zahl an den Alert, statt einen rohen Schlusskurs zu senden und zu hoffen, dass das nachgelagerte System so rundet, wie Sie es wollen. Zweitens: Bestätigen Sie, dass das Feld, das die Bridge liest, das Preisfeld ist, kein Label." },
+    { type: "paragraph", html: "Haben Sie es satt, Preise von Hand zu runden und nachzuverfolgen, wo sich ein halber Tick eingeschlichen hat? PickMyTrade routet Ihre TradingView-Alerts zu Tradovate und übernimmt die Tick-Ausrichtung für Sie, sodass das Limit, das Ihre Strategie verlässt, das Limit ist, das im Buch landet." },
+    { type: "heading", text: "So verhindern Sie, dass es wiederkommt" },
+    { type: "paragraph", html: "Ist es einmal behoben, verhindern ein paar Gewohnheiten das Wiederauftreten:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>In der Strategie runden, immer.</strong> Senden Sie nie einen roh berechneten Preis und lassen Sie etwas Nachgelagertes den Tick entscheiden.",
+        "<strong class='text-white'>Rohwert und gerundeten Wert protokollieren.</strong> Halten Sie beide Werte in Ihren Logs fest, damit ein verirrter Tick ein Zwei-Sekunden-Diff ist, kein Rätsel.",
+        "<strong class='text-white'>Zuerst in der Simulation testen.</strong> Feuern Sie den Alert in ein simuliertes Konto und prüfen Sie den aktiven Preis mit bloßem Auge, bevor Sie ihm echtes Volumen anvertrauen.",
+        "<strong class='text-white'>Bei Offsets in Ticks rechnen, nicht in Punkten.</strong> Legen Sie vorab fest, in welcher Einheit Ihre Offsets sind, und rechnen Sie einmal um, an einer Stelle.",
+        "<strong class='text-white'>Auch die Bracket-Beine im Auge behalten.</strong> Stop- und Target-Preise runden auf dieselbe Weise; landen Ihre schützenden Beine daneben, gilt dieselbe Rundungslösung. Hängen sich diese Beine gar nicht erst an, ist das ein anderes Problem, siehe unseren Leitfaden zu fehlschlagenden Tradovate API Bracket-Orders (OSO/OCO).",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Configura su estrategia para cerrar en 4100. La alerta se dispara, el mensaje claramente dice 4100, y sin embargo la orden activa aparece en 4100.50. Nada cruzó el mercado, nada se ejecutó a un precio malo, el número simplemente <em>cambió</em> en algún punto entre su alerta y el libro de órdenes. Eso es exasperante, y es el tipo de cosa que la gente llama &ldquo;slippage&rdquo; mientras sabe en silencio que no es del todo eso." },
+    { type: "paragraph", html: "Aquí va la versión corta: los precios de futuros no viven en una recta numérica continua. Existen solo en una cuadrícula fija de ticks. Si el precio que su estrategia entrega no es un múltiplo exacto de esa cuadrícula, algo tiene que redondearlo, y la dirección en que redondea rara vez es la que tenía usted en mente. Corrija dónde se alinea el precio, y asegúrese de que el límite no esté en el lado equivocado del mercado, y el medio punto fantasma desaparece." },
+    { type: "paragraph", html: "Esta guía repasa por qué se mueve el precio, cómo determinar cuál de las tres causas habituales le está afectando, y exactamente qué cambiar para que sus límites caigan en el número que quería." },
+    { type: "heading", text: "Qué significa realmente «slippage» aquí" },
+    { type: "paragraph", html: "Vale la pena separar dos cosas muy distintas, porque la solución depende de cuál de ellas tenga." },
+    { type: "paragraph", html: "El <strong class='text-white'>slippage real</strong> ocurre en una orden de <em>mercado</em>: usted acepta lo que sea que el libro le dé, y en un mercado rápido o poco líquido eso son unos pocos ticks peor que la última cotización. No hay ningún precio que proteger, así que no hay nada que depurar, esa es la operación que pidió." },
+    { type: "paragraph", html: "<strong class='text-white'>Lo que usted está viendo</strong> es diferente. Una orden <em>límite</em> lleva un precio específico, y ese precio se está transformando antes de reposar en el libro. El número en su alerta y el número en la orden activa no coinciden. Eso no es el mercado moviéndose en su contra; es su precio siendo reformado en tránsito. Buena noticia: los precios reformados son predecibles, y predecible significa solucionable." },
+    { type: "heading", text: "Por qué el precio se aleja de su objetivo" },
+    { type: "paragraph", html: "Tres mecanismos causan casi todos los casos. Pueden acumularse, así que vale la pena conocer los tres aunque hoy solo uno le esté afectando." },
+    { type: "heading", text: "1. El precio no está en la cuadrícula de ticks" },
+    { type: "paragraph", html: "Cada contrato tiene un incremento mínimo fijo. Envíe un precio que caiga entre dos ticks legales y se redondeará al más cercano. Eso no es un error, un precio fuera de la cuadrícula simplemente no puede existir en la bolsa, así que tiene que encajar en algún punto." },
+    { type: "paragraph", html: "El problema es que distintos contratos encajan en tamaños distintos, y es fácil suponer el equivocado:" },
+    {
+      type: "table",
+      headers: ["Contrato", "Tamaño de tick", "Precios legales cerca de 4100 / 75.00 / 2050"],
+      rows: [
+        ["ES, NQ, MES, MNQ", "0.25", "4100.00, 4100.25, 4100.50, 4100.75"],
+        ["CL (petróleo crudo)", "0.01", "75.00, 75.01, 75.02, 75.03"],
+        ["GC, MGC (oro)", "0.10", "2050.00, 2050.10, 2050.20"],
+        ["YM, MYM (Dow)", "1.0", "42100, 42101, 42102"],
+      ],
+    },
+    { type: "paragraph", html: "Digamos que su lógica calcula una salida de oro en 2050.05. Ese precio no existe, GC se mueve en décimas, así que redondea a 2050.00 o 2050.10, y ahora su salida &ldquo;5 centavos mejor&rdquo; está a una décima de distancia. Confirme el incremento actual en la página de especificaciones del contrato de la bolsa antes de confiar en estas cifras; la bolsa puede ajustar un tamaño de tick, y los contratos micro no siempre coinciden con su hermano de tamaño completo." },
+    { type: "heading", text: "2. La aritmética de coma flotante lo empuja al otro lado de un tick" },
+    { type: "paragraph", html: "Esta es la causa escurridiza, y suele estar detrás de la clásica queja de &ldquo;envié 4100, obtuve 4100.50&rdquo;. ES cotiza en cuartos, así que tanto 4100.00 como 4100.50 son perfectamente legales. El precio no se redondeó porque estuviera fuera de la cuadrícula, se redondeó porque el valor que su estrategia realmente calculó no era el 4100 limpio que vio en el texto de la alerta." },
+    { type: "paragraph", html: "Las estrategias rara vez codifican una salida de forma fija. La calculan: una entrada menos un offset, un valor de media móvil, un porcentaje de un rango. Haga eso en coma flotante y obtendrá números como 4100.4999999 o 4100.3700001. Redondee <em>eso</em> al cuarto más cercano y fácilmente puede acabar a medio punto de donde el número redondo de su alerta hacía parecer que acabaría. El mensaje de la alerta y el campo de precio pueden incluso discrepar, porque uno es texto para mostrar y el otro es el valor que se envía." },
+    { type: "heading", text: "3. El límite ya está a través del mercado" },
+    { type: "paragraph", html: "Este <em>sí</em> es slippage real disfrazado de orden límite. Un límite de compra con precio por encima del ask actual, o un límite de venta con precio por debajo del bid actual, es &ldquo;negociable de inmediato&rdquo;, puede ejecutarse al instante al mejor precio disponible en lugar de reposar. Así que si su estrategia calcula un límite en el lado equivocado del mercado (un error de signo común: restar un offset cuando pretendía sumarlo), la orden cruza el spread y se ejecuta a un precio que no se parece en nada a su número." },
+    { type: "paragraph", html: "La pista: los errores de redondeo lo dejan a uno o dos ticks de distancia, siempre con forma de redondeo. Un límite negociable de inmediato lo coloca donde estuviera el libro, lo que puede ser varios ticks y siempre del lado que le cuesta dinero. Si la brecha es mayor a un tick y consistentemente en su contra, sospeche del lado del libro, no de la cuadrícula." },
+    { type: "heading", text: "Cómo solucionarlo, paso a paso" },
+    {
+      type: "steps",
+      items: [
+        {
+          title: "Lea el tamaño de tick real del contrato",
+          html: "No suponga, búsquelo para el contrato exacto que está operando. Obtenga el tamaño de tick de los detalles de contrato de la plataforma, la página de especificaciones de la bolsa, o la API, donde cada objeto de contrato expone un campo <code>tickSize</code> (junto con <code>priceFormat</code> y <code>priceFormatType</code>, que le indican cómo se escala y se muestra el precio). Los contratos micro y de tamaño completo pueden compartir un tick, pero no siempre, y los rollovers trimestrales no cambian el tick pero sí cambian el símbolo.",
+        },
+        {
+          title: "Redondee cada precio al tick antes de que salga de su estrategia",
+          html: "Haga el redondeo explícito y hágalo como el último paso antes de enviar. El patrón es el mismo en cualquier lenguaje:<br><br><code>rounded = round(rawPrice / tickSize) * tickSize</code><br><br>Para ES con un tick de 0.25, un valor bruto de 4100.37 se convierte en <code>round(4100.37 / 0.25) * 0.25 = round(16401.48) * 0.25 = 16401 * 0.25 = 4100.25</code>. Ahora sabe con precisión qué precio va a salir, porque usted lo calculó, no el enrutador. Si quiere garantizar que nunca cruza el mercado, redondee un límite de compra <em>hacia abajo</em> al tick y un límite de venta <em>hacia arriba</em>, eso mantiene la orden pasiva.",
+        },
+        {
+          title: "Elimine la deriva de coma flotante",
+          html: "Incluso después de redondear, diminutos errores de fracción binaria pueden dejarle 4100.2500001. Ajuste el resultado a la precisión decimal del contrato antes de enviar, formatee ES/NQ a dos decimales, oro a dos, crudo a dos, el Dow a cero. Envíe el precio como un número limpio en el campo, y no dependa del texto de alerta legible por humanos para transportarlo; el valor en el payload es lo que realmente se coloca.",
+        },
+        {
+          title: "Compruebe en qué lado del libro está el límite",
+          html: "Antes de culpar al redondeo, confirme la dirección. Para una compra en espera, el límite debe estar en o por debajo del precio actual; para una venta en espera, en o por encima. Si su precio calculado cruza esa línea, ha encontrado un límite negociable de inmediato, y la solución está en su aritmética de offset, revise el signo y si está trabajando en ticks en lugar de puntos. Cinco &ldquo;ticks&rdquo; en ES son 1.25 puntos, no 5.00; confundir eso desvía el precio drásticamente y a menudo lo pone por completo en el lado equivocado.",
+        },
+        {
+          title: "Verifique que la orden activa coincida",
+          html: "Coloque una orden en una cuenta simulada y léala de vuelta. El precio de la orden activa en el panel de Órdenes debería igualar el número al que redondeó, con precisión de tick. Si coincide, ha terminado. Si no coincide, registre el precio bruto exacto, el tamaño de tick que usó, y el valor redondeado que envió, y luego compárelos, la discrepancia casi siempre está en una de esas tres entradas, no en la plataforma.",
+        },
+      ],
+    },
+    { type: "heading", text: "Si está enrutando a través de un webhook o puente" },
+    { type: "paragraph", html: "Cuando una alerta de TradingView impulsa la orden a través de un puente, hay una entrega adicional en la que el precio puede desviarse. La alerta se dispara con un valor, el puente mapea ese valor a un payload de orden, y el payload es lo que llega al bróker. Dos cosas mantienen esto honesto." },
+    { type: "paragraph", html: "Primero, haga de la <em>estrategia</em> la única fuente de verdad para el precio, redondee al tick dentro de su lógica Pine y pase ese número exacto, ya redondeado, a la alerta, en lugar de enviar un cierre bruto y esperar que el sistema aguas abajo lo redondee como usted querría. Segundo, confirme que el campo que lee el puente es el campo de precio, no una etiqueta." },
+    { type: "paragraph", html: "¿Cansado de redondear precios a mano y perseguir dónde se coló medio tick? PickMyTrade enruta sus alertas de TradingView a Tradovate y gestiona la alineación de ticks por usted, así que el límite que sale de su estrategia es el límite que llega al libro." },
+    { type: "heading", text: "Cómo evitar que vuelva a ocurrir" },
+    { type: "paragraph", html: "Una vez solucionado, unos pocos hábitos evitan que se repita:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Redondee en la estrategia, siempre.</strong> Nunca envíe un precio calculado en bruto y deje que algo aguas abajo decida el tick.",
+        "<strong class='text-white'>Registre el valor bruto y el redondeado.</strong> Mantenga ambos valores en sus registros para que un tick desviado sea una comparación de dos segundos, no un misterio.",
+        "<strong class='text-white'>Pruebe primero en simulación.</strong> Dispare la alerta en una cuenta simulada y revise a simple vista el precio activo antes de confiarle un tamaño real.",
+        "<strong class='text-white'>Trabaje en ticks, no en puntos, para los offsets.</strong> Decida de antemano en qué unidad están sus offsets y convierta una sola vez, en un solo lugar.",
+        "<strong class='text-white'>Vigile también las patas del bracket.</strong> Los precios de stop y objetivo redondean de la misma manera; si sus patas protectoras caen desviadas, aplica la misma solución de redondeo. Si esas patas fallan en adjuntarse por completo, ese es un problema distinto, consulte nuestra guía sobre fallos de órdenes bracket (OSO/OCO) de la API de Tradovate.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous réglez votre stratégie pour clôturer à 4100. L'alerte se déclenche, le message indique clairement 4100, et pourtant l'ordre en cours affiche 4100,50. Rien n'a traversé le marché, rien ne s'est exécuté à un mauvais prix, le nombre a simplement <em>changé</em> quelque part entre votre alerte et le carnet d'ordres. C'est exaspérant, et c'est le genre de chose que les gens appellent « slippage » tout en sachant discrètement que ce n'est pas tout à fait ça." },
+    { type: "paragraph", html: "Voici la version courte : les prix des futures ne vivent pas sur une droite numérique continue. Ils n'existent que sur une grille fixe de ticks. Si le prix transmis par votre stratégie n'est pas un multiple exact de cette grille, quelque chose doit l'arrondir, et la direction de l'arrondi est rarement celle que vous aviez en tête. Corrigez l'endroit où le prix est aligné, et assurez-vous que la limite ne se trouve pas du mauvais côté du marché, et le demi-point fantôme disparaît." },
+    { type: "paragraph", html: "Ce guide explique pourquoi le prix bouge, comment déterminer laquelle des trois causes habituelles vous touche, et exactement quoi changer pour que vos limites tombent sur le nombre que vous vouliez." },
+    { type: "heading", text: "Ce que « slippage » signifie réellement ici" },
+    { type: "paragraph", html: "Il vaut la peine de séparer deux choses très différentes, car la solution dépend de laquelle des deux vous rencontrez." },
+    { type: "paragraph", html: "Le <strong class='text-white'>vrai slippage</strong> se produit sur un ordre au <em>marché</em> : vous acceptez ce que le carnet vous donne, et sur un marché rapide ou peu liquide, cela représente quelques ticks de moins bon que le dernier prix coté. Il n'y a pas de prix à protéger, donc rien à déboguer, c'est l'ordre que vous avez demandé." },
+    { type: "paragraph", html: "<strong class='text-white'>Ce que vous constatez</strong> est différent. Un ordre à <em>cours limité</em> porte un prix spécifique, et ce prix est transformé avant de se poser dans le carnet. Le nombre dans votre alerte et le nombre sur l'ordre en cours ne correspondent pas. Ce n'est pas le marché qui bouge contre vous ; c'est votre prix qui est remodelé en transit. Bonne nouvelle : les prix remodelés sont prévisibles, et prévisible signifie corrigible." },
+    { type: "heading", text: "Pourquoi le prix s'écarte de votre cible" },
+    { type: "paragraph", html: "Trois mécanismes causent presque tous les cas. Ils peuvent se cumuler, il vaut donc la peine de connaître les trois même si un seul vous affecte aujourd'hui." },
+    { type: "heading", text: "1. Le prix n'est pas sur la grille de ticks" },
+    { type: "paragraph", html: "Chaque contrat a un incrément minimal fixe. Envoyez un prix qui tombe entre deux ticks légaux et il sera arrondi au plus proche. Ce n'est pas un bug, un prix hors grille ne peut tout simplement pas exister sur la bourse, il doit donc se caler quelque part." },
+    { type: "paragraph", html: "Le problème est que différents contrats se calent sur des tailles différentes, et il est facile de se tromper :" },
+    {
+      type: "table",
+      headers: ["Contrat", "Taille du tick", "Prix légaux proches de 4100 / 75,00 / 2050"],
+      rows: [
+        ["ES, NQ, MES, MNQ", "0,25", "4100,00, 4100,25, 4100,50, 4100,75"],
+        ["CL (pétrole brut)", "0,01", "75,00, 75,01, 75,02, 75,03"],
+        ["GC, MGC (or)", "0,10", "2050,00, 2050,10, 2050,20"],
+        ["YM, MYM (Dow)", "1,0", "42100, 42101, 42102"],
+      ],
+    },
+    { type: "paragraph", html: "Disons que votre logique calcule une sortie sur l'or à 2050,05. Ce prix n'existe pas, GC évolue par dixièmes, il s'arrondit donc à 2050,00 ou 2050,10, et votre sortie « 5 centimes de mieux » est désormais décalée d'un dixième. Vérifiez l'incrément actuel sur la page de spécifications du contrat de la bourse avant de vous fier à ces chiffres ; la bourse peut ajuster une taille de tick, et les contrats micro ne correspondent pas toujours à leur homologue de taille standard." },
+    { type: "heading", text: "2. L'arithmétique à virgule flottante vous fait franchir un tick" },
+    { type: "paragraph", html: "C'est la cause sournoise, et elle se cache généralement derrière la plainte classique « envoyé 4100, obtenu 4100,50 ». ES cote en quarts, donc 4100,00 comme 4100,50 sont parfaitement légaux. Le prix ne s'est pas arrondi parce qu'il était hors grille, il s'est arrondi parce que la valeur réellement calculée par votre stratégie n'était pas le 4100 net que vous voyiez dans le texte de l'alerte." },
+    { type: "paragraph", html: "Les stratégies codent rarement une sortie en dur. Elles la calculent : une entrée moins un décalage, une valeur de moyenne mobile, un pourcentage d'une plage. Faites cela en virgule flottante et vous obtenez des nombres comme 4100,4999999 ou 4100,3700001. Arrondissez <em>cela</em> au quart le plus proche et vous pouvez facilement tomber à un demi-point de là où le nombre rond de votre alerte laissait penser que vous atterririez. Le message d'alerte et le champ de prix peuvent même diverger, car l'un est du texte d'affichage et l'autre est la valeur envoyée." },
+    { type: "heading", text: "3. La limite a déjà traversé le marché" },
+    { type: "paragraph", html: "Celui-ci <em>est</em> du vrai slippage déguisé en ordre à cours limité. Une limite d'achat au-dessus de l'ask actuel, ou une limite de vente en dessous du bid actuel, est « exécutable immédiatement », elle peut se remplir tout de suite au meilleur prix disponible plutôt que de se poser dans le carnet. Donc si votre stratégie calcule une limite du mauvais côté du marché (une inversion de signe courante : soustraire un décalage alors que vous vouliez l'ajouter), l'ordre traverse le spread et s'exécute à un prix qui ne ressemble en rien à votre nombre." },
+    { type: "paragraph", html: "L'indice : les erreurs d'arrondi vous décalent d'un ou deux ticks, toujours d'une manière qui ressemble à un arrondi. Une limite exécutable immédiatement vous place là où se trouvait le carnet, ce qui peut représenter plusieurs ticks et toujours du côté qui vous coûte de l'argent. Si l'écart est supérieur à un tick et systématiquement défavorable, soupçonnez le côté du carnet, pas la grille." },
+    { type: "heading", text: "Comment corriger cela, étape par étape" },
+    {
+      type: "steps",
+      items: [
+        {
+          title: "Lisez la vraie taille de tick du contrat",
+          html: "Ne présumez pas, recherchez-la pour le contrat exact que vous tradez. Récupérez la taille de tick depuis les détails de contrat de la plateforme, la page de spécifications de la bourse, ou l'API, où chaque objet contrat expose un champ <code>tickSize</code> (aux côtés de <code>priceFormat</code> et <code>priceFormatType</code> qui indiquent comment le prix est mis à l'échelle et affiché). Les contrats micro et standard peuvent partager un tick, mais pas toujours, et les roulements trimestriels ne changent pas le tick mais changent le symbole.",
+        },
+        {
+          title: "Arrondissez chaque prix au tick avant qu'il ne quitte votre stratégie",
+          html: "Rendez l'arrondi explicite et faites-le comme dernière étape avant l'envoi. Le schéma est le même dans n'importe quel langage :<br><br><code>rounded = round(rawPrice / tickSize) * tickSize</code><br><br>Pour ES avec un tick de 0,25, une valeur brute de 4100,37 devient <code>round(4100.37 / 0.25) * 0.25 = round(16401.48) * 0.25 = 16401 * 0.25 = 4100.25</code>. Vous savez désormais précisément quel prix part, parce que vous l'avez calculé, pas le routeur. Si vous voulez garantir de ne jamais traverser le marché, arrondissez une limite d'achat <em>vers le bas</em> au tick et une limite de vente <em>vers le haut</em>, cela garde l'ordre passif.",
+        },
+        {
+          title: "Éliminez la dérive de virgule flottante",
+          html: "Même après l'arrondi, de minuscules erreurs de fraction binaire peuvent vous laisser avec 4100,2500001. Calez le résultat sur la précision décimale du contrat avant l'envoi, formatez ES/NQ sur deux décimales, l'or sur deux, le brut sur deux, le Dow sur zéro. Envoyez le prix comme un nombre propre dans le champ, et ne comptez pas sur le texte d'alerte lisible par l'humain pour le porter ; la valeur dans le payload est ce qui est réellement placé.",
+        },
+        {
+          title: "Vérifiez de quel côté du carnet se trouve la limite",
+          html: "Avant d'accuser l'arrondi, confirmez la direction. Pour un achat en attente, la limite doit être au niveau ou en dessous du prix actuel ; pour une vente en attente, au niveau ou au-dessus. Si votre prix calculé franchit cette ligne, vous avez trouvé une limite exécutable immédiatement, et la solution se trouve dans votre arithmétique de décalage, vérifiez le signe et si vous travaillez en ticks plutôt qu'en points. Cinq « ticks » sur ES représentent 1,25 point, pas 5,00 ; confondre les deux fait dévier le prix de façon spectaculaire et souvent entièrement du mauvais côté.",
+        },
+        {
+          title: "Vérifiez que l'ordre en cours correspond",
+          html: "Passez un ordre sur un compte simulé et relisez-le. Le prix de l'ordre en cours dans le panneau Ordres devrait être égal au nombre auquel vous avez arrondi, au tick près. Si c'est le cas, vous avez terminé. Sinon, enregistrez le prix brut exact, la taille de tick utilisée, et la valeur arrondie envoyée, puis comparez-les, l'écart provient presque toujours de l'une de ces trois entrées, pas de la plateforme.",
+        },
+      ],
+    },
+    { type: "heading", text: "Si vous routez via un webhook ou un pont" },
+    { type: "paragraph", html: "Lorsqu'une alerte TradingView pilote l'ordre via un pont, il y a une étape de transmission supplémentaire où le prix peut dériver. L'alerte se déclenche avec une valeur, le pont mappe cette valeur dans un payload d'ordre, et le payload est ce qui atteint le courtier. Deux choses maintiennent cela fiable." },
+    { type: "paragraph", html: "Premièrement, faites de la <em>stratégie</em> la source unique de vérité pour le prix, arrondissez au tick dans votre logique Pine et transmettez ce nombre exact, déjà arrondi, à l'alerte, plutôt que d'envoyer une clôture brute en espérant que le système en aval l'arrondisse comme vous le souhaitez. Deuxièmement, confirmez que le champ lu par le pont est bien le champ de prix, pas une étiquette." },
+    { type: "paragraph", html: "Fatigué d'arrondir les prix à la main et de traquer où un demi-tick s'est glissé ? PickMyTrade route vos alertes TradingView vers Tradovate et gère l'alignement des ticks pour vous, si bien que la limite qui quitte votre stratégie est la limite qui atterrit dans le carnet." },
+    { type: "heading", text: "Comment éviter que cela ne revienne" },
+    { type: "paragraph", html: "Une fois corrigé, quelques habitudes empêchent la récidive :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Arrondissez dans la stratégie, toujours.</strong> N'envoyez jamais un prix calculé brut en laissant quelque chose en aval décider du tick.",
+        "<strong class='text-white'>Journalisez le brut et l'arrondi.</strong> Conservez les deux valeurs dans vos journaux pour qu'un tick égaré soit un diff de deux secondes, pas un mystère.",
+        "<strong class='text-white'>Testez d'abord en simulation.</strong> Déclenchez l'alerte sur un compte simulé et examinez le prix en cours avant de lui confier une taille réelle.",
+        "<strong class='text-white'>Travaillez en ticks, pas en points, pour les décalages.</strong> Décidez à l'avance dans quelle unité sont vos décalages et convertissez une seule fois, à un seul endroit.",
+        "<strong class='text-white'>Surveillez aussi les jambes du bracket.</strong> Les prix de stop et d'objectif s'arrondissent de la même manière ; si vos jambes de protection tombent à côté, la même correction d'arrondi s'applique. Si ces jambes ne s'attachent pas du tout, c'est un problème différent, consultez notre guide sur l'échec des ordres bracket (OSO/OCO) de l'API Tradovate.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Impostate la vostra strategia per chiudere a 4100. L'alert scatta, il messaggio dice chiaramente 4100, eppure l'ordine attivo compare a 4100,50. Niente ha attraversato il mercato, niente è stato eseguito a un prezzo sbagliato, il numero è semplicemente <em>cambiato</em> da qualche parte tra il vostro alert e il book degli ordini. È esasperante, ed è il tipo di cosa che le persone chiamano &ldquo;slippage&rdquo; pur sapendo silenziosamente che non è esattamente quello." },
+    { type: "paragraph", html: "Ecco la versione breve: i prezzi dei futures non vivono su una retta numerica continua. Esistono solo su una griglia fissa di tick. Se il prezzo che la vostra strategia consegna non è un multiplo esatto di quella griglia, qualcosa deve arrotondarlo, e la direzione in cui arrotonda raramente è quella che avevate in mente. Correggete dove il prezzo viene allineato, e assicuratevi che il limit non sia sul lato sbagliato del mercato, e il mezzo punto fantasma scompare." },
+    { type: "paragraph", html: "Questa guida ripercorre perché il prezzo si muove, come individuare quale delle tre cause abituali vi sta colpendo, ed esattamente cosa cambiare affinché i vostri limit atterrino sul numero che intendevate." },
+    { type: "heading", text: "Cosa significa davvero «slippage» qui" },
+    { type: "paragraph", html: "Vale la pena separare due cose molto diverse, perché la soluzione dipende da quale delle due avete." },
+    { type: "paragraph", html: "Lo <strong class='text-white'>slippage reale</strong> avviene su un ordine a <em>mercato</em>: accettate qualunque cosa il book vi offra, e in un mercato veloce o poco liquido sono alcuni tick peggiori dell'ultimo prezzo. Non c'è alcun prezzo da proteggere, quindi non c'è nulla da debuggare, è esattamente l'operazione che avete richiesto." },
+    { type: "paragraph", html: "<strong class='text-white'>Ciò che state osservando</strong> è diverso. Un ordine <em>limit</em> porta un prezzo specifico, e quel prezzo viene trasformato prima di posarsi sul book. Il numero nel vostro alert e il numero sull'ordine attivo non corrispondono. Non è il mercato che si muove contro di voi; è il vostro prezzo che viene rimodellato in transito. Buona notizia: i prezzi rimodellati sono prevedibili, e prevedibile significa risolvibile." },
+    { type: "heading", text: "Perché il prezzo si allontana dal vostro obiettivo" },
+    { type: "paragraph", html: "Tre meccanismi causano quasi ogni caso. Possono sommarsi, quindi vale la pena conoscerli tutti e tre anche se oggi solo uno vi sta colpendo." },
+    { type: "heading", text: "1. Il prezzo non è sulla griglia dei tick" },
+    { type: "paragraph", html: "Ogni contratto ha un incremento minimo fisso. Inviate un prezzo che cade tra due tick legali e verrà arrotondato al più vicino. Non è un bug, un prezzo fuori griglia semplicemente non può esistere sulla borsa, quindi deve agganciarsi da qualche parte." },
+    { type: "paragraph", html: "Il problema è che contratti diversi si agganciano a dimensioni diverse, ed è facile presumere quella sbagliata:" },
+    {
+      type: "table",
+      headers: ["Contratto", "Tick size", "Prezzi legali vicino a 4100 / 75,00 / 2050"],
+      rows: [
+        ["ES, NQ, MES, MNQ", "0,25", "4100,00, 4100,25, 4100,50, 4100,75"],
+        ["CL (petrolio greggio)", "0,01", "75,00, 75,01, 75,02, 75,03"],
+        ["GC, MGC (oro)", "0,10", "2050,00, 2050,10, 2050,20"],
+        ["YM, MYM (Dow)", "1,0", "42100, 42101, 42102"],
+      ],
+    },
+    { type: "paragraph", html: "Supponiamo che la vostra logica calcoli un'uscita sull'oro a 2050,05. Quel prezzo non esiste, GC si muove a decimi, quindi si arrotonda a 2050,00 o 2050,10, e ora la vostra uscita &ldquo;5 centesimi migliore&rdquo; è distante un decimo. Verificate l'incremento attuale nella pagina delle specifiche del contratto della borsa prima di fidarvi di questi numeri; la borsa può modificare un tick size, e i contratti micro non sempre corrispondono al loro gemello a dimensione piena." },
+    { type: "heading", text: "2. La matematica in virgola mobile vi spinge oltre un tick" },
+    { type: "paragraph", html: "Questa è la causa subdola, e di solito è dietro il classico reclamo &ldquo;inviato 4100, ottenuto 4100,50&rdquo;. ES scambia in quarti, quindi sia 4100,00 sia 4100,50 sono perfettamente legali. Il prezzo non si è arrotondato perché era fuori griglia, si è arrotondato perché il valore effettivamente calcolato dalla vostra strategia non era il pulito 4100 che avete visto nel testo dell'alert." },
+    { type: "paragraph", html: "Le strategie raramente codificano un'uscita in modo fisso. La calcolano: un'entrata meno un offset, un valore di media mobile, una percentuale di un range. Fatelo in virgola mobile e otterrete numeri come 4100,4999999 o 4100,3700001. Arrotondate <em>quello</em> al quarto più vicino e potete facilmente atterrare a mezzo punto da dove il numero tondo nel vostro alert faceva sembrare che sareste atterrati. Il messaggio dell'alert e il campo del prezzo possono persino discordare, perché uno è testo visualizzato e l'altro è il valore effettivamente inviato." },
+    { type: "heading", text: "3. Il limit è già oltre il mercato" },
+    { type: "paragraph", html: "Questo <em>è</em> vero slippage travestito da ordine limit. Un limit di acquisto con prezzo sopra l'ask attuale, o un limit di vendita con prezzo sotto il bid attuale, è &ldquo;eseguibile immediatamente&rdquo;, può riempirsi subito al miglior prezzo disponibile invece di posarsi. Quindi se la vostra strategia calcola un limit sul lato sbagliato del mercato (un errore di segno comune: sottrarre un offset quando intendevate sommarlo), l'ordine attraversa lo spread e si riempie a un prezzo che non assomiglia affatto al vostro numero." },
+    { type: "paragraph", html: "L'indizio: gli errori di arrotondamento vi spostano di uno o due tick, sempre in un modo che ha la forma di un arrotondamento. Un limit eseguibile immediatamente vi colloca ovunque fosse il book, il che può essere diversi tick e sempre dal lato che vi costa. Se il divario è maggiore di un tick e sistematicamente contro di voi, sospettate del lato del book, non della griglia." },
+    { type: "heading", text: "Come risolverlo, passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        {
+          title: "Leggete il tick size reale del contratto",
+          html: "Non date per scontato, cercatelo per il contratto esatto che state negoziando. Prendete il tick size dai dettagli contratto della piattaforma, dalla pagina delle specifiche della borsa, o dall'API, dove ogni oggetto contratto espone un campo <code>tickSize</code> (insieme a <code>priceFormat</code> e <code>priceFormatType</code> che vi dicono come il prezzo viene scalato e visualizzato). I contratti micro e a dimensione piena possono condividere un tick, ma non sempre, e i rollover trimestrali non cambiano il tick ma cambiano il simbolo.",
+        },
+        {
+          title: "Arrotondate ogni prezzo al tick prima che lasci la vostra strategia",
+          html: "Rendete l'arrotondamento esplicito e fatelo come ultimo passaggio prima dell'invio. Lo schema è lo stesso in qualsiasi linguaggio:<br><br><code>rounded = round(rawPrice / tickSize) * tickSize</code><br><br>Per ES con un tick di 0,25, un valore grezzo di 4100,37 diventa <code>round(4100.37 / 0.25) * 0.25 = round(16401.48) * 0.25 = 16401 * 0.25 = 4100.25</code>. Ora sapete con precisione quale prezzo sta uscendo, perché lo avete calcolato voi, non il router. Se volete garantire di non attraversare mai il mercato, arrotondate un limit di acquisto <em>verso il basso</em> al tick e un limit di vendita <em>verso l'alto</em>, questo mantiene l'ordine passivo.",
+        },
+        {
+          title: "Eliminate la deriva in virgola mobile",
+          html: "Anche dopo l'arrotondamento, minuscoli errori di frazione binaria possono lasciarvi con 4100,2500001. Agganciate il risultato alla precisione decimale del contratto prima dell'invio, formattate ES/NQ a due decimali, l'oro a due, il greggio a due, il Dow a zero. Inviate il prezzo come numero pulito nel campo, e non affidatevi al testo dell'alert leggibile dall'uomo per trasportarlo; il valore nel payload è ciò che viene effettivamente piazzato.",
+        },
+        {
+          title: "Controllate su quale lato del book si trova il limit",
+          html: "Prima di incolpare l'arrotondamento, confermate la direzione. Per un acquisto in attesa, il limit dovrebbe essere al livello o sotto il prezzo attuale; per una vendita in attesa, al livello o sopra. Se il vostro prezzo calcolato attraversa quella linea, avete trovato un limit eseguibile immediatamente, e la soluzione sta nella vostra matematica dell'offset, controllate il segno e se state lavorando in tick invece che in punti. Cinque &ldquo;tick&rdquo; su ES sono 1,25 punti, non 5,00; confondere questo manda il prezzo clamorosamente fuori posto e spesso completamente sul lato sbagliato.",
+        },
+        {
+          title: "Verificate che l'ordine attivo corrisponda",
+          html: "Piazzate un ordine su un conto simulato e rileggetelo. Il prezzo dell'ordine attivo nel pannello Ordini dovrebbe essere uguale al numero a cui avete arrotondato, al tick. Se corrisponde, avete finito. Se non corrisponde, registrate il prezzo grezzo esatto, il tick size usato, e il valore arrotondato inviato, quindi confrontateli: la discrepanza è quasi sempre in uno di questi tre input, non nella piattaforma.",
+        },
+      ],
+    },
+    { type: "heading", text: "Se state instradando tramite un webhook o un ponte" },
+    { type: "paragraph", html: "Quando un alert di TradingView guida l'ordine tramite un ponte, c'è un passaggio aggiuntivo in cui il prezzo può derivare. L'alert scatta con un valore, il ponte mappa quel valore in un payload d'ordine, e il payload è ciò che raggiunge il broker. Due cose mantengono tutto onesto." },
+    { type: "paragraph", html: "Primo, fate della <em>strategia</em> l'unica fonte di verità per il prezzo, arrotondate al tick dentro la vostra logica Pine e passate quel numero esatto, già arrotondato, all'alert, invece di inviare una chiusura grezza sperando che il sistema a valle la arrotondi come vorreste. Secondo, confermate che il campo letto dal ponte sia il campo del prezzo, non un'etichetta." },
+    { type: "paragraph", html: "Stanchi di arrotondare i prezzi a mano e di inseguire dove si è insinuato mezzo tick? PickMyTrade instrada i vostri alert di TradingView verso Tradovate e gestisce l'allineamento ai tick per voi, così il limit che lascia la vostra strategia è il limit che atterra sul book." },
+    { type: "heading", text: "Come evitare che si ripresenti" },
+    { type: "paragraph", html: "Una volta risolto, alcune abitudini ne impediscono il ritorno:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Arrotondate nella strategia, sempre.</strong> Non inviate mai un prezzo calcolato grezzo lasciando che qualcosa a valle decida il tick.",
+        "<strong class='text-white'>Registrate valore grezzo e arrotondato.</strong> Tenete entrambi i valori nei vostri log così un tick fuori posto è un confronto di due secondi, non un mistero.",
+        "<strong class='text-white'>Testate prima in simulazione.</strong> Fate scattare l'alert su un conto simulato e controllate a occhio il prezzo attivo prima di affidargli una size reale.",
+        "<strong class='text-white'>Lavorate in tick, non in punti, per gli offset.</strong> Decidete in anticipo in quale unità sono i vostri offset e convertite una sola volta, in un solo punto.",
+        "<strong class='text-white'>Tenete d'occhio anche le gambe del bracket.</strong> I prezzi di stop e target si arrotondano allo stesso modo; se le vostre gambe protettive atterrano fuori posto, si applica la stessa correzione di arrotondamento. Se quelle gambe non si agganciano affatto, è un problema diverso, vedete la nostra guida sui fallimenti degli ordini bracket (OSO/OCO) dell'API di Tradovate.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Hand-Rounding Prices", de: "Hören Sie auf, Preise von Hand zu runden", es: "Deje de redondear precios a mano", fr: "Arrêtez d'arrondir les prix à la main", it: "Smettete di arrotondare i prezzi a mano" },
+  ctaText: { en: "PickMyTrade routes your TradingView alerts to Tradovate and handles the tick alignment for you, so the limit that leaves your strategy is the limit that lands on the book.", de: "PickMyTrade routet Ihre TradingView-Alerts zu Tradovate und übernimmt die Tick-Ausrichtung für Sie, sodass das Limit, das Ihre Strategie verlässt, das Limit ist, das im Buch landet.", es: "PickMyTrade enruta sus alertas de TradingView a Tradovate y gestiona la alineación de ticks por usted, así que el límite que sale de su estrategia es el límite que llega al libro.", fr: "PickMyTrade route vos alertes TradingView vers Tradovate et gère l'alignement des ticks pour vous, si bien que la limite qui quitte votre stratégie est la limite qui atterrit dans le carnet.", it: "PickMyTrade instrada i vostri alert di TradingView verso Tradovate e gestisce l'allineamento ai tick per voi, così il limit che lascia la vostra strategia è il limit che atterra sul book." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testphase", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Iniziate la vostra prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Is a limit order landing on the wrong price actually slippage?", a: "Usually not. Real slippage is a market order filling worse than the quote because the book moved. A limit landing a tick or half-tick off your alert was transformed before it hit the book, rounded to a legal tick, nudged by floating-point math, or sent through the market as a marketable limit. Only the last is true slippage; the other two are a formatting problem you control." },
+    { q: "Why does my ES limit price jump by half a point?", a: "ES trades in 0.25 increments, so 4100.00 through 4100.75 are all legal. If your strategy computes the limit from a bar value or an offset, the raw number is often something like 4100.37 or 4100.4999 and rounds to the nearest quarter, sometimes the half-point above where you expected. Round the price to the tick yourself and log the raw and rounded values." },
+    { q: "How do I find a contract's tick size?", a: "Read it from the platform's contract details, the exchange's spec page, or the API's tickSize field on the contract object. As a quick reference: ES, NQ, MES and MNQ tick in 0.25; crude (CL) in 0.01; gold (GC) in 0.10; the Dow (YM) in 1.0. Confirm the current spec before relying on it." },
+    { q: "Will switching to a market order fix the wrong price?", a: "It removes the rounding surprise, since a market order has no price to round, but it fills at whatever the book offers, which in a fast market can be worse than a correct limit. If price control was the point, keep the limit and fix the rounding. If you just need the fill, a market order is simpler." },
+    { q: "Can a prop firm evaluation account cause limit prices to shift?", a: "No, the tick grid is set by the exchange, so it's identical across evaluation, funded, and personal accounts. What differs by firm is which contracts and order types are allowed and the risk rules, and those surface as rejections, not shifted prices. If your price lands off target, look at alignment and routing, and check your firm's current rules for anything order-type specific." },
+  ], de: [
+    { q: "Ist eine Limit-Order, die zum falschen Preis landet, tatsächlich Slippage?", a: "Normalerweise nicht. Echte Slippage ist eine Market-Order, die schlechter als der Quote gefüllt wird, weil sich das Buch bewegt hat. Ein Limit, das einen Tick oder Halbtick von Ihrem Alert entfernt landet, wurde umgeformt, bevor es das Buch erreichte, auf einen zulässigen Tick gerundet, durch Fließkomma-Mathematik verschoben oder als marktfähiges Limit durch den Markt gesendet. Nur Letzteres ist echte Slippage; die anderen beiden sind ein Formatierungsproblem, das Sie kontrollieren." },
+    { q: "Warum springt mein ES-Limitpreis um einen halben Punkt?", a: "ES handelt in 0,25-Schritten, sodass 4100,00 bis 4100,75 alle zulässig sind. Wenn Ihre Strategie das Limit aus einem Bar-Wert oder einem Offset berechnet, ist die Rohzahl oft etwas wie 4100,37 oder 4100,4999 und rundet auf das nächste Viertel, manchmal den Halbpunkt über dem, was Sie erwartet hatten. Runden Sie den Preis selbst auf den Tick und protokollieren Sie Roh- und gerundete Werte." },
+    { q: "Wie finde ich die Tick-Größe eines Kontrakts?", a: "Lesen Sie sie aus den Kontraktdetails der Plattform, der Spezifikationsseite der Börse oder dem tickSize-Feld der API am Kontraktobjekt ab. Als schnelle Referenz: ES, NQ, MES und MNQ ticken in 0,25; Rohöl (CL) in 0,01; Gold (GC) in 0,10; der Dow (YM) in 1,0. Bestätigen Sie die aktuelle Spezifikation, bevor Sie sich darauf verlassen." },
+    { q: "Behebt der Wechsel zu einer Market-Order den falschen Preis?", a: "Es beseitigt die Rundungsüberraschung, da eine Market-Order keinen Preis zum Runden hat, aber sie wird zu dem gefüllt, was das Buch gerade bietet, was in einem schnellen Markt schlechter sein kann als ein korrektes Limit. Ging es Ihnen um Preiskontrolle, behalten Sie das Limit und beheben Sie die Rundung. Brauchen Sie nur den Fill, ist eine Market-Order einfacher." },
+    { q: "Kann ein Prop-Firma-Evaluierungskonto Limitpreise verschieben?", a: "Nein, das Tick-Raster wird von der Börse festgelegt und ist daher bei Evaluierungs-, finanzierten und persönlichen Konten identisch. Was sich je nach Firma unterscheidet, sind die erlaubten Kontrakte und Ordertypen sowie die Risikoregeln, und diese äußern sich als Ablehnungen, nicht als verschobene Preise. Landet Ihr Preis daneben, prüfen Sie Ausrichtung und Routing, und checken Sie die aktuellen Regeln Ihrer Firma auf ordertyp-spezifische Vorgaben." },
+  ], es: [
+    { q: "¿Es una orden límite que aterriza en el precio equivocado realmente slippage?", a: "Normalmente no. El slippage real es una orden de mercado que se ejecuta peor que la cotización porque el libro se movió. Un límite que aterriza a un tick o medio tick de su alerta fue transformado antes de llegar al libro, redondeado a un tick legal, empujado por aritmética de coma flotante, o enviado a través del mercado como un límite negociable de inmediato. Solo lo último es slippage real; los otros dos son un problema de formato que usted controla." },
+    { q: "¿Por qué mi precio límite de ES salta medio punto?", a: "ES cotiza en incrementos de 0.25, así que de 4100.00 a 4100.75 todos son legales. Si su estrategia calcula el límite a partir de un valor de barra o un offset, el número bruto suele ser algo como 4100.37 o 4100.4999 y redondea al cuarto más cercano, a veces el medio punto por encima de donde esperaba. Redondee el precio al tick usted mismo y registre los valores bruto y redondeado." },
+    { q: "¿Cómo encuentro el tamaño de tick de un contrato?", a: "Léalo en los detalles de contrato de la plataforma, la página de especificaciones de la bolsa, o el campo tickSize de la API en el objeto de contrato. Como referencia rápida: ES, NQ, MES y MNQ cotizan en 0.25; el crudo (CL) en 0.01; el oro (GC) en 0.10; el Dow (YM) en 1.0. Confirme la especificación actual antes de fiarse de ella." },
+    { q: "¿Cambiar a una orden de mercado solucionará el precio equivocado?", a: "Elimina la sorpresa del redondeo, ya que una orden de mercado no tiene precio que redondear, pero se ejecuta a lo que sea que ofrezca el libro, lo que en un mercado rápido puede ser peor que un límite correcto. Si el control del precio era el objetivo, mantenga el límite y solucione el redondeo. Si solo necesita la ejecución, una orden de mercado es más simple." },
+    { q: "¿Puede una cuenta de evaluación de firma prop causar que los precios límite se desplacen?", a: "No, la cuadrícula de ticks la establece la bolsa, así que es idéntica en cuentas de evaluación, financiadas y personales. Lo que varía según la firma son qué contratos y tipos de orden se permiten y las reglas de riesgo, y eso se manifiesta como rechazos, no como precios desplazados. Si su precio aterriza fuera del objetivo, revise la alineación y el enrutamiento, y consulte las reglas actuales de su firma para cualquier cosa específica del tipo de orden." },
+  ], fr: [
+    { q: "Un ordre à cours limité qui atterrit au mauvais prix est-il vraiment du slippage ?", a: "Généralement non. Le vrai slippage est un ordre au marché qui s'exécute moins bien que la cotation parce que le carnet a bougé. Une limite qui atterrit à un tick ou un demi-tick de votre alerte a été transformée avant d'atteindre le carnet, arrondie à un tick légal, décalée par l'arithmétique à virgule flottante, ou envoyée à travers le marché comme une limite exécutable immédiatement. Seul le dernier cas est du vrai slippage ; les deux autres sont un problème de formatage que vous contrôlez." },
+    { q: "Pourquoi mon prix limite ES saute-t-il d'un demi-point ?", a: "ES cote par incréments de 0,25, donc de 4100,00 à 4100,75, tout est légal. Si votre stratégie calcule la limite à partir d'une valeur de barre ou d'un décalage, le nombre brut ressemble souvent à 4100,37 ou 4100,4999 et s'arrondit au quart le plus proche, parfois le demi-point au-dessus de ce que vous attendiez. Arrondissez le prix au tick vous-même et journalisez les valeurs brutes et arrondies." },
+    { q: "Comment trouver la taille de tick d'un contrat ?", a: "Lisez-la dans les détails de contrat de la plateforme, la page de spécifications de la bourse, ou le champ tickSize de l'API sur l'objet contrat. En référence rapide : ES, NQ, MES et MNQ cotent par 0,25 ; le brut (CL) par 0,01 ; l'or (GC) par 0,10 ; le Dow (YM) par 1,0. Vérifiez la spécification actuelle avant de vous y fier." },
+    { q: "Passer à un ordre au marché corrigera-t-il le mauvais prix ?", a: "Cela supprime la surprise de l'arrondi, puisqu'un ordre au marché n'a pas de prix à arrondir, mais il s'exécute à ce que le carnet offre, ce qui sur un marché rapide peut être pire qu'une limite correcte. Si le contrôle du prix était l'objectif, gardez la limite et corrigez l'arrondi. Si vous avez simplement besoin de l'exécution, un ordre au marché est plus simple." },
+    { q: "Un compte d'évaluation de firme prop peut-il faire dévier les prix limites ?", a: "Non, la grille de ticks est fixée par la bourse, elle est donc identique sur les comptes d'évaluation, financés et personnels. Ce qui diffère selon la firme, ce sont les contrats et types d'ordres autorisés ainsi que les règles de risque, et cela se manifeste par des rejets, pas par des prix décalés. Si votre prix atterrit à côté de la cible, examinez l'alignement et le routage, et vérifiez les règles actuelles de votre firme pour tout ce qui est spécifique au type d'ordre." },
+  ], it: [
+    { q: "Un ordine limit che atterra sul prezzo sbagliato è davvero slippage?", a: "Di solito no. Lo slippage reale è un ordine a mercato che si riempie peggio della quotazione perché il book si è mosso. Un limit che atterra a un tick o mezzo tick dal vostro alert è stato trasformato prima di raggiungere il book, arrotondato a un tick legale, spostato dalla matematica in virgola mobile, o inviato attraverso il mercato come un limit eseguibile immediatamente. Solo l'ultimo è vero slippage; gli altri due sono un problema di formattazione che controllate voi." },
+    { q: "Perché il mio prezzo limit su ES salta di mezzo punto?", a: "ES scambia in incrementi di 0,25, quindi da 4100,00 a 4100,75 sono tutti legali. Se la vostra strategia calcola il limit da un valore di barra o un offset, il numero grezzo è spesso qualcosa come 4100,37 o 4100,4999 e si arrotonda al quarto più vicino, a volte il mezzo punto sopra quanto vi aspettavate. Arrotondate voi stessi il prezzo al tick e registrate i valori grezzi e arrotondati." },
+    { q: "Come trovo il tick size di un contratto?", a: "Leggetelo dai dettagli contratto della piattaforma, dalla pagina delle specifiche della borsa, o dal campo tickSize dell'API sull'oggetto contratto. Come riferimento rapido: ES, NQ, MES e MNQ scambiano a 0,25; il greggio (CL) a 0,01; l'oro (GC) a 0,10; il Dow (YM) a 1,0. Verificate la specifica attuale prima di affidarvici." },
+    { q: "Passare a un ordine a mercato risolverà il prezzo sbagliato?", a: "Elimina la sorpresa dell'arrotondamento, poiché un ordine a mercato non ha un prezzo da arrotondare, ma si riempie a qualunque cosa offra il book, il che in un mercato veloce può essere peggio di un limit corretto. Se il controllo del prezzo era l'obiettivo, mantenete il limit e risolvete l'arrotondamento. Se vi serve solo l'esecuzione, un ordine a mercato è più semplice." },
+    { q: "Un conto di valutazione di una società prop può far spostare i prezzi limit?", a: "No, la griglia dei tick è fissata dalla borsa, quindi è identica su conti di valutazione, finanziati e personali. Ciò che varia da società a società sono quali contratti e tipi di ordine sono consentiti e le regole di rischio, e questo si manifesta come rifiuti, non come prezzi spostati. Se il vostro prezzo atterra fuori bersaglio, controllate l'allineamento e l'instradamento, e verificate le regole attuali della vostra società per qualsiasi cosa specifica del tipo di ordine." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie den aktuellen Ablauf daher immer in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización de terceros independiente y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni parrainée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione di terze parti indipendente e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verificate sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

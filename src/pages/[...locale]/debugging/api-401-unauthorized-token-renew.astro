@@ -1,0 +1,485 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-401-unauthorized-token-renew";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API 401 Unauthorized (Expired Token)";
+const META_DESCRIPTION =
+  "Tradovate API 401 Unauthorized? Your 90-minute access token expired, call /auth/renewAccessToken about 15 minutes early to keep orders flowing.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API 401 Unauthorized (abgelaufenes Token)", es: "API 401 Unauthorized de Tradovate (token caducado)", fr: "API 401 Unauthorized de Tradovate (jeton expiré)", it: "API 401 Unauthorized di Tradovate (token scaduto)" },
+  dek: { en: "About 90 minutes into a session, every Tradovate API call suddenly returns 401 Unauthorized. Here's why the access token expires on a clock and how to renew it before it ever drops your orders.", de: "Etwa 90 Minuten nach Sitzungsbeginn liefert plötzlich jeder Tradovate-API-Aufruf 401 Unauthorized. Hier erfahren Sie, warum das Zugriffstoken nach einer festen Zeit abläuft und wie Sie es erneuern, bevor es Ihre Orders gefährdet.", es: "Unos 90 minutos después de iniciar una sesión, cada llamada a la API de Tradovate empieza de repente a devolver 401 Unauthorized. Le explicamos por qué el token de acceso caduca según un reloj interno y cómo renovarlo antes de que llegue a descartar sus órdenes.", fr: "Environ 90 minutes après le début d'une session, chaque appel à l'API Tradovate se met soudain à renvoyer 401 Unauthorized. Voici pourquoi le jeton d'accès expire selon une horloge interne et comment le renouveler avant qu'il ne compromette vos ordres.", it: "Circa 90 minuti dopo l'inizio di una sessione, ogni chiamata all'API Tradovate inizia improvvisamente a restituire 401 Unauthorized. Ecco perché il token di accesso scade secondo un timer interno e come rinnovarlo prima che comprometta i vostri ordini." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You wire up a Tradovate API bot, fire off a few demo orders, and everything hums along, then, about an hour and a half in, every call slams into a <strong class='text-white'>401 Unauthorized</strong>. It's one of the most common and most misread Tradovate API failures, and the cause is almost always the same: your access token quietly expired. Tradovate access tokens live for roughly <strong class='text-white'>90 minutes</strong>. Once that clock runs out, both the REST API and the market-data WebSocket stop trusting you. You'll see it as a bare <code>401 Unauthorized</code> HTTP status, an <code>&quot;Access is denied&quot;</code> message, or a WebSocket that abruptly sends a close frame and drops. The fix isn't to hammer the login endpoint again, it's to renew the token <em>before</em> it dies. Automation bridges like PickMyTrade manage that token lifecycle for you, so your alerts keep firing even when a raw script would've gone dark." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for the 401 Unauthorized Error",
+      items: [
+        "<strong class='text-white'>Check the clock.</strong> If the 401 starts around the 75&ndash;90 minute mark, it's a token-expiry problem, not a credentials problem.",
+        "<strong class='text-white'>Renew, don't re-login.</strong> Call <code>/auth/renewAccessToken</code> with your still-valid token about 15 minutes before it expires.",
+        "<strong class='text-white'>Track <code>expirationTime</code>.</strong> Store the timestamp returned at login and schedule a renewal against it, not against a guessed interval.",
+        "<strong class='text-white'>Verify the header.</strong> The token must be sent as <code>Authorization: Bearer &lt;token&gt;</code> on every request.",
+        "<strong class='text-white'>Match the environment.</strong> A demo token only authorizes demo hosts; a live token only authorizes live hosts.",
+        "<strong class='text-white'>One session per token.</strong> Re-requesting a fresh token elsewhere can invalidate the token your bot is still using.",
+      ],
+    },
+    { type: "heading", text: "What “401 Unauthorized” Means" },
+    { type: "paragraph", html: "A <code>401 Unauthorized</code> from the Tradovate API means the server got your request but refused to act on it because it couldn't verify a valid, current access token. This is an authentication failure, not a permissions problem, not an order-logic problem. The API is basically saying, &ldquo;I don't know who you are right now.&rdquo; On the REST side you see it as an HTTP <code>401</code> status. On the market-data and trading WebSocket it usually arrives as a frame carrying <code>&quot;s&quot;:401</code> with the text <code>&quot;Access is denied&quot;</code>, often followed by the socket closing." },
+    { type: "paragraph", html: "Here's the part that trips people up: a Tradovate access token is short-lived by design. When you authenticate through <code>/auth/accessTokenRequest</code>, the response hands you an <code>accessToken</code> plus an <code>expirationTime</code>, and that expiration sits roughly <strong class='text-white'>90 minutes</strong> out. During that window the token is your key to every protected endpoint. The moment it lapses, the exact same request that worked a minute ago returns a 401, because the key no longer opens the lock." },
+    { type: "paragraph", html: "That's why the error is so baffling the first time you hit it. Nothing in your code changed, your API key and secret are still correct, and yet the calls fail. The problem is time, not configuration. A 401 that only shows up after your app has been running for over an hour is the fingerprint of an expired token." },
+    { type: "heading", text: "Top Causes of Tradovate API 401 Unauthorized in 2026" },
+    { type: "heading", text: "1. The access token expired (the 90-minute limit)" },
+    { type: "paragraph", html: "This is by far the most common cause. Tradovate access tokens have a documented lifetime of about 90 minutes from creation. If your bot grabs a token once at startup and never refreshes it, every request after that 90-minute mark returns a 401. In practice the failure tends to land around the 80-minute mark, right where a token that was never renewed gives out." },
+    { type: "heading", text: "2. Renewing too late, after the token already expired" },
+    { type: "paragraph", html: "<code>/auth/renewAccessToken</code> only works while your current token is <em>still valid</em>. Wait until after expiry to renew, and the renewal call itself fails with a 401, you're trying to authenticate a renewal with a dead key. Once a token has fully expired, you have to run a fresh <code>/auth/accessTokenRequest</code>, not a renewal." },
+    { type: "heading", text: "3. A malformed Authorization header" },
+    { type: "paragraph", html: "Even a perfectly valid token gets rejected if you present it wrong. On REST calls the header must read <code>Authorization: Bearer &lt;token&gt;</code>, a missing <code>Bearer</code> prefix or a stray space is enough to trigger a 401. On the WebSocket, the <code>authorize</code> frame has to be formatted exactly as the current docs specify (endpoint, id, then the token, with the correct blank-line separators). A formatting slip there produces the same <code>&quot;Access is denied&quot;</code> response." },
+    { type: "heading", text: "4. Wrong environment (demo token on live host, or vice versa)" },
+    { type: "paragraph", html: "Tradovate runs separate demo and live environments. A token issued against the demo host won't authorize requests sent to the live host, and the reverse holds too. Point a valid demo token at a live endpoint (or a live token at demo) and it surfaces as a 401 / access-denied even though the token itself is genuine." },
+    { type: "heading", text: "5. The token was invalidated by a second login" },
+    { type: "paragraph", html: "Access tokens are tied to a session. If another process, a second script, a manual test, or a re-run of your own login flow, requests a fresh token for the same account, it can invalidate the token your bot is still holding. The bot then starts collecting 401s mid-run even though &ldquo;nothing changed&rdquo; on its side. And repeatedly hammering the login endpoint can trip Tradovate's request penalty, which delays you even further." },
+    { type: "heading", text: "How to Fix the 401 Unauthorized Error: Step-by-Step" },
+    { type: "heading", text: "Fixing an Expired Token: Renew Before It Dies" },
+    {
+      type: "steps",
+      items: [
+        { title: "Store the expiration on login", html: "When you authenticate, read the <code>expirationTime</code> value from the login response and store it alongside your <code>accessToken</code>." },
+        { title: "Set a timer to fire early", html: "Set a timer or scheduler to fire about <strong class='text-white'>15 minutes before</strong> that expiration, with a 90-minute token, that lands you near the 75-minute mark." },
+        { title: "Call renewAccessToken", html: "When the timer fires, send a <code>POST</code> to <code>/auth/renewAccessToken</code> with your <em>current, still-valid</em> token in the <code>Authorization: Bearer &lt;token&gt;</code> header and no request body." },
+        { title: "Replace and repeat", html: "Replace your stored <code>accessToken</code> and <code>expirationTime</code> with the fresh values returned, then reset the timer. Repeat for as long as the bot runs." },
+      ],
+    },
+    { type: "heading", text: "Fixing a Token That Already Expired" },
+    { type: "paragraph", html: "If your token has already lapsed and renewal returns a 401, stop trying to renew. Run a full <code>/auth/accessTokenRequest</code> again to get a brand-new token and expiration, then resume the renew-before-expiry loop above. Build your client so a 401 on any call triggers a single re-authentication and one automatic retry, not an infinite loop, which can trip request-limit penalties." },
+    { type: "heading", text: "Fixing the Authorization Header" },
+    { type: "paragraph", html: "Log the exact header your client sends and confirm it reads <code>Authorization: Bearer &lt;token&gt;</code> with a single space after <code>Bearer</code>. For WebSocket connections, verify the <code>authorize</code> frame matches the current documented format before you assume your token is bad. The fastest way to isolate this is to make the same call in a REST client, Postman or curl, with a freshly issued token. If that succeeds, the problem is in how your code builds the request, not the token." },
+    { type: "heading", text: "Fixing Environment and Credential Mismatches" },
+    { type: "paragraph", html: "Confirm the host you're calling matches the environment your token was issued for (demo vs. live). Then double-check that your API key, secret, and app credentials are current in the Tradovate API management area, regenerating them or losing sync will also produce authentication failures. Sign in to your Tradovate account, open the API access / add-on section, and confirm your key is active before blaming the token." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error", "Meaning", "Fix"],
+      rows: [
+        ["401 Unauthorized (REST, after ~90 min)", "Access token expired", "Renew via /auth/renewAccessToken ~15 min before expiry"],
+        ["&quot;s&quot;:401 ... &quot;Access is denied&quot; (WebSocket)", "Token expired or authorize frame rejected", "Re-authenticate and re-open the socket with a valid token"],
+        ["401 on the renewal call itself", "You renewed after the token already expired", "Run a fresh /auth/accessTokenRequest, then resume renewing"],
+        ["401 immediately on every call", "Malformed Authorization header", "Ensure Authorization: Bearer &lt;token&gt; with correct spacing"],
+        ["401 / access denied on live only", "Demo token used against a live host (or vice versa)", "Use a token issued for the environment you are calling"],
+        ["401 mid-run after another login", "Prior token invalidated by a second session", "Share one token per account; avoid duplicate logins"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "Managing a 90-minute token clock by hand is fragile, miss one renewal and your automation goes silent right when a signal fires. PickMyTrade sits between TradingView and Tradovate and handles the token lifecycle for you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Automatic Token Renewal</strong>, the connection is refreshed on schedule, so a 90-minute expiry never drops your orders.",
+        "<strong class='text-white'>Session-Safe Routing</strong>, one managed connection per account avoids the duplicate-login invalidation that causes mid-run 401s.",
+        "<strong class='text-white'>Rate-Limit-Safe Requests</strong>, calls are spaced to respect Tradovate's request limits, so you never trade a fixed 401 for a penalty timeout.",
+        "<strong class='text-white'>Environment Awareness</strong>, demo and live stay distinct, so a token is never sent to the wrong host.",
+      ],
+    },
+    { type: "paragraph", html: "The upshot: your TradingView alerts reach Tradovate without you writing or babysitting a single line of authentication code." },
+  ], de: [
+    { type: "paragraph", html: "Sie richten einen Tradovate-API-Bot ein, senden ein paar Demo-Orders ab, und alles läuft rund, doch nach etwa anderthalb Stunden läuft plötzlich jeder Aufruf in einen <strong class='text-white'>401 Unauthorized</strong>. Das ist einer der häufigsten und am meisten missverstandenen Tradovate-API-Fehler, und die Ursache ist fast immer dieselbe: Ihr Zugriffstoken ist still und leise abgelaufen. Tradovate-Zugriffstoken gelten für etwa <strong class='text-white'>90 Minuten</strong>. Sobald diese Zeit abgelaufen ist, vertrauen Ihnen weder die REST-API noch der Marktdaten-WebSocket mehr. Sie sehen dies als reinen <code>401 Unauthorized</code>-HTTP-Status, als Meldung <code>&quot;Access is denied&quot;</code>, oder als WebSocket, der abrupt einen Close-Frame sendet und die Verbindung trennt. Die Lösung besteht nicht darin, den Login-Endpunkt erneut zu bombardieren, sondern das Token <em>vor</em> Ablauf zu erneuern. Automatisierungs-Bridges wie PickMyTrade übernehmen diesen Token-Lebenszyklus für Sie, sodass Ihre Alerts weiter auslösen, selbst wenn ein einfaches Skript längst ausgefallen wäre." },
+    {
+      type: "checklist",
+      heading: "Schnelle Checkliste für den 401-Unauthorized-Fehler",
+      items: [
+        "<strong class='text-white'>Prüfen Sie die Uhrzeit.</strong> Beginnt der 401-Fehler etwa bei Minute 75&ndash;90, handelt es sich um ein Token-Ablaufproblem, nicht um ein Zugangsdatenproblem.",
+        "<strong class='text-white'>Erneuern statt neu einloggen.</strong> Rufen Sie <code>/auth/renewAccessToken</code> etwa 15 Minuten vor Ablauf mit Ihrem noch gültigen Token auf.",
+        "<strong class='text-white'>Verfolgen Sie <code>expirationTime</code>.</strong> Speichern Sie den beim Login zurückgegebenen Zeitstempel und planen Sie die Erneuerung danach, nicht anhand eines geschätzten Intervalls.",
+        "<strong class='text-white'>Überprüfen Sie den Header.</strong> Das Token muss bei jeder Anfrage als <code>Authorization: Bearer &lt;token&gt;</code> gesendet werden.",
+        "<strong class='text-white'>Umgebung abgleichen.</strong> Ein Demo-Token autorisiert nur Demo-Hosts, ein Live-Token nur Live-Hosts.",
+        "<strong class='text-white'>Eine Sitzung pro Token.</strong> Wird andernorts ein neues Token angefordert, kann dies das Token ungültig machen, das Ihr Bot noch verwendet.",
+      ],
+    },
+    { type: "heading", text: "Was „401 Unauthorized“ bedeutet" },
+    { type: "paragraph", html: "Ein <code>401 Unauthorized</code> der Tradovate-API bedeutet, dass der Server Ihre Anfrage erhalten, aber die Ausführung verweigert hat, weil er kein gültiges, aktuelles Zugriffstoken verifizieren konnte. Es handelt sich um einen Authentifizierungsfehler, nicht um ein Berechtigungsproblem und nicht um ein Problem der Order-Logik. Die API sagt im Grunde: &ldquo;Ich weiß gerade nicht, wer Sie sind.&rdquo; Auf der REST-Seite sehen Sie dies als HTTP-<code>401</code>-Status. Beim Marktdaten- und Trading-WebSocket kommt meist ein Frame mit <code>&quot;s&quot;:401</code> und dem Text <code>&quot;Access is denied&quot;</code> an, oft gefolgt vom Schließen der Verbindung." },
+    { type: "paragraph", html: "Das Verwirrende daran: Ein Tradovate-Zugriffstoken ist absichtlich kurzlebig. Wenn Sie sich über <code>/auth/accessTokenRequest</code> authentifizieren, erhalten Sie in der Antwort ein <code>accessToken</code> sowie eine <code>expirationTime</code>, die etwa <strong class='text-white'>90 Minuten</strong> in der Zukunft liegt. Während dieses Zeitfensters ist das Token Ihr Schlüssel zu jedem geschützten Endpunkt. Sobald es abläuft, liefert exakt dieselbe Anfrage, die eine Minute zuvor noch funktioniert hat, einen 401-Fehler, weil der Schlüssel das Schloss nicht mehr öffnet." },
+    { type: "paragraph", html: "Deshalb ist der Fehler beim ersten Auftreten so verwirrend. An Ihrem Code hat sich nichts geändert, Ihr API-Key und Ihr Secret sind weiterhin korrekt, und dennoch schlagen die Aufrufe fehl. Das Problem ist die Zeit, nicht die Konfiguration. Ein 401-Fehler, der erst auftritt, nachdem Ihre App über eine Stunde gelaufen ist, ist das typische Erkennungsmerkmal eines abgelaufenen Tokens." },
+    { type: "heading", text: "Die häufigsten Ursachen für Tradovate API 401 Unauthorized im Jahr 2026" },
+    { type: "heading", text: "1. Das Zugriffstoken ist abgelaufen (das 90-Minuten-Limit)" },
+    { type: "paragraph", html: "Das ist mit Abstand die häufigste Ursache. Tradovate-Zugriffstoken haben laut Dokumentation eine Lebensdauer von etwa 90 Minuten ab Erstellung. Holt sich Ihr Bot beim Start einmalig ein Token und aktualisiert es nie wieder, liefert jede Anfrage nach dieser 90-Minuten-Marke einen 401-Fehler. In der Praxis tritt der Fehler meist um die 80-Minuten-Marke auf, genau dort, wo ein nie erneuertes Token versagt." },
+    { type: "heading", text: "2. Zu späte Erneuerung, nachdem das Token bereits abgelaufen ist" },
+    { type: "paragraph", html: "<code>/auth/renewAccessToken</code> funktioniert nur, solange Ihr aktuelles Token <em>noch gültig</em> ist. Warten Sie bis nach Ablauf, um zu erneuern, schlägt bereits der Erneuerungsaufruf selbst mit einem 401 fehl, Sie versuchen dann, eine Erneuerung mit einem toten Schlüssel zu authentifizieren. Ist ein Token vollständig abgelaufen, müssen Sie einen neuen <code>/auth/accessTokenRequest</code> ausführen, keine Erneuerung." },
+    { type: "heading", text: "3. Ein fehlerhaft formatierter Authorization-Header" },
+    { type: "paragraph", html: "Selbst ein völlig gültiges Token wird abgelehnt, wenn Sie es falsch übermitteln. Bei REST-Aufrufen muss der Header <code>Authorization: Bearer &lt;token&gt;</code> lauten, ein fehlendes <code>Bearer</code>-Präfix oder ein überflüssiges Leerzeichen genügt, um einen 401-Fehler auszulösen. Beim WebSocket muss der <code>authorize</code>-Frame exakt gemäß der aktuellen Dokumentation formatiert sein (Endpunkt, ID, dann das Token, mit den korrekten Leerzeilen-Trennungen). Ein Formatierungsfehler führt dort zur gleichen <code>&quot;Access is denied&quot;</code>-Antwort." },
+    { type: "heading", text: "4. Falsche Umgebung (Demo-Token auf Live-Host oder umgekehrt)" },
+    { type: "paragraph", html: "Tradovate betreibt getrennte Demo- und Live-Umgebungen. Ein für den Demo-Host ausgestelltes Token autorisiert keine Anfragen an den Live-Host, und umgekehrt gilt dasselbe. Richten Sie ein gültiges Demo-Token gegen einen Live-Endpunkt (oder ein Live-Token gegen Demo), erscheint ein 401 / Zugriff verweigert, obwohl das Token selbst echt ist." },
+    { type: "heading", text: "5. Das Token wurde durch einen zweiten Login ungültig gemacht" },
+    { type: "paragraph", html: "Zugriffstoken sind an eine Sitzung gebunden. Fordert ein anderer Prozess, ein zweites Skript, ein manueller Test oder ein erneuter Durchlauf Ihres eigenen Login-Ablaufs ein neues Token für dasselbe Konto an, kann dies das Token ungültig machen, das Ihr Bot noch verwendet. Der Bot sammelt dann mitten im Lauf 401-Fehler, obwohl sich auf seiner Seite &ldquo;nichts geändert hat&rdquo;. Und wiederholtes Bombardieren des Login-Endpunkts kann Tradovates Anfrage-Sperre auslösen, was Sie zusätzlich verzögert." },
+    { type: "heading", text: "So beheben Sie den 401-Unauthorized-Fehler: Schritt für Schritt" },
+    { type: "heading", text: "Ein abgelaufenes Token beheben: Vor Ablauf erneuern" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ablaufzeit beim Login speichern", html: "Lesen Sie bei der Authentifizierung den Wert <code>expirationTime</code> aus der Login-Antwort und speichern Sie ihn zusammen mit Ihrem <code>accessToken</code>." },
+        { title: "Timer für frühzeitiges Auslösen setzen", html: "Stellen Sie einen Timer oder Scheduler so ein, dass er etwa <strong class='text-white'>15 Minuten vor</strong> diesem Ablauf auslöst, bei einem 90-Minuten-Token landen Sie damit nahe der 75-Minuten-Marke." },
+        { title: "renewAccessToken aufrufen", html: "Wenn der Timer auslöst, senden Sie ein <code>POST</code> an <code>/auth/renewAccessToken</code> mit Ihrem <em>aktuellen, noch gültigen</em> Token im Header <code>Authorization: Bearer &lt;token&gt;</code> und ohne Request-Body." },
+        { title: "Ersetzen und wiederholen", html: "Ersetzen Sie Ihr gespeichertes <code>accessToken</code> und <code>expirationTime</code> durch die neu zurückgegebenen Werte und setzen Sie den Timer zurück. Wiederholen Sie dies, solange der Bot läuft." },
+      ],
+    },
+    { type: "heading", text: "Ein bereits abgelaufenes Token beheben" },
+    { type: "paragraph", html: "Ist Ihr Token bereits abgelaufen und liefert die Erneuerung einen 401-Fehler, versuchen Sie nicht weiter zu erneuern. Führen Sie erneut einen vollständigen <code>/auth/accessTokenRequest</code> aus, um ein brandneues Token und eine neue Ablaufzeit zu erhalten, und setzen Sie dann die oben beschriebene Erneuerungs-Schleife fort. Bauen Sie Ihren Client so, dass ein 401 bei jedem Aufruf genau eine erneute Authentifizierung und einen automatischen Wiederholungsversuch auslöst, keine Endlosschleife, die Anfrage-Sperren auslösen kann." },
+    { type: "heading", text: "Den Authorization-Header beheben" },
+    { type: "paragraph", html: "Protokollieren Sie den genauen Header, den Ihr Client sendet, und prüfen Sie, ob er <code>Authorization: Bearer &lt;token&gt;</code> mit genau einem Leerzeichen nach <code>Bearer</code> lautet. Prüfen Sie bei WebSocket-Verbindungen, ob der <code>authorize</code>-Frame dem aktuell dokumentierten Format entspricht, bevor Sie annehmen, Ihr Token sei fehlerhaft. Am schnellsten grenzen Sie das Problem ein, indem Sie denselben Aufruf mit einem frisch ausgestellten Token in einem REST-Client, Postman oder curl, durchführen. Gelingt dies, liegt das Problem daran, wie Ihr Code die Anfrage erstellt, nicht am Token." },
+    { type: "heading", text: "Umgebungs- und Zugangsdaten-Konflikte beheben" },
+    { type: "paragraph", html: "Prüfen Sie, ob der Host, den Sie aufrufen, zu der Umgebung passt, für die Ihr Token ausgestellt wurde (Demo vs. Live). Überprüfen Sie anschließend, ob Ihr API-Key, Secret und Ihre App-Zugangsdaten im Tradovate-API-Verwaltungsbereich aktuell sind, ein Neu-Generieren oder ein Synchronisationsverlust führt ebenfalls zu Authentifizierungsfehlern. Melden Sie sich in Ihrem Tradovate-Konto an, öffnen Sie den Bereich API-Zugriff / Add-on und bestätigen Sie, dass Ihr Key aktiv ist, bevor Sie das Token verantwortlich machen." },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Fehler", "Bedeutung", "Lösung"],
+      rows: [
+        ["401 Unauthorized (REST, nach ~90 Min.)", "Zugriffstoken abgelaufen", "Erneuerung über /auth/renewAccessToken ~15 Min. vor Ablauf"],
+        ["&quot;s&quot;:401 ... &quot;Access is denied&quot; (WebSocket)", "Token abgelaufen oder authorize-Frame abgelehnt", "Erneut authentifizieren und Socket mit gültigem Token neu öffnen"],
+        ["401 beim Erneuerungsaufruf selbst", "Erneuerung erfolgte, nachdem das Token bereits abgelaufen war", "Neuen /auth/accessTokenRequest ausführen, dann Erneuerung fortsetzen"],
+        ["401 sofort bei jedem Aufruf", "Fehlerhaft formatierter Authorization-Header", "Authorization: Bearer &lt;token&gt; mit korrekter Leerzeichensetzung sicherstellen"],
+        ["401 / Zugriff verweigert nur bei Live", "Demo-Token gegen Live-Host verwendet (oder umgekehrt)", "Token verwenden, das für die aufgerufene Umgebung ausgestellt wurde"],
+        ["401 mitten im Lauf nach weiterem Login", "Vorheriges Token durch eine zweite Sitzung ungültig gemacht", "Ein Token pro Konto gemeinsam nutzen; doppelte Logins vermeiden"],
+      ],
+    },
+    { type: "heading", text: "So verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "Eine 90-Minuten-Token-Uhr manuell zu verwalten ist fehleranfällig, verpassen Sie eine Erneuerung, verstummt Ihre Automatisierung genau dann, wenn ein Signal auslöst. PickMyTrade sitzt zwischen TradingView und Tradovate und übernimmt den Token-Lebenszyklus für Sie:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Automatische Token-Erneuerung</strong>, die Verbindung wird planmäßig aktualisiert, sodass ein 90-Minuten-Ablauf nie Ihre Orders verwirft.",
+        "<strong class='text-white'>Sitzungssicheres Routing</strong>, eine verwaltete Verbindung pro Konto vermeidet die durch doppelte Logins verursachte Ungültigmachung, die 401-Fehler mitten im Lauf auslöst.",
+        "<strong class='text-white'>Ratenlimit-sichere Anfragen</strong>, Aufrufe werden zeitlich gestaffelt, um Tradovates Anfragelimits einzuhalten, sodass Sie einen behobenen 401-Fehler nie gegen eine Sperrfrist eintauschen.",
+        "<strong class='text-white'>Umgebungsbewusstsein</strong>, Demo und Live bleiben strikt getrennt, sodass ein Token nie an den falschen Host gesendet wird.",
+      ],
+    },
+    { type: "paragraph", html: "Das Ergebnis: Ihre TradingView-Alerts erreichen Tradovate, ohne dass Sie auch nur eine einzige Zeile Authentifizierungscode schreiben oder überwachen müssen." },
+  ], es: [
+    { type: "paragraph", html: "Configura un bot para la API de Tradovate, envía algunas órdenes de demostración y todo funciona sin problemas, pero, al cabo de una hora y media, cada llamada choca de repente con un <strong class='text-white'>401 Unauthorized</strong>. Es uno de los fallos más comunes y peor interpretados de la API de Tradovate, y la causa es casi siempre la misma: su token de acceso caducó silenciosamente. Los tokens de acceso de Tradovate duran aproximadamente <strong class='text-white'>90 minutos</strong>. Una vez que ese plazo se agota, tanto la API REST como el WebSocket de datos de mercado dejan de confiar en usted. Lo verá como un simple estado HTTP <code>401 Unauthorized</code>, un mensaje <code>&quot;Access is denied&quot;</code>, o un WebSocket que envía abruptamente un frame de cierre y se desconecta. La solución no es volver a machacar el endpoint de login, sino renovar el token <em>antes</em> de que caduque. Puentes de automatización como PickMyTrade gestionan ese ciclo de vida del token por usted, de modo que sus alertas siguen disparándose incluso cuando un script básico se habría quedado sin funcionar." },
+    {
+      type: "checklist",
+      heading: "Lista rápida de verificación para el error 401 Unauthorized",
+      items: [
+        "<strong class='text-white'>Revise el reloj.</strong> Si el 401 comienza alrededor del minuto 75&ndash;90, es un problema de caducidad del token, no de credenciales.",
+        "<strong class='text-white'>Renueve, no vuelva a iniciar sesión.</strong> Llame a <code>/auth/renewAccessToken</code> con su token aún válido unos 15 minutos antes de que caduque.",
+        "<strong class='text-white'>Controle <code>expirationTime</code>.</strong> Guarde la marca de tiempo devuelta al iniciar sesión y programe la renovación en función de ella, no de un intervalo estimado.",
+        "<strong class='text-white'>Verifique el encabezado.</strong> El token debe enviarse como <code>Authorization: Bearer &lt;token&gt;</code> en cada solicitud.",
+        "<strong class='text-white'>Haga coincidir el entorno.</strong> Un token de demostración solo autoriza hosts de demostración; un token en vivo solo autoriza hosts en vivo.",
+        "<strong class='text-white'>Una sesión por token.</strong> Solicitar un nuevo token en otro lugar puede invalidar el token que su bot todavía está usando.",
+      ],
+    },
+    { type: "heading", text: "Qué significa «401 Unauthorized»" },
+    { type: "paragraph", html: "Un <code>401 Unauthorized</code> de la API de Tradovate significa que el servidor recibió su solicitud pero se negó a ejecutarla porque no pudo verificar un token de acceso válido y vigente. Se trata de un fallo de autenticación, no de un problema de permisos ni de lógica de órdenes. En esencia, la API le está diciendo: &ldquo;No sé quién es usted en este momento.&rdquo; En el lado REST lo verá como un estado HTTP <code>401</code>. En el WebSocket de datos de mercado y de trading suele llegar como un frame con <code>&quot;s&quot;:401</code> y el texto <code>&quot;Access is denied&quot;</code>, a menudo seguido del cierre del socket." },
+    { type: "paragraph", html: "Esta es la parte que confunde a la gente: un token de acceso de Tradovate es de corta duración por diseño. Cuando se autentica mediante <code>/auth/accessTokenRequest</code>, la respuesta le entrega un <code>accessToken</code> más un <code>expirationTime</code>, y ese vencimiento se sitúa aproximadamente <strong class='text-white'>90 minutos</strong> más adelante. Durante esa ventana, el token es su llave para cada endpoint protegido. En el momento en que caduca, la misma solicitud que funcionaba un minuto antes devuelve un 401, porque la llave ya no abre la cerradura." },
+    { type: "paragraph", html: "Por eso el error resulta tan desconcertante la primera vez que aparece. Nada ha cambiado en su código, su API key y su secret siguen siendo correctos, y aun así las llamadas fallan. El problema es el tiempo, no la configuración. Un 401 que solo aparece después de que su aplicación lleve más de una hora en ejecución es la huella característica de un token caducado." },
+    { type: "heading", text: "Principales causas del 401 Unauthorized de la API de Tradovate en 2026" },
+    { type: "heading", text: "1. El token de acceso caducó (el límite de 90 minutos)" },
+    { type: "paragraph", html: "Esta es, con diferencia, la causa más común. Los tokens de acceso de Tradovate tienen, según la documentación, una vida útil de unos 90 minutos desde su creación. Si su bot obtiene un token una sola vez al iniciar y nunca lo actualiza, toda solicitud posterior a esa marca de 90 minutos devuelve un 401. En la práctica, el fallo suele producirse alrededor del minuto 80, justo donde un token que nunca se renovó deja de funcionar." },
+    { type: "heading", text: "2. Renovar demasiado tarde, después de que el token ya caducó" },
+    { type: "paragraph", html: "<code>/auth/renewAccessToken</code> solo funciona mientras su token actual <em>sigue siendo válido</em>. Si espera a después de la caducidad para renovar, la propia llamada de renovación falla con un 401, está intentando autenticar una renovación con una llave muerta. Una vez que un token ha caducado por completo, debe ejecutar un nuevo <code>/auth/accessTokenRequest</code>, no una renovación." },
+    { type: "heading", text: "3. Un encabezado Authorization mal formado" },
+    { type: "paragraph", html: "Incluso un token perfectamente válido se rechaza si lo presenta de forma incorrecta. En las llamadas REST, el encabezado debe leer <code>Authorization: Bearer &lt;token&gt;</code>, la falta del prefijo <code>Bearer</code> o un espacio de más basta para provocar un 401. En el WebSocket, el frame <code>authorize</code> debe tener exactamente el formato que especifica la documentación actual (endpoint, id y luego el token, con los separadores de línea en blanco correctos). Un fallo de formato ahí produce la misma respuesta <code>&quot;Access is denied&quot;</code>." },
+    { type: "heading", text: "4. Entorno incorrecto (token de demostración en host en vivo, o viceversa)" },
+    { type: "paragraph", html: "Tradovate opera entornos de demostración y en vivo separados. Un token emitido para el host de demostración no autoriza solicitudes enviadas al host en vivo, y lo mismo ocurre a la inversa. Dirija un token de demostración válido hacia un endpoint en vivo (o un token en vivo hacia demostración) y aparecerá un 401 / acceso denegado, aunque el token en sí sea genuino." },
+    { type: "heading", text: "5. El token quedó invalidado por un segundo inicio de sesión" },
+    { type: "paragraph", html: "Los tokens de acceso están vinculados a una sesión. Si otro proceso, un segundo script, una prueba manual o una nueva ejecución de su propio flujo de login solicita un token nuevo para la misma cuenta, puede invalidar el token que su bot todavía está usando. El bot entonces empieza a acumular errores 401 en pleno funcionamiento aunque &ldquo;nada haya cambiado&rdquo; de su lado. Y machacar repetidamente el endpoint de login puede activar la penalización de solicitudes de Tradovate, lo que le retrasa aún más." },
+    { type: "heading", text: "Cómo solucionar el error 401 Unauthorized: paso a paso" },
+    { type: "heading", text: "Solucionar un token caducado: renueve antes de que muera" },
+    {
+      type: "steps",
+      items: [
+        { title: "Guarde la caducidad al iniciar sesión", html: "Al autenticarse, lea el valor <code>expirationTime</code> de la respuesta de login y guárdelo junto con su <code>accessToken</code>." },
+        { title: "Configure un temporizador que se dispare pronto", html: "Configure un temporizador o programador para que se active unos <strong class='text-white'>15 minutos antes</strong> de esa caducidad, con un token de 90 minutos eso lo sitúa cerca del minuto 75." },
+        { title: "Llame a renewAccessToken", html: "Cuando se active el temporizador, envíe un <code>POST</code> a <code>/auth/renewAccessToken</code> con su token <em>actual y aún válido</em> en el encabezado <code>Authorization: Bearer &lt;token&gt;</code> y sin cuerpo de solicitud." },
+        { title: "Reemplace y repita", html: "Reemplace su <code>accessToken</code> y <code>expirationTime</code> almacenados por los valores nuevos devueltos y reinicie el temporizador. Repita esto mientras el bot esté en ejecución." },
+      ],
+    },
+    { type: "heading", text: "Solucionar un token que ya caducó" },
+    { type: "paragraph", html: "Si su token ya caducó y la renovación devuelve un 401, deje de intentar renovarlo. Ejecute de nuevo un <code>/auth/accessTokenRequest</code> completo para obtener un token y una caducidad totalmente nuevos, y luego retome el bucle de renovación antes de la caducidad descrito arriba. Construya su cliente de modo que un 401 en cualquier llamada dispare una única reautenticación y un solo reintento automático, no un bucle infinito, que puede activar penalizaciones por límite de solicitudes." },
+    { type: "heading", text: "Solucionar el encabezado Authorization" },
+    { type: "paragraph", html: "Registre el encabezado exacto que envía su cliente y confirme que dice <code>Authorization: Bearer &lt;token&gt;</code> con un único espacio después de <code>Bearer</code>. En las conexiones WebSocket, verifique que el frame <code>authorize</code> coincide con el formato documentado actualmente antes de asumir que su token está mal. La forma más rápida de aislar esto es hacer la misma llamada en un cliente REST, Postman o curl, con un token recién emitido. Si eso funciona, el problema está en cómo su código construye la solicitud, no en el token." },
+    { type: "heading", text: "Solucionar discrepancias de entorno y credenciales" },
+    { type: "paragraph", html: "Confirme que el host al que llama coincide con el entorno para el que se emitió su token (demostración frente a en vivo). Luego verifique que su API key, secret y credenciales de la app estén actualizados en el área de gestión de la API de Tradovate, regenerarlos o perder la sincronización también producirá fallos de autenticación. Inicie sesión en su cuenta de Tradovate, abra la sección de acceso a la API / complemento y confirme que su key está activa antes de culpar al token." },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Error", "Significado", "Solución"],
+      rows: [
+        ["401 Unauthorized (REST, tras ~90 min)", "Token de acceso caducado", "Renovar mediante /auth/renewAccessToken ~15 min antes de la caducidad"],
+        ["&quot;s&quot;:401 ... &quot;Access is denied&quot; (WebSocket)", "Token caducado o frame authorize rechazado", "Reautenticarse y reabrir el socket con un token válido"],
+        ["401 en la propia llamada de renovación", "Renovó después de que el token ya había caducado", "Ejecutar un nuevo /auth/accessTokenRequest y luego reanudar la renovación"],
+        ["401 inmediatamente en cada llamada", "Encabezado Authorization mal formado", "Asegurar Authorization: Bearer &lt;token&gt; con el espaciado correcto"],
+        ["401 / acceso denegado solo en vivo", "Token de demostración usado contra un host en vivo (o viceversa)", "Usar un token emitido para el entorno que está llamando"],
+        ["401 en pleno funcionamiento tras otro login", "Token anterior invalidado por una segunda sesión", "Compartir un único token por cuenta; evitar logins duplicados"],
+      ],
+    },
+    { type: "heading", text: "Prevenga esto con PickMyTrade" },
+    { type: "paragraph", html: "Gestionar manualmente un reloj de token de 90 minutos es frágil, si se pierde una renovación, su automatización enmudece justo cuando se dispara una señal. PickMyTrade se sitúa entre TradingView y Tradovate y gestiona el ciclo de vida del token por usted:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Renovación automática de tokens</strong>, la conexión se actualiza de forma programada, de modo que una caducidad de 90 minutos nunca descarta sus órdenes.",
+        "<strong class='text-white'>Enrutamiento seguro por sesión</strong>, una única conexión gestionada por cuenta evita la invalidación por login duplicado que provoca errores 401 en pleno funcionamiento.",
+        "<strong class='text-white'>Solicitudes seguras frente al límite de tasa</strong>, las llamadas se espacian para respetar los límites de solicitudes de Tradovate, de modo que nunca cambia un 401 resuelto por una penalización de espera.",
+        "<strong class='text-white'>Conciencia de entorno</strong>, demostración y en vivo permanecen separados, de modo que un token nunca se envía al host equivocado.",
+      ],
+    },
+    { type: "paragraph", html: "En resumen: sus alertas de TradingView llegan a Tradovate sin que usted tenga que escribir ni vigilar ni una sola línea de código de autenticación." },
+  ], fr: [
+    { type: "paragraph", html: "Vous configurez un bot pour l'API Tradovate, envoyez quelques ordres de démonstration et tout fonctionne parfaitement, puis, au bout d'environ une heure et demie, chaque appel se heurte soudain à un <strong class='text-white'>401 Unauthorized</strong>. C'est l'une des erreurs les plus courantes et les plus mal comprises de l'API Tradovate, et la cause est presque toujours la même : votre jeton d'accès a discrètement expiré. Les jetons d'accès Tradovate ont une durée de vie d'environ <strong class='text-white'>90 minutes</strong>. Une fois ce délai écoulé, l'API REST et le WebSocket de données de marché cessent tous deux de vous faire confiance. Vous le verrez sous la forme d'un simple statut HTTP <code>401 Unauthorized</code>, d'un message <code>&quot;Access is denied&quot;</code>, ou d'un WebSocket qui envoie brusquement une trame de fermeture et se déconnecte. La solution n'est pas de marteler à nouveau le point de terminaison de connexion, mais de renouveler le jeton <em>avant</em> qu'il n'expire. Des passerelles d'automatisation comme PickMyTrade gèrent ce cycle de vie du jeton pour vous, de sorte que vos alertes continuent de se déclencher même là où un script brut se serait arrêté." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide pour l'erreur 401 Unauthorized",
+      items: [
+        "<strong class='text-white'>Vérifiez l'heure.</strong> Si le 401 apparaît vers la 75e&ndash;90e minute, il s'agit d'un problème d'expiration de jeton, pas d'un problème d'identifiants.",
+        "<strong class='text-white'>Renouvelez, ne vous reconnectez pas.</strong> Appelez <code>/auth/renewAccessToken</code> avec votre jeton encore valide environ 15 minutes avant son expiration.",
+        "<strong class='text-white'>Suivez <code>expirationTime</code>.</strong> Enregistrez l'horodatage renvoyé lors de la connexion et planifiez le renouvellement en fonction de celui-ci, pas d'un intervalle estimé.",
+        "<strong class='text-white'>Vérifiez l'en-tête.</strong> Le jeton doit être envoyé sous la forme <code>Authorization: Bearer &lt;token&gt;</code> à chaque requête.",
+        "<strong class='text-white'>Faites correspondre l'environnement.</strong> Un jeton de démonstration n'autorise que les hôtes de démonstration ; un jeton en direct n'autorise que les hôtes en direct.",
+        "<strong class='text-white'>Une session par jeton.</strong> Redemander un nouveau jeton ailleurs peut invalider le jeton que votre bot utilise encore.",
+      ],
+    },
+    { type: "heading", text: "Que signifie « 401 Unauthorized »" },
+    { type: "paragraph", html: "Un <code>401 Unauthorized</code> renvoyé par l'API Tradovate signifie que le serveur a reçu votre requête mais a refusé de l'exécuter parce qu'il n'a pas pu vérifier un jeton d'accès valide et à jour. Il s'agit d'un échec d'authentification, pas d'un problème de droits, ni d'un problème de logique d'ordre. L'API dit essentiellement : &ldquo;Je ne sais pas qui vous êtes en ce moment.&rdquo; Côté REST, vous le voyez sous la forme d'un statut HTTP <code>401</code>. Sur le WebSocket de données de marché et de trading, cela arrive généralement sous la forme d'une trame portant <code>&quot;s&quot;:401</code> avec le texte <code>&quot;Access is denied&quot;</code>, souvent suivie de la fermeture du socket." },
+    { type: "paragraph", html: "Voici ce qui déroute la plupart des gens : un jeton d'accès Tradovate est volontairement conçu pour être de courte durée. Lorsque vous vous authentifiez via <code>/auth/accessTokenRequest</code>, la réponse vous fournit un <code>accessToken</code> ainsi qu'un <code>expirationTime</code>, et cette expiration se situe environ <strong class='text-white'>90 minutes</strong> plus tard. Pendant cette fenêtre, le jeton est votre clé pour chaque point de terminaison protégé. Dès qu'il expire, la même requête exacte qui fonctionnait une minute plus tôt renvoie un 401, car la clé n'ouvre plus la serrure." },
+    { type: "paragraph", html: "C'est pourquoi cette erreur est si déroutante la première fois qu'elle survient. Rien n'a changé dans votre code, votre clé API et votre secret restent corrects, et pourtant les appels échouent. Le problème, c'est le temps, pas la configuration. Un 401 qui n'apparaît qu'après plus d'une heure de fonctionnement de votre application est la signature d'un jeton expiré." },
+    { type: "heading", text: "Principales causes de l'erreur 401 Unauthorized de l'API Tradovate en 2026" },
+    { type: "heading", text: "1. Le jeton d'accès a expiré (la limite de 90 minutes)" },
+    { type: "paragraph", html: "C'est de loin la cause la plus courante. Les jetons d'accès Tradovate ont une durée de vie documentée d'environ 90 minutes à partir de leur création. Si votre bot récupère un jeton une seule fois au démarrage et ne le rafraîchit jamais, chaque requête effectuée après cette marque de 90 minutes renvoie un 401. En pratique, l'échec a tendance à survenir vers la 80e minute, juste au moment où un jeton jamais renouvelé cesse de fonctionner." },
+    { type: "heading", text: "2. Renouvellement trop tardif, après l'expiration du jeton" },
+    { type: "paragraph", html: "<code>/auth/renewAccessToken</code> ne fonctionne que tant que votre jeton actuel est <em>encore valide</em>. Si vous attendez l'expiration pour renouveler, l'appel de renouvellement lui-même échoue avec un 401, vous essayez d'authentifier un renouvellement avec une clé morte. Une fois qu'un jeton a totalement expiré, vous devez exécuter un nouveau <code>/auth/accessTokenRequest</code>, et non un renouvellement." },
+    { type: "heading", text: "3. Un en-tête Authorization mal formé" },
+    { type: "paragraph", html: "Même un jeton parfaitement valide est rejeté si vous le présentez incorrectement. Sur les appels REST, l'en-tête doit être <code>Authorization: Bearer &lt;token&gt;</code>, un préfixe <code>Bearer</code> manquant ou un espace superflu suffit à déclencher un 401. Sur le WebSocket, la trame <code>authorize</code> doit être formatée exactement comme le spécifie la documentation actuelle (point de terminaison, id, puis le jeton, avec les séparateurs de ligne vide corrects). Une erreur de formatage produit là aussi la même réponse <code>&quot;Access is denied&quot;</code>." },
+    { type: "heading", text: "4. Environnement incorrect (jeton de démonstration sur un hôte en direct, ou l'inverse)" },
+    { type: "paragraph", html: "Tradovate exploite des environnements de démonstration et en direct distincts. Un jeton émis pour l'hôte de démonstration n'autorise pas les requêtes envoyées à l'hôte en direct, et l'inverse est également vrai. Dirigez un jeton de démonstration valide vers un point de terminaison en direct (ou un jeton en direct vers la démonstration) et cela se traduit par un 401 / accès refusé, même si le jeton lui-même est authentique." },
+    { type: "heading", text: "5. Le jeton a été invalidé par une seconde connexion" },
+    { type: "paragraph", html: "Les jetons d'accès sont liés à une session. Si un autre processus, un second script, un test manuel ou une nouvelle exécution de votre propre flux de connexion demande un nouveau jeton pour le même compte, cela peut invalider le jeton que votre bot utilise encore. Le bot commence alors à accumuler des erreurs 401 en cours d'exécution, même si &ldquo;rien n'a changé&rdquo; de son côté. Et marteler à répétition le point de terminaison de connexion peut déclencher la pénalité de requêtes de Tradovate, ce qui vous retarde encore davantage." },
+    { type: "heading", text: "Comment résoudre l'erreur 401 Unauthorized : étape par étape" },
+    { type: "heading", text: "Résoudre un jeton expiré : renouvelez-le avant son expiration" },
+    {
+      type: "steps",
+      items: [
+        { title: "Enregistrez l'expiration lors de la connexion", html: "Lors de l'authentification, lisez la valeur <code>expirationTime</code> dans la réponse de connexion et enregistrez-la avec votre <code>accessToken</code>." },
+        { title: "Configurez un minuteur qui se déclenche tôt", html: "Configurez un minuteur ou un planificateur pour qu'il se déclenche environ <strong class='text-white'>15 minutes avant</strong> cette expiration, avec un jeton de 90 minutes, cela vous place près de la 75e minute." },
+        { title: "Appelez renewAccessToken", html: "Lorsque le minuteur se déclenche, envoyez un <code>POST</code> à <code>/auth/renewAccessToken</code> avec votre jeton <em>actuel, encore valide</em> dans l'en-tête <code>Authorization: Bearer &lt;token&gt;</code> et sans corps de requête." },
+        { title: "Remplacez et répétez", html: "Remplacez votre <code>accessToken</code> et votre <code>expirationTime</code> stockés par les nouvelles valeurs renvoyées, puis réinitialisez le minuteur. Répétez tant que le bot fonctionne." },
+      ],
+    },
+    { type: "heading", text: "Résoudre un jeton déjà expiré" },
+    { type: "paragraph", html: "Si votre jeton a déjà expiré et que le renouvellement renvoie un 401, arrêtez d'essayer de le renouveler. Exécutez à nouveau un <code>/auth/accessTokenRequest</code> complet pour obtenir un tout nouveau jeton et une nouvelle expiration, puis reprenez la boucle de renouvellement avant expiration décrite ci-dessus. Concevez votre client de sorte qu'un 401 sur n'importe quel appel déclenche une seule réauthentification et une seule nouvelle tentative automatique, et non une boucle infinie, qui peut déclencher des pénalités de limite de requêtes." },
+    { type: "heading", text: "Résoudre l'en-tête Authorization" },
+    { type: "paragraph", html: "Consignez l'en-tête exact envoyé par votre client et vérifiez qu'il correspond à <code>Authorization: Bearer &lt;token&gt;</code> avec un seul espace après <code>Bearer</code>. Pour les connexions WebSocket, vérifiez que la trame <code>authorize</code> correspond au format actuellement documenté avant de supposer que votre jeton est défectueux. Le moyen le plus rapide d'isoler ce problème est d'effectuer le même appel dans un client REST, Postman ou curl, avec un jeton nouvellement émis. Si cela fonctionne, le problème vient de la façon dont votre code construit la requête, et non du jeton." },
+    { type: "heading", text: "Résoudre les incompatibilités d'environnement et d'identifiants" },
+    { type: "paragraph", html: "Vérifiez que l'hôte que vous appelez correspond à l'environnement pour lequel votre jeton a été émis (démonstration ou en direct). Vérifiez ensuite que votre clé API, votre secret et vos identifiants d'application sont à jour dans l'espace de gestion de l'API Tradovate, les régénérer ou perdre la synchronisation entraînera également des échecs d'authentification. Connectez-vous à votre compte Tradovate, ouvrez la section accès API / module complémentaire, et vérifiez que votre clé est active avant d'incriminer le jeton." },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Erreur", "Signification", "Solution"],
+      rows: [
+        ["401 Unauthorized (REST, après ~90 min)", "Jeton d'accès expiré", "Renouveler via /auth/renewAccessToken ~15 min avant expiration"],
+        ["&quot;s&quot;:401 ... &quot;Access is denied&quot; (WebSocket)", "Jeton expiré ou trame authorize rejetée", "Se réauthentifier et rouvrir le socket avec un jeton valide"],
+        ["401 sur l'appel de renouvellement lui-même", "Vous avez renouvelé après l'expiration du jeton", "Exécuter un nouveau /auth/accessTokenRequest, puis reprendre le renouvellement"],
+        ["401 immédiatement à chaque appel", "En-tête Authorization mal formé", "Vérifier Authorization: Bearer &lt;token&gt; avec l'espacement correct"],
+        ["401 / accès refusé uniquement en direct", "Jeton de démonstration utilisé contre un hôte en direct (ou l'inverse)", "Utiliser un jeton émis pour l'environnement appelé"],
+        ["401 en cours d'exécution après une autre connexion", "Jeton précédent invalidé par une seconde session", "Partager un seul jeton par compte ; éviter les connexions en double"],
+      ],
+    },
+    { type: "heading", text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph", html: "Gérer manuellement une horloge de jeton de 90 minutes est fragile, ratez un renouvellement et votre automatisation devient silencieuse juste au moment où un signal se déclenche. PickMyTrade se positionne entre TradingView et Tradovate et gère le cycle de vie du jeton pour vous :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Renouvellement automatique des jetons</strong>, la connexion est actualisée selon un calendrier, de sorte qu'une expiration de 90 minutes ne fait jamais perdre vos ordres.",
+        "<strong class='text-white'>Routage sécurisé par session</strong>, une seule connexion gérée par compte évite l'invalidation par connexion en double à l'origine des 401 en cours d'exécution.",
+        "<strong class='text-white'>Requêtes sécurisées face aux limites de débit</strong>, les appels sont espacés pour respecter les limites de requêtes de Tradovate, afin que vous n'échangiez jamais un 401 résolu contre un délai de pénalité.",
+        "<strong class='text-white'>Prise en compte de l'environnement</strong>, démonstration et direct restent distincts, de sorte qu'un jeton n'est jamais envoyé au mauvais hôte.",
+      ],
+    },
+    { type: "paragraph", html: "Résultat : vos alertes TradingView atteignent Tradovate sans que vous ayez à écrire ni à surveiller la moindre ligne de code d'authentification." },
+  ], it: [
+    { type: "paragraph", html: "Configurate un bot per l'API Tradovate, inviate alcuni ordini demo e tutto funziona senza intoppi, poi, dopo circa un'ora e mezza, ogni chiamata si scontra improvvisamente con un <strong class='text-white'>401 Unauthorized</strong>. È uno degli errori più comuni e più fraintesi dell'API Tradovate, e la causa è quasi sempre la stessa: il vostro token di accesso è scaduto silenziosamente. I token di accesso Tradovate durano circa <strong class='text-white'>90 minuti</strong>. Una volta trascorso questo tempo, sia l'API REST sia il WebSocket dei dati di mercato smettono di fidarsi di voi. Lo vedrete come un semplice stato HTTP <code>401 Unauthorized</code>, un messaggio <code>&quot;Access is denied&quot;</code>, oppure un WebSocket che invia bruscamente un frame di chiusura e si disconnette. La soluzione non è bombardare di nuovo l'endpoint di login, ma rinnovare il token <em>prima</em> che scada. I bridge di automazione come PickMyTrade gestiscono per voi questo ciclo di vita del token, così i vostri alert continuano a scattare anche dove uno script grezzo si sarebbe fermato." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per l'errore 401 Unauthorized",
+      items: [
+        "<strong class='text-white'>Controllate l'orario.</strong> Se il 401 inizia intorno al minuto 75&ndash;90, è un problema di scadenza del token, non un problema di credenziali.",
+        "<strong class='text-white'>Rinnovate, non rieffettuate il login.</strong> Chiamate <code>/auth/renewAccessToken</code> con il vostro token ancora valido circa 15 minuti prima della scadenza.",
+        "<strong class='text-white'>Tracciate <code>expirationTime</code>.</strong> Salvate il timestamp restituito al login e pianificate il rinnovo in base a esso, non a un intervallo stimato.",
+        "<strong class='text-white'>Verificate l'header.</strong> Il token deve essere inviato come <code>Authorization: Bearer &lt;token&gt;</code> a ogni richiesta.",
+        "<strong class='text-white'>Fate corrispondere l'ambiente.</strong> Un token demo autorizza solo gli host demo; un token live autorizza solo gli host live.",
+        "<strong class='text-white'>Una sessione per token.</strong> Richiedere un nuovo token altrove può invalidare il token che il vostro bot sta ancora usando.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa «401 Unauthorized»" },
+    { type: "paragraph", html: "Un <code>401 Unauthorized</code> dell'API Tradovate significa che il server ha ricevuto la vostra richiesta ma ha rifiutato di eseguirla perché non è riuscito a verificare un token di accesso valido e aggiornato. Si tratta di un errore di autenticazione, non di un problema di permessi né di logica degli ordini. In sostanza l'API sta dicendo: &ldquo;Non so chi siete in questo momento.&rdquo; Sul lato REST lo vedrete come uno stato HTTP <code>401</code>. Sul WebSocket dei dati di mercato e del trading di solito arriva come un frame con <code>&quot;s&quot;:401</code> e il testo <code>&quot;Access is denied&quot;</code>, spesso seguito dalla chiusura del socket." },
+    { type: "paragraph", html: "Ecco la parte che confonde: un token di accesso Tradovate è progettato per essere di breve durata. Quando vi autenticate tramite <code>/auth/accessTokenRequest</code>, la risposta vi fornisce un <code>accessToken</code> più un <code>expirationTime</code>, e quella scadenza si colloca circa <strong class='text-white'>90 minuti</strong> più avanti. Durante quella finestra il token è la vostra chiave per ogni endpoint protetto. Nel momento in cui scade, la stessa identica richiesta che funzionava un minuto prima restituisce un 401, perché la chiave non apre più la serratura." },
+    { type: "paragraph", html: "Ecco perché l'errore è così sconcertante la prima volta che si presenta. Nel vostro codice non è cambiato nulla, la vostra API key e il secret restano corretti, eppure le chiamate falliscono. Il problema è il tempo, non la configurazione. Un 401 che compare solo dopo che la vostra app è in esecuzione da oltre un'ora è l'impronta caratteristica di un token scaduto." },
+    { type: "heading", text: "Principali cause del 401 Unauthorized dell'API Tradovate nel 2026" },
+    { type: "heading", text: "1. Il token di accesso è scaduto (il limite di 90 minuti)" },
+    { type: "paragraph", html: "Questa è di gran lunga la causa più comune. I token di accesso Tradovate hanno, secondo la documentazione, una durata di circa 90 minuti dalla creazione. Se il vostro bot recupera un token una sola volta all'avvio e non lo aggiorna mai, ogni richiesta successiva a quella soglia di 90 minuti restituisce un 401. In pratica l'errore tende a comparire intorno al minuto 80, proprio dove un token mai rinnovato smette di funzionare." },
+    { type: "heading", text: "2. Rinnovo troppo tardivo, dopo che il token è già scaduto" },
+    { type: "paragraph", html: "<code>/auth/renewAccessToken</code> funziona solo finché il vostro token attuale è <em>ancora valido</em>. Se aspettate la scadenza per rinnovare, la stessa chiamata di rinnovo fallisce con un 401, state cercando di autenticare un rinnovo con una chiave morta. Una volta che un token è completamente scaduto, dovete eseguire un nuovo <code>/auth/accessTokenRequest</code>, non un rinnovo." },
+    { type: "heading", text: "3. Un header Authorization malformato" },
+    { type: "paragraph", html: "Anche un token perfettamente valido viene rifiutato se lo presentate in modo errato. Nelle chiamate REST l'header deve essere <code>Authorization: Bearer &lt;token&gt;</code>, un prefisso <code>Bearer</code> mancante o uno spazio in più bastano a far scattare un 401. Sul WebSocket, il frame <code>authorize</code> deve essere formattato esattamente come specificato nella documentazione attuale (endpoint, id, poi il token, con i corretti separatori di riga vuota). Un errore di formattazione lì produce la stessa risposta <code>&quot;Access is denied&quot;</code>." },
+    { type: "heading", text: "4. Ambiente sbagliato (token demo su host live, o viceversa)" },
+    { type: "paragraph", html: "Tradovate gestisce ambienti demo e live separati. Un token emesso per l'host demo non autorizza le richieste inviate all'host live, e vale anche il contrario. Puntate un token demo valido verso un endpoint live (o un token live verso demo) e comparirà un 401 / accesso negato, anche se il token stesso è autentico." },
+    { type: "heading", text: "5. Il token è stato invalidato da un secondo login" },
+    { type: "paragraph", html: "I token di accesso sono legati a una sessione. Se un altro processo, un secondo script, un test manuale o una nuova esecuzione del vostro stesso flusso di login richiede un nuovo token per lo stesso account, può invalidare il token che il vostro bot sta ancora utilizzando. Il bot inizia quindi a collezionare errori 401 a metà esecuzione anche se &ldquo;nulla è cambiato&rdquo; dal suo lato. E bombardare ripetutamente l'endpoint di login può attivare la penalità sulle richieste di Tradovate, ritardandovi ulteriormente." },
+    { type: "heading", text: "Come risolvere l'errore 401 Unauthorized: passo dopo passo" },
+    { type: "heading", text: "Risolvere un token scaduto: rinnovatelo prima che scada" },
+    {
+      type: "steps",
+      items: [
+        { title: "Salvate la scadenza al login", html: "Quando vi autenticate, leggete il valore <code>expirationTime</code> dalla risposta di login e salvatelo insieme al vostro <code>accessToken</code>." },
+        { title: "Impostate un timer che scatti in anticipo", html: "Impostate un timer o uno scheduler che scatti circa <strong class='text-white'>15 minuti prima</strong> di quella scadenza, con un token di 90 minuti questo vi porta vicino al minuto 75." },
+        { title: "Chiamate renewAccessToken", html: "Quando il timer scatta, inviate un <code>POST</code> a <code>/auth/renewAccessToken</code> con il vostro token <em>attuale, ancora valido</em> nell'header <code>Authorization: Bearer &lt;token&gt;</code> e senza corpo della richiesta." },
+        { title: "Sostituite e ripetete", html: "Sostituite l'<code>accessToken</code> e l'<code>expirationTime</code> salvati con i nuovi valori restituiti, quindi azzerate il timer. Ripetete finché il bot è in esecuzione." },
+      ],
+    },
+    { type: "heading", text: "Risolvere un token già scaduto" },
+    { type: "paragraph", html: "Se il vostro token è già scaduto e il rinnovo restituisce un 401, smettete di provare a rinnovarlo. Eseguite di nuovo un <code>/auth/accessTokenRequest</code> completo per ottenere un token e una scadenza del tutto nuovi, quindi riprendete il ciclo di rinnovo anticipato descritto sopra. Costruite il vostro client in modo che un 401 su qualsiasi chiamata attivi una singola nuova autenticazione e un solo tentativo automatico, non un ciclo infinito, che può far scattare penalità sui limiti di richiesta." },
+    { type: "heading", text: "Risolvere l'header Authorization" },
+    { type: "paragraph", html: "Registrate l'header esatto inviato dal vostro client e confermate che sia <code>Authorization: Bearer &lt;token&gt;</code> con un solo spazio dopo <code>Bearer</code>. Per le connessioni WebSocket, verificate che il frame <code>authorize</code> corrisponda al formato attualmente documentato prima di presumere che il token sia difettoso. Il modo più rapido per isolare il problema è effettuare la stessa chiamata in un client REST, Postman o curl, con un token appena emesso. Se funziona, il problema sta nel modo in cui il vostro codice costruisce la richiesta, non nel token." },
+    { type: "heading", text: "Risolvere le discrepanze tra ambiente e credenziali" },
+    { type: "paragraph", html: "Confermate che l'host che state chiamando corrisponda all'ambiente per cui è stato emesso il vostro token (demo o live). Verificate poi che la vostra API key, il secret e le credenziali dell'app siano aggiornati nell'area di gestione API di Tradovate, rigenerarli o perdere la sincronizzazione provocherà anch'esso errori di autenticazione. Accedete al vostro account Tradovate, aprite la sezione accesso API / add-on e confermate che la vostra key sia attiva prima di dare la colpa al token." },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Errore", "Significato", "Soluzione"],
+      rows: [
+        ["401 Unauthorized (REST, dopo ~90 min)", "Token di accesso scaduto", "Rinnovare tramite /auth/renewAccessToken ~15 min prima della scadenza"],
+        ["&quot;s&quot;:401 ... &quot;Access is denied&quot; (WebSocket)", "Token scaduto o frame authorize rifiutato", "Autenticarsi di nuovo e riaprire il socket con un token valido"],
+        ["401 sulla chiamata di rinnovo stessa", "Rinnovo effettuato dopo che il token era già scaduto", "Eseguire un nuovo /auth/accessTokenRequest, poi riprendere il rinnovo"],
+        ["401 immediatamente a ogni chiamata", "Header Authorization malformato", "Assicurarsi di usare Authorization: Bearer &lt;token&gt; con la spaziatura corretta"],
+        ["401 / accesso negato solo in live", "Token demo usato contro un host live (o viceversa)", "Usare un token emesso per l'ambiente chiamato"],
+        ["401 a metà esecuzione dopo un altro login", "Token precedente invalidato da una seconda sessione", "Condividere un solo token per account; evitare login duplicati"],
+      ],
+    },
+    { type: "heading", text: "Prevenire tutto questo con PickMyTrade" },
+    { type: "paragraph", html: "Gestire manualmente un orologio del token di 90 minuti è fragile, basta perdere un rinnovo e la vostra automazione ammutolisce proprio quando scatta un segnale. PickMyTrade si posiziona tra TradingView e Tradovate e gestisce il ciclo di vita del token per voi:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Rinnovo automatico del token</strong>, la connessione viene aggiornata secondo un programma, così una scadenza di 90 minuti non fa mai perdere i vostri ordini.",
+        "<strong class='text-white'>Instradamento sicuro per sessione</strong>, una singola connessione gestita per account evita l'invalidazione da login duplicato che causa errori 401 a metà esecuzione.",
+        "<strong class='text-white'>Richieste sicure rispetto ai limiti di frequenza</strong>, le chiamate sono distanziate nel tempo per rispettare i limiti di richiesta di Tradovate, così non scambiate mai un 401 risolto con un timeout di penalità.",
+        "<strong class='text-white'>Consapevolezza dell'ambiente</strong>, demo e live restano distinti, così un token non viene mai inviato all'host sbagliato.",
+      ],
+    },
+    { type: "paragraph", html: "Il risultato: i vostri alert di TradingView raggiungono Tradovate senza che dobbiate scrivere né sorvegliare una sola riga di codice di autenticazione." },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Ohne Ablehnungen handeln", es: "Opere sin rechazos", fr: "Tradez sans rejets", it: "Fate trading senza rifiuti" },
+  ctaText: { en: "PickMyTrade manages the 90-minute token lifecycle for you, renewing on schedule so a Tradovate API 401 never drops your orders mid-session.", de: "PickMyTrade verwaltet den 90-Minuten-Token-Lebenszyklus für Sie und erneuert ihn planmäßig, sodass ein Tradovate-API-401 Ihre Orders nie mitten in der Sitzung verwirft.", es: "PickMyTrade gestiona el ciclo de vida del token de 90 minutos por usted, renovándolo según lo programado para que un 401 de la API de Tradovate nunca descarte sus órdenes a mitad de sesión.", fr: "PickMyTrade gère pour vous le cycle de vie du jeton de 90 minutes, en le renouvelant selon un calendrier afin qu'un 401 de l'API Tradovate ne fasse jamais perdre vos ordres en pleine session.", it: "PickMyTrade gestisce per voi il ciclo di vita del token di 90 minuti, rinnovandolo secondo un programma in modo che un 401 dell'API Tradovate non faccia mai perdere i vostri ordini a metà sessione." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avviate la vostra prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquemment posées", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "How long does a Tradovate API access token last?", a: "A Tradovate access token has a documented lifetime of about 90 minutes from the moment it's issued. After that it stops authenticating requests and you get a 401 until you renew or re-authenticate." },
+    { q: "What's the difference between accessTokenRequest and renewAccessToken?", a: "/auth/accessTokenRequest logs you in from scratch using your credentials and returns a brand-new token. /auth/renewAccessToken extends your session by issuing a fresh token while your current one is still valid, it doesn't require re-sending your credentials." },
+    { q: "When exactly should I renew the token?", a: "About 15 minutes before it expires. With a 90-minute token that means renewing near the 75-minute mark, which leaves a safe buffer before the clock runs out." },
+    { q: "Can I renew a token that has already expired?", a: "No. Renewal only works on a still-valid token. If it has already expired, the renewal call returns 401 and you must run a full accessTokenRequest to get a new token." },
+    { q: "Why do I get 401 only after my bot has been running for over an hour?", a: "That's the classic signature of an expired token. Nothing in your code is wrong, the token simply reached its ~90-minute limit and needs to be renewed on a timer." },
+    { q: "I keep getting 401 immediately, not after an hour. What's wrong?", a: "An instant 401 usually means a malformed Authorization header, a token issued for the wrong environment (demo vs. live), or invalid API credentials, not expiry. Verify the header format and the host first." },
+    { q: "Does requesting a new token log out my other session?", a: "It can. Access tokens are tied to a session, so authenticating again elsewhere may invalidate the token your bot is holding and cause mid-run 401s. Use one shared token per account, or a bridge that manages the session for you." },
+    { q: "Will renewing too often get me rate-limited?", a: "Renewing on a sensible schedule, once every ~75 minutes, is fine. Trouble comes from re-calling the login endpoint in a tight loop after a 401, which can trigger Tradovate's request penalty. Renew proactively instead of retrying blindly." },
+  ], de: [
+    { q: "Wie lange ist ein Tradovate-API-Zugriffstoken gültig?", a: "Ein Tradovate-Zugriffstoken hat laut Dokumentation eine Gültigkeitsdauer von etwa 90 Minuten ab dem Zeitpunkt der Ausstellung. Danach authentifiziert es keine Anfragen mehr, und Sie erhalten einen 401-Fehler, bis Sie es erneuern oder sich neu authentifizieren." },
+    { q: "Was ist der Unterschied zwischen accessTokenRequest und renewAccessToken?", a: "/auth/accessTokenRequest meldet Sie mit Ihren Zugangsdaten komplett neu an und liefert ein brandneues Token. /auth/renewAccessToken verlängert Ihre Sitzung, indem ein neues Token ausgestellt wird, während Ihr aktuelles noch gültig ist, ein erneutes Senden Ihrer Zugangsdaten ist dabei nicht erforderlich." },
+    { q: "Wann genau sollte ich das Token erneuern?", a: "Etwa 15 Minuten vor Ablauf. Bei einem 90-Minuten-Token bedeutet das eine Erneuerung nahe der 75-Minuten-Marke, was einen sicheren Puffer lässt, bevor die Zeit abläuft." },
+    { q: "Kann ich ein bereits abgelaufenes Token erneuern?", a: "Nein. Die Erneuerung funktioniert nur bei einem noch gültigen Token. Ist es bereits abgelaufen, liefert der Erneuerungsaufruf einen 401-Fehler, und Sie müssen einen vollständigen accessTokenRequest ausführen, um ein neues Token zu erhalten." },
+    { q: "Warum erhalte ich erst nach über einer Stunde Laufzeit meines Bots einen 401-Fehler?", a: "Das ist das klassische Erkennungsmerkmal eines abgelaufenen Tokens. An Ihrem Code ist nichts falsch, das Token hat einfach sein ~90-Minuten-Limit erreicht und muss per Timer erneuert werden." },
+    { q: "Ich erhalte immer sofort einen 401-Fehler, nicht erst nach einer Stunde. Was ist falsch?", a: "Ein sofortiger 401-Fehler bedeutet meist einen fehlerhaft formatierten Authorization-Header, ein für die falsche Umgebung ausgestelltes Token (Demo vs. Live) oder ungültige API-Zugangsdaten, nicht einen Ablauf. Prüfen Sie zuerst das Header-Format und den Host." },
+    { q: "Führt die Anforderung eines neuen Tokens dazu, dass meine andere Sitzung abgemeldet wird?", a: "Das kann passieren. Zugriffstoken sind an eine Sitzung gebunden, sodass eine erneute Authentifizierung an anderer Stelle das Token ungültig machen kann, das Ihr Bot verwendet, und mitten im Lauf zu 401-Fehlern führt. Verwenden Sie ein gemeinsames Token pro Konto oder eine Bridge, die die Sitzung für Sie verwaltet." },
+    { q: "Führt zu häufiges Erneuern zu einer Ratenbegrenzung?", a: "Eine Erneuerung nach einem sinnvollen Zeitplan, etwa alle ~75 Minuten, ist unproblematisch. Probleme entstehen, wenn Sie nach einem 401-Fehler den Login-Endpunkt in einer engen Schleife erneut aufrufen, was Tradovates Anfrage-Sperre auslösen kann. Erneuern Sie proaktiv, statt blind erneut zu versuchen." },
+  ], es: [
+    { q: "¿Cuánto dura un token de acceso de la API de Tradovate?", a: "Un token de acceso de Tradovate tiene, según la documentación, una vida útil de unos 90 minutos desde el momento en que se emite. Después deja de autenticar solicitudes y recibirá un 401 hasta que lo renueve o se vuelva a autenticar." },
+    { q: "¿Cuál es la diferencia entre accessTokenRequest y renewAccessToken?", a: "/auth/accessTokenRequest le inicia sesión desde cero usando sus credenciales y devuelve un token completamente nuevo. /auth/renewAccessToken amplía su sesión emitiendo un token nuevo mientras el actual sigue siendo válido, no requiere volver a enviar sus credenciales." },
+    { q: "¿Cuándo exactamente debo renovar el token?", a: "Unos 15 minutos antes de que caduque. Con un token de 90 minutos, eso significa renovarlo cerca del minuto 75, lo que deja un margen de seguridad antes de que se agote el tiempo." },
+    { q: "¿Puedo renovar un token que ya ha caducado?", a: "No. La renovación solo funciona con un token todavía válido. Si ya ha caducado, la llamada de renovación devuelve un 401 y debe ejecutar un accessTokenRequest completo para obtener un token nuevo." },
+    { q: "¿Por qué recibo un 401 solo después de que mi bot lleva más de una hora en ejecución?", a: "Esa es la firma clásica de un token caducado. No hay nada mal en su código, el token simplemente alcanzó su límite de ~90 minutos y necesita renovarse mediante un temporizador." },
+    { q: "Sigo recibiendo 401 de inmediato, no después de una hora. ¿Qué está mal?", a: "Un 401 instantáneo suele significar un encabezado Authorization mal formado, un token emitido para el entorno equivocado (demostración frente a en vivo) o credenciales de API no válidas, no una caducidad. Verifique primero el formato del encabezado y el host." },
+    { q: "¿Solicitar un nuevo token cierra la sesión de mi otra sesión?", a: "Puede hacerlo. Los tokens de acceso están vinculados a una sesión, por lo que volver a autenticarse en otro lugar puede invalidar el token que su bot está usando y provocar errores 401 en pleno funcionamiento. Use un token compartido por cuenta, o un puente que gestione la sesión por usted." },
+    { q: "¿Renovar con demasiada frecuencia hará que se me aplique un límite de tasa?", a: "Renovar según un programa razonable, una vez cada ~75 minutos, no supone ningún problema. Los problemas surgen al volver a llamar al endpoint de login en un bucle ajustado después de un 401, lo que puede activar la penalización de solicitudes de Tradovate. Renueve de forma proactiva en lugar de reintentar a ciegas." },
+  ], fr: [
+    { q: "Combien de temps dure un jeton d'accès de l'API Tradovate ?", a: "Un jeton d'accès Tradovate a une durée de vie documentée d'environ 90 minutes à partir du moment où il est émis. Passé ce délai, il cesse d'authentifier les requêtes et vous obtenez un 401 jusqu'à ce que vous le renouveliez ou vous réauthentifiiez." },
+    { q: "Quelle est la différence entre accessTokenRequest et renewAccessToken ?", a: "/auth/accessTokenRequest vous reconnecte entièrement à l'aide de vos identifiants et renvoie un tout nouveau jeton. /auth/renewAccessToken prolonge votre session en émettant un nouveau jeton tant que le jeton actuel est encore valide, il ne nécessite pas de renvoyer vos identifiants." },
+    { q: "À quel moment exactement dois-je renouveler le jeton ?", a: "Environ 15 minutes avant son expiration. Avec un jeton de 90 minutes, cela signifie le renouveler près de la 75e minute, ce qui laisse une marge de sécurité avant que le délai n'expire." },
+    { q: "Puis-je renouveler un jeton déjà expiré ?", a: "Non. Le renouvellement ne fonctionne que sur un jeton encore valide. S'il a déjà expiré, l'appel de renouvellement renvoie un 401 et vous devez exécuter un accessTokenRequest complet pour obtenir un nouveau jeton." },
+    { q: "Pourquoi n'obtiens-je un 401 qu'après plus d'une heure de fonctionnement de mon bot ?", a: "C'est la signature classique d'un jeton expiré. Rien ne cloche dans votre code, le jeton a simplement atteint sa limite d'environ 90 minutes et doit être renouvelé via une minuterie." },
+    { q: "J'obtiens toujours un 401 immédiatement, pas après une heure. Qu'est-ce qui ne va pas ?", a: "Un 401 instantané signifie généralement un en-tête Authorization mal formé, un jeton émis pour le mauvais environnement (démonstration ou en direct), ou des identifiants API invalides, et non une expiration. Vérifiez d'abord le format de l'en-tête et l'hôte." },
+    { q: "Le fait de demander un nouveau jeton déconnecte-t-il mon autre session ?", a: "Cela peut arriver. Les jetons d'accès sont liés à une session, donc se réauthentifier ailleurs peut invalider le jeton détenu par votre bot et provoquer des 401 en cours d'exécution. Utilisez un seul jeton partagé par compte, ou une passerelle qui gère la session pour vous." },
+    { q: "Renouveler trop souvent va-t-il déclencher une limitation de débit ?", a: "Renouveler selon un calendrier raisonnable, environ toutes les ~75 minutes, ne pose aucun problème. Les ennuis surviennent lorsque vous rappelez le point de terminaison de connexion en boucle serrée après un 401, ce qui peut déclencher la pénalité de requêtes de Tradovate. Renouvelez de manière proactive plutôt que de réessayer à l'aveugle." },
+  ], it: [
+    { q: "Quanto dura un token di accesso dell'API Tradovate?", a: "Un token di accesso Tradovate ha, secondo la documentazione, una durata di circa 90 minuti dal momento dell'emissione. Dopodiché smette di autenticare le richieste e riceverete un 401 finché non lo rinnovate o non vi autenticate di nuovo." },
+    { q: "Qual è la differenza tra accessTokenRequest e renewAccessToken?", a: "/auth/accessTokenRequest effettua un nuovo login da zero usando le vostre credenziali e restituisce un token completamente nuovo. /auth/renewAccessToken estende la vostra sessione emettendo un nuovo token mentre quello attuale è ancora valido, e non richiede di reinviare le credenziali." },
+    { q: "Esattamente quando devo rinnovare il token?", a: "Circa 15 minuti prima della scadenza. Con un token di 90 minuti questo significa rinnovarlo vicino al minuto 75, il che lascia un margine di sicurezza prima che il tempo scada." },
+    { q: "Posso rinnovare un token già scaduto?", a: "No. Il rinnovo funziona solo su un token ancora valido. Se è già scaduto, la chiamata di rinnovo restituisce un 401 ed è necessario eseguire un accessTokenRequest completo per ottenere un nuovo token." },
+    { q: "Perché ricevo un 401 solo dopo che il mio bot è in esecuzione da oltre un'ora?", a: "È la firma classica di un token scaduto. Non c'è nulla di sbagliato nel vostro codice, il token ha semplicemente raggiunto il suo limite di ~90 minuti e deve essere rinnovato tramite un timer." },
+    { q: "Ricevo sempre un 401 immediatamente, non dopo un'ora. Cosa c'è che non va?", a: "Un 401 istantaneo di solito indica un header Authorization malformato, un token emesso per l'ambiente sbagliato (demo o live), oppure credenziali API non valide, non una scadenza. Verificate prima il formato dell'header e l'host." },
+    { q: "Richiedere un nuovo token disconnette la mia altra sessione?", a: "Può succedere. I token di accesso sono legati a una sessione, quindi autenticarsi di nuovo altrove può invalidare il token che il vostro bot sta utilizzando e causare errori 401 a metà esecuzione. Usate un unico token condiviso per account, oppure un bridge che gestisca la sessione per voi." },
+    { q: "Rinnovare troppo spesso mi farà subire un limite di frequenza?", a: "Rinnovare secondo un programma ragionevole, circa ogni ~75 minuti, va benissimo. I problemi nascono dal richiamare ripetutamente l'endpoint di login in un ciclo stretto dopo un 401, il che può attivare la penalità sulle richieste di Tradovate. Rinnovate in modo proattivo invece di riprovare alla cieca." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -abläufe ändern sich im Laufe der Zeit, bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdidas y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni parrainée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; confirmez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, sponsorizzata né approvata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, pertanto confermate sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

@@ -1,0 +1,519 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradingview-native-no-auto-execute";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "TradingView-Tradovate Won't Auto-Run Strategy Alerts";
+const META_DESCRIPTION =
+  "TradingView won't auto-run Tradovate strategy alerts? The native link is manual-only, route alerts through a webhook relay to auto-execute trades.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "TradingView-Tradovate führt Strategie-Alerts nicht automatisch aus", es: "TradingView-Tradovate no ejecuta automáticamente las alertas de estrategia", fr: "TradingView-Tradovate n'exécute pas automatiquement les alertes de stratégie", it: "TradingView-Tradovate non esegue automaticamente gli alert della strategia" },
+  dek: { en: "You connected Tradovate right inside TradingView and set an alert on every entry, but nothing routes when the signal fires. Here's why the native connection is manual-only and how a webhook relay turns alerts into live orders.", de: "Sie haben Tradovate direkt in TradingView verbunden und für jeden Einstieg einen Alert gesetzt, doch nichts wird geroutet, wenn das Signal feuert. Hier erfahren Sie, warum die native Verbindung nur manuell funktioniert und wie ein Webhook-Relay Alerts in Live-Orders verwandelt.", es: "Conectó Tradovate directamente en TradingView y puso una alerta en cada entrada, pero nada se enruta cuando salta la señal. Aquí le explicamos por qué la conexión nativa es solo manual y cómo un relé por webhook convierte las alertas en órdenes en vivo.", fr: "Vous avez connecté Tradovate directement dans TradingView et placé une alerte sur chaque entrée, mais rien n'est routé lorsque le signal se déclenche. Voici pourquoi la connexion native est uniquement manuelle et comment un relais webhook transforme les alertes en ordres réels.", it: "Ha collegato Tradovate direttamente in TradingView e impostato un alert su ogni ingresso, ma nulla viene instradato quando il segnale scatta. Ecco perché il collegamento nativo è solo manuale e come un relay via webhook trasforma gli alert in ordini reali." },
+  readTime: { en: "7 min read", de: "7 Min. Lesezeit", es: "Lectura de 7 min", fr: "Lecture : 7 min", it: "Lettura di 7 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You backtested a clean Pine Script strategy, connected Tradovate right inside TradingView, and set an alert on every entry. The signal fires, and nothing hits your Tradovate account. No fill, no working order, just a little notification on your screen. If that's you, take a breath: your setup isn't broken. You've hit the single most common misunderstanding in TradingView-to-Tradovate automation. The native broker connection lets you <em>click</em> trades from the chart, but it will <strong class='text-white'>not</strong> auto-execute your strategy alerts. That's exactly why every relay tool out there exists in the first place: the automation gap is real, and it's not getting patched. Here's precisely why TradingView won't auto-run your strategy on Tradovate, and how a webhook relay closes the loop so your alerts turn into live orders without you touching the mouse." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Auto-Executing TradingView Alerts",
+      items: [
+        "<strong class='text-white'>The native connection is manual-only.</strong> The TradingView-Tradovate broker link places an order only when <em>you</em> click Buy or Sell. It never fires from an alert.",
+        "<strong class='text-white'>Alerts are notifications, not orders.</strong> A strategy alert emails you, pops up, or sends a webhook message. On its own it doesn't route to any broker.",
+        "<strong class='text-white'>You need a webhook relay.</strong> A third-party automation service catches the alert and calls Tradovate's API to place the order.",
+        "<strong class='text-white'>Webhooks require a paid TradingView plan.</strong> The Webhook URL field is locked on the free tier, enable a paid plan and turn on 2FA.",
+        "<strong class='text-white'>The alert message has to carry the order instructions.</strong> Plain text won't execute; the relay needs its exact JSON payload in the message box.",
+        "<strong class='text-white'>Use &ldquo;Once Per Bar Close.&rdquo;</strong> Fire on confirmed bars so you don't send duplicate or repainting signals to your account.",
+      ],
+    },
+    { type: "heading", text: "What &ldquo;TradingView Won't Auto-Run My Strategy&rdquo; Actually Means" },
+    { type: "paragraph", html: "There's no red error string here, and that's what makes it so maddening. Your alert log clearly shows the alert triggered, but your Tradovate Orders and Positions stay stubbornly empty. Nothing is malfunctioning. This behavior is by design." },
+    { type: "paragraph", html: "TradingView's built-in broker integration, the Trading Panel that shows up once you connect Tradovate, is a <strong class='text-white'>manual trading surface</strong>. It streams your live positions and lets you submit, modify, and cancel orders by clicking the chart or the panel. What it doesn't do is read your Pine strategy's signals, and it won't place an order when an alert fires. TradingView treats an alert as a <em>notification event</em>: it can send a popup, an email, an app push, or an outbound webhook, but it's never itself an order ticket." },
+    { type: "paragraph", html: "So from Tradovate's point of view, a strategy that spits out alerts is completely silent. The only way a TradingView alert ever becomes a Tradovate order is if something <em>outside</em> TradingView catches that alert and translates it into an API order on your account. That &ldquo;something&rdquo; is a webhook automation service, a relay, or bridge. There is no native webhook-to-order feature inside Tradovate; bridging always takes a third-party tool." },
+    { type: "heading", text: "Top Causes TradingView Alerts Don't Auto-Execute on Tradovate" },
+    { type: "heading", text: "1. The native TradingView-Tradovate connection is manual-only" },
+    { type: "paragraph", html: "When you connect Tradovate through the TradingView broker panel, you unlock two things: click-to-trade and live position sync. That's it. It's the right tool for discretionary trading straight off the chart, but it has no mechanism to auto-run a strategy. If your whole plan was &ldquo;connect Tradovate, add an alert, walk away,&rdquo; this is your root cause." },
+    { type: "heading", text: "2. Strategy alerts are notifications, not orders" },
+    { type: "paragraph", html: "A Pine <code>strategy()</code> script plots your entries and exits and can emit <code>alert()</code> events, but those events carry zero &ldquo;send to broker&rdquo; power. Strategy alert or indicator alert, it doesn't matter: the output is a <em>message</em> delivered to whatever channels you enabled. Expecting that message to place a trade by itself is the core mistake." },
+    { type: "heading", text: "3. There's no webhook relay in the path" },
+    { type: "paragraph", html: "Even with webhooks switched on, the webhook URL has to point <em>somewhere</em> that actually knows how to talk to Tradovate. Paste a random URL, leave the Webhook URL blank, or point it at a service that isn't linked to your Tradovate account, and the alert leaves TradingView and dies on arrival. No relay, no order." },
+    { type: "heading", text: "4. The webhook feature is locked or unauthenticated" },
+    { type: "paragraph", html: "Webhook notifications are a paid-plan feature. On the free tier the Webhook URL field is disabled, so your alert can only pop up on screen. TradingView also requires two-factor authentication on your account before webhook alerts will send. Plan tiers, alert quotas, and pricing shift over time, so check TradingView's current plans, but the rule holds: no paid plan, no webhook, no automation." },
+    { type: "heading", text: "5. The alert itself is misconfigured" },
+    { type: "paragraph", html: "Once a relay is in place, the alert still has to be built right: the correct condition (the strategy's order fills or a specific plot), the relay's exact payload in the <strong class='text-white'>Message</strong> box, the relay's <strong class='text-white'>Webhook URL</strong> in the Notifications tab, and a sensible trigger frequency. A cosmetic message like &ldquo;Long signal!&rdquo; will trigger, reach the relay, and get rejected on the spot, because it contains no machine-readable order instructions." },
+    { type: "heading", text: "How to Fix It: Route Alerts Through a Webhook Relay, Step by Step" },
+    { type: "paragraph", html: "The fix has the same shape no matter which relay you pick: link the relay to Tradovate, generate the order payload, and wire it into a TradingView alert." },
+    { type: "heading", text: "Connect a webhook automation service to your Tradovate account" },
+    {
+      type: "steps",
+      items: [
+        { title: "Add your Tradovate account to the relay", html: "Sign in to a TradingView-to-Tradovate automation service and add your Tradovate account, you'll log in with your Tradovate or prop-firm credentials inside the relay. Double-check that the live or demo environment matches the account you actually intend to trade." },
+        { title: "Confirm the connection is active", html: "Make sure the service reports the connection as active and can see your account. This is the layer that places orders on Tradovate through its authorized API access, so it has to be healthy before you build a single alert." },
+      ],
+    },
+    { type: "heading", text: "Build the alert message and paste in the webhook URL" },
+    {
+      type: "steps",
+      items: [
+        { title: "Generate the order payload", html: "In the relay, generate the order payload, usually a block of JSON that spells out symbol, action, quantity, and any stop or target. Copy it exactly. Don't hand-edit it." },
+        { title: "Create the alert with the payload", html: "Back in TradingView, open <strong class='text-white'>Create Alert</strong>, set the <strong class='text-white'>Condition</strong> to your strategy or signal, and paste the payload into the <strong class='text-white'>Message</strong> box." },
+        { title: "Enable the webhook URL", html: "Switch to the <strong class='text-white'>Notifications</strong> tab, enable <strong class='text-white'>Webhook URL</strong>, and paste in the relay's webhook URL. This is the connection that carries the signal out of TradingView." },
+      ],
+    },
+    { type: "heading", text: "Set the alert to fire reliably" },
+    {
+      type: "steps",
+      items: [
+        { title: "Set the trigger to Once Per Bar Close", html: "Set the trigger to <strong class='text-white'>Once Per Bar Close</strong> so the order sends on a confirmed bar, that's what keeps duplicate fires and repainting from wrecking your account." },
+        { title: "Fire a test and watch both logs", html: "Save the alert, then fire a test (or wait for the next signal) and watch two places at once: your Tradovate Orders/Positions and the relay's log. Confirm the order actually lands." },
+        { title: "Reconcile the two", html: "If the relay log shows the payload received but Tradovate shows nothing, the problem is on the Tradovate or relay side, symbol, quantity caps, risk limits, entitlement, not TradingView." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "What it means", "Fix"],
+      rows: [
+        ["Alert fires, no order on Tradovate", "You're relying on the native manual-only connection", "Add a webhook relay between TradingView and Tradovate"],
+        ["Webhook URL field is greyed out", "Free TradingView plan (webhooks are paid-only)", "Upgrade to a paid TradingView plan and enable 2FA"],
+        ["Alert triggers but relay log is empty", "Webhook URL missing or wrong in the Notifications tab", "Re-paste the relay's exact webhook URL and re-save"],
+        ["Relay logs &ldquo;invalid/empty payload&rdquo;", "Message box has plain text, not the order payload", "Paste the relay's generated JSON into the Message box, unedited"],
+        ["Order fires twice per signal", "Alert set to fire intra-bar", "Change the trigger to Once Per Bar Close"],
+        ["Relay received it, Tradovate rejected it", "Symbol, quantity, risk, or entitlement issue on the account", "Check the contract symbol, quantity caps, and account risk/data settings"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade is an authorized Tradovate vendor built to be exactly the relay you're missing, it catches your TradingView alerts and turns them into live Tradovate orders automatically:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Alert-to-order translation</strong>, it generates the order payload for you, so a TradingView alert becomes a valid Tradovate order with no hand-edited JSON.",
+        "<strong class='text-white'>Quantity and symbol validation</strong>, it checks the symbol and quantity before routing, so a misconfigured alert doesn't fire blind.",
+        "<strong class='text-white'>Entitlement and risk filters</strong>, it respects prop-firm limits and data-agreement state, so orders don't get rejected downstream.",
+        "<strong class='text-white'>Multi-account sync</strong>, it mirrors the same signal across multiple Tradovate accounts at once, something the native panel simply can't do.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Sie haben eine saubere Pine-Script-Strategie gebacktestet, Tradovate direkt in TradingView verbunden und für jeden Einstieg einen Alert gesetzt. Das Signal feuert, und nichts erreicht Ihr Tradovate-Konto. Kein Fill, keine aktive Order, nur eine kleine Benachrichtigung auf Ihrem Bildschirm. Wenn Sie das sind, atmen Sie durch: Ihr Setup ist nicht kaputt. Sie sind auf das häufigste Missverständnis in der Automatisierung von TradingView zu Tradovate gestoßen. Die native Broker-Verbindung erlaubt Ihnen, Trades aus dem Chart zu <em>klicken</em>, sie führt Ihre Strategie-Alerts aber <strong class='text-white'>nicht</strong> automatisch aus. Genau deshalb existieren alle Relay-Tools überhaupt: Die Automatisierungslücke ist real und wird nicht geschlossen. Hier steht genau, warum TradingView Ihre Strategie auf Tradovate nicht automatisch ausführt und wie ein Webhook-Relay den Kreis schließt, sodass Ihre Alerts ohne Mausklick zu Live-Orders werden." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste für das automatische Ausführen von TradingView-Alerts",
+      items: [
+        "<strong class='text-white'>Die native Verbindung ist nur manuell.</strong> Die TradingView-Tradovate-Broker-Verbindung platziert eine Order nur, wenn <em>Sie</em> auf Buy oder Sell klicken. Sie feuert nie aus einem Alert.",
+        "<strong class='text-white'>Alerts sind Benachrichtigungen, keine Orders.</strong> Ein Strategie-Alert sendet Ihnen eine E-Mail, ein Popup oder eine Webhook-Nachricht. Für sich genommen wird er an keinen Broker geroutet.",
+        "<strong class='text-white'>Sie brauchen ein Webhook-Relay.</strong> Ein Automatisierungsdienst eines Drittanbieters fängt den Alert ab und ruft die API von Tradovate auf, um die Order zu platzieren.",
+        "<strong class='text-white'>Webhooks erfordern einen kostenpflichtigen TradingView-Tarif.</strong> Das Feld Webhook URL ist im kostenlosen Tarif gesperrt, aktivieren Sie einen kostenpflichtigen Tarif und schalten Sie 2FA ein.",
+        "<strong class='text-white'>Die Alert-Nachricht muss die Orderanweisungen enthalten.</strong> Reiner Text wird nicht ausgeführt; das Relay benötigt seine exakte JSON-Payload im Nachrichtenfeld.",
+        "<strong class='text-white'>Verwenden Sie &ldquo;Once Per Bar Close&rdquo;.</strong> Feuern Sie auf bestätigten Kerzen, damit Sie keine doppelten oder repaintenden Signale an Ihr Konto senden.",
+      ],
+    },
+    { type: "heading",text: "Was &ldquo;TradingView führt meine Strategie nicht automatisch aus&rdquo; tatsächlich bedeutet" },
+    { type: "paragraph",html: "Es gibt hier keine rote Fehlermeldung, und genau das macht es so ärgerlich. Ihr Alert-Log zeigt deutlich, dass der Alert ausgelöst wurde, aber Ihre Tradovate-Orders und -Positionen bleiben hartnäckig leer. Nichts ist defekt. Dieses Verhalten ist so vorgesehen." },
+    { type: "paragraph",html: "Die integrierte Broker-Anbindung von TradingView, das Trading Panel, das erscheint, sobald Sie Tradovate verbinden, ist eine <strong class='text-white'>manuelle Handelsoberfläche</strong>. Sie streamt Ihre Live-Positionen und lässt Sie Orders per Klick im Chart oder im Panel senden, ändern und stornieren. Was sie nicht tut: die Signale Ihrer Pine-Strategie lesen oder eine Order platzieren, wenn ein Alert feuert. TradingView behandelt einen Alert als <em>Benachrichtigungsereignis</em>: Er kann ein Popup, eine E-Mail, einen App-Push oder einen ausgehenden Webhook senden, ist selbst aber nie ein Order-Ticket." },
+    { type: "paragraph",html: "Aus Sicht von Tradovate ist eine Strategie, die Alerts ausspuckt, also völlig stumm. Ein TradingView-Alert wird nur dann zu einer Tradovate-Order, wenn etwas <em>außerhalb</em> von TradingView diesen Alert abfängt und in eine API-Order für Ihr Konto übersetzt. Dieses &ldquo;Etwas&rdquo; ist ein Webhook-Automatisierungsdienst, ein Relay oder eine Brücke. Es gibt in Tradovate keine native Webhook-zu-Order-Funktion; die Brücke erfordert immer ein Drittanbieter-Tool." },
+    { type: "heading",text: "Die häufigsten Ursachen, warum TradingView-Alerts auf Tradovate nicht automatisch ausgeführt werden" },
+    { type: "heading",text: "1. Die native TradingView-Tradovate-Verbindung ist nur manuell" },
+    { type: "paragraph",html: "Wenn Sie Tradovate über das TradingView-Broker-Panel verbinden, schalten Sie zwei Dinge frei: Klick-Handel und Live-Positionssynchronisierung. Das war es. Für diskretionären Handel direkt aus dem Chart ist das das richtige Werkzeug, aber es besitzt keinen Mechanismus, eine Strategie automatisch auszuführen. Wenn Ihr ganzer Plan lautete &ldquo;Tradovate verbinden, Alert hinzufügen, weggehen&rdquo;, ist das Ihre Ursache." },
+    { type: "heading",text: "2. Strategie-Alerts sind Benachrichtigungen, keine Orders" },
+    { type: "paragraph",html: "Ein Pine-Skript <code>strategy()</code> zeichnet Ihre Ein- und Ausstiege und kann <code>alert()</code>-Ereignisse ausgeben, doch diese Ereignisse haben keinerlei Fähigkeit, &ldquo;an den Broker zu senden&rdquo;. Ob Strategie-Alert oder Indikator-Alert, spielt keine Rolle: Die Ausgabe ist eine <em>Nachricht</em>, die an die aktivierten Kanäle zugestellt wird. Zu erwarten, dass diese Nachricht von selbst einen Trade platziert, ist der Kernfehler." },
+    { type: "heading",text: "3. Kein Webhook-Relay im Pfad" },
+    { type: "paragraph",html: "Selbst bei aktivierten Webhooks muss die Webhook-URL <em>irgendwohin</em> zeigen, das tatsächlich mit Tradovate sprechen kann. Fügen Sie eine beliebige URL ein, lassen Sie die Webhook URL leer oder zeigen Sie auf einen Dienst, der nicht mit Ihrem Tradovate-Konto verknüpft ist, verlässt der Alert TradingView und stirbt am Ziel. Kein Relay, keine Order." },
+    { type: "heading",text: "4. Die Webhook-Funktion ist gesperrt oder nicht authentifiziert" },
+    { type: "paragraph",html: "Webhook-Benachrichtigungen sind eine Funktion kostenpflichtiger Tarife. Im kostenlosen Tarif ist das Feld Webhook URL deaktiviert, sodass Ihr Alert nur auf dem Bildschirm aufpoppen kann. TradingView verlangt zudem Zwei-Faktor-Authentifizierung für Ihr Konto, bevor Webhook-Alerts gesendet werden. Tarifstufen, Alert-Kontingente und Preise ändern sich, prüfen Sie daher die aktuellen Tarife von TradingView, aber die Regel gilt: kein kostenpflichtiger Tarif, kein Webhook, keine Automatisierung." },
+    { type: "heading",text: "5. Der Alert selbst ist falsch konfiguriert" },
+    { type: "paragraph",html: "Sobald ein Relay vorhanden ist, muss der Alert dennoch korrekt aufgebaut sein: die richtige Bedingung (die Order-Fills der Strategie oder ein bestimmter Plot), die exakte Payload des Relays im Feld <strong class='text-white'>Message</strong>, die <strong class='text-white'>Webhook URL</strong> des Relays im Tab Notifications und eine sinnvolle Auslösehäufigkeit. Eine kosmetische Nachricht wie &ldquo;Long signal!&rdquo; löst aus, erreicht das Relay und wird auf der Stelle abgelehnt, weil sie keine maschinenlesbaren Orderanweisungen enthält." },
+    { type: "heading",text: "So beheben Sie es: Alerts Schritt für Schritt über ein Webhook-Relay routen" },
+    { type: "paragraph",html: "Die Lösung hat unabhängig vom gewählten Relay dieselbe Form: das Relay mit Tradovate verknüpfen, die Order-Payload erzeugen und in einen TradingView-Alert einbinden." },
+    { type: "heading",text: "Verbinden Sie einen Webhook-Automatisierungsdienst mit Ihrem Tradovate-Konto" },
+    {
+      type: "steps",
+      items: [
+        { title: "Fügen Sie Ihr Tradovate-Konto zum Relay hinzu", html: "Melden Sie sich bei einem Automatisierungsdienst für TradingView zu Tradovate an und fügen Sie Ihr Tradovate-Konto hinzu, Sie loggen sich im Relay mit Ihren Tradovate- oder Prop-Firm-Zugangsdaten ein. Prüfen Sie doppelt, dass die Live- oder Demo-Umgebung zu dem Konto passt, das Sie tatsächlich handeln möchten." },
+        { title: "Bestätigen Sie, dass die Verbindung aktiv ist", html: "Stellen Sie sicher, dass der Dienst die Verbindung als aktiv meldet und Ihr Konto sehen kann. Diese Schicht platziert Orders über ihren autorisierten API-Zugang bei Tradovate und muss daher funktionieren, bevor Sie einen einzigen Alert aufbauen." },
+      ],
+    },
+    { type: "heading",text: "Erstellen Sie die Alert-Nachricht und fügen Sie die Webhook-URL ein" },
+    {
+      type: "steps",
+      items: [
+        { title: "Order-Payload erzeugen", html: "Erzeugen Sie im Relay die Order-Payload, in der Regel ein JSON-Block, der Symbol, Aktion, Menge und gegebenenfalls Stopp oder Ziel festlegt. Kopieren Sie sie exakt. Bearbeiten Sie sie nicht von Hand." },
+        { title: "Alert mit der Payload erstellen", html: "Öffnen Sie in TradingView <strong class='text-white'>Create Alert</strong>, setzen Sie die <strong class='text-white'>Condition</strong> auf Ihre Strategie oder Ihr Signal und fügen Sie die Payload in das Feld <strong class='text-white'>Message</strong> ein." },
+        { title: "Webhook-URL aktivieren", html: "Wechseln Sie zum Tab <strong class='text-white'>Notifications</strong>, aktivieren Sie <strong class='text-white'>Webhook URL</strong> und fügen Sie die Webhook-URL des Relays ein. Das ist die Verbindung, die das Signal aus TradingView heraus trägt." },
+      ],
+    },
+    { type: "heading",text: "Stellen Sie den Alert auf zuverlässiges Auslösen ein" },
+    {
+      type: "steps",
+      items: [
+        { title: "Auslöser auf Once Per Bar Close setzen", html: "Setzen Sie den Auslöser auf <strong class='text-white'>Once Per Bar Close</strong>, damit die Order auf einer bestätigten Kerze gesendet wird, so verhindern Sie, dass doppelte Auslösungen und Repainting Ihr Konto ruinieren." },
+        { title: "Test auslösen und beide Logs beobachten", html: "Speichern Sie den Alert, lösen Sie dann einen Test aus (oder warten Sie auf das nächste Signal) und beobachten Sie zwei Stellen gleichzeitig: Ihre Tradovate-Orders/Positionen und das Log des Relays. Bestätigen Sie, dass die Order tatsächlich ankommt." },
+        { title: "Beides abgleichen", html: "Zeigt das Relay-Log den Empfang der Payload, Tradovate aber nichts an, liegt das Problem auf Tradovate- oder Relay-Seite, bei Symbol, Mengenlimits, Risikolimits oder Berechtigung, nicht bei TradingView." },
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Symptom","Bedeutung","Lösung"], rows: [
+      ["Alert feuert, keine Order auf Tradovate","Sie verlassen sich auf die native, nur manuelle Verbindung","Ein Webhook-Relay zwischen TradingView und Tradovate einsetzen"],
+      ["Das Feld Webhook URL ist ausgegraut","Kostenloser TradingView-Tarif (Webhooks nur in kostenpflichtigen Tarifen)","Auf einen kostenpflichtigen TradingView-Tarif upgraden und 2FA aktivieren"],
+      ["Alert löst aus, aber das Relay-Log ist leer","Webhook-URL fehlt oder ist im Tab Notifications falsch","Die exakte Webhook-URL des Relays erneut einfügen und erneut speichern"],
+      ["Relay protokolliert &ldquo;invalid/empty payload&rdquo;","Im Feld Message steht reiner Text statt der Order-Payload","Die vom Relay erzeugte JSON unverändert in das Feld Message einfügen"],
+      ["Order feuert zweimal pro Signal","Alert ist auf Auslösung innerhalb der Kerze eingestellt","Auslöser auf Once Per Bar Close ändern"],
+      ["Relay hat empfangen, Tradovate hat abgelehnt","Problem mit Symbol, Menge, Risiko oder Berechtigung auf dem Konto","Kontraktsymbol, Mengenlimits und Risiko-/Dateneinstellungen des Kontos prüfen"],
+    ] },
+    { type: "heading",text: "Vermeiden Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade ist ein autorisierter Tradovate-Anbieter und genau das Relay, das Ihnen fehlt, es fängt Ihre TradingView-Alerts ab und verwandelt sie automatisch in Live-Orders auf Tradovate:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Übersetzung von Alert zu Order</strong>, es erzeugt die Order-Payload für Sie, sodass aus einem TradingView-Alert eine gültige Tradovate-Order wird, ohne von Hand bearbeitetes JSON.",
+        "<strong class='text-white'>Validierung von Menge und Symbol</strong>, es prüft Symbol und Menge vor dem Routing, sodass ein falsch konfigurierter Alert nicht blind feuert.",
+        "<strong class='text-white'>Berechtigungs- und Risikofilter</strong>, es respektiert Prop-Firm-Limits und den Status der Datenvereinbarung, sodass Orders nachgelagert nicht abgelehnt werden.",
+        "<strong class='text-white'>Multi-Account-Synchronisierung</strong>, es spiegelt dasselbe Signal gleichzeitig auf mehrere Tradovate-Konten, was das native Panel schlicht nicht kann.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Probó en histórico una estrategia limpia de Pine Script, conectó Tradovate directamente en TradingView y puso una alerta en cada entrada. La señal salta, y nada llega a su cuenta de Tradovate. Ni ejecución, ni orden activa, solo una pequeña notificación en pantalla. Si es su caso, respire: su configuración no está rota. Se ha topado con el malentendido más común de la automatización de TradingView a Tradovate. La conexión nativa con el bróker le permite <em>hacer clic</em> en operaciones desde el gráfico, pero <strong class='text-white'>no</strong> ejecutará automáticamente sus alertas de estrategia. Por eso existen todas las herramientas de relé: la brecha de automatización es real y no se va a corregir. Aquí le explicamos exactamente por qué TradingView no ejecuta automáticamente su estrategia en Tradovate y cómo un relé por webhook cierra el circuito para que sus alertas se conviertan en órdenes en vivo sin tocar el ratón." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para ejecutar automáticamente alertas de TradingView",
+      items: [
+        "<strong class='text-white'>La conexión nativa es solo manual.</strong> El vínculo de bróker TradingView-Tradovate solo coloca una orden cuando <em>usted</em> hace clic en Buy o Sell. Nunca se dispara desde una alerta.",
+        "<strong class='text-white'>Las alertas son notificaciones, no órdenes.</strong> Una alerta de estrategia le envía un correo, muestra un aviso o manda un mensaje por webhook. Por sí sola no se enruta a ningún bróker.",
+        "<strong class='text-white'>Necesita un relé por webhook.</strong> Un servicio de automatización de terceros recoge la alerta y llama a la API de Tradovate para colocar la orden.",
+        "<strong class='text-white'>Los webhooks requieren un plan de pago de TradingView.</strong> El campo Webhook URL está bloqueado en el plan gratuito; active un plan de pago y active 2FA.",
+        "<strong class='text-white'>El mensaje de la alerta debe llevar las instrucciones de la orden.</strong> El texto plano no se ejecuta; el relé necesita su payload JSON exacto en el cuadro de mensaje.",
+        "<strong class='text-white'>Use &ldquo;Once Per Bar Close&rdquo;.</strong> Dispare en velas confirmadas para no enviar a su cuenta señales duplicadas o que se repintan.",
+      ],
+    },
+    { type: "heading",text: "Qué significa realmente &ldquo;TradingView no ejecuta mi estrategia automáticamente&rdquo;" },
+    { type: "paragraph",html: "Aquí no hay ninguna cadena de error en rojo, y eso es lo que lo hace tan exasperante. El registro de alertas muestra claramente que la alerta se activó, pero sus órdenes y posiciones de Tradovate siguen obstinadamente vacías. Nada está fallando. Este comportamiento es intencionado." },
+    { type: "paragraph",html: "La integración de bróker integrada de TradingView, el Trading Panel que aparece al conectar Tradovate, es una <strong class='text-white'>superficie de trading manual</strong>. Transmite sus posiciones en vivo y le permite enviar, modificar y cancelar órdenes haciendo clic en el gráfico o en el panel. Lo que no hace es leer las señales de su estrategia Pine, ni colocar una orden cuando salta una alerta. TradingView trata una alerta como un <em>evento de notificación</em>: puede enviar un aviso emergente, un correo, una notificación push de la app o un webhook saliente, pero nunca es en sí misma un ticket de orden." },
+    { type: "paragraph",html: "Así que, desde el punto de vista de Tradovate, una estrategia que escupe alertas está completamente en silencio. La única forma de que una alerta de TradingView se convierta en una orden de Tradovate es que algo <em>ajeno</em> a TradingView recoja esa alerta y la traduzca en una orden por API en su cuenta. Ese &ldquo;algo&rdquo; es un servicio de automatización por webhook, un relé o puente. No existe en Tradovate una función nativa de webhook a orden; hacer el puente siempre requiere una herramienta de terceros." },
+    { type: "heading",text: "Principales causas por las que las alertas de TradingView no se ejecutan automáticamente en Tradovate" },
+    { type: "heading",text: "1. La conexión nativa TradingView-Tradovate es solo manual" },
+    { type: "paragraph",html: "Cuando conecta Tradovate mediante el panel de bróker de TradingView, desbloquea dos cosas: operar con un clic y sincronizar posiciones en vivo. Eso es todo. Es la herramienta adecuada para el trading discrecional directamente desde el gráfico, pero no tiene ningún mecanismo para ejecutar una estrategia automáticamente. Si su plan era &ldquo;conectar Tradovate, añadir una alerta y marcharse&rdquo;, esta es su causa raíz." },
+    { type: "heading",text: "2. Las alertas de estrategia son notificaciones, no órdenes" },
+    { type: "paragraph",html: "Un script Pine <code>strategy()</code> dibuja sus entradas y salidas y puede emitir eventos <code>alert()</code>, pero esos eventos no tienen ningún poder de &ldquo;enviar al bróker&rdquo;. Alerta de estrategia o de indicador, da igual: el resultado es un <em>mensaje</em> entregado a los canales que haya habilitado. Esperar que ese mensaje coloque una operación por sí solo es el error de fondo." },
+    { type: "heading",text: "3. No hay ningún relé por webhook en el camino" },
+    { type: "paragraph",html: "Incluso con los webhooks activados, la URL del webhook tiene que apuntar a <em>algún sitio</em> que realmente sepa hablar con Tradovate. Si pega una URL cualquiera, deja vacío el campo Webhook URL o apunta a un servicio no vinculado a su cuenta de Tradovate, la alerta sale de TradingView y muere al llegar. Sin relé, no hay orden." },
+    { type: "heading",text: "4. La función de webhook está bloqueada o sin autenticar" },
+    { type: "paragraph",html: "Las notificaciones por webhook son una función de los planes de pago. En el plan gratuito el campo Webhook URL está deshabilitado, así que su alerta solo puede aparecer en pantalla. TradingView también exige autenticación en dos factores en su cuenta antes de enviar alertas por webhook. Los niveles de plan, las cuotas de alertas y los precios cambian con el tiempo, así que consulte los planes vigentes de TradingView, pero la regla se mantiene: sin plan de pago, no hay webhook, ni automatización." },
+    { type: "heading",text: "5. La propia alerta está mal configurada" },
+    { type: "paragraph",html: "Una vez que hay un relé, la alerta aún debe estar bien construida: la condición correcta (las ejecuciones de órdenes de la estrategia o un plot concreto), el payload exacto del relé en el cuadro <strong class='text-white'>Message</strong>, la <strong class='text-white'>Webhook URL</strong> del relé en la pestaña Notifications y una frecuencia de disparo razonable. Un mensaje cosmético como &ldquo;Long signal!&rdquo; se dispara, llega al relé y es rechazado al instante, porque no contiene instrucciones de orden legibles por máquina." },
+    { type: "heading",text: "Cómo solucionarlo: enrute las alertas a través de un relé por webhook, paso a paso" },
+    { type: "paragraph",html: "La solución tiene la misma forma sea cual sea el relé que elija: vincular el relé a Tradovate, generar el payload de la orden y conectarlo a una alerta de TradingView." },
+    { type: "heading",text: "Conecte un servicio de automatización por webhook a su cuenta de Tradovate" },
+    {
+      type: "steps",
+      items: [
+        { title: "Añada su cuenta de Tradovate al relé", html: "Inicie sesión en un servicio de automatización de TradingView a Tradovate y añada su cuenta de Tradovate; iniciará sesión con sus credenciales de Tradovate o de la prop firm dentro del relé. Compruebe dos veces que el entorno real o demo coincide con la cuenta en la que realmente pretende operar." },
+        { title: "Confirme que la conexión está activa", html: "Asegúrese de que el servicio indica la conexión como activa y puede ver su cuenta. Esta es la capa que coloca órdenes en Tradovate mediante su acceso autorizado a la API, así que debe estar sana antes de construir una sola alerta." },
+      ],
+    },
+    { type: "heading",text: "Construya el mensaje de la alerta y pegue la URL del webhook" },
+    {
+      type: "steps",
+      items: [
+        { title: "Genere el payload de la orden", html: "En el relé, genere el payload de la orden, normalmente un bloque JSON que detalla símbolo, acción, cantidad y cualquier stop u objetivo. Cópielo exactamente. No lo edite a mano." },
+        { title: "Cree la alerta con el payload", html: "De vuelta en TradingView, abra <strong class='text-white'>Create Alert</strong>, establezca la <strong class='text-white'>Condition</strong> en su estrategia o señal y pegue el payload en el cuadro <strong class='text-white'>Message</strong>." },
+        { title: "Habilite la URL del webhook", html: "Cambie a la pestaña <strong class='text-white'>Notifications</strong>, habilite <strong class='text-white'>Webhook URL</strong> y pegue la URL del webhook del relé. Esta es la conexión que saca la señal de TradingView." },
+      ],
+    },
+    { type: "heading",text: "Configure la alerta para que dispare de forma fiable" },
+    {
+      type: "steps",
+      items: [
+        { title: "Defina el disparador en Once Per Bar Close", html: "Defina el disparador en <strong class='text-white'>Once Per Bar Close</strong> para que la orden se envíe en una vela confirmada; eso evita que los disparos duplicados y el repintado arruinen su cuenta." },
+        { title: "Lance una prueba y observe ambos registros", html: "Guarde la alerta, luego lance una prueba (o espere a la próxima señal) y observe dos lugares a la vez: sus Orders/Positions de Tradovate y el registro del relé. Confirme que la orden realmente llega." },
+        { title: "Concilie ambos", html: "Si el registro del relé muestra el payload recibido pero Tradovate no muestra nada, el problema está del lado de Tradovate o del relé, símbolo, límites de cantidad, límites de riesgo, autorización, no en TradingView." },
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Síntoma","Qué significa","Solución"], rows: [
+      ["La alerta salta, no hay orden en Tradovate","Depende de la conexión nativa solo manual","Añada un relé por webhook entre TradingView y Tradovate"],
+      ["El campo Webhook URL aparece en gris","Plan gratuito de TradingView (los webhooks son solo de pago)","Pase a un plan de pago de TradingView y active 2FA"],
+      ["La alerta se activa pero el registro del relé está vacío","La URL del webhook falta o es incorrecta en la pestaña Notifications","Vuelva a pegar la URL exacta del webhook del relé y guarde de nuevo"],
+      ["El relé registra &ldquo;invalid/empty payload&rdquo;","El cuadro Message contiene texto plano, no el payload de la orden","Pegue el JSON generado por el relé en el cuadro Message, sin editarlo"],
+      ["La orden se dispara dos veces por señal","La alerta está configurada para dispararse dentro de la vela","Cambie el disparador a Once Per Bar Close"],
+      ["El relé la recibió, Tradovate la rechazó","Problema de símbolo, cantidad, riesgo o autorización en la cuenta","Revise el símbolo del contrato, los límites de cantidad y los ajustes de riesgo/datos de la cuenta"],
+    ] },
+    { type: "heading",text: "Evítelo con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade es un proveedor autorizado de Tradovate creado para ser exactamente el relé que le falta, recoge sus alertas de TradingView y las convierte automáticamente en órdenes en vivo de Tradovate:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Traducción de alerta a orden</strong>, genera el payload de la orden por usted, de modo que una alerta de TradingView se convierte en una orden válida de Tradovate sin JSON editado a mano.",
+        "<strong class='text-white'>Validación de cantidad y símbolo</strong>, comprueba el símbolo y la cantidad antes de enrutar, de modo que una alerta mal configurada no dispare a ciegas.",
+        "<strong class='text-white'>Filtros de autorización y riesgo</strong>, respeta los límites de las prop firms y el estado del acuerdo de datos, para que las órdenes no sean rechazadas más adelante.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replica la misma señal en varias cuentas de Tradovate a la vez, algo que el panel nativo simplemente no puede hacer.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Vous avez backtesté une stratégie Pine Script propre, connecté Tradovate directement dans TradingView et placé une alerte sur chaque entrée. Le signal se déclenche, et rien n'arrive sur votre compte Tradovate. Pas d'exécution, pas d'ordre actif, juste une petite notification à l'écran. Si c'est votre cas, respirez : votre configuration n'est pas cassée. Vous venez de rencontrer le malentendu le plus courant de l'automatisation de TradingView vers Tradovate. La connexion native au courtier vous permet de <em>cliquer</em> sur des trades depuis le graphique, mais elle n'exécutera <strong class='text-white'>pas</strong> automatiquement vos alertes de stratégie. C'est précisément pourquoi tous les outils de relais existent : le déficit d'automatisation est réel et ne sera pas corrigé. Voici exactement pourquoi TradingView n'exécute pas automatiquement votre stratégie sur Tradovate, et comment un relais webhook boucle la boucle pour que vos alertes deviennent des ordres réels sans que vous touchiez la souris." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour l'exécution automatique des alertes TradingView",
+      items: [
+        "<strong class='text-white'>La connexion native est uniquement manuelle.</strong> La connexion courtier TradingView-Tradovate ne passe un ordre que lorsque <em>vous</em> cliquez sur Buy ou Sell. Elle ne se déclenche jamais depuis une alerte.",
+        "<strong class='text-white'>Les alertes sont des notifications, pas des ordres.</strong> Une alerte de stratégie vous envoie un e-mail, une fenêtre contextuelle ou un message webhook. À elle seule, elle n'est routée vers aucun courtier.",
+        "<strong class='text-white'>Il vous faut un relais webhook.</strong> Un service d'automatisation tiers capte l'alerte et appelle l'API de Tradovate pour passer l'ordre.",
+        "<strong class='text-white'>Les webhooks exigent un forfait TradingView payant.</strong> Le champ Webhook URL est verrouillé sur l'offre gratuite ; activez un forfait payant et activez la 2FA.",
+        "<strong class='text-white'>Le message de l'alerte doit contenir les instructions d'ordre.</strong> Du texte brut ne s'exécutera pas ; le relais a besoin de sa charge JSON exacte dans la zone de message.",
+        "<strong class='text-white'>Utilisez &ldquo;Once Per Bar Close&rdquo;.</strong> Déclenchez sur des bougies confirmées pour ne pas envoyer à votre compte de signaux en double ou repeints.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie réellement &ldquo;TradingView n'exécute pas automatiquement ma stratégie&rdquo;" },
+    { type: "paragraph",html: "Il n'y a ici aucune chaîne d'erreur rouge, et c'est ce qui rend la chose si exaspérante. Votre journal d'alertes montre clairement que l'alerte s'est déclenchée, mais vos Orders et Positions Tradovate restent obstinément vides. Rien ne dysfonctionne. Ce comportement est voulu." },
+    { type: "paragraph",html: "L'intégration courtier intégrée de TradingView, le Trading Panel qui apparaît une fois Tradovate connecté, est une <strong class='text-white'>surface de trading manuel</strong>. Elle diffuse vos positions en direct et vous permet d'envoyer, modifier et annuler des ordres en cliquant sur le graphique ou dans le panneau. Ce qu'elle ne fait pas, c'est lire les signaux de votre stratégie Pine ni passer d'ordre lorsqu'une alerte se déclenche. TradingView traite une alerte comme un <em>événement de notification</em> : elle peut envoyer une fenêtre contextuelle, un e-mail, une notification push ou un webhook sortant, mais elle n'est jamais elle-même un ticket d'ordre." },
+    { type: "paragraph",html: "Du point de vue de Tradovate, une stratégie qui émet des alertes est donc totalement muette. La seule façon pour une alerte TradingView de devenir un ordre Tradovate est qu'un élément <em>extérieur</em> à TradingView capte cette alerte et la traduise en ordre API sur votre compte. Cet &ldquo;élément&rdquo; est un service d'automatisation par webhook, un relais ou un pont. Il n'existe pas de fonction native webhook-vers-ordre dans Tradovate ; le pont passe toujours par un outil tiers." },
+    { type: "heading",text: "Principales causes pour lesquelles les alertes TradingView ne s'exécutent pas automatiquement sur Tradovate" },
+    { type: "heading",text: "1. La connexion native TradingView-Tradovate est uniquement manuelle" },
+    { type: "paragraph",html: "Lorsque vous connectez Tradovate via le panneau courtier de TradingView, vous débloquez deux choses : le trading par clic et la synchronisation des positions en direct. C'est tout. C'est le bon outil pour le trading discrétionnaire directement depuis le graphique, mais il n'a aucun mécanisme pour exécuter une stratégie automatiquement. Si votre plan était &ldquo;connecter Tradovate, ajouter une alerte, s'en aller&rdquo;, voilà votre cause racine." },
+    { type: "heading",text: "2. Les alertes de stratégie sont des notifications, pas des ordres" },
+    { type: "paragraph",html: "Un script Pine <code>strategy()</code> trace vos entrées et sorties et peut émettre des événements <code>alert()</code>, mais ces événements n'ont aucun pouvoir d'&ldquo;envoi au courtier&rdquo;. Alerte de stratégie ou d'indicateur, peu importe : le résultat est un <em>message</em> remis aux canaux que vous avez activés. S'attendre à ce que ce message passe un trade tout seul est l'erreur fondamentale." },
+    { type: "heading",text: "3. Aucun relais webhook sur le chemin" },
+    { type: "paragraph",html: "Même avec les webhooks activés, l'URL du webhook doit pointer <em>quelque part</em> qui sait réellement dialoguer avec Tradovate. Collez une URL quelconque, laissez le champ Webhook URL vide ou pointez vers un service non lié à votre compte Tradovate, et l'alerte quitte TradingView puis meurt à l'arrivée. Pas de relais, pas d'ordre." },
+    { type: "heading",text: "4. La fonction webhook est verrouillée ou non authentifiée" },
+    { type: "paragraph",html: "Les notifications par webhook sont une fonctionnalité des forfaits payants. Sur l'offre gratuite, le champ Webhook URL est désactivé, de sorte que votre alerte ne peut que s'afficher à l'écran. TradingView exige également l'authentification à deux facteurs sur votre compte avant d'envoyer des alertes webhook. Les niveaux de forfait, quotas d'alertes et tarifs évoluent ; consultez donc les forfaits actuels de TradingView, mais la règle tient : pas de forfait payant, pas de webhook, pas d'automatisation." },
+    { type: "heading",text: "5. L'alerte elle-même est mal configurée" },
+    { type: "paragraph",html: "Une fois le relais en place, l'alerte doit encore être bien construite : la bonne condition (les exécutions d'ordres de la stratégie ou un tracé précis), la charge exacte du relais dans la zone <strong class='text-white'>Message</strong>, l'<strong class='text-white'>Webhook URL</strong> du relais dans l'onglet Notifications et une fréquence de déclenchement raisonnable. Un message cosmétique comme &ldquo;Long signal!&rdquo; se déclenchera, atteindra le relais et sera rejeté sur-le-champ, car il ne contient aucune instruction d'ordre lisible par une machine." },
+    { type: "heading",text: "Comment corriger : router les alertes via un relais webhook, étape par étape" },
+    { type: "paragraph",html: "La solution a la même forme quel que soit le relais choisi : relier le relais à Tradovate, générer la charge d'ordre et la brancher sur une alerte TradingView." },
+    { type: "heading",text: "Connectez un service d'automatisation par webhook à votre compte Tradovate" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ajoutez votre compte Tradovate au relais", html: "Connectez-vous à un service d'automatisation TradingView vers Tradovate et ajoutez votre compte Tradovate ; vous vous connecterez avec vos identifiants Tradovate ou de prop firm dans le relais. Vérifiez à deux fois que l'environnement réel ou démo correspond au compte sur lequel vous comptez réellement trader." },
+        { title: "Confirmez que la connexion est active", html: "Assurez-vous que le service signale la connexion comme active et qu'il voit votre compte. C'est la couche qui passe les ordres sur Tradovate via son accès API autorisé ; elle doit donc être saine avant de construire la moindre alerte." },
+      ],
+    },
+    { type: "heading",text: "Construisez le message de l'alerte et collez l'URL du webhook" },
+    {
+      type: "steps",
+      items: [
+        { title: "Générez la charge d'ordre", html: "Dans le relais, générez la charge d'ordre, généralement un bloc JSON qui précise symbole, action, quantité et tout stop ou objectif. Copiez-la exactement. Ne la modifiez pas à la main." },
+        { title: "Créez l'alerte avec la charge", html: "De retour dans TradingView, ouvrez <strong class='text-white'>Create Alert</strong>, réglez la <strong class='text-white'>Condition</strong> sur votre stratégie ou votre signal et collez la charge dans la zone <strong class='text-white'>Message</strong>." },
+        { title: "Activez l'URL du webhook", html: "Passez à l'onglet <strong class='text-white'>Notifications</strong>, activez <strong class='text-white'>Webhook URL</strong> et collez l'URL du webhook du relais. C'est la connexion qui fait sortir le signal de TradingView." },
+      ],
+    },
+    { type: "heading",text: "Réglez l'alerte pour un déclenchement fiable" },
+    {
+      type: "steps",
+      items: [
+        { title: "Réglez le déclencheur sur Once Per Bar Close", html: "Réglez le déclencheur sur <strong class='text-white'>Once Per Bar Close</strong> pour que l'ordre parte sur une bougie confirmée ; c'est ce qui empêche les déclenchements en double et le repainting de ruiner votre compte." },
+        { title: "Lancez un test et surveillez les deux journaux", html: "Enregistrez l'alerte, puis lancez un test (ou attendez le prochain signal) et surveillez deux endroits à la fois : vos Orders/Positions Tradovate et le journal du relais. Confirmez que l'ordre arrive bien." },
+        { title: "Rapprochez les deux", html: "Si le journal du relais montre la charge reçue mais que Tradovate n'affiche rien, le problème se situe côté Tradovate ou relais, symbole, plafonds de quantité, limites de risque, autorisation, pas côté TradingView." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme","Signification","Solution"], rows: [
+      ["L'alerte se déclenche, aucun ordre sur Tradovate","Vous vous appuyez sur la connexion native uniquement manuelle","Ajoutez un relais webhook entre TradingView et Tradovate"],
+      ["Le champ Webhook URL est grisé","Forfait TradingView gratuit (webhooks réservés aux forfaits payants)","Passez à un forfait TradingView payant et activez la 2FA"],
+      ["L'alerte se déclenche mais le journal du relais est vide","URL du webhook absente ou erronée dans l'onglet Notifications","Recollez l'URL exacte du webhook du relais et enregistrez à nouveau"],
+      ["Le relais journalise &ldquo;invalid/empty payload&rdquo;","La zone Message contient du texte brut, pas la charge d'ordre","Collez le JSON généré par le relais dans la zone Message, sans le modifier"],
+      ["L'ordre part deux fois par signal","L'alerte est réglée pour se déclencher en cours de bougie","Changez le déclencheur en Once Per Bar Close"],
+      ["Le relais l'a reçu, Tradovate l'a rejeté","Problème de symbole, de quantité, de risque ou d'autorisation sur le compte","Vérifiez le symbole du contrat, les plafonds de quantité et les paramètres de risque/données du compte"],
+    ] },
+    { type: "heading",text: "Évitez ce problème avec PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade est un fournisseur Tradovate autorisé conçu pour être exactement le relais qui vous manque, il capte vos alertes TradingView et les transforme automatiquement en ordres Tradovate réels :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Traduction d'alerte en ordre</strong>, il génère la charge d'ordre pour vous, de sorte qu'une alerte TradingView devienne un ordre Tradovate valide sans JSON modifié à la main.",
+        "<strong class='text-white'>Validation de la quantité et du symbole</strong>, il vérifie le symbole et la quantité avant le routage, afin qu'une alerte mal configurée ne parte pas à l'aveugle.",
+        "<strong class='text-white'>Filtres d'autorisation et de risque</strong>, il respecte les limites des prop firms et l'état de l'accord de données, afin que les ordres ne soient pas rejetés en aval.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, il réplique le même signal sur plusieurs comptes Tradovate à la fois, ce que le panneau natif ne peut tout simplement pas faire.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Ha fatto il backtest di una pulita strategia Pine Script, ha collegato Tradovate direttamente in TradingView e impostato un alert su ogni ingresso. Il segnale scatta, e nulla arriva sul suo conto Tradovate. Nessuna esecuzione, nessun ordine attivo, solo una piccola notifica sullo schermo. Se è il suo caso, respiri: la sua configurazione non è rotta. Si è imbattuto nel malinteso più comune dell'automazione da TradingView a Tradovate. Il collegamento nativo al broker le permette di <em>cliccare</em> i trade dal grafico, ma <strong class='text-white'>non</strong> eseguirà automaticamente i suoi alert della strategia. È esattamente per questo che esistono tutti gli strumenti di relay: il divario di automazione è reale e non verrà corretto. Ecco precisamente perché TradingView non esegue automaticamente la sua strategia su Tradovate e come un relay via webhook chiude il cerchio, così che i suoi alert diventino ordini reali senza toccare il mouse." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per l'esecuzione automatica degli alert TradingView",
+      items: [
+        "<strong class='text-white'>Il collegamento nativo è solo manuale.</strong> Il collegamento broker TradingView-Tradovate piazza un ordine solo quando <em>lei</em> clicca su Buy o Sell. Non scatta mai da un alert.",
+        "<strong class='text-white'>Gli alert sono notifiche, non ordini.</strong> Un alert di strategia le invia un'email, un popup o un messaggio webhook. Da solo non viene instradato a nessun broker.",
+        "<strong class='text-white'>Le serve un relay via webhook.</strong> Un servizio di automazione di terze parti cattura l'alert e chiama l'API di Tradovate per piazzare l'ordine.",
+        "<strong class='text-white'>I webhook richiedono un piano TradingView a pagamento.</strong> Il campo Webhook URL è bloccato nel piano gratuito, attivi un piano a pagamento e abiliti la 2FA.",
+        "<strong class='text-white'>Il messaggio dell'alert deve contenere le istruzioni dell'ordine.</strong> Il testo semplice non viene eseguito; il relay richiede il suo esatto payload JSON nella casella del messaggio.",
+        "<strong class='text-white'>Usi &ldquo;Once Per Bar Close&rdquo;.</strong> Scatti su barre confermate per non inviare al suo conto segnali duplicati o che ridisegnano.",
+      ],
+    },
+    { type: "heading",text: "Che cosa significa davvero &ldquo;TradingView non esegue automaticamente la mia strategia&rdquo;" },
+    { type: "paragraph",html: "Qui non c'è nessuna stringa di errore rossa, ed è questo che rende tutto così esasperante. Il suo log degli alert mostra chiaramente che l'alert è scattato, ma i suoi Orders e Positions di Tradovate restano ostinatamente vuoti. Niente sta malfunzionando. Questo comportamento è voluto." },
+    { type: "paragraph",html: "L'integrazione broker integrata di TradingView, il Trading Panel che compare dopo aver collegato Tradovate, è una <strong class='text-white'>superficie di trading manuale</strong>. Trasmette le sue posizioni live e le permette di inviare, modificare e annullare ordini cliccando sul grafico o sul pannello. Ciò che non fa è leggere i segnali della sua strategia Pine né piazzare un ordine quando scatta un alert. TradingView tratta un alert come un <em>evento di notifica</em>: può inviare un popup, un'email, una notifica push dell'app o un webhook in uscita, ma non è mai in sé un ticket d'ordine." },
+    { type: "paragraph",html: "Dal punto di vista di Tradovate, quindi, una strategia che emette alert è completamente muta. L'unico modo in cui un alert TradingView diventa un ordine Tradovate è che qualcosa <em>al di fuori</em> di TradingView catturi quell'alert e lo traduca in un ordine API sul suo conto. Quel &ldquo;qualcosa&rdquo; è un servizio di automazione via webhook, un relay o bridge. In Tradovate non esiste una funzione nativa da webhook a ordine; il ponte richiede sempre uno strumento di terze parti." },
+    { type: "heading",text: "Cause principali per cui gli alert TradingView non vengono eseguiti automaticamente su Tradovate" },
+    { type: "heading",text: "1. Il collegamento nativo TradingView-Tradovate è solo manuale" },
+    { type: "paragraph",html: "Quando collega Tradovate tramite il pannello broker di TradingView, sblocca due cose: il trading con un clic e la sincronizzazione delle posizioni live. Fine. È lo strumento giusto per il trading discrezionale direttamente dal grafico, ma non ha alcun meccanismo per eseguire automaticamente una strategia. Se il suo piano era &ldquo;collegare Tradovate, aggiungere un alert, andarsene&rdquo;, questa è la sua causa radice." },
+    { type: "heading",text: "2. Gli alert di strategia sono notifiche, non ordini" },
+    { type: "paragraph",html: "Uno script Pine <code>strategy()</code> traccia i suoi ingressi e uscite e può emettere eventi <code>alert()</code>, ma quegli eventi non hanno alcun potere di &ldquo;invio al broker&rdquo;. Alert di strategia o di indicatore, non fa differenza: l'output è un <em>messaggio</em> consegnato ai canali che ha abilitato. Aspettarsi che quel messaggio piazzi da solo un trade è l'errore di fondo." },
+    { type: "heading",text: "3. Non c'è nessun relay via webhook nel percorso" },
+    { type: "paragraph",html: "Anche con i webhook attivi, l'URL del webhook deve puntare a <em>qualcosa</em> che sappia davvero comunicare con Tradovate. Incolli un URL a caso, lasci vuoto Webhook URL o punti a un servizio non collegato al suo conto Tradovate, e l'alert lascia TradingView e muore all'arrivo. Niente relay, niente ordine." },
+    { type: "heading",text: "4. La funzione webhook è bloccata o non autenticata" },
+    { type: "paragraph",html: "Le notifiche via webhook sono una funzione dei piani a pagamento. Nel piano gratuito il campo Webhook URL è disattivato, quindi il suo alert può solo comparire sullo schermo. TradingView richiede inoltre l'autenticazione a due fattori sul suo account prima di inviare alert webhook. Livelli di piano, quote di alert e prezzi cambiano nel tempo, quindi consulti i piani attuali di TradingView, ma la regola vale: niente piano a pagamento, niente webhook, niente automazione." },
+    { type: "heading",text: "5. L'alert stesso è configurato male" },
+    { type: "paragraph",html: "Una volta presente un relay, l'alert deve comunque essere costruito correttamente: la condizione giusta (le esecuzioni degli ordini della strategia o uno specifico plot), l'esatto payload del relay nella casella <strong class='text-white'>Message</strong>, il <strong class='text-white'>Webhook URL</strong> del relay nella scheda Notifications e una frequenza di attivazione sensata. Un messaggio cosmetico come &ldquo;Long signal!&rdquo; scatterà, raggiungerà il relay e verrà rifiutato all'istante, perché non contiene istruzioni d'ordine leggibili dalla macchina." },
+    { type: "heading",text: "Come risolvere: instradare gli alert tramite un relay via webhook, passo dopo passo" },
+    { type: "paragraph",html: "La soluzione ha la stessa forma qualunque relay scelga: collegare il relay a Tradovate, generare il payload dell'ordine e inserirlo in un alert TradingView." },
+    { type: "heading",text: "Colleghi un servizio di automazione via webhook al suo conto Tradovate" },
+    {
+      type: "steps",
+      items: [
+        { title: "Aggiunga il suo conto Tradovate al relay", html: "Acceda a un servizio di automazione da TradingView a Tradovate e aggiunga il suo conto Tradovate, accederà con le sue credenziali Tradovate o della prop firm all'interno del relay. Verifichi due volte che l'ambiente live o demo corrisponda al conto su cui intende davvero operare." },
+        { title: "Confermi che il collegamento è attivo", html: "Si assicuri che il servizio riporti il collegamento come attivo e possa vedere il suo conto. È il livello che piazza gli ordini su Tradovate tramite il suo accesso API autorizzato, quindi deve essere in salute prima di costruire un solo alert." },
+      ],
+    },
+    { type: "heading",text: "Costruisca il messaggio dell'alert e incolli l'URL del webhook" },
+    {
+      type: "steps",
+      items: [
+        { title: "Generi il payload dell'ordine", html: "Nel relay, generi il payload dell'ordine, di solito un blocco JSON che specifica simbolo, azione, quantità ed eventuale stop o target. Lo copi esattamente. Non lo modifichi a mano." },
+        { title: "Crei l'alert con il payload", html: "Tornato in TradingView, apra <strong class='text-white'>Create Alert</strong>, imposti la <strong class='text-white'>Condition</strong> sulla sua strategia o sul suo segnale e incolli il payload nella casella <strong class='text-white'>Message</strong>." },
+        { title: "Abiliti l'URL del webhook", html: "Passi alla scheda <strong class='text-white'>Notifications</strong>, abiliti <strong class='text-white'>Webhook URL</strong> e incolli l'URL del webhook del relay. È il collegamento che porta il segnale fuori da TradingView." },
+      ],
+    },
+    { type: "heading",text: "Imposti l'alert perché scatti in modo affidabile" },
+    {
+      type: "steps",
+      items: [
+        { title: "Imposti il trigger su Once Per Bar Close", html: "Imposti il trigger su <strong class='text-white'>Once Per Bar Close</strong> così l'ordine parte su una barra confermata, è ciò che impedisce alle attivazioni duplicate e al repainting di rovinare il suo conto." },
+        { title: "Lanci un test e osservi entrambi i log", html: "Salvi l'alert, poi lanci un test (o attenda il prossimo segnale) e osservi due posti contemporaneamente: i suoi Orders/Positions di Tradovate e il log del relay. Confermi che l'ordine arrivi davvero." },
+        { title: "Riconcili i due", html: "Se il log del relay mostra il payload ricevuto ma Tradovate non mostra nulla, il problema è lato Tradovate o relay, simbolo, limiti di quantità, limiti di rischio, autorizzazione, non TradingView." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo","Cosa significa","Soluzione"], rows: [
+      ["L'alert scatta, nessun ordine su Tradovate","Si affida al collegamento nativo solo manuale","Aggiunga un relay via webhook tra TradingView e Tradovate"],
+      ["Il campo Webhook URL è disattivato","Piano TradingView gratuito (i webhook sono solo a pagamento)","Passi a un piano TradingView a pagamento e abiliti la 2FA"],
+      ["L'alert scatta ma il log del relay è vuoto","URL del webhook mancante o errato nella scheda Notifications","Incolli di nuovo l'URL esatto del webhook del relay e salvi di nuovo"],
+      ["Il relay registra &ldquo;invalid/empty payload&rdquo;","La casella Message contiene testo semplice, non il payload dell'ordine","Incolli nella casella Message il JSON generato dal relay, senza modificarlo"],
+      ["L'ordine parte due volte per segnale","L'alert è impostato per scattare dentro la barra","Cambi il trigger in Once Per Bar Close"],
+      ["Il relay l'ha ricevuto, Tradovate l'ha rifiutato","Problema di simbolo, quantità, rischio o autorizzazione sul conto","Controlli il simbolo del contratto, i limiti di quantità e le impostazioni di rischio/dati del conto"],
+    ] },
+    { type: "heading",text: "Lo eviti con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade è un fornitore Tradovate autorizzato creato per essere esattamente il relay che le manca, cattura i suoi alert TradingView e li trasforma automaticamente in ordini Tradovate reali:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Traduzione da alert a ordine</strong>, genera il payload dell'ordine per lei, così un alert TradingView diventa un ordine Tradovate valido senza JSON modificato a mano.",
+        "<strong class='text-white'>Validazione di quantità e simbolo</strong>, controlla simbolo e quantità prima dell'instradamento, così un alert configurato male non scatta alla cieca.",
+        "<strong class='text-white'>Filtri di autorizzazione e rischio</strong>, rispetta i limiti delle prop firm e lo stato dell'accordo sui dati, così gli ordini non vengono rifiutati a valle.",
+        "<strong class='text-white'>Sincronizzazione multi-conto</strong>, replica lo stesso segnale su più conti Tradovate contemporaneamente, cosa che il pannello nativo semplicemente non può fare.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Handeln Sie ohne Ablehnungen", es: "Opere sin rechazos", fr: "Tradez sans rejet", it: "Faccia trading senza rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and trade rejection-free.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, verknüpfen Sie noch heute Ihre Alerts und handeln Sie ohne Ablehnungen.", es: "Comience su prueba gratuita de 7 días, vincule sus alertas hoy mismo y opere sin rechazos.", fr: "Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et tradez sans rejet.", it: "Inizi la prova gratuita di 7 giorni, colleghi i suoi alert oggi stesso e faccia trading senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Can TradingView place trades on Tradovate automatically without any third-party tool?", a: "No. The native TradingView-Tradovate integration is for manual click-trading from the chart. Auto-executing strategy alerts requires a webhook relay that calls Tradovate's API." },
+    { q: "I connected Tradovate in TradingView, why don't my alerts trade?", a: "Connecting a broker only enables manual order entry and position sync. Alerts are notifications; they don't route to the broker on their own. You still need a relay to bridge them." },
+    { q: "Do I need a paid TradingView plan for this?", a: "Yes, for automation. The Webhook URL field is locked on the free tier and needs a paid plan plus two-factor authentication. Exact tiers and pricing vary and change over time, so check TradingView's current plans." },
+    { q: "What is a webhook relay?", a: "A third-party service that listens for your TradingView alert (via its webhook URL), reads the order instructions in the alert message, and submits the matching order to your connected Tradovate account." },
+    { q: "Why does my alert fire but nothing shows in the relay's log?", a: "The webhook URL is missing or wrong in the alert's Notifications tab, or webhooks aren't enabled on your plan. Re-paste the relay's exact URL and confirm your plan supports webhooks." },
+    { q: "The relay received my alert but Tradovate still rejected the order, why?", a: "That's a Tradovate-side issue, not TradingView. Check the contract symbol (front-month, not an expired one), quantity and position caps, account risk settings, and market-data entitlement." },
+    { q: "Should I use &ldquo;Once Per Bar&rdquo; or &ldquo;Once Per Bar Close&rdquo;?", a: "Use Once Per Bar Close for live automation so orders send only on confirmed bars, that prevents duplicate fires and repainting from an intra-bar signal that later reverses." },
+    { q: "Does this work with prop-firm Tradovate accounts?", a: "Often yes, but each prop firm sets its own automation rules, and some restrict API or bot activity. Confirm your firm allows relay-based automation before you go live, and keep your quantities inside their limits." },
+  ], de: [
+    { q: "Kann TradingView Trades auf Tradovate ohne ein Drittanbieter-Tool automatisch platzieren?", a: "Nein. Die native TradingView-Tradovate-Integration dient dem manuellen Klick-Handel aus dem Chart. Das automatische Ausführen von Strategie-Alerts erfordert ein Webhook-Relay, das die API von Tradovate aufruft." },
+    { q: "Ich habe Tradovate in TradingView verbunden, warum handeln meine Alerts nicht?", a: "Das Verbinden eines Brokers ermöglicht nur die manuelle Ordereingabe und die Positionssynchronisierung. Alerts sind Benachrichtigungen; sie werden nicht von selbst an den Broker geroutet. Sie benötigen weiterhin ein Relay als Brücke." },
+    { q: "Benötige ich dafür einen kostenpflichtigen TradingView-Tarif?", a: "Ja, für die Automatisierung. Das Feld Webhook URL ist im kostenlosen Tarif gesperrt und erfordert einen kostenpflichtigen Tarif sowie Zwei-Faktor-Authentifizierung. Genaue Tarifstufen und Preise variieren und ändern sich im Lauf der Zeit, prüfen Sie daher die aktuellen Tarife von TradingView." },
+    { q: "Was ist ein Webhook-Relay?", a: "Ein Drittanbieter-Dienst, der auf Ihren TradingView-Alert (über dessen Webhook-URL) lauscht, die Orderanweisungen in der Alert-Nachricht liest und die passende Order an Ihr verbundenes Tradovate-Konto übermittelt." },
+    { q: "Warum feuert mein Alert, aber im Log des Relays erscheint nichts?", a: "Die Webhook-URL fehlt oder ist im Tab Notifications des Alerts falsch, oder Webhooks sind in Ihrem Tarif nicht aktiviert. Fügen Sie die exakte URL des Relays erneut ein und prüfen Sie, ob Ihr Tarif Webhooks unterstützt." },
+    { q: "Das Relay hat meinen Alert empfangen, aber Tradovate hat die Order trotzdem abgelehnt, warum?", a: "Das ist ein Problem auf Tradovate-Seite, nicht bei TradingView. Prüfen Sie das Kontraktsymbol (Frontmonat, kein abgelaufener), Menge und Positionslimits, die Risikoeinstellungen des Kontos und die Marktdaten-Berechtigung." },
+    { q: "Sollte ich &ldquo;Once Per Bar&rdquo; oder &ldquo;Once Per Bar Close&rdquo; verwenden?", a: "Verwenden Sie für die Live-Automatisierung Once Per Bar Close, damit Orders nur bei bestätigten Kerzen gesendet werden, das verhindert doppelte Auslösungen und Repainting durch ein Intra-Bar-Signal, das sich später umkehrt." },
+    { q: "Funktioniert das mit Tradovate-Konten von Prop Firms?", a: "Oft ja, aber jede Prop Firm legt eigene Automatisierungsregeln fest, und manche schränken API- oder Bot-Aktivität ein. Bestätigen Sie, dass Ihre Firma relaisbasierte Automatisierung erlaubt, bevor Sie live gehen, und halten Sie Ihre Mengen innerhalb deren Limits." },
+  ], es: [
+    { q: "¿Puede TradingView colocar operaciones en Tradovate automáticamente sin ninguna herramienta de terceros?", a: "No. La integración nativa TradingView-Tradovate es para operar manualmente con clics desde el gráfico. Ejecutar automáticamente alertas de estrategia requiere un relé por webhook que llame a la API de Tradovate." },
+    { q: "Conecté Tradovate en TradingView, ¿por qué mis alertas no operan?", a: "Conectar un bróker solo habilita la entrada manual de órdenes y la sincronización de posiciones. Las alertas son notificaciones; no se enrutan al bróker por sí solas. Sigue necesitando un relé que haga de puente." },
+    { q: "¿Necesito un plan de pago de TradingView para esto?", a: "Sí, para la automatización. El campo Webhook URL está bloqueado en el plan gratuito y requiere un plan de pago más autenticación en dos factores. Los niveles y precios exactos varían y cambian con el tiempo, así que consulte los planes vigentes de TradingView." },
+    { q: "¿Qué es un relé por webhook?", a: "Un servicio de terceros que escucha su alerta de TradingView (mediante su URL de webhook), lee las instrucciones de la orden en el mensaje de la alerta y envía la orden correspondiente a su cuenta conectada de Tradovate." },
+    { q: "¿Por qué mi alerta salta pero no aparece nada en el registro del relé?", a: "La URL del webhook falta o es incorrecta en la pestaña Notifications de la alerta, o los webhooks no están habilitados en su plan. Vuelva a pegar la URL exacta del relé y confirme que su plan admite webhooks." },
+    { q: "El relé recibió mi alerta pero Tradovate rechazó la orden igualmente, ¿por qué?", a: "Es un problema del lado de Tradovate, no de TradingView. Revise el símbolo del contrato (mes frontal, no uno vencido), la cantidad y los límites de posición, los ajustes de riesgo de la cuenta y la autorización de datos de mercado." },
+    { q: "¿Debo usar &ldquo;Once Per Bar&rdquo; u &ldquo;Once Per Bar Close&rdquo;?", a: "Use Once Per Bar Close para la automatización en vivo, de modo que las órdenes se envíen solo en velas confirmadas; así evita disparos duplicados y el repintado por una señal intra-vela que luego se revierte." },
+    { q: "¿Funciona con cuentas de Tradovate de prop firms?", a: "A menudo sí, pero cada prop firm fija sus propias reglas de automatización y algunas restringen la actividad de API o de bots. Confirme que su firma permite la automatización basada en relé antes de pasar a real, y mantenga sus cantidades dentro de sus límites." },
+  ], fr: [
+    { q: "TradingView peut-il passer des trades sur Tradovate automatiquement sans aucun outil tiers ?", a: "Non. L'intégration native TradingView-Tradovate sert au trading manuel par clic depuis le graphique. L'exécution automatique des alertes de stratégie nécessite un relais webhook qui appelle l'API de Tradovate." },
+    { q: "J'ai connecté Tradovate dans TradingView, pourquoi mes alertes ne tradent-elles pas ?", a: "Connecter un courtier n'active que la saisie manuelle d'ordres et la synchronisation des positions. Les alertes sont des notifications ; elles ne sont pas routées vers le courtier d'elles-mêmes. Vous avez toujours besoin d'un relais pour faire le pont." },
+    { q: "Ai-je besoin d'un forfait TradingView payant pour cela ?", a: "Oui, pour l'automatisation. Le champ Webhook URL est verrouillé sur l'offre gratuite et nécessite un forfait payant ainsi que l'authentification à deux facteurs. Les niveaux et tarifs exacts varient et évoluent ; consultez donc les forfaits actuels de TradingView." },
+    { q: "Qu'est-ce qu'un relais webhook ?", a: "Un service tiers qui écoute votre alerte TradingView (via son URL de webhook), lit les instructions d'ordre contenues dans le message de l'alerte et soumet l'ordre correspondant à votre compte Tradovate connecté." },
+    { q: "Pourquoi mon alerte se déclenche-t-elle sans rien afficher dans le journal du relais ?", a: "L'URL du webhook est absente ou erronée dans l'onglet Notifications de l'alerte, ou les webhooks ne sont pas activés sur votre forfait. Recollez l'URL exacte du relais et vérifiez que votre forfait prend en charge les webhooks." },
+    { q: "Le relais a reçu mon alerte mais Tradovate a quand même rejeté l'ordre, pourquoi ?", a: "C'est un problème côté Tradovate, pas côté TradingView. Vérifiez le symbole du contrat (échéance proche, pas un contrat expiré), la quantité et les plafonds de position, les paramètres de risque du compte et l'autorisation des données de marché." },
+    { q: "Dois-je utiliser &ldquo;Once Per Bar&rdquo; ou &ldquo;Once Per Bar Close&rdquo; ?", a: "Utilisez Once Per Bar Close pour l'automatisation en direct afin que les ordres ne partent que sur des bougies confirmées ; cela évite les déclenchements en double et le repainting d'un signal intra-bougie qui s'inverse ensuite." },
+    { q: "Est-ce compatible avec les comptes Tradovate de prop firms ?", a: "Souvent oui, mais chaque prop firm fixe ses propres règles d'automatisation et certaines restreignent l'activité API ou de bots. Vérifiez que votre firme autorise l'automatisation par relais avant de passer en réel, et gardez vos quantités dans leurs limites." },
+  ], it: [
+    { q: "TradingView può piazzare automaticamente trade su Tradovate senza alcuno strumento di terze parti?", a: "No. L'integrazione nativa TradingView-Tradovate serve per il trading manuale con clic dal grafico. L'esecuzione automatica degli alert della strategia richiede un relay via webhook che chiami l'API di Tradovate." },
+    { q: "Ho collegato Tradovate in TradingView, perché i miei alert non operano?", a: "Collegare un broker abilita solo l'inserimento manuale degli ordini e la sincronizzazione delle posizioni. Gli alert sono notifiche; non vengono instradati al broker da soli. Serve comunque un relay che faccia da ponte." },
+    { q: "Mi serve un piano TradingView a pagamento per questo?", a: "Sì, per l'automazione. Il campo Webhook URL è bloccato nel piano gratuito e richiede un piano a pagamento più l'autenticazione a due fattori. Livelli e prezzi esatti variano e cambiano nel tempo, quindi consulti i piani attuali di TradingView." },
+    { q: "Che cos'è un relay via webhook?", a: "Un servizio di terze parti che ascolta il suo alert TradingView (tramite il suo URL webhook), legge le istruzioni dell'ordine nel messaggio dell'alert e invia l'ordine corrispondente al suo conto Tradovate collegato." },
+    { q: "Perché il mio alert scatta ma nel log del relay non compare nulla?", a: "L'URL del webhook manca o è errato nella scheda Notifications dell'alert, oppure i webhook non sono abilitati nel suo piano. Incolli di nuovo l'URL esatto del relay e verifichi che il suo piano supporti i webhook." },
+    { q: "Il relay ha ricevuto il mio alert ma Tradovate ha comunque rifiutato l'ordine, perché?", a: "È un problema lato Tradovate, non di TradingView. Controlli il simbolo del contratto (scadenza più vicina, non una scaduta), la quantità e i limiti di posizione, le impostazioni di rischio del conto e l'autorizzazione ai dati di mercato." },
+    { q: "Devo usare &ldquo;Once Per Bar&rdquo; o &ldquo;Once Per Bar Close&rdquo;?", a: "Usi Once Per Bar Close per l'automazione live, così gli ordini partono solo su barre confermate; ciò evita attivazioni duplicate e il repainting di un segnale intra-barra che poi si inverte." },
+    { q: "Funziona con i conti Tradovate di prop firm?", a: "Spesso sì, ma ogni prop firm stabilisce le proprie regole di automazione e alcune limitano l'attività API o dei bot. Verifichi che la sua società consenta l'automazione tramite relay prima di passare al reale e mantenga le quantità entro i loro limiti." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap, wird weder von diesen unterstützt noch gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattformen ändern sich im Laufe der Zeit. Prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de las plataformas cambian con el tiempo, por lo que siempre debe confirmar el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins strictement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc. ou Bookmap, ni approuvée ou parrainée par ces dernières. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes des plateformes évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha esclusivamente finalità educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi delle piattaforme cambiano nel tempo, quindi confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

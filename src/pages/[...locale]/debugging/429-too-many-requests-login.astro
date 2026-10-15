@@ -1,0 +1,593 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "429-too-many-requests-login";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate 429 'Too Many Requests' Login Lockout";
+const META_DESCRIPTION =
+  "Tradovate 429 'Too Many Requests' login lockout? Wait the 60-minute cooldown, stop retrying, and cut rapid logins or polling to get back in fast.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Bloqueo de login en Tradovate por 429 “Too Many Requests”", fr: "Tradovate : blocage de connexion 429 « Too Many Requests »", it: "Tradovate: blocco di accesso 429 “Too Many Requests”" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate 429 &ldquo;Too Many Requests&rdquo;-Anmeldesperre", es: "Bloqueo de inicio de sesión de Tradovate por 429 &ldquo;Too Many Requests&rdquo;", fr: "Blocage de connexion Tradovate 429 &ldquo;Too Many Requests&rdquo;", it: "Blocco di accesso Tradovate 429 &ldquo;Too Many Requests&rdquo;" },
+  dek: { en: "A blunt 429 &ldquo;Too Many Requests&rdquo; locks you out of Tradovate right when you need in. Here's what triggers the login lockout, how long the cooldown really lasts, and how to avoid re-tripping it.", de: "Ein schroffer 429-Fehler &ldquo;Too Many Requests&rdquo; sperrt Sie genau dann aus Tradovate aus, wenn Sie hineinmüssen. Hier erfahren Sie, was die Anmeldesperre auslöst, wie lange die Abkühlphase wirklich dauert, und wie Sie vermeiden, sie erneut auszulösen.", es: "Un tajante 429 &ldquo;Too Many Requests&rdquo; le bloquea el acceso a Tradovate justo cuando más lo necesita. Le explicamos qué desencadena el bloqueo de inicio de sesión, cuánto dura realmente el periodo de enfriamiento, y cómo evitar volver a activarlo.", fr: "Un abrupt 429 &ldquo;Too Many Requests&rdquo; vous bloque l'accès à Tradovate juste au moment où vous en avez besoin. Voici ce qui déclenche ce blocage de connexion, combien de temps dure réellement le délai de récupération, et comment éviter de le redéclencher.", it: "Un secco 429 &ldquo;Too Many Requests&rdquo; Le blocca l'accesso a Tradovate proprio quando ne ha bisogno. Ecco cosa scatena il blocco di accesso, quanto dura realmente il periodo di raffreddamento, e come evitare di farlo scattare di nuovo." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You go to log in before the 2026 cash open, type your credentials, and Tradovate throws back a blunt <strong class='text-white'>429 &ldquo;Too Many Requests&rdquo;</strong>, and now you can't get in at all. It tends to strike at the worst possible moment: right after a couple of fat-fingered password attempts, or when an automation is quietly hammering the login in the background. The frustrating part? The fix is almost always the same boring one, wait out the cooldown, stop retrying, and cut whatever was flooding the connection. Here's what the Tradovate 429 too many requests error actually means, why it locks you out, and exactly how to get back in without making things worse." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for the 429 Lockout",
+      items: [
+        "<strong class='text-white'>Stop logging in immediately.</strong> Every retry can extend the block, not clear it.",
+        "<strong class='text-white'>Wait roughly 60 minutes.</strong> Tradovate uses a rolling ~60-minute cooldown before the counter resets.",
+        "<strong class='text-white'>Double-check your username and password.</strong> Repeated wrong credentials are the number-one trigger.",
+        "<strong class='text-white'>Log out everywhere else.</strong> Extra web, desktop, mobile, and TradingView sessions add reconnect &ldquo;noise.&rdquo;",
+        "<strong class='text-white'>Throttle any API polling.</strong> A script calling REST endpoints every second will trip the limit fast.",
+        "<strong class='text-white'>Call Tradovate support (312-283-3100)</strong> if you're locked out and need an urgent manual reset.",
+      ],
+    },
+    { type: "heading", text: "What “Too Many Requests” (429) Means" },
+    { type: "paragraph", html: "<code>429 Too Many Requests</code> is a standard HTTP status code. It's not a password error, an account ban, or a sign your account got hacked, it simply means Tradovate received more requests from your user, in a short window, than its rate limits allow, so it temporarily stops accepting new ones." },
+    { type: "paragraph", html: "Two different situations produce the same message, and telling them apart saves a lot of panic:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>The TradingView login version.</strong> When you sign into TradingView using your Tradovate credentials and get &ldquo;Too many requests,&rdquo; it almost always means the TradingView-to-Tradovate login was attempted too many times, most commonly because an incorrect username or password was entered over and over. This specific error appears <strong class='text-white'>only</strong> at the TradingView login and does <strong class='text-white'>not</strong> block the native Tradovate Desktop, Web, or Mobile apps.",
+        "<strong class='text-white'>The user-level / API version.</strong> Tradovate applies rate limits at the <strong class='text-white'>user</strong> level, not the app level. So if a script, bridge, or reconnect loop floods the connection with requests, the lockout can spill over and make it impossible to log into the desktop apps too. Here the culprit is request volume, not a typo.",
+      ],
+    },
+    { type: "paragraph", html: "Either way, the cure is patience plus removing the source of the flood. Retrying during the cooldown is the single most common way traders accidentally keep themselves locked out." },
+    { type: "heading", text: "Top Causes of the Tradovate 429 Lockout in 2026" },
+    { type: "heading", text: "1. Repeated wrong username or password" },
+    { type: "paragraph", html: "The most frequent trigger by far. A few failed login attempts in quick succession, a stale saved password, caps lock left on, or the wrong account email, is enough to hit the &ldquo;Too many requests&rdquo; wall at the TradingView login. Incorrect credentials are the likeliest cause." },
+    { type: "heading", text: "2. Rapid, repeated login attempts" },
+    { type: "paragraph", html: "Even with the <em>correct</em> password, spamming the login button (or an app that auto-retries the connection every few seconds) generates a burst of &ldquo;usersync&rdquo; requests. Frequent reconnections and repeated logins hit the ceiling quickly, because each one gets counted." },
+    { type: "heading", text: "3. Too many concurrent sessions and devices" },
+    { type: "paragraph", html: "Web, desktop, mobile, TradingView, and a bridge service all authenticating against the same Tradovate user multiply the request count. When several of them reconnect at once, say, after a Wi-Fi blip, the combined churn can trip the limit." },
+    { type: "heading", text: "4. REST API polling instead of streaming" },
+    { type: "paragraph", html: "For API and algo users, the classic mistake is polling a REST endpoint on a tight loop, asking for a balance or position snapshot once per second, for example. The REST API isn't built for real-time use, and that kind of polling is exactly what generates a user-level 429 that then blocks logins everywhere." },
+    { type: "heading", text: "5. Hitting the hourly request ceiling" },
+    { type: "paragraph", html: "Every action counts as a request: logging in, opening charts, placing, modifying, or cancelling orders, and each automated alert. Tradovate enforces an hourly request ceiling on a rolling 60-minute window, the exact figures live in Tradovate's current API documentation and vary by endpoint, so check the docs for live numbers. High-frequency activity, rapid alerts, trade-copying to several accounts, or fast module switching, burns through the allowance quickly. Copying one alert to five accounts, for instance, counts as five requests." },
+    { type: "heading", text: "How to Fix the Tradovate 429 Lockout: Step-by-Step" },
+    { type: "heading", text: "Fixing a Credential-Triggered Lockout" },
+    {
+      type: "steps",
+      items: [
+        { title: "Stop trying to log in", html: "Close the login tab or app. Each additional attempt during the cooldown can prolong the block." },
+        { title: "Wait about 60 minutes", html: "The cooldown is a rolling ~60-minute window. If you tripped it at 2:15 PM, plan to be back in around 3:15 PM, measured from your <em>last</em> attempt, so genuinely stop hitting it." },
+        { title: "Verify your credentials before the next try", html: "Confirm the exact username/email and password. If you're unsure, reset the password from the Tradovate login page so your next attempt is guaranteed correct, no more failed logins padding the counter." },
+        { title: "Retry once, calmly", html: "After the cooldown, log in a single time with confirmed-correct details." },
+      ],
+    },
+    { type: "heading", text: "Fixing a Session / Reconnect Flood" },
+    {
+      type: "steps",
+      items: [
+        { title: "Sign out of every other Tradovate session", html: "Sign out of web, desktop, mobile, and the TradingView connection, so only one client is authenticating." },
+        { title: "Fix the underlying instability", html: "A dropping connection that auto-reconnects in a loop is a request generator; move to a stable wired connection and make sure your system clock is synced (clock drift alone causes repeated login rejections)." },
+        { title: "Reconnect on one device only", html: "Then bring the others back one at a time rather than all at once." },
+      ],
+    },
+    { type: "heading", text: "Fixing an API / Polling-Triggered Lockout" },
+    {
+      type: "steps",
+      items: [
+        { title: "Kill the polling loop", html: "Stop any script calling REST endpoints on a fixed interval." },
+        { title: "Switch real-time data to a WebSocket", html: "Open a long-running connection to Tradovate's WebSocket server and use its <code>syncRequest</code> feature to receive real-time balance, position, and order updates, instead of repeatedly asking over REST. This is the pattern Tradovate recommends." },
+        { title: "Space out and queue your calls", html: "Stay under the hourly ceiling, and back off automatically when you get a 429 rather than retrying immediately." },
+      ],
+    },
+    { type: "heading", text: "When You Can't Wait" },
+    { type: "paragraph", html: "If you're locked out mid-session and need access urgently, <strong class='text-white'>call Tradovate support at 312-283-3100</strong> (or email support with your username). They can manually reset your request limits in urgent situations, but they can't undo a limit you keep re-tripping, so make sure the flood has stopped first." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / symptom", "What it means", "Fix"],
+      rows: [
+        ["Too many requests at TradingView login", "Login attempted too many times, usually wrong credentials", "Wait ~60 min without retrying; verify/reset password"],
+        ["429 Too Many Requests (HTTP)", "User-level rate limit exceeded", "Stop all requests; wait the rolling 60-minute window"],
+        ["Can't log into desktop app after API errors", "A user-level 429 spilled over from API/reconnect flooding", "Stop the script/reconnect loop; wait, then log in once"],
+        ["Lockout keeps coming back", "You're retrying during the cooldown", "Stop retrying entirely; the window resets from your last attempt"],
+        ["Frequent reconnect + &ldquo;usersync&rdquo; spikes", "Unstable connection or multiple sessions", "Log out extra sessions; use wired network; sync system clock"],
+        ["429 from a polling script", "REST endpoint polled too often", "Move real-time data to WebSocket syncRequest; queue calls"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "If your lockouts come from automation, TradingView alerts firing fast, or copying to several accounts, a bridge that respects Tradovate's limits removes the whole problem. PickMyTrade sits between TradingView and Tradovate and sends order flow the way the platform wants it:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, spaces out and queues order flow so bursts of alerts don't slam the API into a 429.",
+        "<strong class='text-white'>Single Managed Connection</strong>, one stable, persistent link to your account instead of a reconnect loop hammering the login.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirrors a trade across accounts through controlled request pacing, not five simultaneous logins.",
+        "<strong class='text-white'>Qty / Symbol Validation</strong>, blocks malformed or oversized orders before they're sent, cutting wasted retry requests.",
+      ],
+    },
+    { type: "paragraph", html: "The result: your strategy keeps firing while the connection stays quietly under the limit." },
+  ], de: [
+    { type: "paragraph", html: "Sie wollen sich vor dem Cash-Open 2026 anmelden, geben Ihre Zugangsdaten ein, und Tradovate wirft Ihnen einen schroffen <strong class='text-white'>429 &ldquo;Too Many Requests&rdquo;</strong> entgegen, und jetzt kommen Sie überhaupt nicht mehr hinein. Das passiert meist im ungünstigsten Moment: gleich nach ein paar vertippten Passwortversuchen, oder wenn eine Automatisierung im Hintergrund leise die Anmeldung bombardiert. Das Frustrierende daran? Die Lösung ist fast immer dieselbe langweilige, die Abkühlphase abwarten, mit dem erneuten Versuchen aufhören, und die Quelle der Flut kappen. Hier erfahren Sie, was der Tradovate-429-Fehler „Too Many Requests“ tatsächlich bedeutet, warum er Sie aussperrt, und wie Sie genau wieder hineinkommen, ohne die Lage zu verschlimmern." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste für die 429-Sperre",
+      items: [
+        "<strong class='text-white'>Hören Sie sofort auf, sich anzumelden.</strong> Jeder weitere Versuch kann die Sperre verlängern statt sie aufzuheben.",
+        "<strong class='text-white'>Warten Sie rund 60 Minuten.</strong> Tradovate nutzt eine rollierende Abkühlphase von etwa 60 Minuten, bevor der Zähler zurückgesetzt wird.",
+        "<strong class='text-white'>Prüfen Sie Benutzername und Passwort genau.</strong> Wiederholt falsche Zugangsdaten sind der häufigste Auslöser.",
+        "<strong class='text-white'>Melden Sie sich überall sonst ab.</strong> Zusätzliche Web-, Desktop-, Mobil- und TradingView-Sitzungen erzeugen Reconnect-„Rauschen“.",
+        "<strong class='text-white'>Drosseln Sie jedes API-Polling.</strong> Ein Skript, das REST-Endpunkte jede Sekunde aufruft, löst das Limit schnell aus.",
+        "<strong class='text-white'>Rufen Sie den Tradovate-Support (312-283-3100) an</strong>, falls Sie ausgesperrt sind und dringend ein manuelles Zurücksetzen benötigen.",
+      ],
+    },
+    { type: "heading", text: "Was &ldquo;Too Many Requests&rdquo; (429) bedeutet" },
+    { type: "paragraph", html: "<code>429 Too Many Requests</code> ist ein Standard-HTTP-Statuscode. Es ist kein Passwortfehler, keine Kontosperre und kein Zeichen dafür, dass Ihr Konto gehackt wurde, es bedeutet lediglich, dass Tradovate in einem kurzen Zeitfenster mehr Anfragen von Ihrem Nutzer erhalten hat, als die Ratenbegrenzung erlaubt, und deshalb vorübergehend keine neuen mehr annimmt." },
+    { type: "paragraph", html: "Zwei unterschiedliche Situationen erzeugen dieselbe Meldung, und sie auseinanderzuhalten erspart viel Panik:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Die TradingView-Anmeldevariante.</strong> Wenn Sie sich mit Ihren Tradovate-Zugangsdaten bei TradingView anmelden und &ldquo;Too many requests&rdquo; erhalten, bedeutet das fast immer, dass die Anmeldung von TradingView zu Tradovate zu oft versucht wurde, meistens weil ein falscher Benutzername oder ein falsches Passwort wiederholt eingegeben wurde. Dieser spezielle Fehler tritt <strong class='text-white'>nur</strong> bei der TradingView-Anmeldung auf und blockiert die nativen Tradovate-Apps für Desktop, Web oder Mobile <strong class='text-white'>nicht</strong>.",
+        "<strong class='text-white'>Die Nutzerebene / API-Variante.</strong> Tradovate wendet Ratenbegrenzungen auf <strong class='text-white'>Nutzerebene</strong> an, nicht auf App-Ebene. Wenn also ein Skript, eine Bridge oder eine Reconnect-Schleife die Verbindung mit Anfragen flutet, kann die Sperre übergreifen und auch die Anmeldung bei den Desktop-Apps unmöglich machen. Hier liegt die Ursache im Anfragevolumen, nicht in einem Tippfehler.",
+      ],
+    },
+    { type: "paragraph", html: "So oder so besteht die Lösung aus Geduld plus dem Entfernen der Ursache der Flut. Während der Abkühlphase erneut zu versuchen ist der häufigste Weg, wie Trader sich selbst versehentlich ausgesperrt halten." },
+    { type: "heading", text: "Die häufigsten Ursachen der Tradovate-429-Sperre im Jahr 2026" },
+    { type: "heading", text: "1. Wiederholt falscher Benutzername oder falsches Passwort" },
+    { type: "paragraph", html: "Der mit Abstand häufigste Auslöser. Ein paar fehlgeschlagene Anmeldeversuche kurz hintereinander, ein veraltetes gespeichertes Passwort, eine aktivierte Feststelltaste oder die falsche Konto-E-Mail reichen aus, um bei der TradingView-Anmeldung an die Wand &ldquo;Too many requests&rdquo; zu stoßen. Falsche Zugangsdaten sind die wahrscheinlichste Ursache." },
+    { type: "heading", text: "2. Schnelle, wiederholte Anmeldeversuche" },
+    { type: "paragraph", html: "Selbst mit dem <em>richtigen</em> Passwort erzeugt das wiederholte Klicken auf die Anmeldeschaltfläche (oder eine App, die die Verbindung alle paar Sekunden automatisch neu versucht) einen Schub von &ldquo;usersync&rdquo;-Anfragen. Häufige Reconnects und wiederholte Anmeldungen erreichen die Obergrenze schnell, weil jede einzelne gezählt wird." },
+    { type: "heading", text: "3. Zu viele gleichzeitige Sitzungen und Geräte" },
+    { type: "paragraph", html: "Web, Desktop, Mobile, TradingView und ein Bridge-Dienst, die sich alle gegen denselben Tradovate-Nutzer authentifizieren, vervielfachen die Anfragenzahl. Wenn mehrere davon gleichzeitig neu verbinden, etwa nach einem kurzen WLAN-Aussetzer, kann die kombinierte Last das Limit auslösen." },
+    { type: "heading", text: "4. REST-API-Polling statt Streaming" },
+    { type: "paragraph", html: "Für API- und Algo-Nutzer ist der klassische Fehler, einen REST-Endpunkt in einer engen Schleife abzufragen, zum Beispiel einmal pro Sekunde nach einem Konto- oder Positions-Snapshot zu fragen. Die REST-API ist nicht für Echtzeitnutzung ausgelegt, und genau diese Art von Polling erzeugt einen 429-Fehler auf Nutzerebene, der dann überall Anmeldungen blockiert." },
+    { type: "heading", text: "5. Die stündliche Anfragen-Obergrenze erreichen" },
+    { type: "paragraph", html: "Jede Aktion zählt als Anfrage: Anmelden, Charts öffnen, Orders platzieren, ändern oder stornieren, und jeder automatisierte Alert. Tradovate setzt eine stündliche Anfragen-Obergrenze über ein rollierendes 60-Minuten-Fenster durch, die genauen Werte finden Sie in der aktuellen Tradovate-API-Dokumentation und variieren je nach Endpunkt, prüfen Sie also die Dokumentation für die aktuellen Zahlen. Hochfrequente Aktivität, schnelle Alerts, das Kopieren von Trades auf mehrere Konten oder schnelles Modul-Wechseln zehren das Kontingent rasch auf. Einen Alert auf fünf Konten zu kopieren zählt beispielsweise als fünf Anfragen." },
+    { type: "heading", text: "So beheben Sie die Tradovate-429-Sperre: Schritt für Schritt" },
+    { type: "heading", text: "Eine durch Zugangsdaten ausgelöste Sperre beheben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Hören Sie auf, sich anzumelden", html: "Schließen Sie den Anmelde-Tab oder die App. Jeder weitere Versuch während der Abkühlphase kann die Sperre verlängern." },
+        { title: "Warten Sie etwa 60 Minuten", html: "Die Abkühlphase ist ein rollierendes ~60-Minuten-Fenster. Haben Sie sie um 14:15 Uhr ausgelöst, planen Sie mit einer Rückkehr gegen 15:15 Uhr, gerechnet ab Ihrem <em>letzten</em> Versuch, hören Sie also wirklich auf, es zu versuchen." },
+        { title: "Prüfen Sie Ihre Zugangsdaten vor dem nächsten Versuch", html: "Bestätigen Sie den exakten Benutzernamen/die E-Mail und das Passwort. Sind Sie sich unsicher, setzen Sie das Passwort über die Tradovate-Anmeldeseite zurück, damit Ihr nächster Versuch garantiert korrekt ist, keine weiteren fehlgeschlagenen Anmeldungen, die den Zähler füllen." },
+        { title: "Versuchen Sie es einmal, ruhig", html: "Melden Sie sich nach der Abkühlphase ein einziges Mal mit bestätigt korrekten Angaben an." },
+      ],
+    },
+    { type: "heading", text: "Eine Sitzungs-/Reconnect-Flut beheben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Melden Sie sich von jeder anderen Tradovate-Sitzung ab", html: "Melden Sie sich von Web, Desktop, Mobile und der TradingView-Verbindung ab, sodass sich nur noch ein Client authentifiziert." },
+        { title: "Beheben Sie die zugrunde liegende Instabilität", html: "Eine abbrechende Verbindung, die sich in einer Schleife automatisch neu verbindet, ist ein Anfragen-Generator; wechseln Sie zu einer stabilen kabelgebundenen Verbindung und stellen Sie sicher, dass Ihre Systemuhr synchronisiert ist (allein eine Uhrenabweichung verursacht wiederholte Anmeldeablehnungen)." },
+        { title: "Verbinden Sie nur ein Gerät neu", html: "Bringen Sie die anderen dann nacheinander zurück, nicht alle gleichzeitig." },
+      ],
+    },
+    { type: "heading", text: "Eine durch API/Polling ausgelöste Sperre beheben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Beenden Sie die Polling-Schleife", html: "Stoppen Sie jedes Skript, das REST-Endpunkte in festen Intervallen aufruft." },
+        { title: "Stellen Sie Echtzeitdaten auf WebSocket um", html: "Öffnen Sie eine langlebige Verbindung zum WebSocket-Server von Tradovate und nutzen Sie dessen <code>syncRequest</code>-Funktion, um Echtzeit-Updates für Konto, Positionen und Orders zu erhalten, statt wiederholt über REST anzufragen. Das ist das von Tradovate empfohlene Muster." },
+        { title: "Verteilen und staffeln Sie Ihre Aufrufe", html: "Bleiben Sie unter der stündlichen Obergrenze und drosseln Sie automatisch, wenn Sie einen 429 erhalten, statt sofort erneut zu versuchen." },
+      ],
+    },
+    { type: "heading", text: "Wenn Sie nicht warten können" },
+    { type: "paragraph", html: "Sind Sie mitten in einer Sitzung ausgesperrt und benötigen dringend Zugriff, <strong class='text-white'>rufen Sie den Tradovate-Support unter 312-283-3100 an</strong> (oder schreiben Sie eine E-Mail an den Support mit Ihrem Benutzernamen). In dringenden Fällen können sie Ihre Anfragelimits manuell zurücksetzen, aber sie können kein Limit aufheben, das Sie immer wieder auslösen, stellen Sie also zuerst sicher, dass die Flut gestoppt ist." },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Fehler / Symptom", "Was es bedeutet", "Lösung"],
+      rows: [
+        ["Too many requests bei der TradingView-Anmeldung", "Anmeldung zu oft versucht, meist falsche Zugangsdaten", "~60 Min. warten, ohne es erneut zu versuchen; Passwort prüfen/zurücksetzen"],
+        ["429 Too Many Requests (HTTP)", "Ratenbegrenzung auf Nutzerebene überschritten", "Alle Anfragen stoppen; das rollierende 60-Minuten-Fenster abwarten"],
+        ["Kann sich nach API-Fehlern nicht bei der Desktop-App anmelden", "Ein 429 auf Nutzerebene ist von API-/Reconnect-Flut übergeschwappt", "Skript/Reconnect-Schleife stoppen; warten, dann einmal anmelden"],
+        ["Die Sperre kommt immer wieder", "Sie versuchen es während der Abkühlphase erneut", "Ganz aufhören, es erneut zu versuchen; das Fenster setzt sich ab Ihrem letzten Versuch zurück"],
+        ["Häufige Reconnects + &ldquo;usersync&rdquo;-Spitzen", "Instabile Verbindung oder mehrere Sitzungen", "Zusätzliche Sitzungen abmelden; kabelgebundenes Netzwerk nutzen; Systemuhr synchronisieren"],
+        ["429 durch ein Polling-Skript", "REST-Endpunkt zu oft abgefragt", "Echtzeitdaten auf WebSocket-syncRequest umstellen; Aufrufe staffeln"],
+      ],
+    },
+    { type: "heading", text: "Vermeiden Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "Wenn Ihre Sperren von Automatisierung, schnell feuernden TradingView-Alerts oder dem Kopieren auf mehrere Konten stammen, beseitigt eine Bridge, die die Limits von Tradovate respektiert, das gesamte Problem. PickMyTrade sitzt zwischen TradingView und Tradovate und sendet den Orderfluss so, wie die Plattform es erwartet:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ratenlimit-sichere Weiterleitung</strong>, staffelt und reiht den Orderfluss ein, sodass Alert-Schübe die API nicht in einen 429 treiben.",
+        "<strong class='text-white'>Eine einzige verwaltete Verbindung</strong>, eine stabile, dauerhafte Verbindung zu Ihrem Konto statt einer Reconnect-Schleife, die die Anmeldung bombardiert.",
+        "<strong class='text-white'>Synchronisation mehrerer Konten</strong>, spiegelt einen Trade über Konten hinweg mit kontrolliertem Anfragetempo, nicht mit fünf gleichzeitigen Anmeldungen.",
+        "<strong class='text-white'>Mengen-/Symbolvalidierung</strong>, blockiert fehlerhafte oder überdimensionierte Orders, bevor sie gesendet werden, und reduziert so unnötige Wiederholungsanfragen.",
+      ],
+    },
+    { type: "paragraph", html: "Das Ergebnis: Ihre Strategie feuert weiter, während die Verbindung ruhig unter dem Limit bleibt." },
+  ], es: [
+    { type: "paragraph", html: "Va a iniciar sesión antes de la apertura del mercado de 2026, escribe sus credenciales, y Tradovate le devuelve un tajante <strong class='text-white'>429 &ldquo;Too Many Requests&rdquo;</strong>, y ahora no puede entrar en absoluto. Suele golpear en el peor momento posible: justo después de un par de intentos de contraseña con errores tipográficos, o cuando una automatización está bombardeando silenciosamente el inicio de sesión en segundo plano. ¿Lo frustrante? La solución es casi siempre la misma y aburrida, esperar a que pase el periodo de enfriamiento, dejar de reintentar, y cortar lo que estuviera inundando la conexión. A continuación explicamos qué significa realmente el error 429 de Tradovate por demasiadas solicitudes, por qué le bloquea el acceso, y exactamente cómo volver a entrar sin empeorar la situación." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para el bloqueo por 429",
+      items: [
+        "<strong class='text-white'>Deje de iniciar sesión de inmediato.</strong> Cada reintento puede extender el bloqueo en lugar de eliminarlo.",
+        "<strong class='text-white'>Espere aproximadamente 60 minutos.</strong> Tradovate usa un periodo de enfriamiento móvil de unos 60 minutos antes de que el contador se reinicie.",
+        "<strong class='text-white'>Verifique dos veces su usuario y contraseña.</strong> Las credenciales incorrectas repetidas son el principal desencadenante.",
+        "<strong class='text-white'>Cierre sesión en todos los demás sitios.</strong> Las sesiones adicionales de web, escritorio, móvil y TradingView añaden &ldquo;ruido&rdquo; de reconexión.",
+        "<strong class='text-white'>Limite cualquier sondeo de la API.</strong> Un script que llame a los endpoints REST cada segundo activará el límite rápidamente.",
+        "<strong class='text-white'>Llame al soporte de Tradovate (312-283-3100)</strong> si está bloqueado y necesita un restablecimiento manual urgente.",
+      ],
+    },
+    { type: "heading", text: "Qué significa &ldquo;Too Many Requests&rdquo; (429)" },
+    { type: "paragraph", html: "<code>429 Too Many Requests</code> es un código de estado HTTP estándar. No es un error de contraseña, una suspensión de cuenta, ni una señal de que le hackearon la cuenta, simplemente significa que Tradovate recibió más solicitudes de su usuario, en una ventana corta, de las que permite su límite de tasa, por lo que deja de aceptar nuevas temporalmente." },
+    { type: "paragraph", html: "Dos situaciones distintas producen el mismo mensaje, y distinguirlas evita mucho pánico:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>La versión del inicio de sesión de TradingView.</strong> Cuando inicia sesión en TradingView usando sus credenciales de Tradovate y obtiene &ldquo;Too many requests,&rdquo; casi siempre significa que el inicio de sesión de TradingView a Tradovate se intentó demasiadas veces, lo más común porque se introdujo un usuario o contraseña incorrectos una y otra vez. Este error específico aparece <strong class='text-white'>únicamente</strong> en el inicio de sesión de TradingView y <strong class='text-white'>no</strong> bloquea las apps nativas de Tradovate para Desktop, Web o Mobile.",
+        "<strong class='text-white'>La versión a nivel de usuario / API.</strong> Tradovate aplica los límites de tasa a nivel de <strong class='text-white'>usuario</strong>, no a nivel de aplicación. Así que si un script, un bridge o un bucle de reconexión inunda la conexión con solicitudes, el bloqueo puede extenderse e impedir también el inicio de sesión en las apps de escritorio. Aquí el culpable es el volumen de solicitudes, no un error tipográfico.",
+      ],
+    },
+    { type: "paragraph", html: "En cualquier caso, la cura es paciencia más eliminar la fuente de la inundación. Reintentar durante el periodo de enfriamiento es la forma más común en que los traders acaban bloqueándose a sí mismos por accidente." },
+    { type: "heading", text: "Principales causas del bloqueo por 429 de Tradovate en 2026" },
+    { type: "heading", text: "1. Usuario o contraseña incorrectos repetidos" },
+    { type: "paragraph", html: "El desencadenante más frecuente con diferencia. Unos pocos intentos de inicio de sesión fallidos en rápida sucesión, una contraseña guardada desactualizada, el bloqueo de mayúsculas activado, o el correo de cuenta equivocado, bastan para chocar contra el muro de &ldquo;Too many requests&rdquo; en el inicio de sesión de TradingView. Las credenciales incorrectas son la causa más probable." },
+    { type: "heading", text: "2. Intentos de inicio de sesión rápidos y repetidos" },
+    { type: "paragraph", html: "Incluso con la contraseña <em>correcta</em>, hacer clic repetidamente en el botón de inicio de sesión (o una app que reintenta la conexión automáticamente cada pocos segundos) genera una ráfaga de solicitudes &ldquo;usersync&rdquo;. Las reconexiones frecuentes y los inicios de sesión repetidos alcanzan el límite rápidamente, porque cada uno cuenta." },
+    { type: "heading", text: "3. Demasiadas sesiones y dispositivos simultáneos" },
+    { type: "paragraph", html: "Web, escritorio, móvil, TradingView y un servicio bridge autenticándose todos contra el mismo usuario de Tradovate multiplican el recuento de solicitudes. Cuando varios de ellos se reconectan a la vez, por ejemplo, tras un corte breve de Wi-Fi, la carga combinada puede activar el límite." },
+    { type: "heading", text: "4. Sondeo de la API REST en lugar de streaming" },
+    { type: "paragraph", html: "Para usuarios de API y algos, el error clásico es sondear un endpoint REST en un bucle ajustado, por ejemplo, pidiendo un snapshot de saldo o posición una vez por segundo. La API REST no está diseñada para uso en tiempo real, y ese tipo de sondeo es exactamente lo que genera un 429 a nivel de usuario que después bloquea los inicios de sesión en todas partes." },
+    { type: "heading", text: "5. Alcanzar el límite de solicitudes por hora" },
+    { type: "paragraph", html: "Cada acción cuenta como una solicitud: iniciar sesión, abrir gráficos, colocar, modificar o cancelar órdenes, y cada alerta automatizada. Tradovate aplica un límite de solicitudes por hora en una ventana móvil de 60 minutos, las cifras exactas están en la documentación actual de la API de Tradovate y varían según el endpoint, así que consulte la documentación para los números vigentes. La actividad de alta frecuencia, las alertas rápidas, la copia de operaciones a varias cuentas, o el cambio rápido de módulos, consume rápidamente el límite. Copiar una alerta a cinco cuentas, por ejemplo, cuenta como cinco solicitudes." },
+    { type: "heading", text: "Cómo solucionar el bloqueo por 429 de Tradovate: paso a paso" },
+    { type: "heading", text: "Solucionar un bloqueo desencadenado por credenciales" },
+    {
+      type: "steps",
+      items: [
+        { title: "Deje de intentar iniciar sesión", html: "Cierre la pestaña o la app de inicio de sesión. Cada intento adicional durante el periodo de enfriamiento puede prolongar el bloqueo." },
+        { title: "Espere unos 60 minutos", html: "El periodo de enfriamiento es una ventana móvil de ~60 minutos. Si lo activó a las 14:15, planee volver a intentarlo hacia las 15:15, medido desde su <em>último</em> intento, así que deje de intentarlo de verdad." },
+        { title: "Verifique sus credenciales antes del siguiente intento", html: "Confirme el usuario/correo y la contraseña exactos. Si no está seguro, restablezca la contraseña desde la página de inicio de sesión de Tradovate para que su próximo intento sea garantizadamente correcto, sin más inicios de sesión fallidos que sumen al contador." },
+        { title: "Reintente una vez, con calma", html: "Después del periodo de enfriamiento, inicie sesión una sola vez con datos confirmados como correctos." },
+      ],
+    },
+    { type: "heading", text: "Solucionar una avalancha de sesiones/reconexiones" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cierre sesión en todas las demás sesiones de Tradovate", html: "Cierre sesión en web, escritorio, móvil y la conexión de TradingView, de modo que solo un cliente esté autenticándose." },
+        { title: "Solucione la inestabilidad subyacente", html: "Una conexión que se cae y se reconecta automáticamente en bucle es un generador de solicitudes; cambie a una conexión estable por cable y asegúrese de que el reloj de su sistema esté sincronizado (la desviación del reloj por sí sola causa rechazos de inicio de sesión repetidos)." },
+        { title: "Reconecte un solo dispositivo", html: "Luego vuelva a conectar los demás uno a la vez en lugar de todos a la vez." },
+      ],
+    },
+    { type: "heading", text: "Solucionar un bloqueo desencadenado por API/sondeo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Elimine el bucle de sondeo", html: "Detenga cualquier script que llame a endpoints REST en un intervalo fijo." },
+        { title: "Cambie los datos en tiempo real a un WebSocket", html: "Abra una conexión de larga duración al servidor WebSocket de Tradovate y use su función <code>syncRequest</code> para recibir actualizaciones en tiempo real de saldo, posición y órdenes, en lugar de preguntar repetidamente por REST. Este es el patrón que recomienda Tradovate." },
+        { title: "Espacie y encole sus llamadas", html: "Manténgase por debajo del límite por hora, y frénese automáticamente cuando reciba un 429 en lugar de reintentar de inmediato." },
+      ],
+    },
+    { type: "heading", text: "Cuando no puede esperar" },
+    { type: "paragraph", html: "Si está bloqueado en medio de una sesión y necesita acceso urgentemente, <strong class='text-white'>llame al soporte de Tradovate al 312-283-3100</strong> (o envíe un correo al soporte con su nombre de usuario). Pueden restablecer manualmente sus límites de solicitud en situaciones urgentes, pero no pueden deshacer un límite que usted sigue volviendo a activar, así que asegúrese primero de que la inundación se haya detenido." },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Error / síntoma", "Qué significa", "Solución"],
+      rows: [
+        ["Too many requests en el inicio de sesión de TradingView", "Inicio de sesión intentado demasiadas veces, normalmente credenciales incorrectas", "Espere ~60 min sin reintentar; verifique/restablezca la contraseña"],
+        ["429 Too Many Requests (HTTP)", "Límite de tasa a nivel de usuario superado", "Detenga todas las solicitudes; espere la ventana móvil de 60 minutos"],
+        ["No puede iniciar sesión en la app de escritorio tras errores de API", "Un 429 a nivel de usuario se propagó desde una inundación de API/reconexión", "Detenga el script/bucle de reconexión; espere y luego inicie sesión una vez"],
+        ["El bloqueo sigue volviendo", "Está reintentando durante el periodo de enfriamiento", "Deje de reintentar por completo; la ventana se reinicia desde su último intento"],
+        ["Reconexiones frecuentes + picos de &ldquo;usersync&rdquo;", "Conexión inestable o varias sesiones", "Cierre sesión en sesiones adicionales; use una red cableada; sincronice el reloj del sistema"],
+        ["429 procedente de un script de sondeo", "Endpoint REST sondeado con demasiada frecuencia", "Mueva los datos en tiempo real a syncRequest por WebSocket; encole las llamadas"],
+      ],
+    },
+    { type: "heading", text: "Evítelo con PickMyTrade" },
+    { type: "paragraph", html: "Si sus bloqueos provienen de la automatización, de alertas de TradingView que se disparan rápido, o de copiar a varias cuentas, un bridge que respete los límites de Tradovate elimina todo el problema. PickMyTrade se sitúa entre TradingView y Tradovate y envía el flujo de órdenes de la forma en que la plataforma lo espera:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de tasa</strong>, espacia y encola el flujo de órdenes para que las ráfagas de alertas no lancen la API a un 429.",
+        "<strong class='text-white'>Conexión única gestionada</strong>, un enlace estable y persistente a su cuenta en lugar de un bucle de reconexión bombardeando el inicio de sesión.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replica una operación entre cuentas mediante un ritmo de solicitudes controlado, no cinco inicios de sesión simultáneos.",
+        "<strong class='text-white'>Validación de cantidad/símbolo</strong>, bloquea órdenes malformadas o de tamaño excesivo antes de enviarlas, reduciendo las solicitudes de reintento desperdiciadas.",
+      ],
+    },
+    { type: "paragraph", html: "El resultado: su estrategia sigue disparándose mientras la conexión se mantiene silenciosamente por debajo del límite." },
+  ], fr: [
+    { type: "paragraph", html: "Vous essayez de vous connecter avant l'ouverture des marchés de 2026, saisissez vos identifiants, et Tradovate vous renvoie un abrupt <strong class='text-white'>429 &ldquo;Too Many Requests&rdquo;</strong>, et vous ne pouvez plus du tout entrer. Cela survient généralement au pire moment possible : juste après quelques tentatives de mot de passe mal tapées, ou lorsqu'une automatisation bombarde silencieusement la connexion en arrière-plan. Ce qui est frustrant ? La solution est presque toujours la même, ennuyeuse, attendre la fin du délai de récupération, arrêter de réessayer, et couper ce qui inondait la connexion. Voici ce que signifie réellement l'erreur Tradovate 429 too many requests, pourquoi elle vous bloque l'accès, et comment revenir exactement sans aggraver la situation." },
+    {
+      type: "checklist",
+      heading: "Check-list rapide pour le blocage 429",
+      items: [
+        "<strong class='text-white'>Arrêtez immédiatement de vous connecter.</strong> Chaque nouvelle tentative peut prolonger le blocage au lieu de le lever.",
+        "<strong class='text-white'>Attendez environ 60 minutes.</strong> Tradovate utilise un délai de récupération glissant d'environ 60 minutes avant que le compteur ne se réinitialise.",
+        "<strong class='text-white'>Vérifiez à deux fois votre identifiant et votre mot de passe.</strong> Des identifiants erronés répétés sont la cause numéro un.",
+        "<strong class='text-white'>Déconnectez-vous partout ailleurs.</strong> Les sessions web, bureau, mobile et TradingView supplémentaires ajoutent du &ldquo;bruit&rdquo; de reconnexion.",
+        "<strong class='text-white'>Limitez tout sondage de l'API.</strong> Un script qui appelle des endpoints REST chaque seconde déclenchera rapidement la limite.",
+        "<strong class='text-white'>Appelez le support Tradovate (312-283-3100)</strong> si vous êtes bloqué et avez besoin d'une réinitialisation manuelle urgente.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie &ldquo;Too Many Requests&rdquo; (429)" },
+    { type: "paragraph", html: "<code>429 Too Many Requests</code> est un code de statut HTTP standard. Ce n'est pas une erreur de mot de passe, un bannissement de compte, ni un signe que votre compte a été piraté, cela signifie simplement que Tradovate a reçu plus de requêtes de votre utilisateur, dans une courte fenêtre, que ce que ses limites de débit autorisent, il cesse donc temporairement d'en accepter de nouvelles." },
+    { type: "paragraph", html: "Deux situations différentes produisent le même message, et les distinguer évite beaucoup de panique :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>La version connexion TradingView.</strong> Lorsque vous vous connectez à TradingView avec vos identifiants Tradovate et obtenez &ldquo;Too many requests,&rdquo; cela signifie presque toujours que la connexion de TradingView vers Tradovate a été tentée trop de fois, le plus souvent parce qu'un identifiant ou un mot de passe incorrect a été saisi à répétition. Cette erreur spécifique n'apparaît <strong class='text-white'>que</strong> lors de la connexion TradingView et ne bloque <strong class='text-white'>pas</strong> les applications natives Tradovate Desktop, Web ou Mobile.",
+        "<strong class='text-white'>La version au niveau utilisateur / API.</strong> Tradovate applique les limites de débit au niveau <strong class='text-white'>utilisateur</strong>, pas au niveau application. Ainsi, si un script, un bridge, ou une boucle de reconnexion inonde la connexion de requêtes, le blocage peut déborder et rendre impossible aussi la connexion aux applications de bureau. Ici, le coupable est le volume de requêtes, pas une faute de frappe.",
+      ],
+    },
+    { type: "paragraph", html: "Dans les deux cas, le remède consiste en patience plus la suppression de la source de l'inondation. Réessayer pendant le délai de récupération est la manière la plus courante dont les traders se bloquent accidentellement eux-mêmes." },
+    { type: "heading", text: "Principales causes du blocage Tradovate 429 en 2026" },
+    { type: "heading", text: "1. Identifiant ou mot de passe erronés répétés" },
+    { type: "paragraph", html: "De loin le déclencheur le plus fréquent. Quelques tentatives de connexion échouées en succession rapide, un mot de passe enregistré obsolète, le verrouillage des majuscules activé, ou la mauvaise adresse e-mail de compte, suffisent pour heurter le mur &ldquo;Too many requests&rdquo; lors de la connexion TradingView. Des identifiants incorrects en sont la cause la plus probable." },
+    { type: "heading", text: "2. Tentatives de connexion rapides et répétées" },
+    { type: "paragraph", html: "Même avec le <em>bon</em> mot de passe, cliquer frénétiquement sur le bouton de connexion (ou une application qui retente automatiquement la connexion toutes les quelques secondes) génère une rafale de requêtes &ldquo;usersync&rdquo;. Les reconnexions fréquentes et les connexions répétées atteignent rapidement le plafond, car chacune est comptabilisée." },
+    { type: "heading", text: "3. Trop de sessions et d'appareils simultanés" },
+    { type: "paragraph", html: "Le web, le bureau, le mobile, TradingView et un service bridge s'authentifiant tous auprès du même utilisateur Tradovate multiplient le nombre de requêtes. Lorsque plusieurs se reconnectent en même temps, par exemple après une coupure Wi-Fi, le cumul peut déclencher la limite." },
+    { type: "heading", text: "4. Sondage de l'API REST au lieu du streaming" },
+    { type: "paragraph", html: "Pour les utilisateurs d'API et d'algos, l'erreur classique consiste à sonder un endpoint REST en boucle serrée, par exemple en demandant un instantané de solde ou de position chaque seconde. L'API REST n'est pas conçue pour un usage temps réel, et ce type de sondage est précisément ce qui génère un 429 au niveau utilisateur qui bloque ensuite les connexions partout." },
+    { type: "heading", text: "5. Atteindre le plafond horaire de requêtes" },
+    { type: "paragraph", html: "Chaque action compte comme une requête : se connecter, ouvrir des graphiques, passer, modifier ou annuler des ordres, et chaque alerte automatisée. Tradovate applique un plafond horaire de requêtes sur une fenêtre glissante de 60 minutes, les chiffres exacts figurent dans la documentation actuelle de l'API Tradovate et varient selon l'endpoint, consultez donc la documentation pour les chiffres à jour. Une activité à haute fréquence, des alertes rapides, la copie d'ordres vers plusieurs comptes, ou un changement rapide de module, épuisent rapidement le quota. Copier une alerte sur cinq comptes, par exemple, compte comme cinq requêtes." },
+    { type: "heading", text: "Comment résoudre le blocage Tradovate 429 : étape par étape" },
+    { type: "heading", text: "Résoudre un blocage déclenché par des identifiants" },
+    {
+      type: "steps",
+      items: [
+        { title: "Arrêtez d'essayer de vous connecter", html: "Fermez l'onglet ou l'application de connexion. Chaque tentative supplémentaire pendant le délai de récupération peut prolonger le blocage." },
+        { title: "Attendez environ 60 minutes", html: "Le délai de récupération est une fenêtre glissante d'environ 60 minutes. Si vous l'avez déclenché à 14h15, prévoyez de revenir vers 15h15, calculé depuis votre <em>dernière</em> tentative, alors arrêtez réellement d'essayer." },
+        { title: "Vérifiez vos identifiants avant la prochaine tentative", html: "Confirmez l'identifiant/e-mail exact et le mot de passe. En cas de doute, réinitialisez le mot de passe depuis la page de connexion Tradovate afin que votre prochaine tentative soit garantie correcte, plus aucune connexion échouée à ajouter au compteur." },
+        { title: "Réessayez une fois, calmement", html: "Après le délai de récupération, connectez-vous une seule fois avec des informations confirmées comme correctes." },
+      ],
+    },
+    { type: "heading", text: "Résoudre une avalanche de sessions/reconnexions" },
+    {
+      type: "steps",
+      items: [
+        { title: "Déconnectez-vous de toute autre session Tradovate", html: "Déconnectez-vous du web, du bureau, du mobile et de la connexion TradingView, de sorte qu'un seul client s'authentifie." },
+        { title: "Corrigez l'instabilité sous-jacente", html: "Une connexion qui se coupe et se reconnecte automatiquement en boucle est un générateur de requêtes ; passez à une connexion filaire stable et assurez-vous que l'horloge de votre système est synchronisée (une simple dérive d'horloge cause à elle seule des rejets de connexion répétés)." },
+        { title: "Reconnectez un seul appareil", html: "Puis rebranchez les autres un par un plutôt que tous en même temps." },
+      ],
+    },
+    { type: "heading", text: "Résoudre un blocage déclenché par l'API/le sondage" },
+    {
+      type: "steps",
+      items: [
+        { title: "Tuez la boucle de sondage", html: "Arrêtez tout script appelant des endpoints REST à intervalle fixe." },
+        { title: "Basculez les données temps réel vers un WebSocket", html: "Ouvrez une connexion de longue durée au serveur WebSocket de Tradovate et utilisez sa fonctionnalité <code>syncRequest</code> pour recevoir les mises à jour en temps réel du solde, des positions et des ordres, plutôt que d'interroger REST à répétition. C'est le schéma que Tradovate recommande." },
+        { title: "Espacez et mettez en file d'attente vos appels", html: "Restez sous le plafond horaire, et réduisez automatiquement le rythme lorsque vous recevez un 429 plutôt que de réessayer immédiatement." },
+      ],
+    },
+    { type: "heading", text: "Quand vous ne pouvez pas attendre" },
+    { type: "paragraph", html: "Si vous êtes bloqué en pleine session et avez besoin d'un accès urgent, <strong class='text-white'>appelez le support Tradovate au 312-283-3100</strong> (ou envoyez un e-mail au support avec votre identifiant). Ils peuvent réinitialiser manuellement vos limites de requêtes dans des situations urgentes, mais ils ne peuvent pas annuler une limite que vous continuez à redéclencher, alors assurez-vous d'abord que l'inondation s'est arrêtée." },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Erreur / symptôme", "Ce que cela signifie", "Solution"],
+      rows: [
+        ["Too many requests lors de la connexion TradingView", "Connexion tentée trop de fois, généralement des identifiants erronés", "Attendez ~60 min sans réessayer ; vérifiez/réinitialisez le mot de passe"],
+        ["429 Too Many Requests (HTTP)", "Limite de débit au niveau utilisateur dépassée", "Arrêtez toutes les requêtes ; attendez la fenêtre glissante de 60 minutes"],
+        ["Impossible de se connecter à l'app de bureau après des erreurs API", "Un 429 au niveau utilisateur a débordé d'une inondation API/reconnexion", "Arrêtez le script/la boucle de reconnexion ; attendez, puis connectez-vous une fois"],
+        ["Le blocage revient sans cesse", "Vous réessayez pendant le délai de récupération", "Arrêtez complètement de réessayer ; la fenêtre se réinitialise depuis votre dernière tentative"],
+        ["Reconnexions fréquentes + pics de &ldquo;usersync&rdquo;", "Connexion instable ou sessions multiples", "Déconnectez les sessions supplémentaires ; utilisez un réseau filaire ; synchronisez l'horloge système"],
+        ["429 provenant d'un script de sondage", "Endpoint REST sondé trop souvent", "Passez les données temps réel au syncRequest WebSocket ; mettez les appels en file d'attente"],
+      ],
+    },
+    { type: "heading", text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph", html: "Si vos blocages proviennent de l'automatisation, d'alertes TradingView se déclenchant rapidement, ou de copies vers plusieurs comptes, un bridge qui respecte les limites de Tradovate élimine tout le problème. PickMyTrade se place entre TradingView et Tradovate et envoie le flux d'ordres de la manière que la plateforme attend :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Acheminement sûr vis-à-vis des limites de débit</strong>, espace et met en file d'attente le flux d'ordres afin que les rafales d'alertes ne fassent pas basculer l'API en 429.",
+        "<strong class='text-white'>Connexion unique gérée</strong>, un lien stable et persistant vers votre compte au lieu d'une boucle de reconnexion bombardant la connexion.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, réplique un trade entre comptes via un rythme de requêtes contrôlé, et non cinq connexions simultanées.",
+        "<strong class='text-white'>Validation de la quantité/du symbole</strong>, bloque les ordres mal formés ou surdimensionnés avant leur envoi, réduisant les requêtes de réessai inutiles.",
+      ],
+    },
+    { type: "paragraph", html: "Le résultat : votre stratégie continue de fonctionner pendant que la connexion reste tranquillement sous la limite." },
+  ], it: [
+    { type: "paragraph", html: "Sta per accedere prima dell'apertura del mercato 2026, digita le Sue credenziali, e Tradovate Le restituisce un secco <strong class='text-white'>429 &ldquo;Too Many Requests&rdquo;</strong>, e ora non riesce più a entrare del tutto. Tende a colpire nel momento peggiore possibile: subito dopo un paio di tentativi di password digitati male, o quando un'automazione bombarda silenziosamente l'accesso in background. La parte frustrante? La soluzione è quasi sempre la stessa, noiosa, attendere il periodo di raffreddamento, smettere di riprovare, ed eliminare qualunque cosa stesse inondando la connessione. Ecco cosa significa realmente l'errore Tradovate 429 too many requests, perché Le blocca l'accesso, ed esattamente come rientrare senza peggiorare le cose." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per il blocco 429",
+      items: [
+        "<strong class='text-white'>Smetta immediatamente di accedere.</strong> Ogni nuovo tentativo può prolungare il blocco invece di rimuoverlo.",
+        "<strong class='text-white'>Attenda circa 60 minuti.</strong> Tradovate usa un periodo di raffreddamento mobile di circa 60 minuti prima che il contatore si azzeri.",
+        "<strong class='text-white'>Verifichi due volte nome utente e password.</strong> Credenziali errate ripetute sono la causa principale.",
+        "<strong class='text-white'>Esca da ogni altra sessione.</strong> Sessioni aggiuntive su web, desktop, mobile e TradingView aggiungono &ldquo;rumore&rdquo; di riconnessione.",
+        "<strong class='text-white'>Limiti qualsiasi polling dell'API.</strong> Uno script che chiama endpoint REST ogni secondo farà scattare rapidamente il limite.",
+        "<strong class='text-white'>Chiami il supporto Tradovate (312-283-3100)</strong> se è bloccato e ha bisogno di un ripristino manuale urgente.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa &ldquo;Too Many Requests&rdquo; (429)" },
+    { type: "paragraph", html: "<code>429 Too Many Requests</code> è un codice di stato HTTP standard. Non è un errore di password, una sospensione dell'account, né un segno che il Suo account sia stato violato, significa semplicemente che Tradovate ha ricevuto più richieste dal Suo utente, in una finestra breve, di quante ne consenta il limite di frequenza, e quindi smette temporaneamente di accettarne di nuove." },
+    { type: "paragraph", html: "Due situazioni diverse producono lo stesso messaggio, e distinguerle risparmia molto panico:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>La versione dell'accesso TradingView.</strong> Quando Lei accede a TradingView usando le Sue credenziali Tradovate e ottiene &ldquo;Too many requests,&rdquo; significa quasi sempre che l'accesso da TradingView a Tradovate è stato tentato troppe volte, il più delle volte perché un nome utente o una password errati sono stati inseriti ripetutamente. Questo errore specifico compare <strong class='text-white'>solo</strong> nell'accesso TradingView e <strong class='text-white'>non</strong> blocca le app native Tradovate per Desktop, Web o Mobile.",
+        "<strong class='text-white'>La versione a livello utente / API.</strong> Tradovate applica i limiti di frequenza a livello di <strong class='text-white'>utente</strong>, non a livello di app. Quindi, se uno script, un bridge o un ciclo di riconnessione inonda la connessione di richieste, il blocco può estendersi e rendere impossibile anche l'accesso alle app desktop. Qui il colpevole è il volume di richieste, non un errore di battitura.",
+      ],
+    },
+    { type: "paragraph", html: "In entrambi i casi, la cura è pazienza più l'eliminazione della fonte dell'inondazione. Riprovare durante il periodo di raffreddamento è il modo più comune in cui i trader finiscono per bloccarsi da soli per errore." },
+    { type: "heading", text: "Le principali cause del blocco Tradovate 429 nel 2026" },
+    { type: "heading", text: "1. Nome utente o password errati ripetuti" },
+    { type: "paragraph", html: "Di gran lunga la causa più frequente. Alcuni tentativi di accesso falliti in rapida successione, una password salvata non aggiornata, il blocco maiuscole attivo, o l'e-mail dell'account sbagliata, bastano per urtare contro il muro &ldquo;Too many requests&rdquo; nell'accesso TradingView. Le credenziali errate sono la causa più probabile." },
+    { type: "heading", text: "2. Tentativi di accesso rapidi e ripetuti" },
+    { type: "paragraph", html: "Anche con la password <em>corretta</em>, cliccare ripetutamente sul pulsante di accesso (o un'app che riprova automaticamente la connessione ogni pochi secondi) genera una raffica di richieste &ldquo;usersync&rdquo;. Riconnessioni frequenti e accessi ripetuti raggiungono rapidamente il tetto, perché ognuno viene conteggiato." },
+    { type: "heading", text: "3. Troppe sessioni e dispositivi simultanei" },
+    { type: "paragraph", html: "Web, desktop, mobile, TradingView e un servizio bridge che si autenticano tutti sullo stesso utente Tradovate moltiplicano il conteggio delle richieste. Quando diversi di essi si riconnettono contemporaneamente, ad esempio dopo un'interruzione Wi-Fi, il carico combinato può far scattare il limite." },
+    { type: "heading", text: "4. Polling dell'API REST invece dello streaming" },
+    { type: "paragraph", html: "Per gli utenti API e algo, l'errore classico è interrogare un endpoint REST in un ciclo serrato, ad esempio chiedendo un istantanea di saldo o posizione una volta al secondo. L'API REST non è pensata per l'uso in tempo reale, e questo tipo di polling è esattamente ciò che genera un 429 a livello utente che poi blocca gli accessi ovunque." },
+    { type: "heading", text: "5. Raggiungere il tetto orario di richieste" },
+    { type: "paragraph", html: "Ogni azione conta come una richiesta: accedere, aprire i grafici, inserire, modificare o annullare ordini, e ogni avviso automatizzato. Tradovate applica un tetto orario di richieste su una finestra mobile di 60 minuti, le cifre esatte sono nella documentazione API attuale di Tradovate e variano per endpoint, controlli quindi la documentazione per i numeri aggiornati. Un'attività ad alta frequenza, avvisi rapidi, la copia di operazioni su più account, o il cambio rapido di modulo, consumano rapidamente il limite. Copiare un avviso su cinque account, ad esempio, conta come cinque richieste." },
+    { type: "heading", text: "Come risolvere il blocco Tradovate 429: passo dopo passo" },
+    { type: "heading", text: "Risolvere un blocco causato dalle credenziali" },
+    {
+      type: "steps",
+      items: [
+        { title: "Smetta di provare ad accedere", html: "Chiuda la scheda o l'app di accesso. Ogni tentativo aggiuntivo durante il periodo di raffreddamento può prolungare il blocco." },
+        { title: "Attenda circa 60 minuti", html: "Il periodo di raffreddamento è una finestra mobile di circa 60 minuti. Se lo ha fatto scattare alle 14:15, preveda di rientrare verso le 15:15, calcolato dal Suo <em>ultimo</em> tentativo, quindi smetta davvero di riprovare." },
+        { title: "Verifichi le Sue credenziali prima del prossimo tentativo", html: "Confermi il nome utente/e-mail e la password esatti. Se non è sicuro, reimposti la password dalla pagina di accesso di Tradovate, così il Suo prossimo tentativo sarà garantito corretto, senza altri accessi falliti che gonfiano il contatore." },
+        { title: "Riprovi una volta, con calma", html: "Dopo il periodo di raffreddamento, effettui l'accesso una sola volta con dati confermati corretti." },
+      ],
+    },
+    { type: "heading", text: "Risolvere un'ondata di sessioni/riconnessioni" },
+    {
+      type: "steps",
+      items: [
+        { title: "Esca da ogni altra sessione Tradovate", html: "Esca da web, desktop, mobile e dalla connessione TradingView, in modo che si autentichi un solo client." },
+        { title: "Risolva l'instabilità sottostante", html: "Una connessione che cade e si riconnette automaticamente in ciclo è un generatore di richieste; passi a una connessione via cavo stabile e si assicuri che l'orologio di sistema sia sincronizzato (la sola deriva dell'orologio causa rifiuti di accesso ripetuti)." },
+        { title: "Riconnetta un solo dispositivo", html: "Poi riporti gli altri uno alla volta anziché tutti insieme." },
+      ],
+    },
+    { type: "heading", text: "Risolvere un blocco causato da API/polling" },
+    {
+      type: "steps",
+      items: [
+        { title: "Elimini il ciclo di polling", html: "Fermi qualsiasi script che chiama endpoint REST a intervallo fisso." },
+        { title: "Passi i dati in tempo reale a un WebSocket", html: "Apra una connessione di lunga durata al server WebSocket di Tradovate e usi la sua funzione <code>syncRequest</code> per ricevere aggiornamenti in tempo reale di saldo, posizioni e ordini, invece di interrogare ripetutamente via REST. Questo è lo schema che Tradovate raccomanda." },
+        { title: "Distanzi e metta in coda le Sue chiamate", html: "Resti sotto il tetto orario, e rallenti automaticamente quando riceve un 429 invece di riprovare immediatamente." },
+      ],
+    },
+    { type: "heading", text: "Quando non può aspettare" },
+    { type: "paragraph", html: "Se è bloccato a metà sessione e ha urgente bisogno di accesso, <strong class='text-white'>chiami il supporto Tradovate al 312-283-3100</strong> (o invii un'e-mail al supporto con il Suo nome utente). Possono ripristinare manualmente i Suoi limiti di richiesta in situazioni urgenti, ma non possono annullare un limite che continua a far scattare, quindi si assicuri prima che l'inondazione sia cessata." },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Errore / sintomo", "Cosa significa", "Soluzione"],
+      rows: [
+        ["Too many requests all'accesso TradingView", "Accesso tentato troppe volte, di solito credenziali errate", "Attenda ~60 min senza riprovare; verifichi/reimposti la password"],
+        ["429 Too Many Requests (HTTP)", "Limite di frequenza a livello utente superato", "Fermi tutte le richieste; attenda la finestra mobile di 60 minuti"],
+        ["Non riesce ad accedere all'app desktop dopo errori API", "Un 429 a livello utente è tracimato da un'inondazione API/riconnessione", "Fermi lo script/il ciclo di riconnessione; attenda, poi acceda una volta"],
+        ["Il blocco continua a ripresentarsi", "Sta riprovando durante il periodo di raffreddamento", "Smetta del tutto di riprovare; la finestra si azzera dal Suo ultimo tentativo"],
+        ["Riconnessioni frequenti + picchi di &ldquo;usersync&rdquo;", "Connessione instabile o sessioni multiple", "Esca dalle sessioni aggiuntive; usi una rete cablata; sincronizzi l'orologio di sistema"],
+        ["429 da uno script di polling", "Endpoint REST interrogato troppo spesso", "Sposti i dati in tempo reale su syncRequest WebSocket; metta in coda le chiamate"],
+      ],
+    },
+    { type: "heading", text: "Lo eviti con PickMyTrade" },
+    { type: "paragraph", html: "Se i Suoi blocchi derivano dall'automazione, da avvisi TradingView che scattano rapidamente, o dalla copia su più account, un bridge che rispetta i limiti di Tradovate elimina l'intero problema. PickMyTrade si colloca tra TradingView e Tradovate e invia il flusso di ordini nel modo in cui la piattaforma lo desidera:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Instradamento sicuro rispetto ai limiti di frequenza</strong>, distanzia e mette in coda il flusso di ordini così che le raffiche di avvisi non spingano l'API verso un 429.",
+        "<strong class='text-white'>Connessione unica gestita</strong>, un collegamento stabile e persistente al Suo account invece di un ciclo di riconnessione che bombarda l'accesso.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replica un'operazione tra account con un ritmo di richieste controllato, non cinque accessi simultanei.",
+        "<strong class='text-white'>Validazione di quantità/simbolo</strong>, blocca ordini malformati o sovradimensionati prima che vengano inviati, riducendo le richieste di ritentativo sprecate.",
+      ],
+    },
+    { type: "paragraph", html: "Il risultato: la Sua strategia continua a operare mentre la connessione resta tranquillamente sotto il limite." },
+  ] },
+  ctaHeading: { en: "Route Alerts to Tradovate, Rate-Limit-Safe", de: "Alerts sicher an Tradovate weiterleiten, ohne das Ratenlimit zu verletzen", es: "Enrute alertas a Tradovate, sin riesgo de límite de tasa", fr: "Acheminez vos alertes vers Tradovate, sans risque de limite de débit", it: "Instradi gli avvisi a Tradovate, senza rischi di limite di frequenza" },
+  ctaText: { en: "PickMyTrade paces and queues your order flow so it stays under Tradovate's request limits and stops 429 lockouts before they start.", de: "PickMyTrade taktet und staffelt Ihren Orderfluss, sodass er unter den Anfragelimits von Tradovate bleibt und 429-Sperren stoppt, bevor sie entstehen.", es: "PickMyTrade regula y encola su flujo de órdenes para que se mantenga por debajo de los límites de solicitud de Tradovate y evita los bloqueos por 429 antes de que empiecen.", fr: "PickMyTrade cadence et met en file d'attente votre flux d'ordres afin qu'il reste sous les limites de requêtes de Tradovate et empêche les blocages 429 avant même qu'ils ne commencent.", it: "PickMyTrade regola e mette in coda il Suo flusso di ordini affinché resti sotto i limiti di richiesta di Tradovate e blocca i lockout 429 prima ancora che inizino." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Inizi la Sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "How long does the Tradovate “Too many requests” lockout last?", a: "About 60 minutes. Tradovate uses a rolling ~60-minute cooldown, and the clock effectively restarts from your most recent attempt, so the fastest way out is to stop trying and wait." },
+    { q: "Does the 429 error block the Tradovate desktop, web, and mobile apps too?", a: "It depends which flavor you hit. The TradingView-login “Too many requests” error is scoped to the TradingView login and doesn't block the native apps. But a user-level 429 from API polling or a reconnect flood can make even the desktop apps unable to log in, because Tradovate applies limits per user, not per app." },
+    { q: "Why did I get “Too many requests” when I only tried to log in once?", a: "Something else was almost certainly authenticating on your behalf, a saved-but-wrong password auto-submitting, a bridge or app reconnecting in a loop, or another open session. Each of those counts as a request against your user." },
+    { q: "Can I make the cooldown reset faster by retrying?", a: "No, retrying is the most common way people extend their own lockout. Leave it alone for the full window. If it's urgent, call Tradovate support at 312-283-3100 for a manual reset." },
+    { q: "Will resetting my password help?", a: "If wrong credentials caused the lockout, yes, it guarantees your next attempt is correct so you stop adding failed logins to the counter. Still wait out the cooldown first, then log in once with the new password." },
+    { q: "I use the API, how do I stop hitting 429s?", a: "Don't poll REST endpoints on a tight loop. Open a long-running WebSocket connection and use its syncRequest feature for real-time balance, position, and order data. Queue your other calls and back off when you see a 429 instead of retrying instantly." },
+    { q: "Is this the same as the Tradovate API rate limit?", a: "It's the same 429 status code, but usually a different trigger. The login version is typically bad credentials; the API version is request volume against Tradovate's hourly ceiling." },
+    { q: "Could having several sessions open cause it?", a: "Yes. Multiple devices and the TradingView connection all reconnecting, especially at once, generate a burst of &ldquo;usersync&rdquo; requests that can trip the limit. Sign out of the extras and reconnect on a single device." },
+  ], de: [
+    { q: "How long does the Tradovate “Too many requests” lockout last?", a: "Etwa 60 Minuten. Tradovate nutzt eine rollierende Abkühlphase von rund 60 Minuten, und die Uhr startet effektiv ab Ihrem letzten Versuch neu, der schnellste Weg heraus ist also, es nicht mehr zu versuchen und abzuwarten." },
+    { q: "Does the 429 error block the Tradovate desktop, web, and mobile apps too?", a: "Das hängt davon ab, welche Variante Sie treffen. Der 429-Fehler bei der TradingView-Anmeldung ist auf die TradingView-Anmeldung beschränkt und blockiert die nativen Apps nicht. Aber ein 429 auf Nutzerebene durch API-Polling oder eine Reconnect-Flut kann sogar die Anmeldung bei den Desktop-Apps unmöglich machen, weil Tradovate die Limits pro Nutzer und nicht pro App anwendet." },
+    { q: "Why did I get “Too many requests” when I only tried to log in once?", a: "Fast sicher hat sich etwas anderes in Ihrem Namen authentifiziert, ein gespeichertes, aber falsches Passwort, das automatisch gesendet wurde, eine Bridge oder App, die sich in einer Schleife neu verbindet, oder eine andere offene Sitzung. Jede davon zählt als Anfrage gegen Ihren Nutzer." },
+    { q: "Can I make the cooldown reset faster by retrying?", a: "Nein, erneutes Versuchen ist der häufigste Weg, wie Menschen ihre eigene Sperre verlängern. Lassen Sie es für das gesamte Fenster in Ruhe. Ist es dringend, rufen Sie den Tradovate-Support unter 312-283-3100 für ein manuelles Zurücksetzen an." },
+    { q: "Will resetting my password help?", a: "Wenn falsche Zugangsdaten die Sperre verursacht haben, ja, es garantiert, dass Ihr nächster Versuch korrekt ist, sodass Sie dem Zähler keine weiteren fehlgeschlagenen Anmeldungen hinzufügen. Warten Sie trotzdem zuerst die Abkühlphase ab und melden Sie sich dann einmal mit dem neuen Passwort an." },
+    { q: "I use the API, how do I stop hitting 429s?", a: "Fragen Sie REST-Endpunkte nicht in einer engen Schleife ab. Öffnen Sie eine langlebige WebSocket-Verbindung und nutzen Sie deren syncRequest-Funktion für Echtzeitdaten zu Konto, Position und Orders. Staffeln Sie Ihre übrigen Aufrufe und drosseln Sie, wenn Sie einen 429 sehen, statt sofort erneut zu versuchen." },
+    { q: "Is this the same as the Tradovate API rate limit?", a: "Es ist derselbe 429-Statuscode, aber meist ein anderer Auslöser. Die Anmeldevariante ist typischerweise auf falsche Zugangsdaten zurückzuführen; die API-Variante ist Anfragevolumen gegenüber der stündlichen Obergrenze von Tradovate." },
+    { q: "Could having several sessions open cause it?", a: "Ja. Mehrere Geräte und die TradingView-Verbindung, die sich alle neu verbinden, besonders gleichzeitig, erzeugen einen Schub von &ldquo;usersync&rdquo;-Anfragen, der das Limit auslösen kann. Melden Sie sich von den zusätzlichen ab und verbinden Sie nur ein Gerät neu." },
+  ], es: [
+    { q: "How long does the Tradovate “Too many requests” lockout last?", a: "Unos 60 minutos. Tradovate usa un periodo de enfriamiento móvil de ~60 minutos, y el reloj efectivamente se reinicia desde su intento más reciente, así que la forma más rápida de salir es dejar de intentarlo y esperar." },
+    { q: "Does the 429 error block the Tradovate desktop, web, and mobile apps too?", a: "Depende de qué variante encuentre. El error &ldquo;Too many requests&rdquo; del inicio de sesión de TradingView está limitado al inicio de sesión de TradingView y no bloquea las apps nativas. Pero un 429 a nivel de usuario por sondeo de la API o una avalancha de reconexiones puede impedir el inicio de sesión incluso en las apps de escritorio, porque Tradovate aplica los límites por usuario, no por app." },
+    { q: "Why did I get “Too many requests” when I only tried to log in once?", a: "Casi con toda seguridad, otra cosa se estaba autenticando en su nombre, una contraseña guardada pero incorrecta enviándose automáticamente, un bridge o app reconectando en bucle, u otra sesión abierta. Cada una de esas cuenta como una solicitud contra su usuario." },
+    { q: "Can I make the cooldown reset faster by retrying?", a: "No, reintentar es la forma más común en que la gente extiende su propio bloqueo. Déjelo tranquilo durante toda la ventana. Si es urgente, llame al soporte de Tradovate al 312-283-3100 para un restablecimiento manual." },
+    { q: "Will resetting my password help?", a: "Si unas credenciales incorrectas causaron el bloqueo, sí, garantiza que su próximo intento sea correcto para que deje de sumar inicios de sesión fallidos al contador. Aun así, espere primero a que pase el periodo de enfriamiento y luego inicie sesión una vez con la nueva contraseña." },
+    { q: "I use the API, how do I stop hitting 429s?", a: "No sondee endpoints REST en un bucle ajustado. Abra una conexión WebSocket de larga duración y use su función syncRequest para datos en tiempo real de saldo, posición y órdenes. Encole sus demás llamadas y frénese cuando vea un 429 en lugar de reintentar de inmediato." },
+    { q: "Is this the same as the Tradovate API rate limit?", a: "Es el mismo código de estado 429, pero generalmente un desencadenante distinto. La versión de inicio de sesión suele deberse a credenciales incorrectas; la versión de API es volumen de solicitudes frente al límite horario de Tradovate." },
+    { q: "Could having several sessions open cause it?", a: "Sí. Varios dispositivos y la conexión de TradingView reconectándose todos, especialmente a la vez, generan una ráfaga de solicitudes &ldquo;usersync&rdquo; que puede activar el límite. Cierre sesión en las adicionales y reconéctese en un solo dispositivo." },
+  ], fr: [
+    { q: "How long does the Tradovate “Too many requests” lockout last?", a: "Environ 60 minutes. Tradovate utilise un délai de récupération glissant d'environ 60 minutes, et le compteur redémarre effectivement à partir de votre tentative la plus récente, le moyen le plus rapide de s'en sortir est donc d'arrêter d'essayer et d'attendre." },
+    { q: "Does the 429 error block the Tradovate desktop, web, and mobile apps too?", a: "Cela dépend de la variante rencontrée. L'erreur &ldquo;Too many requests&rdquo; de la connexion TradingView est limitée à la connexion TradingView et ne bloque pas les applications natives. Mais un 429 au niveau utilisateur provenant d'un sondage API ou d'une avalanche de reconnexions peut empêcher même les applications de bureau de se connecter, car Tradovate applique les limites par utilisateur, pas par application." },
+    { q: "Why did I get “Too many requests” when I only tried to log in once?", a: "Presque certainement, autre chose s'authentifiait en votre nom, un mot de passe enregistré mais incorrect s'envoyant automatiquement, un bridge ou une app se reconnectant en boucle, ou une autre session ouverte. Chacun de ces cas compte comme une requête contre votre utilisateur." },
+    { q: "Can I make the cooldown reset faster by retrying?", a: "Non, réessayer est la façon la plus courante dont les gens prolongent leur propre blocage. Laissez-le tranquille pendant toute la fenêtre. Si c'est urgent, appelez le support Tradovate au 312-283-3100 pour une réinitialisation manuelle." },
+    { q: "Will resetting my password help?", a: "Si des identifiants erronés ont causé le blocage, oui, cela garantit que votre prochaine tentative est correcte afin que vous cessiez d'ajouter des connexions échouées au compteur. Attendez tout de même d'abord la fin du délai de récupération, puis connectez-vous une fois avec le nouveau mot de passe." },
+    { q: "I use the API, how do I stop hitting 429s?", a: "Ne sondez pas les endpoints REST en boucle serrée. Ouvrez une connexion WebSocket de longue durée et utilisez sa fonctionnalité syncRequest pour les données en temps réel de solde, position et ordres. Mettez vos autres appels en file d'attente et ralentissez lorsque vous voyez un 429 au lieu de réessayer instantanément." },
+    { q: "Is this the same as the Tradovate API rate limit?", a: "C'est le même code de statut 429, mais généralement un déclencheur différent. La version connexion est généralement due à de mauvais identifiants ; la version API correspond au volume de requêtes par rapport au plafond horaire de Tradovate." },
+    { q: "Could having several sessions open cause it?", a: "Oui. Plusieurs appareils et la connexion TradingView se reconnectant tous, surtout en même temps, génèrent une rafale de requêtes &ldquo;usersync&rdquo; qui peut déclencher la limite. Déconnectez-vous des sessions supplémentaires et reconnectez-vous sur un seul appareil." },
+  ], it: [
+    { q: "How long does the Tradovate “Too many requests” lockout last?", a: "Circa 60 minuti. Tradovate usa un periodo di raffreddamento mobile di circa 60 minuti, e l'orologio si riavvia effettivamente dal Suo tentativo più recente, quindi il modo più rapido per uscirne è smettere di provare e attendere." },
+    { q: "Does the 429 error block the Tradovate desktop, web, and mobile apps too?", a: "Dipende dalla variante che incontra. L'errore &ldquo;Too many requests&rdquo; dell'accesso TradingView è limitato all'accesso TradingView e non blocca le app native. Ma un 429 a livello utente derivante da polling dell'API o da un'ondata di riconnessioni può rendere impossibile l'accesso anche alle app desktop, perché Tradovate applica i limiti per utente, non per app." },
+    { q: "Why did I get “Too many requests” when I only tried to log in once?", a: "Quasi certamente qualcos'altro si stava autenticando per Suo conto, una password salvata ma errata che si invia automaticamente, un bridge o un'app che si riconnette in ciclo, o un'altra sessione aperta. Ognuno di questi conta come una richiesta contro il Suo utente." },
+    { q: "Can I make the cooldown reset faster by retrying?", a: "No, riprovare è il modo più comune in cui le persone prolungano il proprio blocco. Lo lasci stare per l'intera finestra. Se è urgente, chiami il supporto Tradovate al 312-283-3100 per un ripristino manuale." },
+    { q: "Will resetting my password help?", a: "Se credenziali errate hanno causato il blocco, sì, garantisce che il Suo prossimo tentativo sia corretto così da smettere di aggiungere accessi falliti al contatore. Attenda comunque prima il periodo di raffreddamento, poi effettui l'accesso una volta con la nuova password." },
+    { q: "I use the API, how do I stop hitting 429s?", a: "Non interroghi gli endpoint REST in un ciclo serrato. Apra una connessione WebSocket di lunga durata e usi la sua funzione syncRequest per i dati in tempo reale di saldo, posizione e ordini. Metta in coda le Sue altre chiamate e rallenti quando vede un 429 invece di riprovare all'istante." },
+    { q: "Is this the same as the Tradovate API rate limit?", a: "È lo stesso codice di stato 429, ma di solito una causa diversa. La versione dell'accesso è tipicamente dovuta a credenziali errate; la versione API è volume di richieste rispetto al tetto orario di Tradovate." },
+    { q: "Could having several sessions open cause it?", a: "Sì. Più dispositivi e la connessione TradingView che si riconnettono tutti, specialmente contemporaneamente, generano una raffica di richieste &ldquo;usersync&rdquo; che può far scattare il limite. Esca dalle sessioni aggiuntive e si riconnetta su un solo dispositivo." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich zu Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Abläufe der Plattform ändern sich mit der Zeit, bestätigen Sie den aktuellen Prozess daher stets in der offiziellen Plattform-Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, en investissement ou en trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée, ni approuvée, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; confirmez toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita significativo e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e le procedure della piattaforma cambiano nel tempo, pertanto verifichi sempre il processo attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

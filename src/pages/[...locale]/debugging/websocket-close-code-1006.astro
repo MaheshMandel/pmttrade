@@ -1,0 +1,643 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "websocket-close-code-1006";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate WebSocket Close Code 1006 Disconnect";
+const META_DESCRIPTION =
+  "Tradovate WebSocket closing with code 1006? Add auto reconnect, re-auth, and 2.5-second heartbeats to recover from silent API disconnects fast.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate WebSocket: desconexión con código 1006", it: "Tradovate WebSocket: disconnessione, codice di chiusura 1006" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate-WebSocket-Abbruch durch Schließungscode 1006", es: "Desconexión de WebSocket de Tradovate por código de cierre 1006", fr: "Déconnexion WebSocket Tradovate : code de fermeture 1006", it: "Disconnessione WebSocket di Tradovate: codice di chiusura 1006" },
+  dek: { en: "Your Tradovate WebSocket dies with close code 1006 and no reason text at all. Here's what 1006 actually means, why it fires, and how to make reconnects a non-event.", de: "Ihr Tradovate-WebSocket bricht mit Schließungscode 1006 ab, ganz ohne Grundtext. Hier erfahren Sie, was 1006 tatsächlich bedeutet, warum es auftritt und wie Sie Neuverbindungen zum Nicht-Ereignis machen.", es: "Su WebSocket de Tradovate se cae con el código de cierre 1006 y sin ningún texto de motivo. Esto es lo que realmente significa el 1006, por qué se produce y cómo hacer que las reconexiones dejen de ser un problema.", fr: "Votre WebSocket Tradovate meurt avec le code de fermeture 1006, sans le moindre texte explicatif. Voici ce que 1006 signifie réellement, pourquoi il se déclenche, et comment faire en sorte que les reconnexions passent inaperçues.", it: "Il suo WebSocket Tradovate muore con il codice di chiusura 1006, senza alcun testo esplicativo. Ecco cosa significa realmente il codice 1006, perché si attiva e come fare in modo che le riconnessioni passino inosservate." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Your Tradovate WebSocket is feeding a bot happily, and then out of nowhere it dies with <strong class='text-white'>close code 1006</strong>. No reason text, no close message, nothing in the logs except some flavor of &ldquo;connection closed abnormally.&rdquo; It is one of the most frustrating failures in Tradovate automation precisely because 1006 tells you almost nothing. The good news: you rarely need to solve the mystery. A 1006 means the connection died without a clean handshake, and the reliable fix is to make your client <strong class='text-white'>reconnect and re-authorize automatically</strong> the instant it happens: keep the heartbeats flowing, catch the drop, spin up a fresh socket, log back in, and re-subscribe. A bridge like PickMyTrade does exactly that under the hood, so your TradingView alerts keep reaching Tradovate even when a raw script would have gone dark." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Close Code 1006",
+      items: [
+        "<strong class='text-white'>Treat 1006 as a symptom.</strong> It means the socket dropped without a close frame, not that one specific thing is broken.",
+        "<strong class='text-white'>Send heartbeats.</strong> Push an empty <code>[]</code> frame roughly every <strong class='text-white'>2.5 seconds</strong>. Miss them and the server drops you.",
+        "<strong class='text-white'>Auto-reconnect on every close.</strong> Do not branch on the code. Reconnect on a clean <code>1000</code> and a <code>1006</code> alike.",
+        "<strong class='text-white'>Re-authorize and re-subscribe.</strong> A fresh socket is unauthenticated, and quote and user-sync subscriptions do not survive a reconnect.",
+        "<strong class='text-white'>Renew, do not re-login.</strong> Renewing the token keeps the socket alive; a brand-new login can boot your session and cause the drop.",
+        "<strong class='text-white'>Back off with jitter.</strong> Space retries out and cap them so you do not trip Tradovate's request limits.",
+      ],
+    },
+    { type: "heading", text: "What “Close Code 1006” Means" },
+    { type: "paragraph", html: "WebSocket close codes are defined by the protocol itself. A clean shutdown sends code <code>1000</code> (normal closure) along with a close frame that explains why. Code <strong class='text-white'>1006</strong> is different: it is a reserved code your WebSocket library assigns when the connection vanished <em>without</em> a close frame ever arriving. In other words, the TCP pipe underneath the socket broke, and neither side got the chance to say goodbye properly. That is why 1006 never carries a human-readable reason. There is nothing to read, because the message that would have carried it never made it across." },
+    { type: "paragraph", html: "It helps to know how the Tradovate socket normally talks. Every frame the server sends is tagged with a single leading character: an <code>o</code> frame is the <em>open</em> message you get the moment the socket connects and your cue to authenticate; an <code>a</code> frame carries an array of JSON data (quotes, order updates, sync responses); an <code>h</code> frame is a heartbeat; and a <code>c</code> frame is a graceful <em>close</em>. When Tradovate closes on purpose it sends <code>c[1000,&ldquo;...&rdquo;]</code> with a message telling you why. A 1006 is the opposite of that tidy <code>c</code>: no close frame at all, just a dead socket and the library's abnormal-closure code." },
+    { type: "paragraph", html: "So stop hunting for a message that will never come, and ask instead what could have severed the TCP connection under a long-lived socket. That short list is where every real fix lives." },
+    { type: "heading", text: "Top Causes of Close Code 1006 in 2026" },
+    { type: "heading", text: "1. Missed heartbeats (the 2.5-second rule)" },
+    { type: "paragraph", html: "This is the cause people overlook most. After your <code>authorize</code> frame is accepted, the Tradovate socket expects a steady heartbeat from your client: an empty JSON array, written literally as <code>[]</code>, sent about every <strong class='text-white'>2.5 seconds</strong>. Those tiny frames prove the connection is alive. Let them stall and the server may quietly stop sending data or tear the connection down, which lands on your side as a 1006. If your disconnects cluster after a pause in your code or a busy event loop, suspect the heartbeat first." },
+    { type: "heading", text: "2. Browser tab throttling" },
+    { type: "paragraph", html: "If your socket runs in a browser, there is a nasty trap. When the tab holding your app is not the active tab, Chrome and other browsers lower the priority of <code>setInterval</code> and <code>setTimeout</code>. Your 2.5-second heartbeat slips to every several seconds, the server sees a stalled connection, and the socket closes with 1006 the moment you switch away. The fix is to run the heartbeat loop in a <strong class='text-white'>web worker</strong> (workers are not throttled the same way) or to run the whole thing as a <strong class='text-white'>Node process</strong> outside the browser entirely." },
+    { type: "heading", text: "3. Idle proxy, NAT, or firewall timeouts" },
+    { type: "paragraph", html: "Anything sitting between your machine and Tradovate can drop a connection it thinks has gone quiet. Corporate proxies, load balancers, NAT tables, and home routers commonly cut idle TCP connections after 30 to 120 seconds, and they rarely send a close frame when they do it. That is textbook 1006, and a properly paced heartbeat is what keeps the link looking active enough to survive it." },
+    { type: "heading", text: "4. Token expiry or a second login stealing your session" },
+    { type: "paragraph", html: "A Tradovate access token lives for about 90 minutes, and letting it expire while the socket is connected can drop the connection. Worse, Tradovate allows only <strong class='text-white'>two concurrent sessions</strong> per account, and creating a third closes the oldest. If another script, a manual test, or a fresh login flow requests a new token for the same account, it can boot the session your socket is riding on, again showing up as a 1006. The safe pattern is to <em>renew</em> the token on a timer rather than logging in again, which keeps the existing session, and the socket, alive." },
+    { type: "heading", text: "5. Network instability and reconnect storms" },
+    { type: "paragraph", html: "Plain network drops cause 1006 too: a flaky Wi-Fi link, a VPS with a noisy neighbor, a brief ISP hiccup. That much is unavoidable. The trap is how you respond. If your reconnect logic fires in a tight loop the moment it sees a close, you can bury Tradovate's endpoint in connection attempts, trip its request penalty, and turn a two-second blip into a multi-minute lockout. Backoff is not optional here." },
+    { type: "heading", text: "How to Fix Close Code 1006: Step-by-Step" },
+    { type: "heading", text: "Wrap the socket and reconnect on every close" },
+    {
+      type: "steps",
+      items: [
+        { title: "Own the whole lifecycle", html: "Put your WebSocket inside a class or function that owns the whole lifecycle: connect, authorize, subscribe, heartbeat, and teardown." },
+        { title: "Attach a single close handler", html: "Attach a single close handler that fires on <em>any</em> close, clean or abnormal. Do not branch on the code. A <code>1000</code> and a <code>1006</code> both mean &ldquo;the socket is gone, rebuild it.&rdquo;" },
+        { title: "Clear the dead socket and schedule a reconnect", html: "On close, drop all references to the dead socket, clear its heartbeat timer, and schedule a reconnect. Never reuse a closed socket object." },
+        { title: "Save your state before it tears down", html: "Before you tear it down, save the state you need to restore: which contracts you were subscribed to, whether a user-sync request was open, and your current token." },
+      ],
+    },
+    { type: "heading", text: "Keep the heartbeat alive" },
+    {
+      type: "steps",
+      items: [
+        { title: "Start the heartbeat once authorized", html: "As soon as your <code>authorize</code> frame is accepted, start sending an empty <code>[]</code> frame every <strong class='text-white'>2.5 seconds</strong>." },
+        { title: "Move browser timers into a web worker", html: "If you are in a browser, move that timer into a web worker so a background tab cannot throttle it. On Node, a plain interval is fine." },
+        { title: "Watch the far side too", html: "Watch the far side too. If you go more than a few seconds with no frame at all from the server, treat the connection as dead and force a reconnect rather than waiting." },
+      ],
+    },
+    { type: "heading", text: "Re-authorize and re-subscribe the new socket" },
+    {
+      type: "steps",
+      items: [
+        { title: "Wait for the open frame", html: "Wait for the <code>o</code> open frame on the fresh socket. Only then is it ready to authenticate." },
+        { title: "Send the authorize frame again", html: "Send the <code>authorize</code> frame again with a valid access token, formatted exactly as the current API docs specify (the request keyword, an id, then the token, with the correct blank-line separators)." },
+        { title: "Replay every subscription", html: "Once authorization succeeds, replay every subscription from your saved state: quote subscriptions, user-sync requests, and anything else the old socket was carrying." },
+        { title: "Reconcile after the gap", html: "Reconcile after the gap. Pull current positions and working orders so your view matches reality, since events may have fired while you were disconnected." },
+      ],
+    },
+    { type: "heading", text: "Renew the token on a timer, do not spawn a new session" },
+    {
+      type: "steps",
+      items: [
+        { title: "Store expiration and set a renew timer", html: "When you first log in, store the token's expiration and set a timer to renew it roughly 15 minutes before it lapses." },
+        { title: "Renew through the renew endpoint", html: "Renew through the renew endpoint, which extends your session without a fresh login. The connected socket keeps working with nothing further required." },
+        { title: "Never spawn a second login", html: "Never kick off a brand-new login for an account that already has a live socket. That can push you past the two-session limit and drop the socket you are trying to protect." },
+      ],
+    },
+    { type: "heading", text: "Back off with jitter" },
+    {
+      type: "steps",
+      items: [
+        { title: "Start at one to two seconds", html: "On the first reconnect, wait one to two seconds. On each further failure, roughly double the delay." },
+        { title: "Add a small random offset", html: "Add a small random offset to every delay so many clients do not all retry on the same tick and hammer the endpoint together." },
+        { title: "Cap the maximum", html: "Cap the maximum at 30 to 60 seconds. A capped, jittered backoff recovers fast from a blip without becoming a self-inflicted rate-limit lockout." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Likely cause", "Fix"],
+      rows: [
+        ["1006 within seconds of switching browser tabs", "Throttled heartbeat timer in a background tab", "Run the [] heartbeat in a web worker or on Node"],
+        ["1006 after a code pause or busy loop", "Heartbeat stalled past ~2.5 seconds", "Send [] on a reliable 2.5s interval, plus on incoming frames"],
+        ["1006 after 30 to 120 seconds of quiet", "Proxy, NAT, or firewall dropped an idle TCP link", "Keep heartbeats flowing so the link never looks idle"],
+        ["1006 right around the 90-minute mark", "Access token expired", "Renew the token ~15 minutes before it lapses"],
+        ["1006 the moment you log in elsewhere", "New session bumped you past the 2-session limit", "Renew instead of re-logging in; one session per account"],
+        ["1006 storms, then a long lockout", "Tight reconnect loop tripped the request penalty", "Exponential backoff with jitter, capped at 30 to 60s"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "A reconnect layer, a throttle-proof heartbeat, a token renewer, and a subscription replay are a lot of plumbing to get right by hand, and one missed edge case drops your orders at the worst moment. PickMyTrade sits between TradingView and Tradovate and handles all of it for you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Managed WebSocket</strong> connections with automatic reconnect and re-authorization, so a 1006 becomes a blip instead of an outage.",
+        "<strong class='text-white'>Always-on heartbeats</strong> that run server-side, well clear of browser tab throttling.",
+        "<strong class='text-white'>Automatic token renewal</strong> and one clean session per account, so a 90-minute expiry or a stray second login never knocks you offline.",
+        "<strong class='text-white'>Rate-limit-safe reconnects</strong> with sensible backoff, so recovery never turns into a request-penalty lockout.",
+      ],
+    },
+    { type: "paragraph", html: "The payoff: your TradingView alerts reach Tradovate reliably without you writing or babysitting a single line of WebSocket lifecycle code." },
+  ], de: [
+    { type: "paragraph", html: "Ihr Tradovate-WebSocket versorgt einen Bot problemlos mit Daten, und dann bricht er plötzlich mit <strong class='text-white'>Schließungscode 1006</strong> ab. Kein Grund im Klartext, keine Schließungsnachricht, nichts in den Logs außer einer Variante von &ldquo;Verbindung abnormal geschlossen.&rdquo; Das ist einer der frustrierendsten Fehler in der Tradovate-Automatisierung, gerade weil 1006 Ihnen fast nichts verrät. Die gute Nachricht: Sie müssen das Rätsel so gut wie nie lösen. Ein 1006 bedeutet, dass die Verbindung ohne sauberen Handshake abgebrochen ist, und die zuverlässige Lösung besteht darin, dass sich Ihr Client sofort <strong class='text-white'>automatisch neu verbindet und erneut autorisiert</strong>, sobald das passiert: Heartbeats am Laufen halten, den Abbruch erkennen, einen neuen Socket aufbauen, sich erneut anmelden und neu abonnieren. Eine Bridge wie PickMyTrade erledigt genau das im Hintergrund, sodass Ihre TradingView-Alerts Tradovate weiterhin erreichen, selbst wenn ein selbstgeschriebenes Skript stumm geblieben wäre." },
+    {
+      type: "checklist",
+      heading: "Schnelle Checkliste für Schließungscode 1006",
+      items: [
+        "<strong class='text-white'>Behandeln Sie 1006 als Symptom.</strong> Es bedeutet, dass der Socket ohne Schließungs-Frame abgebrochen ist, nicht dass eine bestimmte Sache kaputt ist.",
+        "<strong class='text-white'>Senden Sie Heartbeats.</strong> Schicken Sie etwa alle <strong class='text-white'>2,5 Sekunden</strong> einen leeren <code>[]</code>-Frame. Verpassen Sie das, trennt Sie der Server.",
+        "<strong class='text-white'>Verbinden Sie sich bei jeder Schließung automatisch neu.</strong> Unterscheiden Sie nicht nach dem Code. Verbinden Sie sich sowohl bei einem sauberen <code>1000</code> als auch bei einem <code>1006</code> neu.",
+        "<strong class='text-white'>Autorisieren und abonnieren Sie erneut.</strong> Ein neuer Socket ist nicht authentifiziert, und Kurs- sowie User-Sync-Abonnements überstehen eine Neuverbindung nicht.",
+        "<strong class='text-white'>Erneuern Sie, loggen Sie sich nicht neu ein.</strong> Das Erneuern des Tokens hält den Socket am Leben; eine komplett neue Anmeldung kann Ihre Sitzung beenden und den Abbruch verursachen.",
+        "<strong class='text-white'>Nutzen Sie Backoff mit Jitter.</strong> Verteilen Sie die Versuche zeitlich und begrenzen Sie sie, damit Sie Tradovates Anfragelimits nicht auslösen.",
+      ],
+    },
+    { type: "heading", text: "Was „Schließungscode 1006“ bedeutet" },
+    { type: "paragraph", html: "WebSocket-Schließungscodes sind durch das Protokoll selbst definiert. Ein sauberes Beenden sendet den Code <code>1000</code> (normale Schließung) zusammen mit einem Schließungs-Frame, der den Grund erklärt. Der Code <strong class='text-white'>1006</strong> ist anders: Es handelt sich um einen reservierten Code, den Ihre WebSocket-Bibliothek vergibt, wenn die Verbindung verschwunden ist, <em>ohne</em> dass jemals ein Schließungs-Frame ankam. Mit anderen Worten: Die TCP-Leitung unter dem Socket ist gerissen, und keine Seite hatte die Chance, sich ordentlich zu verabschieden. Deshalb enthält 1006 nie einen menschenlesbaren Grund. Es gibt nichts zu lesen, weil die Nachricht, die ihn enthalten hätte, nie ankam." },
+    { type: "paragraph", html: "Es hilft zu wissen, wie der Tradovate-Socket normalerweise kommuniziert. Jeder Frame, den der Server sendet, ist mit einem einzelnen führenden Zeichen gekennzeichnet: Ein <code>o</code>-Frame ist die <em>open</em>-Nachricht, die Sie in dem Moment erhalten, in dem sich der Socket verbindet, und Ihr Stichwort zum Authentifizieren; ein <code>a</code>-Frame trägt ein Array mit JSON-Daten (Kurse, Order-Updates, Sync-Antworten); ein <code>h</code>-Frame ist ein Heartbeat; und ein <code>c</code>-Frame ist eine geordnete <em>close</em>-Meldung. Wenn Tradovate absichtlich schließt, sendet es <code>c[1000,&ldquo;...&rdquo;]</code> mit einer Nachricht, die den Grund nennt. Ein 1006 ist das Gegenteil dieses ordentlichen <code>c</code>: gar kein Schließungs-Frame, nur ein toter Socket und der Code der Bibliothek für abnormale Schließung." },
+    { type: "paragraph", html: "Hören Sie also auf, nach einer Nachricht zu suchen, die nie kommen wird, und fragen Sie stattdessen, was die TCP-Verbindung unter einem langlebigen Socket gekappt haben könnte. In dieser kurzen Liste steckt jede echte Lösung." },
+    { type: "heading", text: "Die häufigsten Ursachen für Schließungscode 1006 im Jahr 2026" },
+    { type: "heading", text: "1. Verpasste Heartbeats (die 2,5-Sekunden-Regel)" },
+    { type: "paragraph", html: "Das ist die Ursache, die am häufigsten übersehen wird. Nachdem Ihr <code>authorize</code>-Frame akzeptiert wurde, erwartet der Tradovate-Socket einen stetigen Heartbeat von Ihrem Client: ein leeres JSON-Array, buchstäblich als <code>[]</code> geschrieben, gesendet etwa alle <strong class='text-white'>2,5 Sekunden</strong>. Diese winzigen Frames beweisen, dass die Verbindung lebt. Bleiben sie aus, kann der Server stillschweigend aufhören, Daten zu senden, oder die Verbindung kappen, was auf Ihrer Seite als 1006 ankommt. Wenn sich Ihre Verbindungsabbrüche nach einer Pause in Ihrem Code oder einer überlasteten Event-Loop häufen, verdächtigen Sie zuerst den Heartbeat." },
+    { type: "heading", text: "2. Drosselung von Browser-Tabs" },
+    { type: "paragraph", html: "Wenn Ihr Socket in einem Browser läuft, gibt es eine fiese Falle. Wenn der Tab mit Ihrer App nicht der aktive Tab ist, senken Chrome und andere Browser die Priorität von <code>setInterval</code> und <code>setTimeout</code>. Ihr 2,5-Sekunden-Heartbeat rutscht auf mehrere Sekunden Abstand, der Server sieht eine stockende Verbindung, und der Socket schließt mit 1006 in dem Moment, in dem Sie den Tab wechseln. Die Lösung besteht darin, die Heartbeat-Schleife in einem <strong class='text-white'>Web Worker</strong> laufen zu lassen (Worker werden nicht auf dieselbe Weise gedrosselt) oder das Ganze als <strong class='text-white'>Node-Prozess</strong> komplett außerhalb des Browsers auszuführen." },
+    { type: "heading", text: "3. Timeouts durch inaktive Proxys, NAT oder Firewalls" },
+    { type: "paragraph", html: "Alles, was zwischen Ihrer Maschine und Tradovate sitzt, kann eine Verbindung kappen, die es für ruhig hält. Unternehmens-Proxys, Load Balancer, NAT-Tabellen und Heimrouter trennen inaktive TCP-Verbindungen häufig nach 30 bis 120 Sekunden, und dabei senden sie selten einen Schließungs-Frame. Das ist der Lehrbuch-1006, und ein passend getakteter Heartbeat sorgt dafür, dass die Verbindung aktiv genug wirkt, um das zu überstehen." },
+    { type: "heading", text: "4. Ablaufender Token oder eine zweite Anmeldung, die Ihre Sitzung stiehlt" },
+    { type: "paragraph", html: "Ein Tradovate-Zugriffstoken lebt etwa 90 Minuten, und lässt man ihn ablaufen, während der Socket verbunden ist, kann das die Verbindung kappen. Schlimmer noch: Tradovate erlaubt pro Konto nur <strong class='text-white'>zwei gleichzeitige Sitzungen</strong>, und das Erstellen einer dritten schließt die älteste. Wenn ein anderes Skript, ein manueller Test oder ein neuer Login-Vorgang für dasselbe Konto einen neuen Token anfordert, kann das die Sitzung beenden, auf der Ihr Socket reitet, was wieder als 1006 auftaucht. Das sichere Muster besteht darin, den Token per Timer zu <em>erneuern</em>, statt sich erneut anzumelden, wodurch die bestehende Sitzung und damit der Socket am Leben bleiben." },
+    { type: "heading", text: "5. Netzwerkinstabilität und Reconnect-Stürme" },
+    { type: "paragraph", html: "Auch einfache Netzwerkabbrüche verursachen 1006: eine wacklige WLAN-Verbindung, ein VPS mit einem lauten Nachbarn, ein kurzer ISP-Ausfall. Das lässt sich nicht vermeiden. Die Falle liegt darin, wie Sie reagieren. Wenn Ihre Reconnect-Logik in einer engen Schleife feuert, sobald sie eine Schließung sieht, können Sie Tradovates Endpunkt mit Verbindungsversuchen überfluten, dessen Anfrage-Strafe auslösen und aus einem zweisekündigen Aussetzer eine mehrminütige Sperre machen. Backoff ist hier nicht optional." },
+    { type: "heading", text: "So beheben Sie Schließungscode 1006: Schritt für Schritt" },
+    { type: "heading", text: "Kapseln Sie den Socket und verbinden Sie sich bei jeder Schließung neu" },
+    {
+      type: "steps",
+      items: [
+        { title: "Übernehmen Sie den gesamten Lebenszyklus", html: "Platzieren Sie Ihren WebSocket in einer Klasse oder Funktion, die den gesamten Lebenszyklus übernimmt: Verbinden, Autorisieren, Abonnieren, Heartbeat und Abbau." },
+        { title: "Hängen Sie einen einzigen Close-Handler an", html: "Hängen Sie einen einzigen Close-Handler an, der bei <em>jeder</em> Schließung auslöst, sauber oder abnormal. Unterscheiden Sie nicht nach dem Code. Ein <code>1000</code> und ein <code>1006</code> bedeuten beide: &ldquo;Der Socket ist weg, bauen Sie ihn neu auf.&rdquo;" },
+        { title: "Räumen Sie den toten Socket auf und planen Sie eine Neuverbindung", html: "Verwerfen Sie bei der Schließung alle Referenzen auf den toten Socket, löschen Sie dessen Heartbeat-Timer und planen Sie eine Neuverbindung. Verwenden Sie niemals ein geschlossenes Socket-Objekt wieder." },
+        { title: "Sichern Sie Ihren Zustand, bevor der Abbau erfolgt", html: "Bevor Sie ihn abbauen, sichern Sie den Zustand, den Sie zum Wiederherstellen brauchen: welche Kontrakte Sie abonniert hatten, ob eine User-Sync-Anfrage offen war, und Ihren aktuellen Token." },
+      ],
+    },
+    { type: "heading", text: "Halten Sie den Heartbeat am Leben" },
+    {
+      type: "steps",
+      items: [
+        { title: "Starten Sie den Heartbeat nach der Autorisierung", html: "Sobald Ihr <code>authorize</code>-Frame akzeptiert wurde, beginnen Sie, alle <strong class='text-white'>2,5 Sekunden</strong> einen leeren <code>[]</code>-Frame zu senden." },
+        { title: "Verlagern Sie Browser-Timer in einen Web Worker", html: "Wenn Sie sich in einem Browser befinden, verlagern Sie diesen Timer in einen Web Worker, damit ein Hintergrund-Tab ihn nicht drosseln kann. Unter Node reicht ein einfaches Intervall." },
+        { title: "Beobachten Sie auch die Gegenseite", html: "Beobachten Sie auch die Gegenseite. Wenn mehr als ein paar Sekunden lang gar kein Frame vom Server kommt, behandeln Sie die Verbindung als tot und erzwingen Sie eine Neuverbindung, statt zu warten." },
+      ],
+    },
+    { type: "heading", text: "Autorisieren und abonnieren Sie den neuen Socket erneut" },
+    {
+      type: "steps",
+      items: [
+        { title: "Warten Sie auf den Open-Frame", html: "Warten Sie auf den <code>o</code>-Open-Frame beim neuen Socket. Erst dann ist er bereit für die Authentifizierung." },
+        { title: "Senden Sie den Authorize-Frame erneut", html: "Senden Sie den <code>authorize</code>-Frame erneut mit einem gültigen Zugriffstoken, formatiert genau wie in der aktuellen API-Dokumentation angegeben (das Schlüsselwort request, eine id, dann der Token, mit den korrekten Leerzeilen-Trennzeichen)." },
+        { title: "Spielen Sie jedes Abonnement erneut ab", html: "Sobald die Autorisierung erfolgreich ist, spielen Sie jedes Abonnement aus Ihrem gespeicherten Zustand erneut ab: Kurs-Abonnements, User-Sync-Anfragen und alles andere, was der alte Socket trug." },
+        { title: "Gleichen Sie nach der Lücke ab", html: "Gleichen Sie nach der Lücke ab. Rufen Sie aktuelle Positionen und offene Orders ab, damit Ihre Ansicht der Realität entspricht, da während der Trennung Ereignisse ausgelöst worden sein könnten." },
+      ],
+    },
+    { type: "heading", text: "Erneuern Sie den Token per Timer, statt eine neue Sitzung zu starten" },
+    {
+      type: "steps",
+      items: [
+        { title: "Speichern Sie die Ablaufzeit und setzen Sie einen Erneuerungs-Timer", html: "Speichern Sie beim ersten Login die Ablaufzeit des Tokens und setzen Sie einen Timer, um ihn etwa 15 Minuten vor Ablauf zu erneuern." },
+        { title: "Erneuern Sie über den Renew-Endpunkt", html: "Erneuern Sie über den Renew-Endpunkt, der Ihre Sitzung verlängert, ohne dass eine neue Anmeldung nötig ist. Der verbundene Socket arbeitet ohne weiteres Zutun weiter." },
+        { title: "Starten Sie niemals eine zweite Anmeldung", html: "Starten Sie niemals eine komplett neue Anmeldung für ein Konto, das bereits einen aktiven Socket hat. Das kann Sie über das Zwei-Sitzungen-Limit hinaustreiben und genau den Socket kappen, den Sie schützen wollen." },
+      ],
+    },
+    { type: "heading", text: "Backoff mit Jitter anwenden" },
+    {
+      type: "steps",
+      items: [
+        { title: "Beginnen Sie mit ein bis zwei Sekunden", html: "Warten Sie bei der ersten Neuverbindung ein bis zwei Sekunden. Verdoppeln Sie die Verzögerung bei jedem weiteren Fehlschlag ungefähr." },
+        { title: "Fügen Sie einen kleinen Zufallsversatz hinzu", html: "Fügen Sie jeder Verzögerung einen kleinen Zufallsversatz hinzu, damit nicht viele Clients gleichzeitig auf demselben Takt erneut versuchen und den Endpunkt gemeinsam bombardieren." },
+        { title: "Begrenzen Sie das Maximum", html: "Begrenzen Sie das Maximum auf 30 bis 60 Sekunden. Ein gedeckelter, mit Jitter versehener Backoff erholt sich schnell von einem Aussetzer, ohne zu einer selbst verursachten Rate-Limit-Sperre zu werden." },
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Wahrscheinliche Ursache", "Lösung"],
+      rows: [
+        ["1006 innerhalb von Sekunden nach einem Browser-Tab-Wechsel", "Gedrosselter Heartbeat-Timer in einem Hintergrund-Tab", "Führen Sie den []-Heartbeat in einem Web Worker oder auf Node aus"],
+        ["1006 nach einer Code-Pause oder überlasteten Schleife", "Heartbeat länger als ~2,5 Sekunden ausgeblieben", "Senden Sie [] auf einem zuverlässigen 2,5-Sekunden-Intervall, zusätzlich bei eingehenden Frames"],
+        ["1006 nach 30 bis 120 Sekunden Ruhe", "Proxy, NAT oder Firewall hat eine inaktive TCP-Verbindung getrennt", "Halten Sie Heartbeats am Laufen, damit die Verbindung nie inaktiv wirkt"],
+        ["1006 genau um die 90-Minuten-Marke", "Zugriffstoken abgelaufen", "Erneuern Sie den Token ~15 Minuten vor Ablauf"],
+        ["1006 in dem Moment, in dem Sie sich anderswo anmelden", "Neue Sitzung hat Sie über das 2-Sitzungen-Limit gebracht", "Erneuern statt neu anmelden; eine Sitzung pro Konto"],
+        ["1006-Stürme, gefolgt von einer langen Sperre", "Enge Reconnect-Schleife hat die Anfrage-Strafe ausgelöst", "Exponentieller Backoff mit Jitter, gedeckelt bei 30 bis 60s"],
+      ],
+    },
+    { type: "heading", text: "Verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "Eine Reconnect-Schicht, ein drosselresistenter Heartbeat, eine Token-Erneuerung und eine Abonnement-Wiedergabe sind eine Menge Installationsarbeit, die man von Hand richtig hinbekommen muss, und ein einziger übersehener Grenzfall lässt Ihre Orders im schlimmsten Moment fallen. PickMyTrade sitzt zwischen TradingView und Tradovate und übernimmt das alles für Sie:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Verwaltete WebSocket</strong>-Verbindungen mit automatischer Neuverbindung und Reautorisierung, sodass ein 1006 zu einem kurzen Aussetzer statt einem Ausfall wird.",
+        "<strong class='text-white'>Dauerhaft aktive Heartbeats</strong>, die serverseitig laufen, weit entfernt von der Drosselung durch Browser-Tabs.",
+        "<strong class='text-white'>Automatische Token-Erneuerung</strong> und eine saubere Sitzung pro Konto, damit ein 90-Minuten-Ablauf oder eine versehentliche zweite Anmeldung Sie nie offline schickt.",
+        "<strong class='text-white'>Rate-Limit-sichere Neuverbindungen</strong> mit sinnvollem Backoff, sodass die Wiederherstellung nie zu einer Anfrage-Strafsperre wird.",
+      ],
+    },
+    { type: "paragraph", html: "Der Lohn: Ihre TradingView-Alerts erreichen Tradovate zuverlässig, ohne dass Sie auch nur eine einzige Zeile WebSocket-Lebenszyklus-Code schreiben oder überwachen müssen." },
+  ], es: [
+    { type: "paragraph", html: "Su WebSocket de Tradovate está alimentando felizmente a un bot y, de repente, se cae con el <strong class='text-white'>código de cierre 1006</strong>. Sin texto de motivo, sin mensaje de cierre, nada en los registros salvo alguna variante de &ldquo;conexión cerrada de forma anómala.&rdquo; Es uno de los fallos más frustrantes en la automatización de Tradovate precisamente porque el 1006 casi no le dice nada. La buena noticia: rara vez necesita resolver el misterio. Un 1006 significa que la conexión murió sin un cierre de protocolo limpio, y la solución fiable es hacer que su cliente <strong class='text-white'>se reconecte y se reautorice automáticamente</strong> en el instante en que ocurre: mantener los heartbeats activos, detectar la caída, levantar un socket nuevo, volver a iniciar sesión y volver a suscribirse. Un puente como PickMyTrade hace exactamente eso por debajo, de modo que sus alertas de TradingView sigan llegando a Tradovate incluso cuando un script sin más se habría quedado a oscuras." },
+    {
+      type: "checklist",
+      heading: "Lista rápida de verificación para el código de cierre 1006",
+      items: [
+        "<strong class='text-white'>Trate el 1006 como un síntoma.</strong> Significa que el socket se cayó sin un frame de cierre, no que un elemento específico esté roto.",
+        "<strong class='text-white'>Envíe heartbeats.</strong> Envíe un frame vacío <code>[]</code> aproximadamente cada <strong class='text-white'>2.5 segundos</strong>. Si los omite, el servidor lo desconecta.",
+        "<strong class='text-white'>Reconéctese automáticamente ante cualquier cierre.</strong> No haga distinciones según el código. Reconéctese tanto ante un <code>1000</code> limpio como ante un <code>1006</code>.",
+        "<strong class='text-white'>Reautorice y vuelva a suscribirse.</strong> Un socket nuevo no está autenticado, y las suscripciones de cotizaciones y de sincronización de usuario no sobreviven a una reconexión.",
+        "<strong class='text-white'>Renueve, no vuelva a iniciar sesión.</strong> Renovar el token mantiene el socket activo; un inicio de sesión completamente nuevo puede expulsar su sesión y provocar la caída.",
+        "<strong class='text-white'>Aplique backoff con jitter.</strong> Espacie los reintentos y limítelos para no superar los límites de solicitudes de Tradovate.",
+      ],
+    },
+    { type: "heading", text: "Qué significa el “código de cierre 1006”" },
+    { type: "paragraph", html: "Los códigos de cierre de WebSocket están definidos por el propio protocolo. Un cierre limpio envía el código <code>1000</code> (cierre normal) junto con un frame de cierre que explica el motivo. El código <strong class='text-white'>1006</strong> es distinto: es un código reservado que su librería de WebSocket asigna cuando la conexión desaparece <em>sin</em> que llegue nunca un frame de cierre. En otras palabras, la tubería TCP que hay debajo del socket se rompió, y ninguno de los dos lados tuvo la oportunidad de despedirse correctamente. Por eso el 1006 nunca lleva un motivo legible para humanos. No hay nada que leer, porque el mensaje que lo habría llevado nunca llegó a cruzar." },
+    { type: "paragraph", html: "Ayuda saber cómo se comunica normalmente el socket de Tradovate. Cada frame que envía el servidor lleva marcado un único carácter inicial: un frame <code>o</code> es el mensaje de <em>apertura</em> que recibe en el momento en que el socket se conecta y es su señal para autenticarse; un frame <code>a</code> transporta un array de datos JSON (cotizaciones, actualizaciones de órdenes, respuestas de sincronización); un frame <code>h</code> es un heartbeat; y un frame <code>c</code> es un <em>cierre</em> ordenado. Cuando Tradovate cierra a propósito, envía <code>c[1000,&ldquo;...&rdquo;]</code> con un mensaje que explica el motivo. Un 1006 es lo opuesto a ese <code>c</code> ordenado: no hay ningún frame de cierre, solo un socket muerto y el código de cierre anómalo de la librería." },
+    { type: "paragraph", html: "Así que deje de buscar un mensaje que nunca llegará, y pregúntese en cambio qué pudo haber cortado la conexión TCP bajo un socket de larga duración. Esa lista corta es donde vive toda solución real." },
+    { type: "heading", text: "Principales causas del código de cierre 1006 en 2026" },
+    { type: "heading", text: "1. Heartbeats omitidos (la regla de los 2.5 segundos)" },
+    { type: "paragraph", html: "Esta es la causa que más se pasa por alto. Una vez que su frame <code>authorize</code> es aceptado, el socket de Tradovate espera un heartbeat constante de su cliente: un array JSON vacío, escrito literalmente como <code>[]</code>, enviado aproximadamente cada <strong class='text-white'>2.5 segundos</strong>. Esos pequeños frames demuestran que la conexión sigue viva. Si se detienen, el servidor puede dejar de enviar datos silenciosamente o cortar la conexión, lo que en su lado aparece como un 1006. Si sus desconexiones se agrupan tras una pausa en su código o un bucle de eventos saturado, sospeche primero del heartbeat." },
+    { type: "heading", text: "2. Limitación de pestañas del navegador" },
+    { type: "paragraph", html: "Si su socket se ejecuta en un navegador, hay una trampa desagradable. Cuando la pestaña que aloja su aplicación no es la pestaña activa, Chrome y otros navegadores reducen la prioridad de <code>setInterval</code> y <code>setTimeout</code>. Su heartbeat de 2.5 segundos se retrasa hasta cada varios segundos, el servidor detecta una conexión estancada, y el socket se cierra con 1006 en el momento en que cambia de pestaña. La solución es ejecutar el bucle del heartbeat en un <strong class='text-white'>web worker</strong> (los workers no se ven limitados de la misma forma) o ejecutar todo el proceso como un <strong class='text-white'>proceso de Node</strong> completamente fuera del navegador." },
+    { type: "heading", text: "3. Tiempos de espera agotados en proxy, NAT o firewall inactivos" },
+    { type: "paragraph", html: "Cualquier elemento situado entre su máquina y Tradovate puede cortar una conexión que cree que se ha quedado en silencio. Los proxies corporativos, los balanceadores de carga, las tablas NAT y los routers domésticos suelen cortar las conexiones TCP inactivas después de 30 a 120 segundos, y rara vez envían un frame de cierre cuando lo hacen. Eso es un 1006 de manual, y un heartbeat con el ritmo adecuado es lo que mantiene el enlace con actividad suficiente para sobrevivir." },
+    { type: "heading", text: "4. Expiración del token o una segunda sesión que le roba la sesión" },
+    { type: "paragraph", html: "Un token de acceso de Tradovate vive alrededor de 90 minutos, y dejar que expire mientras el socket está conectado puede cortar la conexión. Peor aún, Tradovate solo permite <strong class='text-white'>dos sesiones simultáneas</strong> por cuenta, y crear una tercera cierra la más antigua. Si otro script, una prueba manual o un nuevo flujo de inicio de sesión solicita un token nuevo para la misma cuenta, puede expulsar la sesión sobre la que va montado su socket, lo que de nuevo aparece como un 1006. El patrón seguro es <em>renovar</em> el token con un temporizador en lugar de volver a iniciar sesión, lo que mantiene viva la sesión existente, y el socket." },
+    { type: "heading", text: "5. Inestabilidad de red y tormentas de reconexión" },
+    { type: "paragraph", html: "Las simples caídas de red también provocan 1006: un enlace Wi-Fi inestable, un VPS con un vecino ruidoso, un pequeño fallo del proveedor de internet. Eso es hasta cierto punto inevitable. La trampa está en cómo responde. Si su lógica de reconexión se dispara en un bucle apretado en cuanto detecta un cierre, puede saturar el endpoint de Tradovate con intentos de conexión, activar su penalización de solicitudes y convertir un fallo de dos segundos en un bloqueo de varios minutos. Aquí el backoff no es opcional." },
+    { type: "heading", text: "Cómo solucionar el código de cierre 1006: paso a paso" },
+    { type: "heading", text: "Envuelva el socket y reconéctese ante cualquier cierre" },
+    {
+      type: "steps",
+      items: [
+        { title: "Controle todo el ciclo de vida", html: "Coloque su WebSocket dentro de una clase o función que controle todo el ciclo de vida: conexión, autorización, suscripción, heartbeat y cierre." },
+        { title: "Adjunte un único manejador de cierre", html: "Adjunte un único manejador de cierre que se dispare ante <em>cualquier</em> cierre, limpio o anómalo. No haga distinciones según el código. Tanto un <code>1000</code> como un <code>1006</code> significan &ldquo;el socket ha desaparecido, reconstrúyalo.&rdquo;" },
+        { title: "Limpie el socket muerto y programe una reconexión", html: "Al cerrarse, elimine todas las referencias al socket muerto, cancele su temporizador de heartbeat y programe una reconexión. Nunca reutilice un objeto de socket cerrado." },
+        { title: "Guarde su estado antes de que se desmonte", html: "Antes de desmontarlo, guarde el estado que necesitará restaurar: a qué contratos estaba suscrito, si había una solicitud de sincronización de usuario abierta, y su token actual." },
+      ],
+    },
+    { type: "heading", text: "Mantenga el heartbeat activo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Inicie el heartbeat una vez autorizado", html: "En cuanto se acepte su frame <code>authorize</code>, comience a enviar un frame vacío <code>[]</code> cada <strong class='text-white'>2.5 segundos</strong>." },
+        { title: "Traslade los temporizadores del navegador a un web worker", html: "Si está en un navegador, traslade ese temporizador a un web worker para que una pestaña en segundo plano no pueda limitarlo. En Node, un simple intervalo es suficiente." },
+        { title: "Vigile también el otro extremo", html: "Vigile también el otro extremo. Si pasan más de unos segundos sin recibir ningún frame del servidor, trate la conexión como muerta y fuerce una reconexión en lugar de esperar." },
+      ],
+    },
+    { type: "heading", text: "Reautorice y vuelva a suscribir el nuevo socket" },
+    {
+      type: "steps",
+      items: [
+        { title: "Espere el frame de apertura", html: "Espere el frame de apertura <code>o</code> en el socket nuevo. Solo entonces estará listo para autenticarse." },
+        { title: "Envíe de nuevo el frame authorize", html: "Envíe de nuevo el frame <code>authorize</code> con un token de acceso válido, con el formato exacto que especifica la documentación actual de la API (la palabra clave de la solicitud, un id, luego el token, con los separadores de línea en blanco correctos)." },
+        { title: "Repita todas las suscripciones", html: "Una vez que la autorización se realiza con éxito, repita todas las suscripciones a partir de su estado guardado: suscripciones de cotizaciones, solicitudes de sincronización de usuario y cualquier otra cosa que llevara el socket anterior." },
+        { title: "Concilie después de la interrupción", html: "Concilie después de la interrupción. Obtenga las posiciones actuales y las órdenes activas para que su vista coincida con la realidad, ya que pueden haberse producido eventos mientras estaba desconectado." },
+      ],
+    },
+    { type: "heading", text: "Renueve el token con un temporizador, no genere una nueva sesión" },
+    {
+      type: "steps",
+      items: [
+        { title: "Guarde la expiración y configure un temporizador de renovación", html: "Cuando inicie sesión por primera vez, guarde la expiración del token y configure un temporizador para renovarlo aproximadamente 15 minutos antes de que caduque." },
+        { title: "Renueve a través del endpoint de renovación", html: "Renueve a través del endpoint de renovación, que extiende su sesión sin necesidad de un nuevo inicio de sesión. El socket conectado sigue funcionando sin que se requiera nada más." },
+        { title: "Nunca genere un segundo inicio de sesión", html: "Nunca inicie un inicio de sesión completamente nuevo para una cuenta que ya tiene un socket activo. Eso puede hacer que supere el límite de dos sesiones y provocar la caída del socket que está intentando proteger." },
+      ],
+    },
+    { type: "heading", text: "Aplique backoff con jitter" },
+    {
+      type: "steps",
+      items: [
+        { title: "Comience con uno a dos segundos", html: "En la primera reconexión, espere de uno a dos segundos. En cada fallo posterior, duplique aproximadamente el retraso." },
+        { title: "Añada un pequeño desplazamiento aleatorio", html: "Añada un pequeño desplazamiento aleatorio a cada retraso para que muchos clientes no reintenten todos en el mismo instante y saturen el endpoint a la vez." },
+        { title: "Limite el máximo", html: "Limite el máximo entre 30 y 60 segundos. Un backoff limitado y con jitter se recupera rápido de un fallo puntual sin convertirse en un bloqueo de límite de solicitudes autoinfligido." },
+      ],
+    },
+    { type: "heading", text: "Tabla de resolución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Causa probable", "Solución"],
+      rows: [
+        ["1006 a los pocos segundos de cambiar de pestaña del navegador", "Temporizador de heartbeat limitado en una pestaña en segundo plano", "Ejecute el heartbeat [] en un web worker o en Node"],
+        ["1006 tras una pausa del código o un bucle saturado", "Heartbeat detenido más allá de ~2.5 segundos", "Envíe [] en un intervalo fiable de 2.5s, además de con los frames entrantes"],
+        ["1006 tras 30 a 120 segundos de inactividad", "El proxy, NAT o firewall cortó un enlace TCP inactivo", "Mantenga los heartbeats activos para que el enlace nunca parezca inactivo"],
+        ["1006 justo alrededor de la marca de los 90 minutos", "El token de acceso expiró", "Renueve el token ~15 minutos antes de que caduque"],
+        ["1006 en el momento en que inicia sesión en otro lugar", "Una nueva sesión le hizo superar el límite de 2 sesiones", "Renueve en lugar de volver a iniciar sesión; una sesión por cuenta"],
+        ["Tormentas de 1006, seguidas de un bloqueo prolongado", "Un bucle de reconexión apretado activó la penalización de solicitudes", "Backoff exponencial con jitter, limitado a 30-60s"],
+      ],
+    },
+    { type: "heading", text: "Evite esto con PickMyTrade" },
+    { type: "paragraph", html: "Una capa de reconexión, un heartbeat resistente a la limitación, un renovador de tokens y una repetición de suscripciones son mucha fontanería que hay que acertar a mano, y un solo caso extremo pasado por alto tira sus órdenes en el peor momento. PickMyTrade se sitúa entre TradingView y Tradovate y se encarga de todo esto por usted:" },
+    {
+      type: "list",
+      items: [
+        "Conexiones <strong class='text-white'>WebSocket gestionadas</strong> con reconexión y reautorización automáticas, de modo que un 1006 se convierte en un simple parpadeo en lugar de una interrupción.",
+        "<strong class='text-white'>Heartbeats siempre activos</strong> que se ejecutan del lado del servidor, muy lejos de la limitación de pestañas del navegador.",
+        "<strong class='text-white'>Renovación automática de tokens</strong> y una única sesión limpia por cuenta, de modo que una expiración a los 90 minutos o un segundo inicio de sesión accidental nunca lo dejen fuera de línea.",
+        "<strong class='text-white'>Reconexiones seguras frente a los límites de solicitudes</strong> con un backoff sensato, de modo que la recuperación nunca se convierta en un bloqueo por penalización de solicitudes.",
+      ],
+    },
+    { type: "paragraph", html: "El resultado: sus alertas de TradingView llegan a Tradovate de forma fiable sin que usted tenga que escribir ni supervisar una sola línea de código del ciclo de vida del WebSocket." },
+  ], fr: [
+    { type: "paragraph", html: "Votre WebSocket Tradovate alimente un bot sans problème, puis, sans prévenir, il meurt avec le <strong class='text-white'>code de fermeture 1006</strong>. Aucun texte explicatif, aucun message de fermeture, rien dans les journaux à part une variante de &ldquo;connexion fermée anormalement.&rdquo; C'est l'un des échecs les plus frustrants de l'automatisation Tradovate, précisément parce que 1006 ne vous apprend presque rien. La bonne nouvelle : vous n'avez presque jamais besoin de résoudre le mystère. Un 1006 signifie que la connexion est morte sans handshake propre, et la solution fiable consiste à faire en sorte que votre client se <strong class='text-white'>reconnecte et se réautorise automatiquement</strong> dès que cela se produit : maintenir les heartbeats actifs, détecter la coupure, ouvrir un nouveau socket, se reconnecter, puis se réabonner. Un pont comme PickMyTrade fait exactement cela en coulisses, afin que vos alertes TradingView continuent d'atteindre Tradovate même quand un script brut serait resté muet." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide pour le code de fermeture 1006",
+      items: [
+        "<strong class='text-white'>Considérez 1006 comme un symptôme.</strong> Cela signifie que le socket s'est coupé sans trame de fermeture, pas qu'un élément précis est cassé.",
+        "<strong class='text-white'>Envoyez des heartbeats.</strong> Poussez une trame vide <code>[]</code> environ toutes les <strong class='text-white'>2,5 secondes</strong>. Si vous les manquez, le serveur vous déconnecte.",
+        "<strong class='text-white'>Reconnectez-vous automatiquement à chaque fermeture.</strong> Ne faites pas de branchement selon le code. Reconnectez-vous aussi bien sur un <code>1000</code> propre que sur un <code>1006</code>.",
+        "<strong class='text-white'>Réautorisez-vous et réabonnez-vous.</strong> Un nouveau socket n'est pas authentifié, et les abonnements aux cotations et à la synchronisation utilisateur ne survivent pas à une reconnexion.",
+        "<strong class='text-white'>Renouvelez, ne vous reconnectez pas via un nouveau login.</strong> Le renouvellement du jeton maintient le socket actif ; une toute nouvelle connexion peut expulser votre session et provoquer la coupure.",
+        "<strong class='text-white'>Appliquez un backoff avec jitter.</strong> Espacez les tentatives et plafonnez-les pour ne pas déclencher les limites de requêtes de Tradovate.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie réellement le «code de fermeture 1006»" },
+    { type: "paragraph", html: "Les codes de fermeture WebSocket sont définis par le protocole lui-même. Une fermeture propre envoie le code <code>1000</code> (fermeture normale) accompagné d'une trame de fermeture qui en explique la raison. Le code <strong class='text-white'>1006</strong> est différent : c'est un code réservé que votre bibliothèque WebSocket attribue lorsque la connexion a disparu <em>sans</em> qu'aucune trame de fermeture n'arrive jamais. En d'autres termes, le tuyau TCP sous-jacent au socket s'est rompu, et aucune des deux parties n'a eu la possibilité de se dire au revoir correctement. C'est pourquoi 1006 ne porte jamais de raison lisible par un humain. Il n'y a rien à lire, car le message qui l'aurait porté n'est jamais arrivé à destination." },
+    { type: "paragraph", html: "Il est utile de savoir comment le socket Tradovate communique normalement. Chaque trame envoyée par le serveur est identifiée par un seul caractère de tête : une trame <code>o</code> est le message d'<em>ouverture</em> que vous recevez au moment où le socket se connecte, et votre signal pour vous authentifier ; une trame <code>a</code> transporte un tableau de données JSON (cotations, mises à jour d'ordres, réponses de synchronisation) ; une trame <code>h</code> est un heartbeat ; et une trame <code>c</code> est une <em>fermeture</em> propre. Lorsque Tradovate ferme volontairement la connexion, il envoie <code>c[1000,&ldquo;...&rdquo;]</code> avec un message expliquant pourquoi. Un 1006 est l'opposé de ce <code>c</code> bien rangé : aucune trame de fermeture du tout, juste un socket mort et le code de fermeture anormale de la bibliothèque." },
+    { type: "paragraph", html: "Arrêtez donc de chercher un message qui ne viendra jamais, et demandez-vous plutôt ce qui a pu couper la connexion TCP sous un socket de longue durée. C'est dans cette courte liste que se trouve chaque solution réelle." },
+    { type: "heading", text: "Principales causes du code de fermeture 1006 en 2026" },
+    { type: "heading", text: "1. Heartbeats manqués (la règle des 2,5 secondes)" },
+    { type: "paragraph", html: "C'est la cause la plus souvent négligée. Une fois votre trame <code>authorize</code> acceptée, le socket Tradovate attend un heartbeat régulier de votre client : un tableau JSON vide, écrit littéralement <code>[]</code>, envoyé environ toutes les <strong class='text-white'>2,5 secondes</strong>. Ces petites trames prouvent que la connexion est vivante. Si elles s'interrompent, le serveur peut discrètement cesser d'envoyer des données ou couper la connexion, ce qui se traduit de votre côté par un 1006. Si vos déconnexions se regroupent après une pause dans votre code ou une boucle d'événements surchargée, soupçonnez d'abord le heartbeat." },
+    { type: "heading", text: "2. Limitation (throttling) des onglets du navigateur" },
+    { type: "paragraph", html: "Si votre socket tourne dans un navigateur, il y a un piège sournois. Lorsque l'onglet contenant votre application n'est pas l'onglet actif, Chrome et les autres navigateurs abaissent la priorité de <code>setInterval</code> et <code>setTimeout</code>. Votre heartbeat de 2,5 secondes glisse à plusieurs secondes d'intervalle, le serveur voit une connexion stagnante, et le socket se ferme avec 1006 dès que vous changez d'onglet. La solution consiste à exécuter la boucle de heartbeat dans un <strong class='text-white'>web worker</strong> (les workers ne sont pas limités de la même manière) ou à exécuter l'ensemble comme un <strong class='text-white'>processus Node</strong> entièrement en dehors du navigateur." },
+    { type: "heading", text: "3. Délais d'inactivité des proxys, NAT ou pare-feux" },
+    { type: "paragraph", html: "Tout ce qui se trouve entre votre machine et Tradovate peut couper une connexion qu'il juge silencieuse. Les proxys d'entreprise, les répartiteurs de charge, les tables NAT et les routeurs domestiques coupent couramment les connexions TCP inactives après 30 à 120 secondes, et ils envoient rarement une trame de fermeture en le faisant. C'est le 1006 typique, et un heartbeat correctement cadencé est ce qui maintient la connexion suffisamment active pour y survivre." },
+    { type: "heading", text: "4. Expiration du jeton ou une seconde connexion qui vole votre session" },
+    { type: "paragraph", html: "Un jeton d'accès Tradovate vit environ 90 minutes, et le laisser expirer pendant que le socket est connecté peut couper la connexion. Pire encore, Tradovate n'autorise que <strong class='text-white'>deux sessions simultanées</strong> par compte, et la création d'une troisième ferme la plus ancienne. Si un autre script, un test manuel ou un nouveau flux de connexion demande un nouveau jeton pour le même compte, cela peut expulser la session sur laquelle repose votre socket, ce qui se manifeste à nouveau par un 1006. Le schéma sûr consiste à <em>renouveler</em> le jeton sur une minuterie plutôt qu'à se reconnecter, ce qui maintient la session existante, et donc le socket, en vie." },
+    { type: "heading", text: "5. Instabilité réseau et tempêtes de reconnexion" },
+    { type: "paragraph", html: "De simples coupures réseau provoquent aussi des 1006 : une liaison Wi-Fi instable, un VPS avec un voisin bruyant, un bref incident chez le FAI. Cela reste inévitable. Le piège se trouve dans votre réaction. Si votre logique de reconnexion se déclenche en boucle serrée dès qu'elle voit une fermeture, vous pouvez inonder le point de terminaison de Tradovate de tentatives de connexion, déclencher sa pénalité de requêtes, et transformer un incident de deux secondes en un blocage de plusieurs minutes. Le backoff n'est pas optionnel ici." },
+    { type: "heading", text: "Comment corriger le code de fermeture 1006 : étape par étape" },
+    { type: "heading", text: "Encapsulez le socket et reconnectez-vous à chaque fermeture" },
+    {
+      type: "steps",
+      items: [
+        { title: "Prenez en charge tout le cycle de vie", html: "Placez votre WebSocket dans une classe ou une fonction qui prend en charge tout le cycle de vie : connexion, autorisation, abonnement, heartbeat et démontage." },
+        { title: "Attachez un unique gestionnaire de fermeture", html: "Attachez un unique gestionnaire de fermeture qui se déclenche sur <em>toute</em> fermeture, propre ou anormale. Ne faites pas de branchement selon le code. Un <code>1000</code> et un <code>1006</code> signifient tous deux &ldquo;le socket a disparu, reconstruisez-le.&rdquo;" },
+        { title: "Nettoyez le socket mort et planifiez une reconnexion", html: "À la fermeture, supprimez toutes les références au socket mort, effacez sa minuterie de heartbeat, et planifiez une reconnexion. Ne réutilisez jamais un objet socket fermé." },
+        { title: "Sauvegardez votre état avant le démontage", html: "Avant de le démonter, sauvegardez l'état dont vous aurez besoin pour restaurer : les contrats auxquels vous étiez abonné, si une requête de synchronisation utilisateur était ouverte, et votre jeton actuel." },
+      ],
+    },
+    { type: "heading", text: "Maintenez le heartbeat actif" },
+    {
+      type: "steps",
+      items: [
+        { title: "Démarrez le heartbeat une fois autorisé", html: "Dès que votre trame <code>authorize</code> est acceptée, commencez à envoyer une trame vide <code>[]</code> toutes les <strong class='text-white'>2,5 secondes</strong>." },
+        { title: "Déplacez les minuteries du navigateur dans un web worker", html: "Si vous êtes dans un navigateur, déplacez cette minuterie dans un web worker afin qu'un onglet en arrière-plan ne puisse pas la limiter. Sur Node, un simple intervalle suffit." },
+        { title: "Surveillez également l'autre côté", html: "Surveillez également l'autre côté. Si vous passez plus de quelques secondes sans aucune trame du serveur, considérez la connexion comme morte et forcez une reconnexion plutôt que d'attendre." },
+      ],
+    },
+    { type: "heading", text: "Réautorisez et réabonnez le nouveau socket" },
+    {
+      type: "steps",
+      items: [
+        { title: "Attendez la trame d'ouverture", html: "Attendez la trame d'ouverture <code>o</code> sur le nouveau socket. C'est seulement à ce moment-là qu'il est prêt à s'authentifier." },
+        { title: "Renvoyez la trame d'autorisation", html: "Renvoyez la trame <code>authorize</code> avec un jeton d'accès valide, formatée exactement comme le spécifie la documentation actuelle de l'API (le mot-clé request, un id, puis le jeton, avec les séparateurs de ligne vide corrects)." },
+        { title: "Rejouez chaque abonnement", html: "Une fois l'autorisation réussie, rejouez chaque abonnement à partir de votre état sauvegardé : abonnements aux cotations, requêtes de synchronisation utilisateur, et tout ce que l'ancien socket transportait." },
+        { title: "Réconciliez après l'interruption", html: "Réconciliez après l'interruption. Récupérez les positions actuelles et les ordres en cours pour que votre vue corresponde à la réalité, car des événements peuvent s'être déclenchés pendant votre déconnexion." },
+      ],
+    },
+    { type: "heading", text: "Renouvelez le jeton sur une minuterie, ne créez pas une nouvelle session" },
+    {
+      type: "steps",
+      items: [
+        { title: "Stockez l'expiration et définissez une minuterie de renouvellement", html: "Lors de votre première connexion, stockez la date d'expiration du jeton et définissez une minuterie pour le renouveler environ 15 minutes avant son échéance." },
+        { title: "Renouvelez via le endpoint de renouvellement", html: "Renouvelez via le endpoint de renouvellement, qui prolonge votre session sans nouvelle connexion. Le socket connecté continue de fonctionner sans rien d'autre à faire." },
+        { title: "Ne créez jamais une seconde connexion", html: "Ne lancez jamais une toute nouvelle connexion pour un compte qui possède déjà un socket actif. Cela peut vous faire dépasser la limite de deux sessions et couper le socket que vous essayez de protéger." },
+      ],
+    },
+    { type: "heading", text: "Appliquez un backoff avec jitter" },
+    {
+      type: "steps",
+      items: [
+        { title: "Commencez avec un à deux secondes", html: "Lors de la première reconnexion, attendez une à deux secondes. À chaque nouvel échec, doublez à peu près le délai." },
+        { title: "Ajoutez un petit décalage aléatoire", html: "Ajoutez un petit décalage aléatoire à chaque délai afin que de nombreux clients ne réessaient pas tous au même instant et ne martèlent pas le point de terminaison ensemble." },
+        { title: "Plafonnez le maximum", html: "Plafonnez le maximum à 30-60 secondes. Un backoff plafonné et avec jitter récupère rapidement d'un incident sans se transformer en blocage de limite de requêtes auto-infligé." },
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Cause probable", "Solution"],
+      rows: [
+        ["1006 quelques secondes après un changement d'onglet du navigateur", "Minuterie de heartbeat limitée dans un onglet en arrière-plan", "Exécutez le heartbeat [] dans un web worker ou sur Node"],
+        ["1006 après une pause de code ou une boucle surchargée", "Heartbeat interrompu au-delà de ~2,5 secondes", "Envoyez [] sur un intervalle fiable de 2,5s, en plus des trames entrantes"],
+        ["1006 après 30 à 120 secondes de silence", "Un proxy, un NAT ou un pare-feu a coupé une liaison TCP inactive", "Maintenez les heartbeats actifs pour que la liaison ne semble jamais inactive"],
+        ["1006 juste autour de la barre des 90 minutes", "Le jeton d'accès a expiré", "Renouvelez le jeton ~15 minutes avant son échéance"],
+        ["1006 au moment où vous vous connectez ailleurs", "Une nouvelle session vous a fait dépasser la limite de 2 sessions", "Renouvelez au lieu de vous reconnecter ; une seule session par compte"],
+        ["Tempêtes de 1006, puis un long blocage", "Une boucle de reconnexion serrée a déclenché la pénalité de requêtes", "Backoff exponentiel avec jitter, plafonné à 30-60s"],
+      ],
+    },
+    { type: "heading", text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph", html: "Une couche de reconnexion, un heartbeat résistant au throttling, un système de renouvellement de jeton et une relecture des abonnements représentent beaucoup de plomberie à bien faire soi-même, et un seul cas limite oublié fait tomber vos ordres au pire moment. PickMyTrade se place entre TradingView et Tradovate et gère tout cela pour vous :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connexions WebSocket gérées</strong> avec reconnexion et réautorisation automatiques, pour qu'un 1006 devienne un simple incident plutôt qu'une panne.",
+        "<strong class='text-white'>Heartbeats toujours actifs</strong> exécutés côté serveur, bien à l'abri du throttling des onglets du navigateur.",
+        "<strong class='text-white'>Renouvellement automatique du jeton</strong> et une session unique et propre par compte, pour qu'une expiration à 90 minutes ou une seconde connexion égarée ne vous mette jamais hors ligne.",
+        "<strong class='text-white'>Reconnexions respectueuses des limites de requêtes</strong> avec un backoff raisonnable, pour que la récupération ne se transforme jamais en blocage par pénalité de requêtes.",
+      ],
+    },
+    { type: "paragraph", html: "Le résultat : vos alertes TradingView atteignent Tradovate de manière fiable, sans que vous ayez à écrire ni à surveiller la moindre ligne de code du cycle de vie WebSocket." },
+  ], it: [
+    { type: "paragraph", html: "Il suo WebSocket Tradovate sta alimentando felicemente un bot e, all'improvviso, si interrompe con il <strong class='text-white'>codice di chiusura 1006</strong>. Nessun testo del motivo, nessun messaggio di chiusura, nulla nei log a parte qualche variante di &ldquo;connessione chiusa in modo anomalo.&rdquo; È uno dei fallimenti più frustranti nell'automazione di Tradovate proprio perché il 1006 non le dice quasi nulla. La buona notizia: raramente è necessario risolvere il mistero. Un 1006 significa che la connessione è morta senza un handshake pulito, e la soluzione affidabile è far sì che il suo client si <strong class='text-white'>riconnetta e si riautorizzi automaticamente</strong> nell'istante in cui accade: mantenere attivi gli heartbeat, individuare la caduta, avviare un nuovo socket, effettuare nuovamente l'accesso e riabbonarsi. Un bridge come PickMyTrade fa esattamente questo dietro le quinte, in modo che i suoi avvisi di TradingView continuino a raggiungere Tradovate anche quando uno script grezzo sarebbe rimasto muto." },
+    {
+      type: "checklist",
+      heading: "Lista di controllo rapida per il codice di chiusura 1006",
+      items: [
+        "<strong class='text-white'>Consideri il 1006 come un sintomo.</strong> Significa che il socket è caduto senza un frame di chiusura, non che un elemento specifico sia rotto.",
+        "<strong class='text-white'>Invii heartbeat.</strong> Invii un frame vuoto <code>[]</code> circa ogni <strong class='text-white'>2,5 secondi</strong>. Se li salta, il server la disconnette.",
+        "<strong class='text-white'>Si riconnetta automaticamente a ogni chiusura.</strong> Non faccia distinzioni in base al codice. Si riconnetta sia in caso di un <code>1000</code> pulito sia di un <code>1006</code>.",
+        "<strong class='text-white'>Riautorizzi e si riabboni.</strong> Un socket nuovo non è autenticato, e le sottoscrizioni di quotazioni e di sincronizzazione utente non sopravvivono a una riconnessione.",
+        "<strong class='text-white'>Rinnovi, non effettui un nuovo accesso.</strong> Rinnovare il token mantiene il socket attivo; un accesso completamente nuovo può espellere la sua sessione e causare la caduta.",
+        "<strong class='text-white'>Applichi un backoff con jitter.</strong> Distanzi i tentativi e limiti il loro numero per non superare i limiti di richieste di Tradovate.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa il “codice di chiusura 1006”" },
+    { type: "paragraph", html: "I codici di chiusura WebSocket sono definiti dal protocollo stesso. Una chiusura pulita invia il codice <code>1000</code> (chiusura normale) insieme a un frame di chiusura che ne spiega il motivo. Il codice <strong class='text-white'>1006</strong> è diverso: è un codice riservato che la sua libreria WebSocket assegna quando la connessione svanisce <em>senza</em> che arrivi mai un frame di chiusura. In altre parole, la pipe TCP sottostante al socket si è interrotta, e nessuna delle due parti ha avuto la possibilità di salutarsi correttamente. Ecco perché il 1006 non porta mai un motivo leggibile da un essere umano. Non c'è nulla da leggere, perché il messaggio che lo avrebbe contenuto non è mai arrivato a destinazione." },
+    { type: "paragraph", html: "È utile sapere come comunica normalmente il socket di Tradovate. Ogni frame inviato dal server è contrassegnato da un unico carattere iniziale: un frame <code>o</code> è il messaggio di <em>apertura</em> che riceve nel momento in cui il socket si connette ed è il suo segnale per autenticarsi; un frame <code>a</code> trasporta un array di dati JSON (quotazioni, aggiornamenti degli ordini, risposte di sincronizzazione); un frame <code>h</code> è un heartbeat; e un frame <code>c</code> è una <em>chiusura</em> ordinata. Quando Tradovate chiude intenzionalmente, invia <code>c[1000,&ldquo;...&rdquo;]</code> con un messaggio che spiega il motivo. Un 1006 è l'opposto di quel <code>c</code> ordinato: nessun frame di chiusura, solo un socket morto e il codice di chiusura anomala della libreria." },
+    { type: "paragraph", html: "Quindi smetta di cercare un messaggio che non arriverà mai, e si chieda invece cosa potrebbe aver interrotto la connessione TCP sotto un socket di lunga durata. Quella breve lista è dove si trova ogni soluzione reale." },
+    { type: "heading", text: "Le principali cause del codice di chiusura 1006 nel 2026" },
+    { type: "heading", text: "1. Heartbeat mancati (la regola dei 2,5 secondi)" },
+    { type: "paragraph", html: "Questa è la causa più spesso trascurata. Una volta accettato il suo frame <code>authorize</code>, il socket di Tradovate si aspetta un heartbeat costante dal client: un array JSON vuoto, scritto letteralmente come <code>[]</code>, inviato circa ogni <strong class='text-white'>2,5 secondi</strong>. Questi piccoli frame dimostrano che la connessione è viva. Se si interrompono, il server potrebbe smettere silenziosamente di inviare dati o chiudere la connessione, cosa che sul suo lato si manifesta come un 1006. Se le disconnessioni si concentrano dopo una pausa nel codice o un event loop occupato, sospetti prima dell'heartbeat." },
+    { type: "heading", text: "2. Limitazione delle schede del browser" },
+    { type: "paragraph", html: "Se il socket viene eseguito in un browser, c'è una trappola insidiosa. Quando la scheda che contiene la sua app non è quella attiva, Chrome e gli altri browser riducono la priorità di <code>setInterval</code> e <code>setTimeout</code>. Il suo heartbeat di 2,5 secondi slitta a ogni diversi secondi, il server rileva una connessione stagnante, e il socket si chiude con 1006 nel momento in cui cambia scheda. La soluzione è eseguire il ciclo di heartbeat in un <strong class='text-white'>web worker</strong> (i worker non subiscono la stessa limitazione) oppure eseguire l'intero processo come un <strong class='text-white'>processo Node</strong> completamente al di fuori del browser." },
+    { type: "heading", text: "3. Timeout di proxy, NAT o firewall inattivi" },
+    { type: "paragraph", html: "Qualsiasi elemento posto tra la sua macchina e Tradovate può interrompere una connessione che ritiene inattiva. I proxy aziendali, i bilanciatori di carico, le tabelle NAT e i router domestici tagliano comunemente le connessioni TCP inattive dopo 30-120 secondi, e raramente inviano un frame di chiusura quando lo fanno. Questo è un classico caso di 1006, ed è un heartbeat correttamente cadenzato a mantenere il collegamento sufficientemente attivo da sopravvivere." },
+    { type: "heading", text: "4. Scadenza del token o un secondo accesso che ruba la sessione" },
+    { type: "paragraph", html: "Un token di accesso di Tradovate ha una durata di circa 90 minuti, e lasciarlo scadere mentre il socket è connesso può interrompere la connessione. Peggio ancora, Tradovate consente solo <strong class='text-white'>due sessioni simultanee</strong> per account, e crearne una terza chiude la più vecchia. Se un altro script, un test manuale o un nuovo flusso di accesso richiede un nuovo token per lo stesso account, può espellere la sessione su cui si appoggia il suo socket, manifestandosi di nuovo come un 1006. Lo schema sicuro è <em>rinnovare</em> il token con un timer anziché effettuare nuovamente l'accesso, il che mantiene attiva la sessione esistente, e quindi il socket." },
+    { type: "heading", text: "5. Instabilità di rete e tempeste di riconnessione" },
+    { type: "paragraph", html: "Anche le semplici cadute di rete causano 1006: un collegamento Wi-Fi instabile, un VPS con un vicino rumoroso, un breve intoppo del provider internet. Questo è in una certa misura inevitabile. La trappola sta in come risponde. Se la sua logica di riconnessione si attiva in un ciclo serrato non appena rileva una chiusura, può sommergere l'endpoint di Tradovate di tentativi di connessione, attivare la sua penalità sulle richieste, e trasformare un intoppo di due secondi in un blocco di più minuti. Il backoff qui non è opzionale." },
+    { type: "heading", text: "Come risolvere il codice di chiusura 1006: passo dopo passo" },
+    { type: "heading", text: "Racchiuda il socket e si riconnetta a ogni chiusura" },
+    {
+      type: "steps",
+      items: [
+        { title: "Gestisca l'intero ciclo di vita", html: "Inserisca il suo WebSocket all'interno di una classe o funzione che gestisce l'intero ciclo di vita: connessione, autorizzazione, sottoscrizione, heartbeat e smontaggio." },
+        { title: "Colleghi un unico gestore di chiusura", html: "Colleghi un unico gestore di chiusura che si attivi per <em>qualsiasi</em> chiusura, pulita o anomala. Non faccia distinzioni in base al codice. Sia un <code>1000</code> sia un <code>1006</code> significano &ldquo;il socket non c'è più, ricostruiscilo.&rdquo;" },
+        { title: "Elimini il socket morto e pianifichi una riconnessione", html: "Alla chiusura, elimini tutti i riferimenti al socket morto, cancelli il suo timer di heartbeat e pianifichi una riconnessione. Non riutilizzi mai un oggetto socket chiuso." },
+        { title: "Salvi lo stato prima dello smontaggio", html: "Prima di smontarlo, salvi lo stato che le servirà per ripristinare: a quali contratti era sottoscritto, se era aperta una richiesta di sincronizzazione utente, e il suo token attuale." },
+      ],
+    },
+    { type: "heading", text: "Mantenga attivo l'heartbeat" },
+    {
+      type: "steps",
+      items: [
+        { title: "Avvii l'heartbeat una volta autorizzato", html: "Non appena il suo frame <code>authorize</code> viene accettato, inizi a inviare un frame vuoto <code>[]</code> ogni <strong class='text-white'>2,5 secondi</strong>." },
+        { title: "Sposti i timer del browser in un web worker", html: "Se si trova in un browser, sposti quel timer in un web worker in modo che una scheda in background non possa limitarlo. Su Node, un semplice intervallo va bene." },
+        { title: "Monitori anche il lato opposto", html: "Monitori anche il lato opposto. Se passano più di pochi secondi senza alcun frame dal server, consideri la connessione morta e forzi una riconnessione anziché aspettare." },
+      ],
+    },
+    { type: "heading", text: "Riautorizzi e riabboni il nuovo socket" },
+    {
+      type: "steps",
+      items: [
+        { title: "Attenda il frame di apertura", html: "Attenda il frame di apertura <code>o</code> sul nuovo socket. Solo a quel punto è pronto per autenticarsi." },
+        { title: "Invii nuovamente il frame authorize", html: "Invii nuovamente il frame <code>authorize</code> con un token di accesso valido, formattato esattamente come specificato dalla documentazione API attuale (la parola chiave request, un id, poi il token, con i separatori a riga vuota corretti)." },
+        { title: "Ripeta ogni sottoscrizione", html: "Una volta riuscita l'autorizzazione, ripeta ogni sottoscrizione a partire dallo stato salvato: sottoscrizioni di quotazioni, richieste di sincronizzazione utente e qualsiasi altra cosa gestita dal vecchio socket." },
+        { title: "Riconcili dopo l'interruzione", html: "Riconcili dopo l'interruzione. Recuperi le posizioni attuali e gli ordini in corso in modo che la sua vista corrisponda alla realtà, poiché potrebbero essersi verificati eventi mentre era disconnesso." },
+      ],
+    },
+    { type: "heading", text: "Rinnovi il token con un timer, non crei una nuova sessione" },
+    {
+      type: "steps",
+      items: [
+        { title: "Memorizzi la scadenza e imposti un timer di rinnovo", html: "Al primo accesso, memorizzi la scadenza del token e imposti un timer per rinnovarlo circa 15 minuti prima che scada." },
+        { title: "Rinnovi tramite l'endpoint di rinnovo", html: "Rinnovi tramite l'endpoint di rinnovo, che estende la sua sessione senza un nuovo accesso. Il socket connesso continua a funzionare senza bisogno di altro." },
+        { title: "Non avvii mai un secondo accesso", html: "Non avvii mai un accesso completamente nuovo per un account che ha già un socket attivo. Ciò può farle superare il limite di due sessioni e far cadere il socket che sta cercando di proteggere." },
+      ],
+    },
+    { type: "heading", text: "Applichi un backoff con jitter" },
+    {
+      type: "steps",
+      items: [
+        { title: "Inizi con uno o due secondi", html: "Alla prima riconnessione, attenda uno o due secondi. A ogni ulteriore fallimento, raddoppi circa il ritardo." },
+        { title: "Aggiunga un piccolo scarto casuale", html: "Aggiunga un piccolo scarto casuale a ogni ritardo in modo che molti client non riprovino tutti nello stesso istante e non sovraccarichino l'endpoint insieme." },
+        { title: "Limiti il massimo", html: "Limiti il massimo a 30-60 secondi. Un backoff limitato e con jitter si riprende rapidamente da un intoppo senza trasformarsi in un blocco per limite di richieste autoinflitto." },
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Causa probabile", "Soluzione"],
+      rows: [
+        ["1006 pochi secondi dopo il cambio di scheda del browser", "Timer di heartbeat limitato in una scheda in background", "Esegua l'heartbeat [] in un web worker o su Node"],
+        ["1006 dopo una pausa nel codice o un ciclo occupato", "Heartbeat bloccato oltre ~2,5 secondi", "Invii [] con un intervallo affidabile di 2,5s, oltre che sui frame in arrivo"],
+        ["1006 dopo 30-120 secondi di inattività", "Proxy, NAT o firewall ha interrotto un collegamento TCP inattivo", "Mantenga gli heartbeat attivi in modo che il collegamento non appaia mai inattivo"],
+        ["1006 proprio intorno alla soglia dei 90 minuti", "Token di accesso scaduto", "Rinnovi il token ~15 minuti prima della scadenza"],
+        ["1006 nel momento in cui accede altrove", "Una nuova sessione le ha fatto superare il limite di 2 sessioni", "Rinnovi invece di accedere di nuovo; una sessione per account"],
+        ["Tempeste di 1006, seguite da un lungo blocco", "Un ciclo di riconnessione serrato ha attivato la penalità sulle richieste", "Backoff esponenziale con jitter, limitato a 30-60s"],
+      ],
+    },
+    { type: "heading", text: "Prevenga questo con PickMyTrade" },
+    { type: "paragraph", html: "Un livello di riconnessione, un heartbeat resistente al throttling, un sistema di rinnovo del token e una ripetizione delle sottoscrizioni sono molti dettagli tecnici da gestire correttamente a mano, e un solo caso limite trascurato fa cadere i suoi ordini nel momento peggiore. PickMyTrade si colloca tra TradingView e Tradovate e gestisce tutto questo per lei:" },
+    {
+      type: "list",
+      items: [
+        "Connessioni <strong class='text-white'>WebSocket gestite</strong> con riconnessione e riautorizzazione automatiche, in modo che un 1006 diventi un semplice intoppo anziché un'interruzione.",
+        "<strong class='text-white'>Heartbeat sempre attivi</strong> eseguiti lato server, ben al riparo dalla limitazione delle schede del browser.",
+        "<strong class='text-white'>Rinnovo automatico del token</strong> e un'unica sessione pulita per account, in modo che una scadenza a 90 minuti o un secondo accesso accidentale non la mettano mai fuori linea.",
+        "<strong class='text-white'>Riconnessioni sicure rispetto ai limiti di richieste</strong> con un backoff ragionevole, in modo che il ripristino non si trasformi mai in un blocco per penalità sulle richieste.",
+      ],
+    },
+    { type: "paragraph", html: "Il risultato: i suoi avvisi di TradingView raggiungono Tradovate in modo affidabile senza che lei debba scrivere o supervisionare una sola riga di codice del ciclo di vita del WebSocket." },
+  ] },
+  ctaHeading: { en: "Never Let a 1006 Take You Offline", de: "Lassen Sie sich von einem 1006 nie offline schicken", es: "Nunca deje que un 1006 lo deje fuera de línea", fr: "Ne laissez jamais un 1006 vous mettre hors ligne", it: "Non lasci mai che un 1006 la metta fuori linea" },
+  ctaText: { en: "PickMyTrade manages the reconnect, re-authorization, and heartbeat logic for you, so a dropped Tradovate WebSocket costs you a second, not a session.", de: "PickMyTrade übernimmt die Reconnect-, Reautorisierungs- und Heartbeat-Logik für Sie, sodass ein abgebrochener Tradovate-WebSocket Sie eine Sekunde kostet, nicht eine Sitzung.", es: "PickMyTrade gestiona por usted la reconexión, la reautorización y la lógica de heartbeat, de modo que un WebSocket de Tradovate caído le cuesta un segundo, no una sesión.", fr: "PickMyTrade gère pour vous la logique de reconnexion, de réautorisation et de heartbeat, afin qu'un WebSocket Tradovate coupé ne vous coûte qu'une seconde, pas une session.", it: "PickMyTrade gestisce per lei la logica di riconnessione, riautorizzazione e heartbeat, in modo che un WebSocket di Tradovate caduto le costi un secondo, non una sessione." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testphase", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Inizi la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does WebSocket close code 1006 mean on Tradovate?", a: "Code 1006 is an abnormal closure. The underlying TCP connection dropped without either side sending a proper WebSocket close frame, so your library reports 1006 with no reason text. It is a symptom, not a root cause: something below the WebSocket layer (a timeout, a reset, a missed heartbeat, or a dropped network) killed the pipe before a clean 1000 close could happen." },
+    { q: "Why does my Tradovate WebSocket keep disconnecting with 1006?", a: "The usual triggers are missed heartbeats (Tradovate expects an empty array frame roughly every 2.5 seconds), an idle proxy or firewall timing out the TCP connection, the access token expiring or being invalidated by a second login, or plain network instability on a VPS or home connection. Because 1006 hides the exact reason, the practical fix is to reconnect and re-authorize automatically instead of chasing one cause." },
+    { q: "How often does the Tradovate WebSocket need a heartbeat?", a: "About every 2.5 seconds. Once your authorize frame is accepted, the client should send an empty JSON array frame written as [] on that interval. If those heartbeats stall, the server can stop sending data or close the connection outright, which often surfaces as a 1006 on your end." },
+    { q: "Do I need to re-authorize after the socket reconnects?", a: "Yes. A brand-new socket starts unauthenticated. After it opens you have to send the authorize frame with a valid access token again, then re-send every subscription (quotes, user sync, and so on). Subscriptions and authorization do not carry over from the socket that just died." },
+    { q: "Does renewing my token drop the WebSocket?", a: "Renewing does not. Calling the renew endpoint keeps your existing session valid, and the already-connected socket stays up with nothing further to do. What does drop it is requesting a brand-new token with a fresh login: Tradovate allows only two concurrent sessions, so a new session can boot the older one your socket is riding on and you see a 1006." },
+    { q: "Why does 1006 happen more when the browser tab is in the background?", a: "Chrome and other browsers throttle setInterval and setTimeout in inactive tabs to save power. That throttling delays your 2.5-second heartbeat, the server sees a stalled connection, and the socket closes with 1006. Running the heartbeat in a web worker or on a Node process, rather than a background tab, avoids the throttle." },
+    { q: "How should I space out reconnect attempts after a 1006?", a: "Use exponential backoff with a little random jitter. Start around one to two seconds, roughly double the delay on each failed attempt, add a small random offset so many clients do not retry in lockstep, and cap the maximum at 30 to 60 seconds. Reconnecting in a tight loop can trip Tradovate's request penalty and make the outage last longer." },
+    { q: "Can I stop close code 1006 completely?", a: "No connection is immune to 1006, because networks, proxies, and servers occasionally drop long-lived sockets. The goal is not to eliminate it but to make it a non-event: keep heartbeats flowing, detect the close instantly, reconnect and re-authorize on a backoff, and re-subscribe. Done right, a 1006 costs you a second or two instead of taking your bot offline." },
+  ], de: [
+    { q: "Was bedeutet WebSocket-Schließungscode 1006 bei Tradovate?", a: "Code 1006 ist eine abnormale Schließung. Die zugrunde liegende TCP-Verbindung ist abgebrochen, ohne dass eine der beiden Seiten einen ordentlichen WebSocket-Schließungs-Frame gesendet hat, sodass Ihre Bibliothek 1006 ohne Grundtext meldet. Es ist ein Symptom, keine Grundursache: Etwas unterhalb der WebSocket-Schicht (ein Timeout, ein Reset, ein verpasster Heartbeat oder ein Netzwerkausfall) hat die Leitung gekappt, bevor eine saubere 1000-Schließung stattfinden konnte." },
+    { q: "Warum trennt sich mein Tradovate-WebSocket immer wieder mit 1006?", a: "Die üblichen Auslöser sind verpasste Heartbeats (Tradovate erwartet etwa alle 2,5 Sekunden einen leeren Array-Frame), ein inaktiver Proxy oder eine Firewall, die die TCP-Verbindung timeoutet, ein ablaufender oder durch eine zweite Anmeldung ungültig gewordener Zugriffstoken, oder schlicht Netzwerkinstabilität auf einem VPS oder einer Heimverbindung. Da 1006 den genauen Grund verbirgt, besteht die praktische Lösung darin, automatisch neu zu verbinden und zu reautorisieren, statt einer einzelnen Ursache nachzujagen." },
+    { q: "Wie oft braucht der Tradovate-WebSocket einen Heartbeat?", a: "Etwa alle 2,5 Sekunden. Sobald Ihr Authorize-Frame akzeptiert wurde, sollte der Client in diesem Intervall einen leeren JSON-Array-Frame senden, geschrieben als []. Bleiben diese Heartbeats aus, kann der Server aufhören, Daten zu senden, oder die Verbindung direkt schließen, was auf Ihrer Seite oft als 1006 erscheint." },
+    { q: "Muss ich mich nach der Neuverbindung des Sockets erneut autorisieren?", a: "Ja. Ein komplett neuer Socket startet unauthentifiziert. Nachdem er sich geöffnet hat, müssen Sie den Authorize-Frame mit einem gültigen Zugriffstoken erneut senden und dann jedes Abonnement erneut übertragen (Kurse, User-Sync und so weiter). Abonnements und Autorisierung werden vom gerade abgestorbenen Socket nicht übernommen." },
+    { q: "Trennt das Erneuern meines Tokens den WebSocket?", a: "Das Erneuern nicht. Der Aufruf des Renew-Endpunkts hält Ihre bestehende Sitzung gültig, und der bereits verbundene Socket bleibt ohne weiteres Zutun aktiv. Was ihn trennt, ist die Anforderung eines komplett neuen Tokens über eine neue Anmeldung: Tradovate erlaubt nur zwei gleichzeitige Sitzungen, sodass eine neue Sitzung die ältere beenden kann, auf der Ihr Socket reitet, und Sie einen 1006 sehen." },
+    { q: "Warum tritt 1006 häufiger auf, wenn der Browser-Tab im Hintergrund ist?", a: "Chrome und andere Browser drosseln setInterval und setTimeout in inaktiven Tabs, um Energie zu sparen. Diese Drosselung verzögert Ihren 2,5-Sekunden-Heartbeat, der Server sieht eine stockende Verbindung, und der Socket schließt mit 1006. Wenn Sie den Heartbeat in einem Web Worker oder auf einem Node-Prozess statt in einem Hintergrund-Tab laufen lassen, umgehen Sie die Drosselung." },
+    { q: "Wie sollte ich Neuverbindungsversuche nach einem 1006 zeitlich staffeln?", a: "Verwenden Sie exponentiellen Backoff mit etwas zufälligem Jitter. Beginnen Sie bei etwa ein bis zwei Sekunden, verdoppeln Sie die Verzögerung bei jedem gescheiterten Versuch ungefähr, fügen Sie einen kleinen Zufallsversatz hinzu, damit nicht viele Clients im Gleichschritt erneut versuchen, und begrenzen Sie das Maximum auf 30 bis 60 Sekunden. Eine Neuverbindung in einer engen Schleife kann Tradovates Anfrage-Strafe auslösen und den Ausfall länger dauern lassen." },
+    { q: "Kann ich Schließungscode 1006 vollständig verhindern?", a: "Keine Verbindung ist immun gegen 1006, weil Netzwerke, Proxys und Server gelegentlich langlebige Sockets trennen. Das Ziel ist nicht, es zu eliminieren, sondern es zum Nicht-Ereignis zu machen: Heartbeats am Laufen halten, die Schließung sofort erkennen, mit Backoff neu verbinden und reautorisieren, und neu abonnieren. Richtig gemacht kostet Sie ein 1006 ein bis zwei Sekunden, statt Ihren Bot offline zu nehmen." },
+  ], es: [
+    { q: "¿Qué significa el código de cierre de WebSocket 1006 en Tradovate?", a: "El código 1006 es un cierre anómalo. La conexión TCP subyacente se cayó sin que ninguno de los dos lados enviara un frame de cierre de WebSocket adecuado, por lo que su librería informa 1006 sin texto de motivo. Es un síntoma, no una causa raíz: algo por debajo de la capa de WebSocket (un tiempo de espera agotado, un reset, un heartbeat omitido o una red caída) mató la tubería antes de que pudiera producirse un cierre 1000 limpio." },
+    { q: "¿Por qué mi WebSocket de Tradovate se sigue desconectando con 1006?", a: "Los desencadenantes habituales son los heartbeats omitidos (Tradovate espera un frame de array vacío aproximadamente cada 2.5 segundos), un proxy o firewall inactivo que agota el tiempo de espera de la conexión TCP, el token de acceso que expira o queda invalidado por un segundo inicio de sesión, o simplemente inestabilidad de red en un VPS o una conexión doméstica. Como el 1006 oculta el motivo exacto, la solución práctica es reconectarse y reautorizarse automáticamente en lugar de perseguir una única causa." },
+    { q: "¿Con qué frecuencia necesita un heartbeat el WebSocket de Tradovate?", a: "Aproximadamente cada 2.5 segundos. Una vez que se acepta su frame authorize, el cliente debe enviar un frame de array JSON vacío escrito como [] en ese intervalo. Si esos heartbeats se detienen, el servidor puede dejar de enviar datos o cerrar la conexión directamente, lo que a menudo aparece en su lado como un 1006." },
+    { q: "¿Necesito reautorizar después de que el socket se reconecte?", a: "Sí. Un socket completamente nuevo comienza sin autenticar. Una vez que se abre, tiene que volver a enviar el frame authorize con un token de acceso válido y, después, reenviar todas las suscripciones (cotizaciones, sincronización de usuario, etc.). Las suscripciones y la autorización no se conservan del socket que acaba de morir." },
+    { q: "¿Renovar mi token corta el WebSocket?", a: "Renovar no lo hace. Llamar al endpoint de renovación mantiene válida su sesión existente, y el socket ya conectado se mantiene activo sin necesidad de hacer nada más. Lo que sí lo corta es solicitar un token completamente nuevo con un nuevo inicio de sesión: Tradovate solo permite dos sesiones simultáneas, por lo que una nueva sesión puede expulsar la más antigua sobre la que va montado su socket, y usted ve un 1006." },
+    { q: "¿Por qué el 1006 ocurre más cuando la pestaña del navegador está en segundo plano?", a: "Chrome y otros navegadores limitan setInterval y setTimeout en las pestañas inactivas para ahorrar energía. Esa limitación retrasa su heartbeat de 2.5 segundos, el servidor detecta una conexión estancada, y el socket se cierra con 1006. Ejecutar el heartbeat en un web worker o en un proceso de Node, en lugar de en una pestaña en segundo plano, evita esa limitación." },
+    { q: "¿Cómo debo espaciar los intentos de reconexión después de un 1006?", a: "Utilice un backoff exponencial con un poco de jitter aleatorio. Comience alrededor de uno a dos segundos, duplique aproximadamente el retraso en cada intento fallido, añada un pequeño desplazamiento aleatorio para que muchos clientes no reintenten al mismo ritmo, y limite el máximo a entre 30 y 60 segundos. Reconectarse en un bucle apretado puede activar la penalización de solicitudes de Tradovate y hacer que la interrupción dure más." },
+    { q: "¿Puedo eliminar por completo el código de cierre 1006?", a: "Ninguna conexión es inmune al 1006, porque las redes, los proxies y los servidores ocasionalmente cortan los sockets de larga duración. El objetivo no es eliminarlo, sino convertirlo en algo intrascendente: mantener los heartbeats activos, detectar el cierre al instante, reconectarse y reautorizarse con un backoff, y volver a suscribirse. Hecho correctamente, un 1006 le cuesta uno o dos segundos en lugar de dejar su bot fuera de línea." },
+  ], fr: [
+    { q: "Que signifie le code de fermeture WebSocket 1006 sur Tradovate ?", a: "Le code 1006 est une fermeture anormale. La connexion TCP sous-jacente s'est coupée sans qu'aucune des deux parties n'envoie de trame de fermeture WebSocket correcte, donc votre bibliothèque signale 1006 sans texte explicatif. C'est un symptôme, pas une cause racine : quelque chose sous la couche WebSocket (un timeout, un reset, un heartbeat manqué, ou une coupure réseau) a tué le tuyau avant qu'une fermeture 1000 propre ne puisse avoir lieu." },
+    { q: "Pourquoi mon WebSocket Tradovate continue-t-il de se déconnecter avec 1006 ?", a: "Les déclencheurs habituels sont des heartbeats manqués (Tradovate attend une trame de tableau vide environ toutes les 2,5 secondes), un proxy ou un pare-feu inactif qui fait expirer la connexion TCP, le jeton d'accès qui expire ou qui est invalidé par une seconde connexion, ou une simple instabilité réseau sur un VPS ou une connexion domestique. Comme 1006 masque la raison exacte, la solution pratique consiste à se reconnecter et à se réautoriser automatiquement plutôt que de chercher une cause unique." },
+    { q: "À quelle fréquence le WebSocket Tradovate a-t-il besoin d'un heartbeat ?", a: "Environ toutes les 2,5 secondes. Une fois votre trame authorize acceptée, le client doit envoyer une trame de tableau JSON vide, écrite [], à cet intervalle. Si ces heartbeats s'interrompent, le serveur peut cesser d'envoyer des données ou fermer purement et simplement la connexion, ce qui se manifeste souvent de votre côté par un 1006." },
+    { q: "Dois-je me réautoriser après la reconnexion du socket ?", a: "Oui. Un tout nouveau socket démarre non authentifié. Une fois ouvert, vous devez à nouveau envoyer la trame authorize avec un jeton d'accès valide, puis renvoyer chaque abonnement (cotations, synchronisation utilisateur, etc.). Les abonnements et l'autorisation ne se reportent pas depuis le socket qui vient de mourir." },
+    { q: "Le renouvellement de mon jeton coupe-t-il le WebSocket ?", a: "Le renouvellement, non. Appeler le endpoint de renouvellement maintient votre session existante valide, et le socket déjà connecté reste actif sans rien d'autre à faire. Ce qui le coupe, c'est de demander un tout nouveau jeton via une nouvelle connexion : Tradovate n'autorise que deux sessions simultanées, donc une nouvelle session peut expulser l'ancienne sur laquelle repose votre socket, et vous voyez alors un 1006." },
+    { q: "Pourquoi le 1006 se produit-il davantage lorsque l'onglet du navigateur est en arrière-plan ?", a: "Chrome et les autres navigateurs limitent setInterval et setTimeout dans les onglets inactifs pour économiser de l'énergie. Cette limitation retarde votre heartbeat de 2,5 secondes, le serveur voit une connexion stagnante, et le socket se ferme avec 1006. Exécuter le heartbeat dans un web worker ou sur un processus Node, plutôt que dans un onglet en arrière-plan, évite cette limitation." },
+    { q: "Comment dois-je espacer les tentatives de reconnexion après un 1006 ?", a: "Utilisez un backoff exponentiel avec un peu de jitter aléatoire. Commencez autour d'une à deux secondes, doublez à peu près le délai à chaque tentative échouée, ajoutez un petit décalage aléatoire pour que de nombreux clients ne réessaient pas tous en même temps, et plafonnez le maximum à 30-60 secondes. Se reconnecter en boucle serrée peut déclencher la pénalité de requêtes de Tradovate et prolonger la panne." },
+    { q: "Puis-je éliminer complètement le code de fermeture 1006 ?", a: "Aucune connexion n'est à l'abri d'un 1006, car les réseaux, proxys et serveurs coupent occasionnellement les sockets de longue durée. L'objectif n'est pas de l'éliminer mais d'en faire un non-événement : maintenez les heartbeats actifs, détectez la fermeture instantanément, reconnectez-vous et réautorisez-vous avec un backoff, puis réabonnez-vous. Bien fait, un 1006 ne vous coûte qu'une seconde ou deux au lieu de mettre votre bot hors ligne." },
+  ], it: [
+    { q: "Cosa significa il codice di chiusura WebSocket 1006 su Tradovate?", a: "Il codice 1006 è una chiusura anomala. La connessione TCP sottostante è caduta senza che nessuna delle due parti inviasse un corretto frame di chiusura WebSocket, quindi la sua libreria segnala 1006 senza testo del motivo. È un sintomo, non una causa radice: qualcosa al di sotto del livello WebSocket (un timeout, un reset, un heartbeat mancato o una rete caduta) ha interrotto la pipe prima che potesse avvenire una chiusura 1000 pulita." },
+    { q: "Perché il mio WebSocket di Tradovate continua a disconnettersi con 1006?", a: "I fattori scatenanti abituali sono heartbeat mancati (Tradovate si aspetta un frame array vuoto circa ogni 2,5 secondi), un proxy o firewall inattivo che fa scadere il timeout della connessione TCP, il token di accesso che scade o viene invalidato da un secondo accesso, oppure semplice instabilità di rete su un VPS o una connessione domestica. Poiché il 1006 nasconde il motivo esatto, la soluzione pratica è riconnettersi e riautorizzarsi automaticamente invece di inseguire una singola causa." },
+    { q: "Con quale frequenza il WebSocket di Tradovate necessita di un heartbeat?", a: "Circa ogni 2,5 secondi. Una volta accettato il frame authorize, il client dovrebbe inviare un frame array JSON vuoto scritto come [] a quell'intervallo. Se questi heartbeat si bloccano, il server può smettere di inviare dati o chiudere direttamente la connessione, il che spesso si manifesta come un 1006 sul suo lato." },
+    { q: "Devo riautorizzare dopo che il socket si riconnette?", a: "Sì. Un socket completamente nuovo parte non autenticato. Dopo l'apertura, deve inviare di nuovo il frame authorize con un token di accesso valido, e poi reinviare ogni sottoscrizione (quotazioni, sincronizzazione utente e così via). Le sottoscrizioni e l'autorizzazione non vengono mantenute dal socket appena caduto." },
+    { q: "Il rinnovo del token fa cadere il WebSocket?", a: "Il rinnovo no. Chiamare l'endpoint di rinnovo mantiene valida la sua sessione esistente, e il socket già connesso resta attivo senza bisogno di altro. Ciò che invece lo fa cadere è richiedere un token completamente nuovo con un nuovo accesso: Tradovate consente solo due sessioni simultanee, quindi una nuova sessione può espellere quella più vecchia su cui si appoggia il suo socket, e lei vede un 1006." },
+    { q: "Perché il 1006 si verifica più spesso quando la scheda del browser è in background?", a: "Chrome e altri browser limitano setInterval e setTimeout nelle schede inattive per risparmiare energia. Questa limitazione ritarda il suo heartbeat di 2,5 secondi, il server rileva una connessione bloccata, e il socket si chiude con 1006. Eseguire l'heartbeat in un web worker o su un processo Node, anziché in una scheda in background, evita la limitazione." },
+    { q: "Come dovrei distanziare i tentativi di riconnessione dopo un 1006?", a: "Utilizzi un backoff esponenziale con un po' di jitter casuale. Inizi intorno a uno o due secondi, raddoppi circa il ritardo a ogni tentativo fallito, aggiunga un piccolo scarto casuale in modo che molti client non riprovino in sincronia, e limiti il massimo a 30-60 secondi. Riconnettersi in un ciclo serrato può attivare la penalità sulle richieste di Tradovate e prolungare l'interruzione." },
+    { q: "Posso eliminare completamente il codice di chiusura 1006?", a: "Nessuna connessione è immune al 1006, perché reti, proxy e server a volte interrompono i socket di lunga durata. L'obiettivo non è eliminarlo, ma renderlo un evento trascurabile: mantenere attivi gli heartbeat, rilevare la chiusura istantaneamente, riconnettersi e riautorizzarsi con un backoff, e riabbonarsi. Fatto correttamente, un 1006 le costa uno o due secondi invece di mettere il suo bot fuori linea." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Abläufe der Plattform ändern sich mit der Zeit, bestätigen Sie den aktuellen Prozess daher immer in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines educativos e informativos únicamente y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e le procedure della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

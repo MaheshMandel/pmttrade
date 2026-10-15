@@ -1,0 +1,300 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "tradovate-api-place-order";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/how-to/${SLUG}`;
+
+const META_TITLE = "Place Orders via the Tradovate API";
+const META_DESCRIPTION =
+  "Tradovate API place order guide: build the /order/placeOrder payload, set the isAutomated flag, and send authenticated orders to demo or live accounts.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Bestellungen über die Tradovate-API aufgeben", es: "Colocar órdenes mediante la API de Tradovate", fr: "Passer des ordres via l'API Tradovate", it: "Effettuare ordini tramite l'API Tradovate" },
+  dek: { en: "Want to fire an order into Tradovate straight from your own code? Here's how to build the /order/placeOrder request end to end, including the isAutomated flag that trips up a lot of people the first time.", de: "Möchten Sie eine Order direkt aus Ihrem eigenen Code heraus an Tradovate senden? Hier erfahren Sie, wie Sie die /order/placeOrder-Anfrage von Anfang bis Ende aufbauen – inklusive des isAutomated-Flags, das vielen beim ersten Mal Probleme bereitet.", es: "¿Quiere enviar una orden a Tradovate directamente desde su propio código? Así es como se construye la solicitud /order/placeOrder de principio a fin, incluido el indicador isAutomated que suele confundir a muchas personas la primera vez.", fr: "Vous voulez envoyer un ordre à Tradovate directement depuis votre propre code ? Voici comment construire la requête /order/placeOrder de bout en bout, y compris l'indicateur isAutomated qui piège beaucoup de monde la première fois.", it: "Vuole inviare un ordine a Tradovate direttamente dal proprio codice? Ecco come costruire la richiesta /order/placeOrder dall'inizio alla fine, incluso il flag isAutomated che la prima volta manda in confusione molte persone." },
+  readTime: { en: "6 min read", de: "6 Minuten Lesezeit", es: "Lectura de 6 minutos", fr: "Lecture de 6 minutes", it: "Lettura di 6 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "Want to fire an order into Tradovate straight from your own code? Maybe you're building a trading bot, scripting a strategy, or wiring up automation like PickMyTrade. Either way, it comes down to one REST call: <code>/order/placeOrder</code>. Here's how to build that request end to end, including the <code>isAutomated</code> flag that trips up a lot of people the first time." },
+    { type: "heading", text: "What Is the Tradovate placeOrder Endpoint?" },
+    { type: "paragraph", html: "<code>/order/placeOrder</code> is the Tradovate REST endpoint that submits a new order to the exchange from your code instead of the platform UI. You hand it a small JSON payload, the account, the contract, the side, the quantity, and the order type, over an authenticated HTTPS request, and Tradovate hands back the resulting order ID or a failure reason. Every API-driven entry, exit, and bracket is built on this one call." },
+    { type: "heading", text: "Placing an Order via the Tradovate API: Step by Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authenticate and Get an Access Token", html: "You can't place anything without a bearer token first. POST your credentials and app details to <code>/auth/accessTokenRequest</code>, and the response hands you an <code>accessToken</code> that you'll attach to every call after this. Tokens expire after a set window, so renew yours through <code>/auth/renewAccessToken</code> before it lapses, that's faster and cleaner than re-authenticating from scratch." },
+        { title: "Find Your accountId and accountSpec", html: "Every order needs two account identifiers: the numeric <code>accountId</code> and the string <code>accountSpec</code> (your account's name/spec). Call <code>GET /account/list</code> with your bearer token and pull both fields off the account you want to trade. Get either one wrong and Tradovate throws an \"Access is denied\" error instead of a fill." },
+        { title: "Build the placeOrder Payload", html: "Now assemble the JSON body. A basic market order needs six fields plus the compliance flag:" },
+        { title: "Set isAutomated Correctly, Then Send", html: "The <code>isAutomated</code> boolean tells the exchange who actually pulled the trigger. If a human clicks a button in your UI, it's <code>false</code> (the default). If a bot, an algorithm, or any impersonal process fires the order, you <strong class='text-white'>must</strong> set <code>isAutomated: true</code>. This is a hard CME compliance requirement, not an optional nicety. Once the payload is right, POST it to <code>/order/placeOrder</code> on the correct host, <code>demo.tradovateapi.com/v1</code> for simulation or <code>live.tradovateapi.com/v1</code> for real money, with your token in the <code>Authorization: Bearer</code> header." },
+        { title: "Confirm the Order or Read the Failure Reason", html: "Here's the part people miss: a <code>200 OK</code> means the request was accepted, not that the order filled. Margin, risk limits, or a closed market can still stop it cold. So read the response body, a success returns an <code>orderId</code>, while a rejection returns a <code>failureReason</code> and <code>failureText</code> you can log and act on. Then cross-check the fill in the Tradovate Orders panel so you're never trusting the status code alone." },
+      ],
+    },
+    {
+      type: "quote",
+      html: "<code>{</code><br><code>&nbsp;&nbsp;\"accountSpec\": \"YOUR_ACCOUNT_NAME\",</code><br><code>&nbsp;&nbsp;\"accountId\": 123456,</code><br><code>&nbsp;&nbsp;\"action\": \"Buy\",</code><br><code>&nbsp;&nbsp;\"symbol\": \"MESM6\",</code><br><code>&nbsp;&nbsp;\"orderQty\": 1,</code><br><code>&nbsp;&nbsp;\"orderType\": \"Market\",</code><br><code>&nbsp;&nbsp;\"isAutomated\": true</code><br><code>}</code>",
+    },
+    {
+      type: "list",
+      items: [
+        "<code>action</code> is <code>Buy</code> or <code>Sell</code>; <code>orderType</code> accepts <code>Market</code>, <code>Limit</code>, <code>Stop</code>, or <code>StopLimit</code>.",
+        "A <code>Limit</code> order also needs a <code>price</code>; a <code>Stop</code> order needs a <code>stopPrice</code>. Add an optional <code>timeInForce</code> (say <code>Day</code>, <code>GTC</code>, <code>IOC</code>, or <code>FOK</code>) whenever you don't want the default.",
+        "Use the current front-month contract symbol, expired or continuous symbols get rejected.",
+      ],
+    },
+    { type: "heading", text: "Why You'd Need This" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Trading bots</strong>, turn a strategy's signals into live entries and exits with zero manual clicking.",
+        "<strong class='text-white'>Custom risk tooling</strong>, flatten or hedge positions automatically the moment your own rules trip.",
+        "<strong class='text-white'>Bridging platforms</strong>, route alerts from TradingView, Python, or a spreadsheet straight into Tradovate.",
+        "<strong class='text-white'>Backtest-to-live handoff</strong>, reuse the exact order logic you tested, now firing real orders.",
+      ],
+    },
+    { type: "heading", text: "Automate This With PickMyTrade" },
+    { type: "paragraph", html: "Don't feel like managing tokens, account IDs, the <code>isAutomated</code> flag, and rate limits yourself? <strong class='text-white'>PickMyTrade links your TradingView alerts straight to your Tradovate account</strong>, so orders fire automatically, correctly formatted and compliance-flagged, without you writing a single line of API code." },
+  ], de: [
+    { type: "paragraph", html: "Möchten Sie eine Order direkt aus Ihrem eigenen Code heraus an Tradovate senden? Vielleicht bauen Sie einen Trading-Bot, skripten eine Strategie oder richten eine Automatisierung wie PickMyTrade ein. So oder so läuft alles auf einen einzigen REST-Aufruf hinaus: <code>/order/placeOrder</code>. Hier erfahren Sie, wie Sie diese Anfrage von Anfang bis Ende aufbauen – inklusive des <code>isAutomated</code>-Flags, das vielen beim ersten Mal Probleme bereitet." },
+    { type: "heading", text: "Was ist der Tradovate placeOrder-Endpunkt?" },
+    { type: "paragraph", html: "<code>/order/placeOrder</code> ist der Tradovate-REST-Endpunkt, über den eine neue Order aus Ihrem Code heraus an die Börse übermittelt wird – anstatt über die Plattformoberfläche. Sie übergeben ihm einen kleinen JSON-Payload mit Konto, Kontrakt, Seite, Menge und Ordertyp über eine authentifizierte HTTPS-Anfrage, und Tradovate liefert im Gegenzug die resultierende Order-ID oder einen Fehlergrund zurück. Jeder API-gesteuerte Einstieg, Ausstieg und jedes Bracket basiert auf diesem einen Aufruf." },
+    { type: "heading", text: "Eine Order über die Tradovate-API aufgeben: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Authentifizieren und ein Zugriffstoken erhalten", html: "Ohne Bearer-Token können Sie zunächst keine Order aufgeben. Senden Sie Ihre Zugangsdaten und App-Details per POST an <code>/auth/accessTokenRequest</code>, und die Antwort liefert Ihnen einen <code>accessToken</code>, den Sie ab jetzt jedem Aufruf beifügen. Tokens laufen nach einem festgelegten Zeitraum ab – erneuern Sie Ihres daher über <code>/auth/renewAccessToken</code>, bevor es abläuft. Das ist schneller und sauberer, als sich komplett neu zu authentifizieren." },
+        { title: "accountId und accountSpec ermitteln", html: "Jede Order benötigt zwei Kontokennungen: die numerische <code>accountId</code> und die textuelle <code>accountSpec</code> (Name/Spezifikation Ihres Kontos). Rufen Sie <code>GET /account/list</code> mit Ihrem Bearer-Token auf und entnehmen Sie beide Felder dem Konto, mit dem Sie handeln möchten. Ist eines der beiden falsch, gibt Tradovate den Fehler \"Access is denied\" zurück statt eine Ausführung zu melden." },
+        { title: "Den placeOrder-Payload erstellen", html: "Jetzt wird der JSON-Body zusammengestellt. Eine einfache Market-Order benötigt sechs Felder plus das Compliance-Flag:" },
+        { title: "isAutomated korrekt setzen und senden", html: "Der boolesche Wert <code>isAutomated</code> teilt der Börse mit, wer den Auslöser tatsächlich betätigt hat. Klickt ein Mensch auf eine Schaltfläche in Ihrer Benutzeroberfläche, lautet er <code>false</code> (Standardwert). Löst ein Bot, ein Algorithmus oder ein anderer unpersönlicher Prozess die Order aus, <strong class='text-white'>müssen</strong> Sie <code>isAutomated: true</code> setzen. Dies ist eine verbindliche CME-Compliance-Anforderung und keine optionale Nettigkeit. Sobald der Payload korrekt ist, senden Sie ihn per POST an <code>/order/placeOrder</code> auf dem richtigen Host – <code>demo.tradovateapi.com/v1</code> für die Simulation oder <code>live.tradovateapi.com/v1</code> für echtes Geld – mit Ihrem Token im <code>Authorization: Bearer</code>-Header." },
+        { title: "Order bestätigen oder Fehlergrund auslesen", html: "Das wird häufig übersehen: Ein <code>200 OK</code> bedeutet nur, dass die Anfrage akzeptiert wurde – nicht, dass die Order ausgeführt wurde. Margin, Risikolimits oder ein geschlossener Markt können sie trotzdem stoppen. Lesen Sie daher den Antwortkörper: Bei Erfolg wird eine <code>orderId</code> zurückgegeben, bei einer Ablehnung erhalten Sie <code>failureReason</code> und <code>failureText</code>, die Sie protokollieren und darauf reagieren können. Prüfen Sie die Ausführung anschließend zusätzlich im Tradovate-Orders-Panel, damit Sie sich nie allein auf den Statuscode verlassen." },
+      ],
+    },
+    {
+      type: "quote",
+      html: "<code>{</code><br><code>&nbsp;&nbsp;\"accountSpec\": \"YOUR_ACCOUNT_NAME\",</code><br><code>&nbsp;&nbsp;\"accountId\": 123456,</code><br><code>&nbsp;&nbsp;\"action\": \"Buy\",</code><br><code>&nbsp;&nbsp;\"symbol\": \"MESM6\",</code><br><code>&nbsp;&nbsp;\"orderQty\": 1,</code><br><code>&nbsp;&nbsp;\"orderType\": \"Market\",</code><br><code>&nbsp;&nbsp;\"isAutomated\": true</code><br><code>}</code>",
+    },
+    {
+      type: "list",
+      items: [
+        "<code>action</code> ist entweder <code>Buy</code> oder <code>Sell</code>; <code>orderType</code> akzeptiert <code>Market</code>, <code>Limit</code>, <code>Stop</code> oder <code>StopLimit</code>.",
+        "Eine <code>Limit</code>-Order benötigt zusätzlich einen <code>price</code>; eine <code>Stop</code>-Order benötigt einen <code>stopPrice</code>. Fügen Sie ein optionales <code>timeInForce</code> hinzu (z. B. <code>Day</code>, <code>GTC</code>, <code>IOC</code> oder <code>FOK</code>), wenn Sie nicht den Standardwert verwenden möchten.",
+        "Verwenden Sie das aktuelle Front-Month-Kontraktsymbol – abgelaufene oder fortlaufende (continuous) Symbole werden abgelehnt.",
+      ],
+    },
+    { type: "heading", text: "Wozu Sie das brauchen" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Trading-Bots</strong> – verwandeln die Signale einer Strategie ohne manuelles Klicken in Live-Einstiege und -Ausstiege.",
+        "<strong class='text-white'>Individuelles Risikomanagement</strong> – schließt oder hedgt Positionen automatisch, sobald Ihre eigenen Regeln ausgelöst werden.",
+        "<strong class='text-white'>Plattformbrücken</strong> – leiten Alerts aus TradingView, Python oder einer Tabellenkalkulation direkt an Tradovate weiter.",
+        "<strong class='text-white'>Übergang von Backtest zu Live</strong> – nutzen Sie exakt die getestete Orderlogik weiter, jetzt mit echten Orders.",
+      ],
+    },
+    { type: "heading", text: "Automatisieren Sie dies mit PickMyTrade" },
+    { type: "paragraph", html: "Keine Lust, Tokens, Konto-IDs, das <code>isAutomated</code>-Flag und Rate-Limits selbst zu verwalten? <strong class='text-white'>PickMyTrade verbindet Ihre TradingView-Alerts direkt mit Ihrem Tradovate-Konto</strong>, sodass Orders automatisch, korrekt formatiert und compliance-konform ausgelöst werden – ohne dass Sie auch nur eine Zeile API-Code schreiben müssen." },
+  ], es: [
+    { type: "paragraph", html: "¿Quiere enviar una orden a Tradovate directamente desde su propio código? Tal vez esté creando un bot de trading, programando una estrategia o configurando una automatización como PickMyTrade. En cualquier caso, todo se reduce a una llamada REST: <code>/order/placeOrder</code>. A continuación se explica cómo construir esa solicitud de principio a fin, incluido el indicador <code>isAutomated</code> que suele confundir a muchas personas la primera vez." },
+    { type: "heading", text: "¿Qué es el endpoint placeOrder de Tradovate?" },
+    { type: "paragraph", html: "<code>/order/placeOrder</code> es el endpoint REST de Tradovate que envía una nueva orden al mercado desde su código en lugar de la interfaz de la plataforma. Usted le entrega un pequeño payload JSON con la cuenta, el contrato, el lado, la cantidad y el tipo de orden, mediante una solicitud HTTPS autenticada, y Tradovate devuelve el ID de la orden resultante o un motivo de fallo. Cada entrada, salida y bracket impulsados por la API se construyen a partir de esta única llamada." },
+    { type: "heading", text: "Cómo colocar una orden mediante la API de Tradovate: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Autentíquese y obtenga un token de acceso", html: "No puede colocar ninguna orden sin antes obtener un token bearer. Envíe (POST) sus credenciales y los datos de la aplicación a <code>/auth/accessTokenRequest</code>, y la respuesta le entregará un <code>accessToken</code> que deberá adjuntar a cada llamada posterior. Los tokens caducan después de un período determinado, así que renueve el suyo mediante <code>/auth/renewAccessToken</code> antes de que expire; es más rápido y sencillo que volver a autenticarse desde cero." },
+        { title: "Encuentre su accountId y accountSpec", html: "Cada orden necesita dos identificadores de cuenta: el <code>accountId</code> numérico y el <code>accountSpec</code> (el nombre/especificación de su cuenta) en formato de texto. Llame a <code>GET /account/list</code> con su token bearer y extraiga ambos campos de la cuenta con la que desea operar. Si se equivoca en cualquiera de los dos, Tradovate devuelve un error \"Access is denied\" en lugar de una ejecución." },
+        { title: "Construya el payload de placeOrder", html: "Ahora arme el cuerpo JSON. Una orden de mercado básica necesita seis campos más el indicador de cumplimiento normativo:" },
+        { title: "Configure isAutomated correctamente y envíe la orden", html: "El booleano <code>isAutomated</code> le indica al mercado quién activó realmente la orden. Si una persona hace clic en un botón de su interfaz, el valor es <code>false</code> (el predeterminado). Si un bot, un algoritmo o cualquier proceso impersonal envía la orden, <strong class='text-white'>debe</strong> establecer <code>isAutomated: true</code>. Se trata de un requisito de cumplimiento estricto de la CME, no de un detalle opcional. Una vez que el payload esté correcto, envíelo (POST) a <code>/order/placeOrder</code> en el host correcto, <code>demo.tradovateapi.com/v1</code> para simulación o <code>live.tradovateapi.com/v1</code> para dinero real, con su token en el encabezado <code>Authorization: Bearer</code>." },
+        { title: "Confirme la orden o lea el motivo del fallo", html: "Esta es la parte que muchos pasan por alto: un <code>200 OK</code> significa que la solicitud fue aceptada, no que la orden se ejecutó. El margen, los límites de riesgo o un mercado cerrado aún pueden detenerla por completo. Por eso debe leer el cuerpo de la respuesta: un éxito devuelve un <code>orderId</code>, mientras que un rechazo devuelve un <code>failureReason</code> y un <code>failureText</code> que puede registrar y sobre el que puede actuar. Luego verifique la ejecución en el panel de Órdenes de Tradovate para no confiar únicamente en el código de estado." },
+      ],
+    },
+    {
+      type: "quote",
+      html: "<code>{</code><br><code>&nbsp;&nbsp;\"accountSpec\": \"YOUR_ACCOUNT_NAME\",</code><br><code>&nbsp;&nbsp;\"accountId\": 123456,</code><br><code>&nbsp;&nbsp;\"action\": \"Buy\",</code><br><code>&nbsp;&nbsp;\"symbol\": \"MESM6\",</code><br><code>&nbsp;&nbsp;\"orderQty\": 1,</code><br><code>&nbsp;&nbsp;\"orderType\": \"Market\",</code><br><code>&nbsp;&nbsp;\"isAutomated\": true</code><br><code>}</code>",
+    },
+    {
+      type: "list",
+      items: [
+        "<code>action</code> es <code>Buy</code> o <code>Sell</code>; <code>orderType</code> acepta <code>Market</code>, <code>Limit</code>, <code>Stop</code> o <code>StopLimit</code>.",
+        "Una orden <code>Limit</code> también necesita un <code>price</code>; una orden <code>Stop</code> necesita un <code>stopPrice</code>. Agregue un <code>timeInForce</code> opcional (por ejemplo <code>Day</code>, <code>GTC</code>, <code>IOC</code> o <code>FOK</code>) cuando no desee usar el valor predeterminado.",
+        "Utilice el símbolo del contrato del mes vigente (front-month); los símbolos vencidos o continuos son rechazados.",
+      ],
+    },
+    { type: "heading", text: "¿Por qué necesitaría esto?" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Bots de trading</strong>: convierten las señales de una estrategia en entradas y salidas en vivo sin necesidad de hacer clic manualmente.",
+        "<strong class='text-white'>Herramientas de riesgo personalizadas</strong>: cierran o cubren posiciones automáticamente en el momento en que se activan sus propias reglas.",
+        "<strong class='text-white'>Plataformas de conexión</strong>: enrutan alertas desde TradingView, Python o una hoja de cálculo directamente hacia Tradovate.",
+        "<strong class='text-white'>Transición de backtest a operativa real</strong>: reutiliza exactamente la misma lógica de órdenes que probó, ahora enviando órdenes reales.",
+      ],
+    },
+    { type: "heading", text: "Automatice esto con PickMyTrade" },
+    { type: "paragraph", html: "¿No le apetece gestionar usted mismo los tokens, los ID de cuenta, el indicador <code>isAutomated</code> y los límites de tasa? <strong class='text-white'>PickMyTrade conecta sus alertas de TradingView directamente con su cuenta de Tradovate</strong>, de modo que las órdenes se envían automáticamente, correctamente formateadas y con las banderas de cumplimiento adecuadas, sin que usted escriba una sola línea de código de API." },
+  ], fr: [
+    { type: "paragraph", html: "Vous voulez envoyer un ordre à Tradovate directement depuis votre propre code ? Vous êtes peut-être en train de construire un bot de trading, de scripter une stratégie, ou de mettre en place une automatisation comme PickMyTrade. Dans tous les cas, tout se résume à un seul appel REST : <code>/order/placeOrder</code>. Voici comment construire cette requête de bout en bout, y compris l'indicateur <code>isAutomated</code> qui piège beaucoup de monde la première fois." },
+    { type: "heading", text: "Qu'est-ce que l'endpoint placeOrder de Tradovate ?" },
+    { type: "paragraph", html: "<code>/order/placeOrder</code> est l'endpoint REST de Tradovate qui soumet un nouvel ordre à la bourse depuis votre code plutôt que depuis l'interface de la plateforme. Vous lui transmettez un petit payload JSON, le compte, le contrat, le sens, la quantité et le type d'ordre, via une requête HTTPS authentifiée, et Tradovate vous renvoie l'ID de l'ordre résultant ou un motif d'échec. Chaque entrée, sortie et bracket piloté par l'API repose sur cet unique appel." },
+    { type: "heading", text: "Passer un ordre via l'API Tradovate : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "S'authentifier et obtenir un jeton d'accès", html: "Vous ne pouvez rien envoyer sans un jeton bearer au préalable. Envoyez vos identifiants et les détails de votre application en POST vers <code>/auth/accessTokenRequest</code>, et la réponse vous fournit un <code>accessToken</code> que vous joindrez à chaque appel par la suite. Les jetons expirent après une durée définie, donc renouvelez le vôtre via <code>/auth/renewAccessToken</code> avant son expiration, c'est plus rapide et plus propre que de se réauthentifier depuis zéro." },
+        { title: "Trouver votre accountId et accountSpec", html: "Chaque ordre nécessite deux identifiants de compte : l'<code>accountId</code> numérique et l'<code>accountSpec</code> textuel (le nom/spec de votre compte). Appelez <code>GET /account/list</code> avec votre jeton bearer et récupérez les deux champs sur le compte que vous souhaitez trader. Si l'un des deux est incorrect, Tradovate renvoie une erreur \"Access is denied\" au lieu d'une exécution." },
+        { title: "Construire le payload placeOrder", html: "Assemblez maintenant le corps JSON. Un ordre au marché basique nécessite six champs plus l'indicateur de conformité :" },
+        { title: "Définir correctement isAutomated, puis envoyer", html: "Le booléen <code>isAutomated</code> indique à la bourse qui a réellement déclenché l'ordre. Si un humain clique sur un bouton dans votre interface, c'est <code>false</code> (la valeur par défaut). Si un bot, un algorithme ou tout processus impersonnel déclenche l'ordre, vous <strong class='text-white'>devez</strong> définir <code>isAutomated: true</code>. C'est une exigence de conformité CME stricte, pas une option facultative. Une fois le payload correct, envoyez-le en POST vers <code>/order/placeOrder</code> sur le bon hôte, <code>demo.tradovateapi.com/v1</code> pour la simulation ou <code>live.tradovateapi.com/v1</code> pour l'argent réel, avec votre jeton dans l'en-tête <code>Authorization: Bearer</code>." },
+        { title: "Confirmer l'ordre ou lire le motif d'échec", html: "Voici ce que beaucoup de gens ratent : un <code>200 OK</code> signifie que la requête a été acceptée, pas que l'ordre a été exécuté. La marge, les limites de risque ou un marché fermé peuvent encore l'arrêter net. Lisez donc le corps de la réponse : un succès renvoie un <code>orderId</code>, tandis qu'un rejet renvoie un <code>failureReason</code> et un <code>failureText</code> que vous pouvez journaliser et exploiter. Vérifiez ensuite l'exécution dans le panneau Orders de Tradovate afin de ne jamais vous fier uniquement au code de statut." },
+      ],
+    },
+    {
+      type: "quote",
+      html: "<code>{</code><br><code>&nbsp;&nbsp;\"accountSpec\": \"YOUR_ACCOUNT_NAME\",</code><br><code>&nbsp;&nbsp;\"accountId\": 123456,</code><br><code>&nbsp;&nbsp;\"action\": \"Buy\",</code><br><code>&nbsp;&nbsp;\"symbol\": \"MESM6\",</code><br><code>&nbsp;&nbsp;\"orderQty\": 1,</code><br><code>&nbsp;&nbsp;\"orderType\": \"Market\",</code><br><code>&nbsp;&nbsp;\"isAutomated\": true</code><br><code>}</code>",
+    },
+    {
+      type: "list",
+      items: [
+        "<code>action</code> vaut <code>Buy</code> ou <code>Sell</code> ; <code>orderType</code> accepte <code>Market</code>, <code>Limit</code>, <code>Stop</code> ou <code>StopLimit</code>.",
+        "Un ordre <code>Limit</code> nécessite aussi un <code>price</code> ; un ordre <code>Stop</code> nécessite un <code>stopPrice</code>. Ajoutez un <code>timeInForce</code> optionnel (par exemple <code>Day</code>, <code>GTC</code>, <code>IOC</code> ou <code>FOK</code>) chaque fois que vous ne voulez pas de la valeur par défaut.",
+        "Utilisez le symbole du contrat du mois en cours ; les symboles expirés ou continus sont rejetés.",
+      ],
+    },
+    { type: "heading", text: "Pourquoi vous en auriez besoin" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Bots de trading</strong>, transforment les signaux d'une stratégie en entrées et sorties en direct sans aucun clic manuel.",
+        "<strong class='text-white'>Outils de gestion du risque sur mesure</strong>, aplatissent ou couvrent automatiquement les positions dès que vos propres règles se déclenchent.",
+        "<strong class='text-white'>Plateformes de liaison</strong>, acheminent les alertes depuis TradingView, Python ou une feuille de calcul directement vers Tradovate.",
+        "<strong class='text-white'>Passage du backtest au réel</strong>, réutilisent exactement la logique d'ordre testée, désormais pour envoyer de vrais ordres.",
+      ],
+    },
+    { type: "heading", text: "Automatisez cela avec PickMyTrade" },
+    { type: "paragraph", html: "Pas envie de gérer vous-même les jetons, les ID de compte, l'indicateur <code>isAutomated</code> et les limites de débit ? <strong class='text-white'>PickMyTrade relie directement vos alertes TradingView à votre compte Tradovate</strong>, afin que les ordres soient envoyés automatiquement, correctement formatés et conformes, sans que vous ayez à écrire la moindre ligne de code API." },
+  ], it: [
+    { type: "paragraph", html: "Vuole inviare un ordine a Tradovate direttamente dal proprio codice? Magari sta creando un trading bot, scrivendo lo script di una strategia, oppure configurando un'automazione come PickMyTrade. In ogni caso, tutto si riduce a un'unica chiamata REST: <code>/order/placeOrder</code>. Ecco come costruire questa richiesta dall'inizio alla fine, incluso il flag <code>isAutomated</code> che la prima volta manda in confusione molte persone." },
+    { type: "heading", text: "Che cos'è l'endpoint placeOrder di Tradovate?" },
+    { type: "paragraph", html: "<code>/order/placeOrder</code> è l'endpoint REST di Tradovate che invia un nuovo ordine al mercato dal proprio codice anziché dall'interfaccia della piattaforma. Gli si passa un piccolo payload JSON con account, contratto, lato, quantità e tipo di ordine, tramite una richiesta HTTPS autenticata, e Tradovate restituisce l'ID dell'ordine risultante oppure un motivo di fallimento. Ogni ingresso, uscita e bracket gestiti tramite API si basano su questa unica chiamata." },
+    { type: "heading", text: "Inviare un ordine tramite l'API Tradovate: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Autenticarsi e ottenere un token di accesso", html: "Non è possibile inviare nulla senza prima ottenere un token bearer. Invii (POST) le proprie credenziali e i dettagli dell'app a <code>/auth/accessTokenRequest</code>, e la risposta le fornirà un <code>accessToken</code> da allegare a ogni chiamata successiva. I token scadono dopo un intervallo definito, quindi rinnovi il proprio tramite <code>/auth/renewAccessToken</code> prima che scada: è più rapido e più pulito rispetto a riautenticarsi da zero." },
+        { title: "Trovare accountId e accountSpec", html: "Ogni ordine richiede due identificatori di account: l'<code>accountId</code> numerico e l'<code>accountSpec</code> testuale (nome/specifica del proprio account). Chiami <code>GET /account/list</code> con il proprio token bearer ed estragga entrambi i campi dall'account con cui desidera operare. Se uno dei due è errato, Tradovate restituisce un errore \"Access is denied\" anziché un'esecuzione." },
+        { title: "Costruire il payload di placeOrder", html: "Ora assembli il corpo JSON. Un ordine di mercato di base richiede sei campi più il flag di conformità:" },
+        { title: "Impostare correttamente isAutomated, quindi inviare", html: "Il booleano <code>isAutomated</code> indica al mercato chi ha effettivamente premuto il grilletto. Se una persona fa clic su un pulsante nella sua interfaccia, il valore è <code>false</code> (predefinito). Se un bot, un algoritmo o qualsiasi processo impersonale invia l'ordine, <strong class='text-white'>deve</strong> impostare <code>isAutomated: true</code>. Si tratta di un requisito di conformità CME rigoroso, non di un dettaglio opzionale. Una volta che il payload è corretto, lo invii (POST) a <code>/order/placeOrder</code> sull'host corretto, <code>demo.tradovateapi.com/v1</code> per la simulazione oppure <code>live.tradovateapi.com/v1</code> per denaro reale, con il proprio token nell'header <code>Authorization: Bearer</code>." },
+        { title: "Confermare l'ordine o leggere il motivo del fallimento", html: "Ecco la parte che molti si perdono: un <code>200 OK</code> significa che la richiesta è stata accettata, non che l'ordine è stato eseguito. Margine, limiti di rischio o un mercato chiuso possono comunque bloccarlo del tutto. Legga quindi il corpo della risposta: un successo restituisce un <code>orderId</code>, mentre un rifiuto restituisce un <code>failureReason</code> e un <code>failureText</code> che può registrare e su cui può agire. Verifichi poi l'esecuzione nel pannello Ordini di Tradovate, così da non affidarsi mai solo al codice di stato." },
+      ],
+    },
+    {
+      type: "quote",
+      html: "<code>{</code><br><code>&nbsp;&nbsp;\"accountSpec\": \"YOUR_ACCOUNT_NAME\",</code><br><code>&nbsp;&nbsp;\"accountId\": 123456,</code><br><code>&nbsp;&nbsp;\"action\": \"Buy\",</code><br><code>&nbsp;&nbsp;\"symbol\": \"MESM6\",</code><br><code>&nbsp;&nbsp;\"orderQty\": 1,</code><br><code>&nbsp;&nbsp;\"orderType\": \"Market\",</code><br><code>&nbsp;&nbsp;\"isAutomated\": true</code><br><code>}</code>",
+    },
+    {
+      type: "list",
+      items: [
+        "<code>action</code> è <code>Buy</code> o <code>Sell</code>; <code>orderType</code> accetta <code>Market</code>, <code>Limit</code>, <code>Stop</code> o <code>StopLimit</code>.",
+        "Un ordine <code>Limit</code> richiede anche un <code>price</code>; un ordine <code>Stop</code> richiede uno <code>stopPrice</code>. Aggiunga un <code>timeInForce</code> opzionale (ad esempio <code>Day</code>, <code>GTC</code>, <code>IOC</code> o <code>FOK</code>) ogni volta che non desidera usare il valore predefinito.",
+        "Utilizzi il simbolo del contratto del mese corrente (front-month); i simboli scaduti o continui vengono rifiutati.",
+      ],
+    },
+    { type: "heading", text: "Perché potrebbe servirle" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Trading bot</strong>, trasformano i segnali di una strategia in ingressi e uscite in tempo reale senza alcun clic manuale.",
+        "<strong class='text-white'>Strumenti di gestione del rischio personalizzati</strong>, chiudono o coprono le posizioni automaticamente non appena le proprie regole si attivano.",
+        "<strong class='text-white'>Piattaforme di collegamento</strong>, instradano gli avvisi da TradingView, Python o un foglio di calcolo direttamente verso Tradovate.",
+        "<strong class='text-white'>Passaggio dal backtest al reale</strong>, riutilizzano esattamente la logica di ordine testata, ora per inviare ordini reali.",
+      ],
+    },
+    { type: "heading", text: "Automatizzi tutto questo con PickMyTrade" },
+    { type: "paragraph", html: "Non ha voglia di gestire personalmente token, ID account, il flag <code>isAutomated</code> e i rate limit? <strong class='text-white'>PickMyTrade collega i suoi avvisi TradingView direttamente al suo account Tradovate</strong>, così gli ordini vengono inviati automaticamente, correttamente formattati e con i flag di conformità, senza che lei debba scrivere una sola riga di codice API." },
+  ] },
+  ctaHeading: { en: "Skip the Order Plumbing", de: "Überspringen Sie die Order-Verkabelung", es: "Omita la complejidad técnica del envío de órdenes", fr: "Évitez toute la plomberie des ordres", it: "Eviti tutta la complessità tecnica degli ordini" },
+  ctaText: { en: "Let PickMyTrade link your TradingView alerts straight to your Tradovate account, so orders fire automatically without you writing API code.", de: "Lassen Sie PickMyTrade Ihre TradingView-Alerts direkt mit Ihrem Tradovate-Konto verbinden, sodass Orders automatisch ausgelöst werden – ohne dass Sie API-Code schreiben müssen.", es: "Deje que PickMyTrade conecte sus alertas de TradingView directamente con su cuenta de Tradovate, para que las órdenes se envíen automáticamente sin que usted tenga que escribir código de API.", fr: "Laissez PickMyTrade relier directement vos alertes TradingView à votre compte Tradovate, afin que les ordres soient envoyés automatiquement sans que vous ayez à écrire de code API.", it: "Lasci che PickMyTrade colleghi i suoi avvisi TradingView direttamente al suo account Tradovate, così gli ordini vengono inviati automaticamente senza che lei debba scrivere codice API." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Inizi la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=how-to",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Do I have to set isAutomated to true?", a: "If a bot or any automated process triggers the order, yes, the exchange treats it as a compliance requirement. Only human-clicked orders should send false (the default)." },
+    { q: "Why do I get \"Access is denied\" when placing an order?", a: "Usually a wrong or missing accountId/accountSpec, a token that lacks order permissions, or hitting the demo host with live credentials (or the reverse). Pull both account fields from /account/list and confirm you're on the right base URL." },
+    { q: "Does a 200 response mean my order filled?", a: "No. 200 OK only means Tradovate accepted the request. Check the body for an orderId (accepted) versus a failureReason (rejected for margin, risk, or market-closed reasons)." },
+  ], de: [
+    { q: "Muss ich isAutomated auf true setzen?", a: "Wenn ein Bot oder ein anderer automatisierter Prozess die Order auslöst, ja – die Börse behandelt dies als Compliance-Anforderung. Nur von Menschen angeklickte Orders sollten false senden (Standardwert)." },
+    { q: "Warum erhalte ich beim Aufgeben einer Order \"Access is denied\"?", a: "Meist liegt es an einer falschen oder fehlenden accountId/accountSpec, einem Token ohne Order-Berechtigungen oder daran, dass Sie den Demo-Host mit Live-Zugangsdaten ansprechen (oder umgekehrt). Rufen Sie beide Kontofelder über /account/list ab und prüfen Sie, ob Sie die richtige Basis-URL verwenden." },
+    { q: "Bedeutet eine 200-Antwort, dass meine Order ausgeführt wurde?", a: "Nein. 200 OK bedeutet nur, dass Tradovate die Anfrage akzeptiert hat. Prüfen Sie den Antwortkörper auf eine orderId (akzeptiert) im Gegensatz zu einer failureReason (abgelehnt wegen Margin, Risiko oder geschlossenem Markt)." },
+  ], es: [
+    { q: "¿Tengo que establecer isAutomated en true?", a: "Si un bot o cualquier proceso automatizado activa la orden, sí; el mercado lo trata como un requisito de cumplimiento normativo. Solo las órdenes activadas manualmente por una persona deben enviar false (el valor predeterminado)." },
+    { q: "¿Por qué recibo el error \"Access is denied\" al colocar una orden?", a: "Generalmente se debe a un accountId/accountSpec incorrecto o faltante, a un token sin permisos de órdenes, o a usar el host de demo con credenciales reales (o viceversa). Obtenga ambos campos de la cuenta desde /account/list y confirme que está usando la URL base correcta." },
+    { q: "¿Una respuesta 200 significa que mi orden se ejecutó?", a: "No. 200 OK solo significa que Tradovate aceptó la solicitud. Revise el cuerpo de la respuesta para ver un orderId (aceptada) frente a un failureReason (rechazada por motivos de margen, riesgo o mercado cerrado)." },
+  ], fr: [
+    { q: "Dois-je définir isAutomated sur true ?", a: "Si un bot ou tout processus automatisé déclenche l'ordre, oui : la bourse considère cela comme une exigence de conformité. Seuls les ordres déclenchés manuellement par un humain doivent envoyer false (la valeur par défaut)." },
+    { q: "Pourquoi est-ce que j'obtiens \"Access is denied\" en passant un ordre ?", a: "Généralement, il s'agit d'un accountId/accountSpec incorrect ou manquant, d'un jeton sans permissions d'ordre, ou du fait d'appeler l'hôte demo avec des identifiants live (ou l'inverse). Récupérez les deux champs de compte depuis /account/list et vérifiez que vous utilisez la bonne URL de base." },
+    { q: "Une réponse 200 signifie-t-elle que mon ordre a été exécuté ?", a: "Non. 200 OK signifie uniquement que Tradovate a accepté la requête. Vérifiez le corps de la réponse : un orderId (accepté) ou un failureReason (rejeté pour des raisons de marge, de risque ou de marché fermé)." },
+  ], it: [
+    { q: "Devo impostare isAutomated su true?", a: "Se un bot o un qualsiasi processo automatizzato attiva l'ordine, sì: il mercato lo considera un requisito di conformità. Solo gli ordini attivati manualmente da una persona dovrebbero inviare false (il valore predefinito)." },
+    { q: "Perché ricevo \"Access is denied\" quando invio un ordine?", a: "Di solito è dovuto a un accountId/accountSpec errato o mancante, a un token privo dei permessi per gli ordini, oppure all'uso dell'host demo con credenziali live (o viceversa). Recuperi entrambi i campi dell'account da /account/list e verifichi di utilizzare l'URL di base corretto." },
+    { q: "Una risposta 200 significa che il mio ordine è stato eseguito?", a: "No. 200 OK significa solo che Tradovate ha accettato la richiesta. Controlli il corpo della risposta per un orderId (accettato) oppure un failureReason (rifiutato per motivi di margine, rischio o mercato chiuso)." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: `This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. "Tradovate" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.`, de: `Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten ist mit einem erheblichen Verlustrisiko verbunden und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. und wird von diesem Unternehmen weder unterstützt noch gesponsert. "Tradovate" sowie alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -abläufe ändern sich im Laufe der Zeit; bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.`, es: `Esta guía tiene fines educativos e informativos únicamente y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. "Tradovate" y todos los nombres, logotipos y marcas comerciales relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.`, fr: `Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni sponsorisée par Tradovate, Inc. « Tradovate » et tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent avec le temps ; confirmez toujours la procédure actuelle dans la plateforme et la documentation officielles de Tradovate avant d'agir.`, it: `Questa guida ha scopo esclusivamente educativo e informativo e non costituisce una consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. "Tradovate" e tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire.` },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "How-To", item: `${SITE_URL}${withSlash(localizedPath(locale, "how-to"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `how-to/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="how-to" />
+</BaseLayout>

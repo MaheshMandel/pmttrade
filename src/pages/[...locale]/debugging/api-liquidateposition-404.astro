@@ -1,0 +1,563 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-liquidateposition-404";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API liquidatePosition Endpoint 404";
+const META_DESCRIPTION =
+  "A 404 on the liquidatePosition endpoint is usually a case-sensitive path or wrong host. Get the exact URL and payload to flatten a position cleanly.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate API: error 404 en liquidatePosition", fr: "API Tradovate : erreur 404 sur liquidatePosition", it: "API Tradovate: errore 404 su liquidatePosition" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate API liquidatePosition-Endpunkt liefert 404", es: "Error 404 en el endpoint liquidatePosition de la API de Tradovate", fr: "Erreur 404 sur le point de terminaison liquidatePosition de l'API Tradovate", it: "Errore 404 sull'endpoint liquidatePosition dell'API Tradovate" },
+  dek: { en: "You POST to the liquidate endpoint expecting a clean close and get 404 Not Found instead. Nine times out of ten it's a mis-cased path, the wrong host, or the wrong HTTP verb, not a broken account or payload.", de: "Sie senden einen POST an den Liquidate-Endpunkt und erwarten eine saubere Schließung, erhalten stattdessen aber 404 Not Found. In neun von zehn Fällen liegt es an einem falsch geschriebenen Pfad, dem falschen Host oder dem falschen HTTP-Verb, nicht an einem defekten Konto oder Payload.", es: "Envía un POST al endpoint liquidate esperando un cierre limpio y, en cambio, recibe 404 Not Found. Nueve de cada diez veces se debe a una ruta mal escrita en mayúsculas o minúsculas, al host incorrecto o al verbo HTTP incorrecto, no a una cuenta o un payload defectuosos.", fr: "Vous envoyez une requête POST au point de terminaison liquidate en attendant une clôture propre, mais vous obtenez plutôt 404 Not Found. Neuf fois sur dix, il s'agit d'un chemin mal orthographié en casse, du mauvais hôte ou du mauvais verbe HTTP, et non d'un compte ou d'une charge utile défectueux.", it: "Invia una richiesta POST all'endpoint liquidate aspettandosi una chiusura pulita, ma ottiene invece 404 Not Found. Nove volte su dieci si tratta di un percorso scritto con maiuscole/minuscole errate, dell'host sbagliato o del verbo HTTP sbagliato, non di un account o di un payload danneggiati." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You want to flatten a position from code, so you POST to the liquidate endpoint expecting a clean close. Instead the server hands back <code>404 Not Found</code>. Your token's valid, your other order calls work, the JSON looks perfect, and yet this one route acts like it doesn't exist. Frustrating, because it feels like the endpoint is broken or missing." },
+    { type: "paragraph", html: "It isn't. A 404 is narrower than it feels: it's not about your account, your position, or your payload. It means the exact URL you POSTed to doesn't match any route on Tradovate's server. Nine times out of ten that's one of three things, the path is mis-cased or misspelled, you're pointed at the wrong host, or you sent the wrong HTTP verb. Let's rule them out in order, then lock down the correct call so you can flatten cleanly." },
+    { type: "heading", text: "What a 404 Is Actually Telling You" },
+    { type: "paragraph", html: "Every HTTP error points at a different layer, and mixing them up sends you editing the wrong thing. A <code>404</code> means the path doesn't exist. A <code>401</code> means the path exists but you weren't authorized. A <code>400</code> means the path and auth were fine but your body was malformed. A <code>429</code> means you're hitting the rate limit. So if you're staring at a literal 404, stop tweaking your JSON body, the server never got far enough to care about it. It couldn't even find the route." },
+    { type: "paragraph", html: "That single fact narrows the search a lot. Everything that produces a 404 lives in the request line: the method, the host, the version segment, and the path spelling. Work through those four, and the error clears." },
+    { type: "heading", text: "Cause #1: The Path Is Mis-Cased or Misspelled" },
+    { type: "paragraph", html: "This is the big one, and it catches almost everyone at least once. Tradovate's REST paths are <strong class='text-white'>case-sensitive</strong>. The operation is spelled exactly <code>liquidatePosition</code>, lowercase <code>l</code>, camelCase capital <code>P</code>. Type it any other way and the router has nothing to match, so it answers 404. Lowercasing the whole thing is the classic slip, usually because you typed it from memory or your framework normalized the URL for you." },
+    {
+      type: "table",
+      headers: ["What you sent", "Result"],
+      rows: [
+        ["/v1/order/liquidatePosition", "Correct route"],
+        ["/v1/order/liquidateposition", "404 Not Found"],
+        ["/v1/order/LiquidatePosition", "404 Not Found"],
+        ["/v1/order/liquidate_position", "404 Not Found"],
+        ["/v1/order/liquidate-position", "404 Not Found"],
+      ],
+    },
+    { type: "paragraph", html: "The fix is boring and reliable: copy the operation name straight out of the API reference and paste it, rather than retyping it. One wrong character in the casing is all it takes. While you're at it, check for an accidental trailing slash or a duplicated segment like <code>/order/order/liquidatePosition</code> that a URL builder can sneak in." },
+    { type: "heading", text: "Cause #2: Wrong Host or a Missing Version Segment" },
+    { type: "paragraph", html: "The full URL has four parts that all have to be right: scheme, host, the <code>/v1</code> version segment, and the path. Put them together and you get:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Demo / simulation:</strong> <code>https://demo.tradovateapi.com/v1/order/liquidatePosition</code>",
+        "<strong class='text-white'>Live:</strong> <code>https://live.tradovateapi.com/v1/order/liquidatePosition</code>",
+      ],
+    },
+    { type: "paragraph", html: "Drop the <code>/v1</code> and you 404, the root of the API has no <code>/order/liquidatePosition</code> route hanging directly off it. A typo in the host does the same, or fails DNS outright. And don't reach for the market-data host here: <code>md.tradovateapi.com</code> serves quotes, DOM, and charts, not order operations, so an <code>md</code> host won't route a liquidate call either." },
+    { type: "paragraph", html: "One subtlety worth flagging: crossing environments, a demo token against the live host, or vice versa, more often shows up as a 401 than a 404, but it's still worth a look once your path is clean. Hostnames do get updated from time to time, so confirm the current ones in Tradovate's own developer documentation instead of trusting a URL you copied from an old gist." },
+    { type: "heading", text: "Cause #3: You Sent the Wrong HTTP Method" },
+    { type: "paragraph", html: "The liquidate operation is <strong class='text-white'>POST-only</strong>. Send a GET and the server has no GET handler for that path, which surfaces as a not-found or method-not-allowed style error depending on how your client reports it. This is easy to trip over if you're testing by pasting the URL into a browser address bar, that's always a GET, so it will always fail here." },
+    { type: "paragraph", html: "Test with a real POST from a proper client. You also need the right headers on the request: <code>Content-Type: application/json</code> and <code>Authorization: Bearer &lt;yourAccessToken&gt;</code>. A POST with the body sitting in the wrong place, or no JSON content type, can bounce in ways that look like a routing problem even when the path is fine." },
+    { type: "heading", text: "Cause #4: Singular vs Plural, Which One Is Real?" },
+    { type: "paragraph", html: "Here's where a lot of the &ldquo;the endpoint is missing&rdquo; confusion comes from. The canonical, per-position operation is the <strong class='text-white'>singular</strong> <code>/order/liquidatePosition</code>. It takes an <code>accountId</code> and a single <code>contractId</code> and flattens that one net position. That's the route you'll find documented, and it's the one that consistently answers." },
+    { type: "paragraph", html: "Some client libraries and community snippets reference a <em>plural</em> batch-style variant that takes a <code>positions</code> array instead of a single contract. If you copy a plural example but your target only exposes the singular route, or you assume the singular takes an array, you'll either 404 or send a body the endpoint ignores. When you're unsure, default to the singular <code>/order/liquidatePosition</code> with <code>accountId</code> and <code>contractId</code>, and verify the exact operation name and shape against the live API reference for the version you're calling. The spelling and the singular-vs-plural choice are exactly the two details that quietly produce a 404." },
+    { type: "heading", text: "The Correct Call, Field by Field" },
+    { type: "paragraph", html: "Once the request line is right, the body is short." },
+    { type: "quote", html: "POST https://demo.tradovateapi.com/v1/order/liquidatePosition<br>{ \"accountId\": 12345, \"contractId\": 67890, \"admin\": false, \"customTag50\": \"\" }" },
+    {
+      type: "table",
+      headers: ["Field", "What it is"],
+      rows: [
+        ["accountId", "The numeric account id, not the account name or spec. Pull it from /account/list."],
+        ["contractId", "The numeric id of the contract you're holding, from /position/list. Must be greater than zero."],
+        ["admin", "Boolean, and it needs to be present. Set it to false unless your API user genuinely has admin permission (see the gotcha below)."],
+        ["customTag50", "Optional label of up to 50 characters that rides along on the order. An empty string is fine."],
+      ],
+    },
+    { type: "paragraph", html: "The two ids are where people stall, so be deliberate. Call <code>/account/list</code> and read the <code>id</code> off the account object you want to trade. Call <code>/position/list</code> and each open position hands you both an <code>accountId</code> and a <code>contractId</code> along with its net quantity. Copy those exact numbers, the endpoint works on the <code>(accountId, contractId)</code> pair, not on a position id or a symbol string." },
+    { type: "heading", text: "The Admin Gotcha: a 401 Hiding Behind Your Fix" },
+    { type: "paragraph", html: "This one trips people the moment they clear the 404. The <code>admin</code> field is required in the body, but the value you give it matters. Set <code>admin: true</code> when your API user isn't provisioned for admin access, and the call flips straight to <code>401 Unauthorized</code>. Set <code>admin: false</code> and the same request goes through. So unless you know your user carries admin scope, send <code>\"admin\": false</code>. If you just fixed a 404 and now you're staring at a 401 on the very next attempt, this is almost always the reason, not your token, not your account id." },
+    { type: "heading", text: "What the Endpoint Does, and Doesn't, Give You" },
+    { type: "paragraph", html: "A few behaviors are worth knowing before you build on top of this call:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>It flattens the whole net position</strong> for that (accountId, contractId) pair. Under the hood it places a closing order, which means it won't fill when the market's closed, run it during trading hours for the instrument.",
+        "<strong class='text-white'>It's one call per contract.</strong> To flatten everything on an account, pull /position/list and loop, firing one liquidatePosition per open contractId. There's no single &ldquo;flatten the account&rdquo; body on this route.",
+        "<strong class='text-white'>It's race-safe.</strong> If the position already closed between your check and the call, a stop filled, say, you get a clean 200 with an empty body instead of an error. That's deliberate, and it's safer than synthesizing an opposite-side order, which could accidentally open a reverse position.",
+        "<strong class='text-white'>It returns no orderId.</strong> Because there's no order id in the response, you can't read the closing fill price directly. If you need that price for P&L, reconcile against the execution and fill reports (execution reports, fill pairs) or the position log.",
+      ],
+    },
+    { type: "heading", text: "A Quick Checklist to Clear the 404" },
+    {
+      type: "table",
+      headers: ["Check", "What to confirm"],
+      rows: [
+        ["Exact spelling", "liquidatePosition in camelCase, not lowercase, not snake_case, not hyphenated."],
+        ["Full URL", "Scheme + host + /v1 + /order/liquidatePosition, with the version segment present."],
+        ["Right host", "demo.tradovateapi.com or live.tradovateapi.com, never the md market-data host."],
+        ["POST, not GET", "POST with Content-Type: application/json and a Bearer token; no browser address-bar tests."],
+        ["Numeric ids", "accountId from /account/list, contractId from /position/list, both greater than zero."],
+        ["admin value", "Include admin; set it to false unless your user has admin permission, to dodge a follow-on 401."],
+      ],
+    },
+    { type: "heading", text: "Where PickMyTrade Fits" },
+    { type: "paragraph", html: "Most people wrestling with this 404 don't actually want to become Tradovate API plumbers, they want a strategy to open, manage, and close positions without babysitting endpoints, ids, and tokens. PickMyTrade routes TradingView alerts to Tradovate and can close or flatten positions as part of a strategy, so you don't have to hand-build liquidate calls, chase account and contract ids, or manage tokens." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>No hand-built liquidate calls</strong> your strategy enters and flattens on Tradovate without a single hand-coded API request.",
+        "<strong class='text-white'>Account and contract resolution handled</strong> the ids that trip up raw calls are resolved for you.",
+        "<strong class='text-white'>Managed auth</strong> tokens and hosts are handled automatically, so a 401-hiding-behind-a-404 never becomes your problem.",
+        "<strong class='text-white'>Rate-limit-safe routing</strong> spaces order flow so nothing bounces off Tradovate's request limits.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie möchten eine Position per Code glattstellen und senden dazu einen POST an den Liquidate-Endpunkt, in Erwartung einer sauberen Schließung. Stattdessen liefert der Server <code>404 Not Found</code> zurück. Ihr Token ist gültig, Ihre anderen Order-Aufrufe funktionieren, das JSON sieht einwandfrei aus, und trotzdem verhält sich genau diese Route so, als würde sie nicht existieren. Frustrierend, weil es sich anfühlt, als wäre der Endpunkt defekt oder fehle." },
+    { type: "paragraph", html: "Ist er nicht. Ein 404 ist enger gefasst, als es sich anfühlt: Es geht nicht um Ihr Konto, Ihre Position oder Ihren Payload. Es bedeutet, dass die exakte URL, an die Sie gePOSTet haben, keiner Route auf Tradovates Server entspricht. In neun von zehn Fällen liegt es an einer von drei Sachen: Der Pfad ist falsch geschrieben oder in falscher Groß-/Kleinschreibung, Sie zeigen auf den falschen Host, oder Sie haben das falsche HTTP-Verb gesendet. Prüfen wir das der Reihe nach aus, um dann den korrekten Aufruf festzulegen, damit Sie sauber glattstellen können." },
+    { type: "heading", text: "Was ein 404 Ihnen wirklich sagt" },
+    { type: "paragraph", html: "Jeder HTTP-Fehler zeigt auf eine andere Ebene, und wenn man sie durcheinanderbringt, bearbeitet man das Falsche. Ein <code>404</code> bedeutet, dass der Pfad nicht existiert. Ein <code>401</code> bedeutet, dass der Pfad existiert, Sie aber nicht autorisiert waren. Ein <code>400</code> bedeutet, dass Pfad und Autorisierung in Ordnung waren, Ihr Body aber fehlerhaft war. Ein <code>429</code> bedeutet, dass Sie das Rate-Limit erreichen. Wenn Sie also vor einem echten 404 stehen, hören Sie auf, an Ihrem JSON-Body herumzudoktern, der Server ist gar nicht so weit gekommen, dass er sich dafür interessiert hätte. Er konnte die Route nicht einmal finden." },
+    { type: "paragraph", html: "Allein diese Tatsache grenzt die Suche stark ein. Alles, was einen 404 verursacht, liegt in der Request-Zeile: die Methode, der Host, das Versionssegment und die Schreibweise des Pfads. Gehen Sie diese vier durch, und der Fehler verschwindet." },
+    { type: "heading", text: "Ursache 1: Der Pfad ist falsch geschrieben oder in falscher Groß-/Kleinschreibung" },
+    { type: "paragraph", html: "Das ist der große Klassiker, der fast jeden mindestens einmal erwischt. Die REST-Pfade von Tradovate unterscheiden zwischen <strong class='text-white'>Groß- und Kleinschreibung</strong>. Die Operation wird exakt <code>liquidatePosition</code> geschrieben, kleines <code>l</code>, camelCase mit großem <code>P</code>. Schreiben Sie es anders, hat der Router nichts zum Abgleichen und antwortet mit 404. Alles in Kleinbuchstaben zu schreiben ist der klassische Fehler, meist weil man es aus dem Gedächtnis getippt hat oder das Framework die URL automatisch normalisiert hat." },
+    {
+      type: "table",
+      headers: ["Was Sie gesendet haben", "Ergebnis"],
+      rows: [
+        ["/v1/order/liquidatePosition", "Korrekte Route"],
+        ["/v1/order/liquidateposition", "404 Not Found"],
+        ["/v1/order/LiquidatePosition", "404 Not Found"],
+        ["/v1/order/liquidate_position", "404 Not Found"],
+        ["/v1/order/liquidate-position", "404 Not Found"],
+      ],
+    },
+    { type: "paragraph", html: "Die Lösung ist unspektakulär, aber zuverlässig: Kopieren Sie den Operationsnamen direkt aus der API-Referenz und fügen Sie ihn ein, statt ihn neu einzutippen. Ein einziges falsches Zeichen in der Groß-/Kleinschreibung reicht bereits aus. Prüfen Sie dabei gleich auf einen versehentlichen abschließenden Schrägstrich oder ein doppeltes Segment wie <code>/order/order/liquidatePosition</code>, das sich ein URL-Builder einschleichen kann." },
+    { type: "heading", text: "Ursache 2: Falscher Host oder fehlendes Versionssegment" },
+    { type: "paragraph", html: "Die vollständige URL besteht aus vier Teilen, die alle stimmen müssen: Schema, Host, das <code>/v1</code>-Versionssegment und der Pfad. Setzt man sie zusammen, erhält man:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Demo/Simulation:</strong> <code>https://demo.tradovateapi.com/v1/order/liquidatePosition</code>",
+        "<strong class='text-white'>Live:</strong> <code>https://live.tradovateapi.com/v1/order/liquidatePosition</code>",
+      ],
+    },
+    { type: "paragraph", html: "Lassen Sie das <code>/v1</code> weg, bekommen Sie einen 404, denn direkt an der Wurzel der API hängt keine Route <code>/order/liquidatePosition</code>. Ein Tippfehler im Host bewirkt dasselbe oder lässt die DNS-Auflösung komplett scheitern. Und greifen Sie hier nicht zum Marktdaten-Host: <code>md.tradovateapi.com</code> bedient Kurse, DOM und Charts, nicht Order-Operationen, sodass ein <code>md</code>-Host auch keinen Liquidate-Aufruf routen wird." },
+    { type: "paragraph", html: "Eine Feinheit ist erwähnenswert: Das Mischen von Umgebungen, ein Demo-Token gegen den Live-Host oder umgekehrt, zeigt sich häufiger als 401 denn als 404, ist aber trotzdem einen Blick wert, sobald Ihr Pfad sauber ist. Hostnamen werden gelegentlich aktualisiert, prüfen Sie die aktuellen daher in Tradovates eigener Entwicklerdokumentation, statt einer URL zu vertrauen, die Sie aus einem alten Gist kopiert haben." },
+    { type: "heading", text: "Ursache 3: Sie haben die falsche HTTP-Methode gesendet" },
+    { type: "paragraph", html: "Die Liquidate-Operation ist <strong class='text-white'>nur per POST</strong> erreichbar. Senden Sie ein GET, hat der Server für diesen Pfad keinen GET-Handler, was sich je nach Client als Not-Found- oder Method-Not-Allowed-artiger Fehler zeigt. Das passiert leicht, wenn Sie testen, indem Sie die URL in die Adressleiste des Browsers einfügen, das ist immer ein GET und schlägt hier daher immer fehl." },
+    { type: "paragraph", html: "Testen Sie mit einem echten POST aus einem geeigneten Client. Sie brauchen außerdem die richtigen Header in der Anfrage: <code>Content-Type: application/json</code> und <code>Authorization: Bearer &lt;yourAccessToken&gt;</code>. Ein POST, bei dem der Body an der falschen Stelle sitzt, oder ohne JSON-Content-Type, kann auf Arten fehlschlagen, die wie ein Routing-Problem aussehen, selbst wenn der Pfad stimmt." },
+    { type: "heading", text: "Ursache 4: Singular oder Plural, welcher ist der echte?" },
+    { type: "paragraph", html: "Hier entsteht ein Großteil der Verwirrung nach dem Motto &ldquo;der Endpunkt fehlt&rdquo;. Die kanonische Operation pro Position ist die <strong class='text-white'>Singular</strong>-Route <code>/order/liquidatePosition</code>. Sie nimmt eine <code>accountId</code> und eine einzelne <code>contractId</code> entgegen und stellt genau diese eine Nettoposition glatt. Das ist die Route, die Sie dokumentiert finden, und diejenige, die zuverlässig antwortet." },
+    { type: "paragraph", html: "Manche Client-Bibliotheken und Community-Snippets verweisen auf eine <em>Plural</em>-Variante im Batch-Stil, die statt eines einzelnen Contracts ein <code>positions</code>-Array entgegennimmt. Kopieren Sie ein Plural-Beispiel, obwohl Ihr Ziel nur die Singular-Route bereitstellt, oder gehen Sie davon aus, dass der Singular ein Array akzeptiert, erhalten Sie entweder einen 404 oder senden einen Body, den der Endpunkt ignoriert. Im Zweifel greifen Sie zum Singular <code>/order/liquidatePosition</code> mit <code>accountId</code> und <code>contractId</code> und prüfen den exakten Operationsnamen sowie die Form anhand der aktuellen API-Referenz für die Version, die Sie aufrufen. Die Schreibweise und die Wahl zwischen Singular und Plural sind genau die zwei Details, die still und leise einen 404 verursachen." },
+    { type: "heading", text: "Der korrekte Aufruf, Feld für Feld" },
+    { type: "paragraph", html: "Sobald die Request-Zeile stimmt, ist der Body kurz." },
+    { type: "quote", html: "POST https://demo.tradovateapi.com/v1/order/liquidatePosition<br>{ \"accountId\": 12345, \"contractId\": 67890, \"admin\": false, \"customTag50\": \"\" }" },
+    {
+      type: "table",
+      headers: ["Feld", "Was es ist"],
+      rows: [
+        ["accountId", "Die numerische Konto-ID, nicht der Kontoname oder die Spezifikation. Rufen Sie sie über /account/list ab."],
+        ["contractId", "Die numerische ID des Contracts, den Sie halten, aus /position/list. Muss größer als null sein."],
+        ["admin", "Boolean, und es muss vorhanden sein. Setzen Sie es auf false, sofern Ihr API-Benutzer nicht tatsächlich über Admin-Berechtigung verfügt (siehe die Falle weiter unten)."],
+        ["customTag50", "Optionale Kennzeichnung von bis zu 50 Zeichen, die mit der Order mitgeschickt wird. Ein leerer String ist in Ordnung."],
+      ],
+    },
+    { type: "paragraph", html: "Bei den beiden IDs bleiben die meisten hängen, gehen Sie also gezielt vor. Rufen Sie <code>/account/list</code> auf und lesen Sie die <code>id</code> aus dem Kontoobjekt aus, mit dem Sie handeln möchten. Rufen Sie <code>/position/list</code> auf, und jede offene Position liefert Ihnen sowohl eine <code>accountId</code> als auch eine <code>contractId</code> zusammen mit ihrer Nettomenge. Kopieren Sie genau diese Zahlen, der Endpunkt arbeitet mit dem Paar <code>(accountId, contractId)</code>, nicht mit einer Positions-ID oder einem Symbol-String." },
+    { type: "heading", text: "Die Admin-Falle: Ein 401, der sich hinter Ihrer Lösung versteckt" },
+    { type: "paragraph", html: "Diese Falle schnappt genau in dem Moment zu, in dem der 404 behoben ist. Das Feld <code>admin</code> ist im Body erforderlich, aber der Wert, den Sie ihm geben, ist entscheidend. Setzen Sie <code>admin: true</code>, obwohl Ihr API-Benutzer nicht für Admin-Zugriff bereitgestellt ist, kippt der Aufruf direkt zu <code>401 Unauthorized</code>. Setzen Sie <code>admin: false</code>, geht dieselbe Anfrage durch. Solange Sie also nicht wissen, dass Ihr Benutzer Admin-Rechte besitzt, senden Sie <code>\"admin\": false</code>. Wenn Sie gerade einen 404 behoben haben und jetzt direkt beim nächsten Versuch auf einen 401 starren, ist das fast immer der Grund, nicht Ihr Token, nicht Ihre Konto-ID." },
+    { type: "heading", text: "Was der Endpunkt Ihnen gibt, und was nicht" },
+    { type: "paragraph", html: "Ein paar Verhaltensweisen sollten Sie kennen, bevor Sie auf diesem Aufruf aufbauen:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Er stellt die gesamte Nettoposition glatt</strong> für dieses Paar (accountId, contractId). Im Hintergrund platziert er eine schließende Order, was bedeutet, dass sie nicht ausgeführt wird, wenn der Markt geschlossen ist, führen Sie ihn während der Handelszeiten des Instruments aus.",
+        "<strong class='text-white'>Es ist ein Aufruf pro Contract.</strong> Um alles auf einem Konto glattzustellen, rufen Sie /position/list ab und iterieren, wobei Sie pro offener contractId einen liquidatePosition-Aufruf auslösen. Es gibt auf dieser Route keinen einzelnen &ldquo;gesamtes Konto glattstellen&rdquo;-Body.",
+        "<strong class='text-white'>Er ist race-sicher.</strong> Wurde die Position zwischen Ihrer Prüfung und dem Aufruf bereits geschlossen, etwa weil ein Stop ausgeführt wurde, erhalten Sie einen sauberen 200 mit leerem Body statt eines Fehlers. Das ist Absicht und sicherer, als eine Order auf der Gegenseite zu konstruieren, die versehentlich eine gegenläufige Position eröffnen könnte.",
+        "<strong class='text-white'>Er liefert keine orderId zurück.</strong> Da in der Antwort keine Order-ID enthalten ist, können Sie den Schlusskurs der Ausführung nicht direkt auslesen. Benötigen Sie diesen Preis für die P&L-Berechnung, gleichen Sie ihn mit den Ausführungs- und Fill-Berichten (Execution Reports, Fill-Paare) oder dem Positionslog ab.",
+      ],
+    },
+    { type: "heading", text: "Eine schnelle Checkliste, um den 404 zu beheben" },
+    {
+      type: "table",
+      headers: ["Prüfpunkt", "Was zu bestätigen ist"],
+      rows: [
+        ["Exakte Schreibweise", "liquidatePosition in camelCase, nicht in Kleinbuchstaben, nicht snake_case, nicht mit Bindestrich."],
+        ["Vollständige URL", "Schema + Host + /v1 + /order/liquidatePosition, mit vorhandenem Versionssegment."],
+        ["Richtiger Host", "demo.tradovateapi.com oder live.tradovateapi.com, niemals der md-Marktdaten-Host."],
+        ["POST, nicht GET", "POST mit Content-Type: application/json und einem Bearer-Token; keine Tests über die Browser-Adressleiste."],
+        ["Numerische IDs", "accountId aus /account/list, contractId aus /position/list, beide größer als null."],
+        ["admin-Wert", "admin einschließen; auf false setzen, sofern Ihr Benutzer keine Admin-Berechtigung hat, um einen nachfolgenden 401 zu vermeiden."],
+      ],
+    },
+    { type: "heading", text: "Wo PickMyTrade ins Spiel kommt" },
+    { type: "paragraph", html: "Die meisten, die mit diesem 404 kämpfen, wollen eigentlich gar nicht zu Tradovate-API-Klempnern werden, sie wollen eine Strategie, die Positionen eröffnet, verwaltet und schließt, ohne dass man Endpunkte, IDs und Tokens ständig im Auge behalten muss. PickMyTrade leitet TradingView-Alerts an Tradovate weiter und kann Positionen im Rahmen einer Strategie schließen oder glattstellen, sodass Sie Liquidate-Aufrufe nicht von Hand bauen, Konto- und Contract-IDs nicht hinterherjagen und Tokens nicht selbst verwalten müssen." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Keine handgebauten Liquidate-Aufrufe</strong> Ihre Strategie eröffnet und stellt auf Tradovate glatt, ohne eine einzige handgeschriebene API-Anfrage.",
+        "<strong class='text-white'>Konto- und Contract-Auflösung übernommen</strong> die IDs, an denen rohe Aufrufe scheitern, werden für Sie aufgelöst.",
+        "<strong class='text-white'>Verwaltete Authentifizierung</strong> Tokens und Hosts werden automatisch gehandhabt, sodass ein 401, der sich hinter einem 404 versteckt, nie zu Ihrem Problem wird.",
+        "<strong class='text-white'>Rate-Limit-sicheres Routing</strong> staffelt den Orderfluss, sodass nichts an Tradovates Anfragelimits abprallt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Quiere cerrar una posición desde el código, así que envía un POST al endpoint liquidate esperando un cierre limpio. En su lugar, el servidor devuelve <code>404 Not Found</code>. Su token es válido, sus otras llamadas de órdenes funcionan, el JSON parece perfecto y, aun así, esta ruta en concreto se comporta como si no existiera. Es frustrante, porque parece que el endpoint está roto o falta." },
+    { type: "paragraph", html: "No lo está. Un 404 es más limitado de lo que parece: no tiene que ver con su cuenta, su posición ni su payload. Significa que la URL exacta a la que envió el POST no coincide con ninguna ruta del servidor de Tradovate. Nueve de cada diez veces se debe a una de estas tres cosas: la ruta tiene mayúsculas/minúsculas incorrectas o está mal escrita, apunta al host equivocado, o envió el verbo HTTP incorrecto. Vamos a descartarlas en orden y luego a fijar la llamada correcta para que pueda cerrar la posición sin problemas." },
+    { type: "heading", text: "Qué le está diciendo realmente un 404" },
+    { type: "paragraph", html: "Cada error HTTP apunta a una capa distinta, y confundirlos hace que edite lo que no debe. Un <code>404</code> significa que la ruta no existe. Un <code>401</code> significa que la ruta existe pero usted no estaba autorizado. Un <code>400</code> significa que la ruta y la autorización estaban bien, pero su cuerpo estaba mal formado. Un <code>429</code> significa que está alcanzando el límite de solicitudes. Así que, si tiene delante un 404 real, deje de ajustar el cuerpo JSON: el servidor nunca llegó tan lejos como para prestarle atención. Ni siquiera pudo encontrar la ruta." },
+    { type: "paragraph", html: "Ese único hecho reduce mucho la búsqueda. Todo lo que produce un 404 está en la línea de solicitud: el método, el host, el segmento de versión y la ortografía de la ruta. Revise esos cuatro puntos y el error desaparecerá." },
+    { type: "heading", text: "Causa 1: la ruta tiene mayúsculas/minúsculas incorrectas o está mal escrita" },
+    { type: "paragraph", html: "Este es el gran clásico, y atrapa a casi todo el mundo al menos una vez. Las rutas REST de Tradovate <strong class='text-white'>distinguen entre mayúsculas y minúsculas</strong>. La operación se escribe exactamente <code>liquidatePosition</code>, con <code>l</code> minúscula y <code>P</code> mayúscula en camelCase. Escríbala de otra forma y el enrutador no tendrá nada que coincidir, por lo que responderá con 404. Poner todo en minúsculas es el error clásico, normalmente porque la escribió de memoria o porque su framework normalizó la URL por usted." },
+    {
+      type: "table",
+      headers: ["Lo que envió", "Resultado"],
+      rows: [
+        ["/v1/order/liquidatePosition", "Ruta correcta"],
+        ["/v1/order/liquidateposition", "404 Not Found"],
+        ["/v1/order/LiquidatePosition", "404 Not Found"],
+        ["/v1/order/liquidate_position", "404 Not Found"],
+        ["/v1/order/liquidate-position", "404 Not Found"],
+      ],
+    },
+    { type: "paragraph", html: "La solución es aburrida pero fiable: copie el nombre de la operación directamente de la referencia de la API y péguelo, en lugar de volver a escribirlo. Basta con un solo carácter incorrecto en las mayúsculas o minúsculas. Ya de paso, revise si hay una barra final accidental o un segmento duplicado como <code>/order/order/liquidatePosition</code> que un generador de URL pueda colar." },
+    { type: "heading", text: "Causa 2: host incorrecto o segmento de versión ausente" },
+    { type: "paragraph", html: "La URL completa tiene cuatro partes que deben ser correctas: el esquema, el host, el segmento de versión <code>/v1</code> y la ruta. Al juntarlas obtiene:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Demo/simulación:</strong> <code>https://demo.tradovateapi.com/v1/order/liquidatePosition</code>",
+        "<strong class='text-white'>Live:</strong> <code>https://live.tradovateapi.com/v1/order/liquidatePosition</code>",
+      ],
+    },
+    { type: "paragraph", html: "Si omite el <code>/v1</code>, obtendrá un 404, ya que en la raíz de la API no hay ninguna ruta <code>/order/liquidatePosition</code> colgando directamente de ella. Un error tipográfico en el host provoca lo mismo, o hace fallar la resolución DNS por completo. Y no recurra al host de datos de mercado aquí: <code>md.tradovateapi.com</code> sirve cotizaciones, DOM y gráficos, no operaciones de órdenes, así que un host <code>md</code> tampoco enrutará una llamada de liquidación." },
+    { type: "paragraph", html: "Vale la pena señalar un matiz: mezclar entornos, un token de demo contra el host real, o viceversa, suele manifestarse más como un 401 que como un 404, pero aun así merece la pena revisarlo una vez que su ruta esté limpia. Los nombres de host se actualizan de vez en cuando, así que confirme los actuales en la propia documentación para desarrolladores de Tradovate en lugar de confiar en una URL copiada de un gist antiguo." },
+    { type: "heading", text: "Causa 3: envió el método HTTP incorrecto" },
+    { type: "paragraph", html: "La operación de liquidación es <strong class='text-white'>solo por POST</strong>. Si envía un GET, el servidor no tiene ningún manejador GET para esa ruta, lo que aparece como un error de tipo no encontrado o método no permitido, según cómo lo informe su cliente. Es fácil caer en esto si prueba pegando la URL en la barra de direcciones del navegador, eso siempre es un GET, así que aquí siempre fallará." },
+    { type: "paragraph", html: "Pruebe con un POST real desde un cliente adecuado. También necesita las cabeceras correctas en la solicitud: <code>Content-Type: application/json</code> y <code>Authorization: Bearer &lt;yourAccessToken&gt;</code>. Un POST con el cuerpo en el lugar equivocado, o sin el content type JSON, puede fallar de formas que parecen un problema de enrutamiento aunque la ruta sea correcta." },
+    { type: "heading", text: "Causa 4: singular o plural, ¿cuál es el real?" },
+    { type: "paragraph", html: "Aquí es de donde viene gran parte de la confusión sobre &ldquo;el endpoint no existe&rdquo;. La operación canónica, por posición, es la ruta en <strong class='text-white'>singular</strong> <code>/order/liquidatePosition</code>. Toma un <code>accountId</code> y un único <code>contractId</code> y cierra esa única posición neta. Esa es la ruta que encontrará documentada, y la que responde de forma constante." },
+    { type: "paragraph", html: "Algunas bibliotecas de cliente y fragmentos de la comunidad hacen referencia a una variante <em>plural</em> de tipo por lotes que toma un array <code>positions</code> en lugar de un único contrato. Si copia un ejemplo en plural pero su destino solo expone la ruta en singular, o asume que el singular acepta un array, obtendrá un 404 o enviará un cuerpo que el endpoint ignorará. Cuando tenga dudas, use por defecto el singular <code>/order/liquidatePosition</code> con <code>accountId</code> y <code>contractId</code>, y verifique el nombre exacto de la operación y su forma contra la referencia de la API en vivo para la versión que está utilizando. La ortografía y la elección entre singular y plural son exactamente los dos detalles que producen un 404 en silencio." },
+    { type: "heading", text: "La llamada correcta, campo por campo" },
+    { type: "paragraph", html: "Una vez que la línea de solicitud es correcta, el cuerpo es breve." },
+    { type: "quote", html: "POST https://demo.tradovateapi.com/v1/order/liquidatePosition<br>{ \"accountId\": 12345, \"contractId\": 67890, \"admin\": false, \"customTag50\": \"\" }" },
+    {
+      type: "table",
+      headers: ["Campo", "Qué es"],
+      rows: [
+        ["accountId", "El id numérico de la cuenta, no el nombre ni la especificación de la cuenta. Obténgalo de /account/list."],
+        ["contractId", "El id numérico del contrato que mantiene, obtenido de /position/list. Debe ser mayor que cero."],
+        ["admin", "Booleano, y debe estar presente. Establézcalo en false a menos que su usuario de API tenga realmente permiso de administrador (vea la trampa más abajo)."],
+        ["customTag50", "Etiqueta opcional de hasta 50 caracteres que acompaña a la orden. Una cadena vacía es válida."],
+      ],
+    },
+    { type: "paragraph", html: "Los dos ids son donde la gente se atasca, así que sea metódico. Llame a <code>/account/list</code> y lea el <code>id</code> del objeto de cuenta con el que quiere operar. Llame a <code>/position/list</code>, y cada posición abierta le entrega tanto un <code>accountId</code> como un <code>contractId</code>, junto con su cantidad neta. Copie esos números exactos, el endpoint trabaja con el par <code>(accountId, contractId)</code>, no con un id de posición ni con una cadena de símbolo." },
+    { type: "heading", text: "La trampa del admin: un 401 escondido detrás de su solución" },
+    { type: "paragraph", html: "Esta trampa atrapa a la gente justo en el momento en que resuelven el 404. El campo <code>admin</code> es obligatorio en el cuerpo, pero el valor que le asigne importa. Si establece <code>admin: true</code> cuando su usuario de API no tiene aprovisionado acceso de administrador, la llamada pasa directamente a <code>401 Unauthorized</code>. Establezca <code>admin: false</code> y la misma solicitud se completa correctamente. Así que, a menos que sepa que su usuario tiene alcance de administrador, envíe <code>\"admin\": false</code>. Si acaba de arreglar un 404 y ahora se encuentra con un 401 en el intento inmediatamente siguiente, esta es casi siempre la razón, no su token ni el id de su cuenta." },
+    { type: "heading", text: "Qué le ofrece el endpoint, y qué no" },
+    { type: "paragraph", html: "Conviene conocer algunos comportamientos antes de construir sobre esta llamada:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Cierra toda la posición neta</strong> para ese par (accountId, contractId). Internamente coloca una orden de cierre, lo que significa que no se ejecutará si el mercado está cerrado; ejecútela durante el horario de negociación del instrumento.",
+        "<strong class='text-white'>Es una llamada por contrato.</strong> Para cerrar todo en una cuenta, obtenga /position/list y recorra en bucle, disparando un liquidatePosition por cada contractId abierto. No existe un único cuerpo de &ldquo;cerrar toda la cuenta&rdquo; en esta ruta.",
+        "<strong class='text-white'>Es seguro frente a condiciones de carrera.</strong> Si la posición ya se cerró entre su comprobación y la llamada, por ejemplo porque se ejecutó un stop, obtiene un 200 limpio con un cuerpo vacío en lugar de un error. Eso es intencionado, y es más seguro que sintetizar una orden en el lado contrario, que podría abrir accidentalmente una posición inversa.",
+        "<strong class='text-white'>No devuelve orderId.</strong> Como no hay un id de orden en la respuesta, no puede leer directamente el precio de ejecución de cierre. Si necesita ese precio para el P&L, concilie con los informes de ejecución y de fills (execution reports, fill pairs) o con el registro de posiciones.",
+      ],
+    },
+    { type: "heading", text: "Una lista de comprobación rápida para resolver el 404" },
+    {
+      type: "table",
+      headers: ["Comprobación", "Qué confirmar"],
+      rows: [
+        ["Ortografía exacta", "liquidatePosition en camelCase, no en minúsculas, no en snake_case, no con guiones."],
+        ["URL completa", "Esquema + host + /v1 + /order/liquidatePosition, con el segmento de versión presente."],
+        ["Host correcto", "demo.tradovateapi.com o live.tradovateapi.com, nunca el host md de datos de mercado."],
+        ["POST, no GET", "POST con Content-Type: application/json y un token Bearer; sin pruebas en la barra de direcciones del navegador."],
+        ["Ids numéricos", "accountId de /account/list, contractId de /position/list, ambos mayores que cero."],
+        ["Valor de admin", "Incluya admin; establézcalo en false a menos que su usuario tenga permiso de administrador, para evitar un 401 posterior."],
+      ],
+    },
+    { type: "heading", text: "Dónde encaja PickMyTrade" },
+    { type: "paragraph", html: "La mayoría de las personas que luchan con este 404 en realidad no quieren convertirse en fontaneros de la API de Tradovate, quieren una estrategia que abra, gestione y cierre posiciones sin tener que vigilar constantemente endpoints, ids y tokens. PickMyTrade dirige las alertas de TradingView hacia Tradovate y puede cerrar o liquidar posiciones como parte de una estrategia, de modo que no tenga que construir a mano las llamadas de liquidación, perseguir ids de cuenta y de contrato, ni gestionar tokens." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Sin llamadas de liquidación construidas a mano</strong> su estrategia abre y cierra posiciones en Tradovate sin una sola solicitud de API codificada a mano.",
+        "<strong class='text-white'>Resolución de cuenta y contrato gestionada</strong> los ids que hacen tropezar a las llamadas directas se resuelven por usted.",
+        "<strong class='text-white'>Autenticación gestionada</strong> los tokens y los hosts se gestionan automáticamente, así que un 401 escondido detrás de un 404 nunca se convierte en su problema.",
+        "<strong class='text-white'>Enrutamiento seguro frente a los límites de solicitudes</strong> espacia el flujo de órdenes para que nada rebote contra los límites de solicitudes de Tradovate.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous voulez clôturer une position depuis votre code, donc vous envoyez un POST au point de terminaison liquidate en attendant une clôture propre. Au lieu de cela, le serveur renvoie <code>404 Not Found</code>. Votre jeton est valide, vos autres appels d'ordres fonctionnent, le JSON semble parfait, et pourtant cette route se comporte comme si elle n'existait pas. C'est frustrant, car on a l'impression que le point de terminaison est cassé ou absent." },
+    { type: "paragraph", html: "Ce n'est pas le cas. Une erreur 404 est plus limitée qu'il n'y paraît: elle ne concerne ni votre compte, ni votre position, ni votre charge utile. Elle signifie que l'URL exacte à laquelle vous avez envoyé le POST ne correspond à aucune route sur le serveur de Tradovate. Neuf fois sur dix, c'est l'une de ces trois choses: le chemin est mal orthographié en casse, vous visez le mauvais hôte, ou vous avez envoyé le mauvais verbe HTTP. Éliminons-les dans l'ordre, puis fixons l'appel correct pour que vous puissiez clôturer proprement." },
+    { type: "heading", text: "Ce qu'une erreur 404 vous indique réellement" },
+    { type: "paragraph", html: "Chaque erreur HTTP pointe vers une couche différente, et les confondre vous fait modifier la mauvaise chose. Un <code>404</code> signifie que le chemin n'existe pas. Un <code>401</code> signifie que le chemin existe mais que vous n'étiez pas autorisé. Un <code>400</code> signifie que le chemin et l'authentification étaient corrects mais que votre corps de requête était mal formé. Un <code>429</code> signifie que vous atteignez la limite de débit. Donc, si vous êtes face à un véritable 404, arrêtez de modifier votre corps JSON: le serveur n'est jamais allé assez loin pour s'en soucier. Il n'a même pas pu trouver la route." },
+    { type: "paragraph", html: "Ce seul fait réduit considérablement le champ de recherche. Tout ce qui produit un 404 se trouve dans la ligne de requête: la méthode, l'hôte, le segment de version et l'orthographe du chemin. Passez en revue ces quatre points et l'erreur disparaîtra." },
+    { type: "heading", text: "Cause 1 : le chemin est mal orthographié ou a une casse incorrecte" },
+    { type: "paragraph", html: "C'est le grand classique, et il piège presque tout le monde au moins une fois. Les chemins REST de Tradovate sont <strong class='text-white'>sensibles à la casse</strong>. L'opération s'écrit exactement <code>liquidatePosition</code>, avec un <code>l</code> minuscule et un <code>P</code> majuscule en camelCase. Écrivez-la autrement et le routeur n'a rien à quoi la faire correspondre, il répond donc 404. Tout mettre en minuscules est l'erreur classique, généralement parce que vous l'avez tapée de mémoire ou parce que votre framework a normalisé l'URL à votre place." },
+    {
+      type: "table",
+      headers: ["Ce que vous avez envoyé", "Résultat"],
+      rows: [
+        ["/v1/order/liquidatePosition", "Route correcte"],
+        ["/v1/order/liquidateposition", "404 Not Found"],
+        ["/v1/order/LiquidatePosition", "404 Not Found"],
+        ["/v1/order/liquidate_position", "404 Not Found"],
+        ["/v1/order/liquidate-position", "404 Not Found"],
+      ],
+    },
+    { type: "paragraph", html: "La solution est ennuyeuse mais fiable: copiez le nom de l'opération directement depuis la référence de l'API et collez-le, plutôt que de le retaper. Un seul caractère mal orthographié en casse suffit. Pendant que vous y êtes, vérifiez qu'il n'y a pas de barre oblique finale accidentelle ou de segment dupliqué comme <code>/order/order/liquidatePosition</code> qu'un générateur d'URL peut glisser." },
+    { type: "heading", text: "Cause 2 : mauvais hôte ou segment de version manquant" },
+    { type: "paragraph", html: "L'URL complète comporte quatre parties qui doivent toutes être correctes: le schéma, l'hôte, le segment de version <code>/v1</code> et le chemin. En les assemblant, vous obtenez:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Démo/simulation:</strong> <code>https://demo.tradovateapi.com/v1/order/liquidatePosition</code>",
+        "<strong class='text-white'>Live:</strong> <code>https://live.tradovateapi.com/v1/order/liquidatePosition</code>",
+      ],
+    },
+    { type: "paragraph", html: "Omettez le <code>/v1</code> et vous obtenez un 404, car la racine de l'API n'a aucune route <code>/order/liquidatePosition</code> directement rattachée. Une faute de frappe dans l'hôte produit le même résultat, ou fait échouer purement et simplement la résolution DNS. Et n'utilisez pas l'hôte de données de marché ici: <code>md.tradovateapi.com</code> sert les cotations, le DOM et les graphiques, pas les opérations d'ordres, donc un hôte <code>md</code> ne routera pas non plus un appel de liquidation." },
+    { type: "paragraph", html: "Une subtilité mérite d'être signalée: mélanger les environnements, un jeton demo contre l'hôte live, ou l'inverse, se manifeste plus souvent par un 401 que par un 404, mais cela vaut tout de même la peine d'être vérifié une fois votre chemin propre. Les noms d'hôte sont parfois mis à jour, confirmez donc les noms actuels dans la documentation développeur officielle de Tradovate plutôt que de faire confiance à une URL copiée depuis un vieux gist." },
+    { type: "heading", text: "Cause 3 : vous avez envoyé la mauvaise méthode HTTP" },
+    { type: "paragraph", html: "L'opération de liquidation est <strong class='text-white'>uniquement en POST</strong>. Envoyez un GET et le serveur n'a aucun gestionnaire GET pour ce chemin, ce qui se traduit par une erreur de type introuvable ou méthode non autorisée selon la façon dont votre client la signale. Il est facile de tomber dans ce piège si vous testez en collant l'URL dans la barre d'adresse du navigateur, cela reste toujours un GET, donc cela échouera toujours ici." },
+    { type: "paragraph", html: "Testez avec un véritable POST depuis un client adapté. Vous avez également besoin des bons en-têtes sur la requête: <code>Content-Type: application/json</code> et <code>Authorization: Bearer &lt;yourAccessToken&gt;</code>. Un POST avec le corps mal placé, ou sans type de contenu JSON, peut échouer de manières qui ressemblent à un problème de routage même lorsque le chemin est correct." },
+    { type: "heading", text: "Cause 4 : singulier ou pluriel, lequel est le bon ?" },
+    { type: "paragraph", html: "C'est de là que vient une grande partie de la confusion du type &ldquo;le point de terminaison n'existe pas&rdquo;. L'opération canonique, par position, est la route au <strong class='text-white'>singulier</strong> <code>/order/liquidatePosition</code>. Elle prend un <code>accountId</code> et un seul <code>contractId</code> et clôture cette unique position nette. C'est la route que vous trouverez documentée, et celle qui répond systématiquement." },
+    { type: "paragraph", html: "Certaines bibliothèques clientes et extraits communautaires font référence à une variante <em>plurielle</em> de type batch qui prend un tableau <code>positions</code> au lieu d'un seul contrat. Si vous copiez un exemple au pluriel alors que votre cible n'expose que la route au singulier, ou si vous supposez que le singulier accepte un tableau, vous obtiendrez soit un 404, soit vous enverrez un corps que le point de terminaison ignorera. En cas de doute, utilisez par défaut le singulier <code>/order/liquidatePosition</code> avec <code>accountId</code> et <code>contractId</code>, et vérifiez le nom exact de l'opération et sa structure par rapport à la référence API en vigueur pour la version que vous appelez. L'orthographe et le choix entre singulier et pluriel sont exactement les deux détails qui produisent discrètement un 404." },
+    { type: "heading", text: "L'appel correct, champ par champ" },
+    { type: "paragraph", html: "Une fois la ligne de requête correcte, le corps est court." },
+    { type: "quote", html: "POST https://demo.tradovateapi.com/v1/order/liquidatePosition<br>{ \"accountId\": 12345, \"contractId\": 67890, \"admin\": false, \"customTag50\": \"\" }" },
+    {
+      type: "table",
+      headers: ["Champ", "Ce que c'est"],
+      rows: [
+        ["accountId", "L'identifiant numérique du compte, pas le nom du compte ni sa spécification. Récupérez-le via /account/list."],
+        ["contractId", "L'identifiant numérique du contrat que vous détenez, issu de /position/list. Doit être supérieur à zéro."],
+        ["admin", "Un booléen, et il doit être présent. Réglez-le sur false, sauf si votre utilisateur API dispose réellement de la permission admin (voir le piège ci-dessous)."],
+        ["customTag50", "Étiquette facultative de 50 caractères maximum qui accompagne l'ordre. Une chaîne vide convient."],
+      ],
+    },
+    { type: "paragraph", html: "Ce sont les deux identifiants qui bloquent le plus souvent les gens, alors procédez méthodiquement. Appelez <code>/account/list</code> et relevez l'<code>id</code> de l'objet compte avec lequel vous voulez trader. Appelez <code>/position/list</code>, et chaque position ouverte vous fournit à la fois un <code>accountId</code> et un <code>contractId</code>, ainsi que sa quantité nette. Copiez ces chiffres exacts, le point de terminaison fonctionne sur la paire <code>(accountId, contractId)</code>, pas sur un identifiant de position ni sur une chaîne de symbole." },
+    { type: "heading", text: "Le piège admin : un 401 caché derrière votre correctif" },
+    { type: "paragraph", html: "Ce piège se referme au moment même où vous résolvez le 404. Le champ <code>admin</code> est obligatoire dans le corps, mais la valeur que vous lui donnez compte. Réglez <code>admin: true</code> alors que votre utilisateur API n'est pas provisionné pour un accès admin, et l'appel bascule directement vers <code>401 Unauthorized</code>. Réglez <code>admin: false</code> et la même requête passe. Donc, à moins que vous ne sachiez que votre utilisateur dispose du périmètre admin, envoyez <code>\"admin\": false</code>. Si vous venez de corriger un 404 et que vous vous retrouvez face à un 401 dès la tentative suivante, c'est presque toujours la raison, pas votre jeton, pas l'identifiant de votre compte." },
+    { type: "heading", text: "Ce que le point de terminaison vous donne, et ce qu'il ne donne pas" },
+    { type: "paragraph", html: "Quelques comportements méritent d'être connus avant de construire sur cet appel :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Il clôture l'intégralité de la position nette</strong> pour cette paire (accountId, contractId). En coulisses, il place un ordre de clôture, ce qui signifie qu'il ne s'exécutera pas si le marché est fermé, exécutez-le pendant les heures de négociation de l'instrument.",
+        "<strong class='text-white'>C'est un appel par contrat.</strong> Pour tout clôturer sur un compte, récupérez /position/list et bouclez, en déclenchant un liquidatePosition par contractId ouvert. Il n'existe pas de corps unique &ldquo;clôturer tout le compte&rdquo; sur cette route.",
+        "<strong class='text-white'>Il est sûr face aux conditions de concurrence (race-safe).</strong> Si la position s'est déjà clôturée entre votre vérification et l'appel, par exemple parce qu'un stop a été exécuté, vous obtenez un 200 propre avec un corps vide plutôt qu'une erreur. C'est délibéré, et c'est plus sûr que de synthétiser un ordre du côté opposé, qui pourrait accidentellement ouvrir une position inverse.",
+        "<strong class='text-white'>Il ne renvoie aucun orderId.</strong> Comme il n'y a pas d'identifiant d'ordre dans la réponse, vous ne pouvez pas lire directement le prix d'exécution de clôture. Si vous avez besoin de ce prix pour le P&L, rapprochez-vous des rapports d'exécution et de fill (execution reports, fill pairs) ou du journal des positions.",
+      ],
+    },
+    { type: "heading", text: "Une checklist rapide pour résoudre le 404" },
+    {
+      type: "table",
+      headers: ["Vérification", "Ce qu'il faut confirmer"],
+      rows: [
+        ["Orthographe exacte", "liquidatePosition en camelCase, pas en minuscules, pas en snake_case, pas avec des tirets."],
+        ["URL complète", "Schéma + hôte + /v1 + /order/liquidatePosition, avec le segment de version présent."],
+        ["Bon hôte", "demo.tradovateapi.com ou live.tradovateapi.com, jamais l'hôte de données de marché md."],
+        ["POST, pas GET", "POST avec Content-Type: application/json et un jeton Bearer ; pas de tests via la barre d'adresse du navigateur."],
+        ["Identifiants numériques", "accountId depuis /account/list, contractId depuis /position/list, tous deux supérieurs à zéro."],
+        ["Valeur d'admin", "Incluez admin ; réglez-le sur false sauf si votre utilisateur dispose de la permission admin, pour éviter un 401 en cascade."],
+      ],
+    },
+    { type: "heading", text: "Où PickMyTrade s'intègre" },
+    { type: "paragraph", html: "La plupart des personnes aux prises avec ce 404 ne veulent pas vraiment devenir des plombiers de l'API Tradovate, elles veulent une stratégie qui ouvre, gère et clôture les positions sans avoir à surveiller sans cesse les points de terminaison, les identifiants et les jetons. PickMyTrade achemine les alertes TradingView vers Tradovate et peut clôturer ou liquider des positions dans le cadre d'une stratégie, afin que vous n'ayez pas à construire manuellement des appels de liquidation, à courir après les identifiants de compte et de contrat, ni à gérer les jetons." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Aucun appel de liquidation construit manuellement</strong> votre stratégie ouvre et clôture des positions sur Tradovate sans une seule requête API codée à la main.",
+        "<strong class='text-white'>Résolution du compte et du contrat prise en charge</strong> les identifiants qui font trébucher les appels bruts sont résolus pour vous.",
+        "<strong class='text-white'>Authentification gérée</strong> les jetons et les hôtes sont gérés automatiquement, de sorte qu'un 401 caché derrière un 404 ne devient jamais votre problème.",
+        "<strong class='text-white'>Routage sûr vis-à-vis des limites de débit</strong> espace le flux d'ordres pour que rien ne se heurte aux limites de requêtes de Tradovate.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Vuole chiudere una posizione da codice, quindi invia una richiesta POST all'endpoint liquidate aspettandosi una chiusura pulita. Invece il server restituisce <code>404 Not Found</code>. Il suo token è valido, le altre chiamate di ordine funzionano, il JSON sembra perfetto, eppure proprio questa route si comporta come se non esistesse. È frustrante, perché sembra che l'endpoint sia rotto o mancante." },
+    { type: "paragraph", html: "Non lo è. Un 404 è più circoscritto di quanto sembri: non riguarda il suo account, la sua posizione o il suo payload. Significa che l'URL esatto a cui ha inviato il POST non corrisponde a nessuna route sul server di Tradovate. Nove volte su dieci si tratta di una di queste tre cose: il percorso ha maiuscole/minuscole errate o è scritto male, sta puntando all'host sbagliato, oppure ha inviato il verbo HTTP sbagliato. Le escludiamo in ordine, per poi fissare la chiamata corretta e permetterle di chiudere la posizione in modo pulito." },
+    { type: "heading", text: "Cosa le sta dicendo davvero un 404" },
+    { type: "paragraph", html: "Ogni errore HTTP indica un livello diverso, e confonderli porta a modificare la cosa sbagliata. Un <code>404</code> significa che il percorso non esiste. Un <code>401</code> significa che il percorso esiste ma non era autorizzato. Un <code>400</code> significa che percorso e autenticazione erano corretti ma il corpo della richiesta era malformato. Un <code>429</code> significa che sta raggiungendo il limite di frequenza delle richieste. Quindi, se ha davanti un 404 reale, smetta di modificare il corpo JSON: il server non è mai arrivato abbastanza avanti da occuparsene. Non è nemmeno riuscito a trovare la route." },
+    { type: "paragraph", html: "Questo singolo fatto restringe molto la ricerca. Tutto ciò che produce un 404 si trova nella riga della richiesta: il metodo, l'host, il segmento di versione e la grafia del percorso. Verifichi questi quattro punti e l'errore sparirà." },
+    { type: "heading", text: "Causa 1: il percorso ha maiuscole/minuscole errate o è scritto male" },
+    { type: "paragraph", html: "Questo è il grande classico, e coglie quasi tutti almeno una volta. I percorsi REST di Tradovate <strong class='text-white'>distinguono tra maiuscole e minuscole</strong>. L'operazione si scrive esattamente <code>liquidatePosition</code>, con la <code>l</code> minuscola e la <code>P</code> maiuscola in camelCase. Se la scrive in un altro modo, il router non ha nulla da far corrispondere e risponde con 404. Scrivere tutto in minuscolo è l'errore classico, di solito perché l'ha digitata a memoria o perché il suo framework ha normalizzato l'URL al posto suo." },
+    {
+      type: "table",
+      headers: ["Cosa ha inviato", "Risultato"],
+      rows: [
+        ["/v1/order/liquidatePosition", "Route corretta"],
+        ["/v1/order/liquidateposition", "404 Not Found"],
+        ["/v1/order/LiquidatePosition", "404 Not Found"],
+        ["/v1/order/liquidate_position", "404 Not Found"],
+        ["/v1/order/liquidate-position", "404 Not Found"],
+      ],
+    },
+    { type: "paragraph", html: "La soluzione è poco entusiasmante ma affidabile: copi il nome dell'operazione direttamente dal riferimento API e lo incolli, invece di ridigitarlo. Basta un solo carattere sbagliato nelle maiuscole/minuscole. Già che c'è, controlli che non ci sia una barra finale accidentale o un segmento duplicato come <code>/order/order/liquidatePosition</code> che un generatore di URL può introdurre di nascosto." },
+    { type: "heading", text: "Causa 2: host sbagliato o segmento di versione mancante" },
+    { type: "paragraph", html: "L'URL completo ha quattro parti che devono essere tutte corrette: schema, host, il segmento di versione <code>/v1</code> e il percorso. Mettendoli insieme si ottiene:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Demo/simulazione:</strong> <code>https://demo.tradovateapi.com/v1/order/liquidatePosition</code>",
+        "<strong class='text-white'>Live:</strong> <code>https://live.tradovateapi.com/v1/order/liquidatePosition</code>",
+      ],
+    },
+    { type: "paragraph", html: "Se omette <code>/v1</code> otterrà un 404, perché alla radice dell'API non è collegata direttamente nessuna route <code>/order/liquidatePosition</code>. Un errore di battitura nell'host produce lo stesso risultato, oppure fa fallire del tutto la risoluzione DNS. E non si rivolga qui all'host dei dati di mercato: <code>md.tradovateapi.com</code> serve quotazioni, DOM e grafici, non operazioni sugli ordini, quindi anche un host <code>md</code> non instraderà una chiamata di liquidazione." },
+    { type: "paragraph", html: "Vale la pena segnalare una sottigliezza: mescolare gli ambienti, un token demo contro l'host live, o viceversa, si manifesta più spesso come un 401 che come un 404, ma vale comunque la pena controllarlo una volta che il percorso è pulito. I nomi host vengono aggiornati di tanto in tanto, quindi confermi quelli attuali nella documentazione ufficiale per sviluppatori di Tradovate, invece di fidarsi di un URL copiato da un vecchio gist." },
+    { type: "heading", text: "Causa 3: ha inviato il metodo HTTP sbagliato" },
+    { type: "paragraph", html: "L'operazione di liquidazione è <strong class='text-white'>solo POST</strong>. Se invia un GET, il server non ha alcun gestore GET per quel percorso, il che si manifesta come un errore di tipo non trovato o metodo non consentito, a seconda di come lo segnala il suo client. È facile caderci se sta testando incollando l'URL nella barra degli indirizzi del browser: quello è sempre un GET, quindi qui fallirà sempre." },
+    { type: "paragraph", html: "Effettui un test con un vero POST da un client adeguato. Ha anche bisogno delle intestazioni corrette nella richiesta: <code>Content-Type: application/json</code> e <code>Authorization: Bearer &lt;yourAccessToken&gt;</code>. Un POST con il corpo nel posto sbagliato, o senza il content type JSON, può fallire in modi che sembrano un problema di routing anche quando il percorso è corretto." },
+    { type: "heading", text: "Causa 4: singolare o plurale, qual è quello reale?" },
+    { type: "paragraph", html: "È qui che nasce buona parte della confusione del tipo &ldquo;l'endpoint non esiste&rdquo;. L'operazione canonica, per singola posizione, è la route al <strong class='text-white'>singolare</strong> <code>/order/liquidatePosition</code>. Accetta un <code>accountId</code> e un singolo <code>contractId</code> e chiude quell'unica posizione netta. È questa la route che troverà documentata, ed è quella che risponde in modo costante." },
+    { type: "paragraph", html: "Alcune librerie client e frammenti di codice della community fanno riferimento a una variante <em>plurale</em> in stile batch che accetta un array <code>positions</code> invece di un singolo contratto. Se copia un esempio al plurale ma la sua destinazione espone solo la route al singolare, oppure presume che il singolare accetti un array, otterrà un 404 oppure invierà un corpo che l'endpoint ignorerà. In caso di dubbio, utilizzi per impostazione predefinita il singolare <code>/order/liquidatePosition</code> con <code>accountId</code> e <code>contractId</code>, e verifichi il nome esatto dell'operazione e la sua struttura rispetto al riferimento API live per la versione che sta chiamando. L'ortografia e la scelta tra singolare e plurale sono esattamente i due dettagli che producono silenziosamente un 404." },
+    { type: "heading", text: "La chiamata corretta, campo per campo" },
+    { type: "paragraph", html: "Una volta che la riga della richiesta è corretta, il corpo è breve." },
+    { type: "quote", html: "POST https://demo.tradovateapi.com/v1/order/liquidatePosition<br>{ \"accountId\": 12345, \"contractId\": 67890, \"admin\": false, \"customTag50\": \"\" }" },
+    {
+      type: "table",
+      headers: ["Campo", "Cos'è"],
+      rows: [
+        ["accountId", "L'id numerico dell'account, non il nome o la specifica dell'account. Lo recuperi da /account/list."],
+        ["contractId", "L'id numerico del contratto che detiene, ottenuto da /position/list. Deve essere maggiore di zero."],
+        ["admin", "Un booleano, e deve essere presente. Lo imposti su false a meno che il suo utente API non disponga realmente del permesso admin (vedere l'insidia più sotto)."],
+        ["customTag50", "Etichetta opzionale di massimo 50 caratteri che accompagna l'ordine. Una stringa vuota va bene."],
+      ],
+    },
+    { type: "paragraph", html: "I due id sono il punto in cui la maggior parte delle persone si blocca, quindi proceda con attenzione. Chiami <code>/account/list</code> e legga l'<code>id</code> dall'oggetto account con cui vuole operare. Chiami <code>/position/list</code>, e ogni posizione aperta le restituisce sia un <code>accountId</code> sia un <code>contractId</code>, insieme alla sua quantità netta. Copi esattamente questi numeri, l'endpoint lavora sulla coppia <code>(accountId, contractId)</code>, non su un id di posizione o su una stringa simbolo." },
+    { type: "heading", text: "L'insidia dell'admin: un 401 nascosto dietro la sua soluzione" },
+    { type: "paragraph", html: "Questa insidia scatta proprio nel momento in cui si risolve il 404. Il campo <code>admin</code> è obbligatorio nel corpo, ma il valore che gli assegna è determinante. Impostando <code>admin: true</code> quando il suo utente API non è predisposto per l'accesso admin, la chiamata passa direttamente a <code>401 Unauthorized</code>. Impostando <code>admin: false</code> la stessa richiesta va a buon fine. Quindi, a meno che non sappia che il suo utente ha privilegi admin, invii <code>\"admin\": false</code>. Se ha appena risolto un 404 e ora si trova davanti un 401 al tentativo immediatamente successivo, questa è quasi sempre la ragione, non il suo token, non l'id del suo account." },
+    { type: "heading", text: "Cosa le offre l'endpoint, e cosa non offre" },
+    { type: "paragraph", html: "Vale la pena conoscere alcuni comportamenti prima di costruire qualcosa sopra questa chiamata:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Chiude l'intera posizione netta</strong> per quella coppia (accountId, contractId). Dietro le quinte inserisce un ordine di chiusura, il che significa che non verrà eseguito quando il mercato è chiuso: lo esegua durante l'orario di negoziazione dello strumento.",
+        "<strong class='text-white'>È una chiamata per contratto.</strong> Per chiudere tutto su un account, recuperi /position/list e cicli, lanciando una liquidatePosition per ogni contractId aperto. Su questa route non esiste un unico corpo &ldquo;chiudi tutto l'account&rdquo;.",
+        "<strong class='text-white'>È sicuro rispetto alle race condition.</strong> Se la posizione si è già chiusa tra il suo controllo e la chiamata, ad esempio perché uno stop è stato eseguito, ottiene un 200 pulito con un corpo vuoto invece di un errore. È voluto, ed è più sicuro che sintetizzare un ordine sul lato opposto, che potrebbe aprire accidentalmente una posizione inversa.",
+        "<strong class='text-white'>Non restituisce alcun orderId.</strong> Poiché nella risposta non è presente un id ordine, non può leggere direttamente il prezzo di esecuzione di chiusura. Se le serve quel prezzo per il P&L, effettui una riconciliazione con i report di esecuzione e fill (execution reports, fill pairs) o con il registro delle posizioni.",
+      ],
+    },
+    { type: "heading", text: "Una checklist rapida per risolvere il 404" },
+    {
+      type: "table",
+      headers: ["Verifica", "Cosa confermare"],
+      rows: [
+        ["Ortografia esatta", "liquidatePosition in camelCase, non minuscolo, non snake_case, non con trattini."],
+        ["URL completo", "Schema + host + /v1 + /order/liquidatePosition, con il segmento di versione presente."],
+        ["Host corretto", "demo.tradovateapi.com o live.tradovateapi.com, mai l'host md dei dati di mercato."],
+        ["POST, non GET", "POST con Content-Type: application/json e un token Bearer; niente test dalla barra degli indirizzi del browser."],
+        ["Id numerici", "accountId da /account/list, contractId da /position/list, entrambi maggiori di zero."],
+        ["Valore di admin", "Includa admin; lo imposti su false a meno che il suo utente non abbia il permesso admin, per evitare un successivo 401."],
+      ],
+    },
+    { type: "heading", text: "Dove si inserisce PickMyTrade" },
+    { type: "paragraph", html: "La maggior parte delle persone alle prese con questo 404 non vuole davvero diventare idraulici dell'API Tradovate, vuole una strategia che apra, gestisca e chiuda le posizioni senza dover sorvegliare costantemente endpoint, id e token. PickMyTrade instrada gli alert di TradingView verso Tradovate e può chiudere o liquidare le posizioni come parte di una strategia, così non deve costruire a mano le chiamate di liquidazione, inseguire gli id di account e contratto, né gestire i token." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Nessuna chiamata di liquidazione costruita a mano</strong> la sua strategia apre e chiude posizioni su Tradovate senza una sola richiesta API scritta a mano.",
+        "<strong class='text-white'>Risoluzione di account e contratto gestita</strong> gli id che mandano in crisi le chiamate dirette vengono risolti al suo posto.",
+        "<strong class='text-white'>Autenticazione gestita</strong> token e host vengono gestiti automaticamente, così un 401 nascosto dietro un 404 non diventa mai un suo problema.",
+        "<strong class='text-white'>Routing sicuro rispetto ai rate limit</strong> distribuisce il flusso di ordini in modo che nulla rimbalzi contro i limiti di richiesta di Tradovate.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Automate the Whole Order Flow", de: "Automatisieren Sie den gesamten Orderfluss", es: "Automatice todo el flujo de órdenes", fr: "Automatisez l'ensemble du flux d'ordres", it: "Automatizzi l'intero flusso di ordini" },
+  ctaText: { en: "Want your TradingView strategy to enter and flatten on Tradovate without hand-coding a single API call? See how PickMyTrade automates the whole order flow.", de: "Möchten Sie, dass Ihre TradingView-Strategie auf Tradovate eröffnet und glattstellt, ohne einen einzigen API-Aufruf von Hand zu programmieren? Erfahren Sie, wie PickMyTrade den gesamten Orderfluss automatisiert.", es: "¿Quiere que su estrategia de TradingView abra y cierre posiciones en Tradovate sin codificar a mano ni una sola llamada a la API? Descubra cómo PickMyTrade automatiza todo el flujo de órdenes.", fr: "Vous voulez que votre stratégie TradingView ouvre et clôture des positions sur Tradovate sans coder à la main le moindre appel API ? Découvrez comment PickMyTrade automatise l'ensemble du flux d'ordres.", it: "Vuole che la sua strategia TradingView apra e chiuda posizioni su Tradovate senza scrivere a mano nemmeno una chiamata API? Scopra come PickMyTrade automatizza l'intero flusso di ordini." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvii la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does /order/liquidatePosition return a 404?", a: "A 404 means the URL path doesn't exist exactly as you sent it. The most common cause is casing: Tradovate's REST paths are case-sensitive, and the operation is spelled liquidatePosition with a capital P. POST to /v1/order/liquidateposition in all lowercase and you get 404 Not Found, because that route isn't defined. The same happens if you drop the /v1 version segment, point at the wrong host, or send a GET instead of a POST. Fix the path first, before you touch the body." },
+    { q: "Is the endpoint liquidatePosition or liquidatePositions?", a: "The canonical, per-position endpoint is the singular /order/liquidatePosition. It takes a numeric accountId plus a single contractId and flattens that one net position. Some client libraries and snippets reference a plural batch variant that accepts a positions array, so copying a plural example against a route that only serves the singular (or the reverse) can 404. When in doubt, use the singular /order/liquidatePosition with accountId and contractId, and confirm the exact operation name against the live API reference for your version." },
+    { q: "How do I get the accountId and contractId to liquidate?", a: "Both are numeric ids, not names. Call /account/list to get your account's id field, and call /position/list to get each open position's accountId and contractId. Copy those numeric values straight into the request body. The contractId must be greater than zero, and it has to be the contract you're actually holding, not a product root or a symbol string." },
+    { q: "Why do I get a 401 instead of a 404 on the liquidate endpoint?", a: "A 401 means the route exists but the request wasn't authorized, which is a different problem than a 404. On this endpoint the usual trigger is the admin field. It's required in the body, but if you set admin to true when your API user isn't provisioned for admin permission, the call comes back 401 Unauthorized. Set admin to false and it goes through. So if fixing the path turned your 404 into a 401, flip admin to false." },
+    { q: "Does liquidatePosition return a fill price or orderId?", a: "No. A successful liquidation returns a clean 200 with no orderId, so you can't read the closing fill price directly from the response. It's race-safe: if the position already closed, you still get a 200 with an empty body instead of an error. To capture the closing price for P&L, reconcile against the execution and fill reports or the position log rather than expecting an order id back." },
+    { q: "Can PickMyTrade flatten positions without the raw API?", a: "Yes. PickMyTrade routes TradingView alerts to Tradovate and can close or flatten positions as part of a strategy, so you don't have to hand-build liquidatePosition calls, chase accountId and contractId lookups, or manage tokens yourself. It's a shortcut for automation, not a replacement for the raw API when you specifically need low-level control." },
+  ], de: [
+    { q: "Warum liefert /order/liquidatePosition einen 404?", a: "Ein 404 bedeutet, dass der URL-Pfad nicht exakt so existiert, wie Sie ihn gesendet haben. Die häufigste Ursache ist die Groß-/Kleinschreibung: Die REST-Pfade von Tradovate unterscheiden zwischen Groß- und Kleinschreibung, und die Operation wird liquidatePosition mit großem P geschrieben. Senden Sie einen POST an /v1/order/liquidateposition komplett in Kleinbuchstaben, erhalten Sie 404 Not Found, weil diese Route nicht definiert ist. Dasselbe passiert, wenn Sie das Versionssegment /v1 weglassen, auf den falschen Host zeigen oder ein GET statt eines POST senden. Beheben Sie zuerst den Pfad, bevor Sie den Body anfassen." },
+    { q: "Heißt der Endpunkt liquidatePosition oder liquidatePositions?", a: "Der kanonische Endpunkt pro Position ist das Singular /order/liquidatePosition. Er nimmt eine numerische accountId sowie eine einzelne contractId entgegen und stellt diese eine Nettoposition glatt. Manche Client-Bibliotheken und Snippets verweisen auf eine Plural-Batch-Variante, die ein positions-Array akzeptiert, sodass das Kopieren eines Plural-Beispiels gegen eine Route, die nur den Singular bedient (oder umgekehrt), einen 404 auslösen kann. Verwenden Sie im Zweifel das Singular /order/liquidatePosition mit accountId und contractId, und bestätigen Sie den exakten Operationsnamen anhand der aktuellen API-Referenz für Ihre Version." },
+    { q: "Wie erhalte ich die accountId und contractId zum Glattstellen?", a: "Beide sind numerische IDs, keine Namen. Rufen Sie /account/list auf, um das id-Feld Ihres Kontos zu erhalten, und rufen Sie /position/list auf, um für jede offene Position die accountId und contractId zu erhalten. Kopieren Sie diese numerischen Werte direkt in den Request-Body. Die contractId muss größer als null sein und muss der Contract sein, den Sie tatsächlich halten, nicht eine Produktwurzel oder ein Symbol-String." },
+    { q: "Warum erhalte ich am Liquidate-Endpunkt einen 401 statt eines 404?", a: "Ein 401 bedeutet, dass die Route existiert, die Anfrage aber nicht autorisiert war, was ein anderes Problem als ein 404 ist. An diesem Endpunkt ist der übliche Auslöser das Feld admin. Es ist im Body erforderlich, aber wenn Sie admin auf true setzen, obwohl Ihr API-Benutzer nicht für Admin-Berechtigung bereitgestellt ist, kommt der Aufruf mit 401 Unauthorized zurück. Setzen Sie admin auf false, geht die Anfrage durch. Wenn also die Behebung des Pfads Ihren 404 in einen 401 verwandelt hat, kippen Sie admin auf false." },
+    { q: "Liefert liquidatePosition einen Fill-Preis oder eine orderId zurück?", a: "Nein. Eine erfolgreiche Liquidation liefert einen sauberen 200 ohne orderId zurück, sodass Sie den Schlusskurs der Ausführung nicht direkt aus der Antwort auslesen können. Sie ist race-sicher: Ist die Position bereits geschlossen, erhalten Sie trotzdem einen 200 mit leerem Body statt eines Fehlers. Um den Schlusskurs für die P&L-Berechnung zu erfassen, gleichen Sie ihn mit den Ausführungs- und Fill-Berichten oder dem Positionslog ab, statt eine Order-ID zurückzuerwarten." },
+    { q: "Kann PickMyTrade Positionen glattstellen, ohne die rohe API zu nutzen?", a: "Ja. PickMyTrade leitet TradingView-Alerts an Tradovate weiter und kann Positionen im Rahmen einer Strategie schließen oder glattstellen, sodass Sie liquidatePosition-Aufrufe nicht von Hand bauen, accountId- und contractId-Abfragen nicht hinterherjagen und Tokens nicht selbst verwalten müssen. Es ist eine Abkürzung für die Automatisierung, kein Ersatz für die rohe API, wenn Sie gezielt Low-Level-Kontrolle benötigen." },
+  ], es: [
+    { q: "¿Por qué /order/liquidatePosition devuelve un 404?", a: "Un 404 significa que la ruta de la URL no existe exactamente como la envió. La causa más común son las mayúsculas y minúsculas: las rutas REST de Tradovate distinguen entre mayúsculas y minúsculas, y la operación se escribe liquidatePosition con P mayúscula. Envíe un POST a /v1/order/liquidateposition todo en minúsculas y obtendrá 404 Not Found, porque esa ruta no está definida. Lo mismo ocurre si omite el segmento de versión /v1, apunta al host equivocado, o envía un GET en lugar de un POST. Arregle primero la ruta, antes de tocar el cuerpo." },
+    { q: "¿El endpoint es liquidatePosition o liquidatePositions?", a: "El endpoint canónico, por posición, es el singular /order/liquidatePosition. Toma un accountId numérico más un único contractId y cierra esa única posición neta. Algunas bibliotecas de cliente y fragmentos hacen referencia a una variante plural por lotes que acepta un array positions, por lo que copiar un ejemplo en plural contra una ruta que solo sirve el singular (o al revés) puede dar 404. En caso de duda, use el singular /order/liquidatePosition con accountId y contractId, y confirme el nombre exacto de la operación con la referencia de la API en vigor para su versión." },
+    { q: "¿Cómo obtengo el accountId y el contractId para liquidar?", a: "Ambos son ids numéricos, no nombres. Llame a /account/list para obtener el campo id de su cuenta, y llame a /position/list para obtener el accountId y el contractId de cada posición abierta. Copie esos valores numéricos directamente en el cuerpo de la solicitud. El contractId debe ser mayor que cero, y debe ser el contrato que realmente está manteniendo, no una raíz de producto ni una cadena de símbolo." },
+    { q: "¿Por qué obtengo un 401 en lugar de un 404 en el endpoint de liquidación?", a: "Un 401 significa que la ruta existe pero la solicitud no estaba autorizada, lo cual es un problema distinto de un 404. En este endpoint, el desencadenante habitual es el campo admin. Es obligatorio en el cuerpo, pero si establece admin en true cuando su usuario de API no tiene aprovisionado el permiso de administrador, la llamada vuelve con 401 Unauthorized. Establezca admin en false y la solicitud se completa. Así que, si al arreglar la ruta su 404 se convirtió en un 401, cambie admin a false." },
+    { q: "¿liquidatePosition devuelve un precio de ejecución o un orderId?", a: "No. Una liquidación exitosa devuelve un 200 limpio sin orderId, por lo que no puede leer directamente el precio de ejecución de cierre desde la respuesta. Es segura frente a condiciones de carrera: si la posición ya se cerró, igualmente obtiene un 200 con un cuerpo vacío en lugar de un error. Para obtener el precio de cierre para el P&L, concilie con los informes de ejecución y de fills o con el registro de posiciones, en lugar de esperar que le devuelva un id de orden." },
+    { q: "¿Puede PickMyTrade cerrar posiciones sin usar la API en bruto?", a: "Sí. PickMyTrade dirige las alertas de TradingView hacia Tradovate y puede cerrar o liquidar posiciones como parte de una estrategia, de modo que no tenga que construir a mano las llamadas a liquidatePosition, perseguir búsquedas de accountId y contractId, ni gestionar tokens usted mismo. Es un atajo para la automatización, no un sustituto de la API en bruto cuando necesita específicamente un control de bajo nivel." },
+  ], fr: [
+    { q: "Pourquoi /order/liquidatePosition renvoie-t-il un 404 ?", a: "Un 404 signifie que le chemin de l'URL n'existe pas exactement tel que vous l'avez envoyé. La cause la plus fréquente est la casse: les chemins REST de Tradovate sont sensibles à la casse, et l'opération s'écrit liquidatePosition avec un P majuscule. Envoyez un POST à /v1/order/liquidateposition tout en minuscules et vous obtenez 404 Not Found, car cette route n'est pas définie. Il se passe la même chose si vous omettez le segment de version /v1, si vous visez le mauvais hôte, ou si vous envoyez un GET au lieu d'un POST. Corrigez d'abord le chemin, avant de toucher au corps." },
+    { q: "Le point de terminaison est-il liquidatePosition ou liquidatePositions ?", a: "Le point de terminaison canonique, par position, est le singulier /order/liquidatePosition. Il prend un accountId numérique plus un seul contractId et clôture cette unique position nette. Certaines bibliothèques clientes et extraits de code font référence à une variante plurielle par lots qui accepte un tableau positions, donc copier un exemple au pluriel sur une route qui ne sert que le singulier (ou l'inverse) peut provoquer un 404. En cas de doute, utilisez le singulier /order/liquidatePosition avec accountId et contractId, et confirmez le nom exact de l'opération par rapport à la référence API en vigueur pour votre version." },
+    { q: "Comment obtenir l'accountId et le contractId à liquider ?", a: "Les deux sont des identifiants numériques, pas des noms. Appelez /account/list pour obtenir le champ id de votre compte, et appelez /position/list pour obtenir l'accountId et le contractId de chaque position ouverte. Copiez ces valeurs numériques directement dans le corps de la requête. Le contractId doit être supérieur à zéro, et il doit s'agir du contrat que vous détenez réellement, pas d'une racine de produit ni d'une chaîne de symbole." },
+    { q: "Pourquoi est-ce que j'obtiens un 401 au lieu d'un 404 sur le point de terminaison de liquidation ?", a: "Un 401 signifie que la route existe mais que la requête n'était pas autorisée, ce qui est un problème différent d'un 404. Sur ce point de terminaison, le déclencheur habituel est le champ admin. Il est obligatoire dans le corps, mais si vous réglez admin sur true alors que votre utilisateur API n'est pas provisionné pour la permission admin, l'appel revient avec 401 Unauthorized. Réglez admin sur false et la requête passe. Donc, si corriger le chemin a transformé votre 404 en 401, basculez admin sur false." },
+    { q: "liquidatePosition renvoie-t-il un prix d'exécution ou un orderId ?", a: "Non. Une liquidation réussie renvoie un 200 propre sans orderId, vous ne pouvez donc pas lire directement le prix d'exécution de clôture depuis la réponse. Elle est sûre face aux conditions de concurrence: si la position s'est déjà clôturée, vous obtenez tout de même un 200 avec un corps vide plutôt qu'une erreur. Pour récupérer le prix de clôture pour le P&L, rapprochez-vous des rapports d'exécution et de fill ou du journal des positions plutôt que d'attendre un identifiant d'ordre en retour." },
+    { q: "PickMyTrade peut-il clôturer des positions sans passer par l'API brute ?", a: "Oui. PickMyTrade achemine les alertes TradingView vers Tradovate et peut clôturer ou liquider des positions dans le cadre d'une stratégie, afin que vous n'ayez pas à construire manuellement des appels liquidatePosition, à courir après les recherches d'accountId et de contractId, ni à gérer les jetons vous-même. C'est un raccourci pour l'automatisation, pas un remplacement de l'API brute lorsque vous avez spécifiquement besoin d'un contrôle bas niveau." },
+  ], it: [
+    { q: "Perché /order/liquidatePosition restituisce un 404?", a: "Un 404 significa che il percorso dell'URL non esiste esattamente come è stato inviato. La causa più comune è la distinzione tra maiuscole e minuscole: i percorsi REST di Tradovate sono case-sensitive, e l'operazione si scrive liquidatePosition con la P maiuscola. Invii un POST a /v1/order/liquidateposition tutto in minuscolo e otterrà 404 Not Found, perché quella route non è definita. Succede lo stesso se omette il segmento di versione /v1, punta all'host sbagliato, o invia un GET invece di un POST. Corregga prima il percorso, prima di toccare il corpo." },
+    { q: "L'endpoint è liquidatePosition o liquidatePositions?", a: "L'endpoint canonico, per singola posizione, è il singolare /order/liquidatePosition. Accetta un accountId numerico più un singolo contractId e chiude quell'unica posizione netta. Alcune librerie client e frammenti di codice fanno riferimento a una variante plurale in stile batch che accetta un array positions, quindi copiare un esempio al plurale su una route che serve solo il singolare (o viceversa) può causare un 404. In caso di dubbio, usi il singolare /order/liquidatePosition con accountId e contractId, e confermi il nome esatto dell'operazione rispetto al riferimento API live per la sua versione." },
+    { q: "Come ottengo l'accountId e il contractId da liquidare?", a: "Entrambi sono id numerici, non nomi. Chiami /account/list per ottenere il campo id del suo account, e chiami /position/list per ottenere l'accountId e il contractId di ogni posizione aperta. Copi quei valori numerici direttamente nel corpo della richiesta. Il contractId deve essere maggiore di zero, e deve essere il contratto che sta effettivamente detenendo, non una radice di prodotto o una stringa simbolo." },
+    { q: "Perché ottengo un 401 invece di un 404 sull'endpoint di liquidazione?", a: "Un 401 significa che la route esiste ma la richiesta non era autorizzata, il che è un problema diverso da un 404. Su questo endpoint, il fattore scatenante abituale è il campo admin. È obbligatorio nel corpo, ma se imposta admin su true quando il suo utente API non è predisposto per il permesso admin, la chiamata torna con 401 Unauthorized. Imposti admin su false e la richiesta va a buon fine. Quindi, se correggendo il percorso il suo 404 si è trasformato in un 401, imposti admin su false." },
+    { q: "liquidatePosition restituisce un prezzo di esecuzione o un orderId?", a: "No. Una liquidazione riuscita restituisce un 200 pulito senza orderId, quindi non può leggere direttamente il prezzo di esecuzione di chiusura dalla risposta. È sicura rispetto alle race condition: se la posizione si è già chiusa, ottiene comunque un 200 con un corpo vuoto invece di un errore. Per ottenere il prezzo di chiusura ai fini del P&L, effettui una riconciliazione con i report di esecuzione e fill o con il registro delle posizioni, invece di aspettarsi un id ordine in risposta." },
+    { q: "PickMyTrade può chiudere le posizioni senza usare l'API grezza?", a: "Sì. PickMyTrade instrada gli alert di TradingView verso Tradovate e può chiudere o liquidare le posizioni come parte di una strategia, così non deve costruire a mano le chiamate a liquidatePosition, inseguire le ricerche di accountId e contractId, né gestire i token da solo. È una scorciatoia per l'automazione, non un sostituto dell'API grezza quando ha bisogno specificamente di un controllo di basso livello." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. und wird von diesem weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -abläufe ändern sich im Laufe der Zeit, bestätigen Sie den aktuellen Ablauf daher stets in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada a Tradovate, Inc., ni respaldada ni patrocinada por dicha empresa. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la plataforma y documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque substantiel de perte et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha scopi esclusivamente educativi e informativi e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di future e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né approvata o sponsorizzata da quest'ultima. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre il processo attuale sulla piattaforma e nella documentazione ufficiale di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

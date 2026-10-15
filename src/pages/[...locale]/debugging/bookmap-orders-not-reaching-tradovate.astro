@@ -1,0 +1,600 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "bookmap-orders-not-reaching-tradovate";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Bookmap Orders Not Reaching Tradovate (Apex Sim)";
+const META_DESCRIPTION =
+  "Orders fill in Bookmap but never execute on Tradovate? Learn why local simulation fills don't route and how to fix the trading mode and account settings.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Bookmap-Orders erreichen Tradovate nicht (Apex Sim)", es: "Las órdenes de Bookmap no llegan a Tradovate (Apex Sim)", fr: "Les ordres Bookmap n'atteignent pas Tradovate (Apex Sim)", it: "Gli ordini di Bookmap non arrivano a Tradovate (Apex Sim)" },
+  dek: { en: "The fill lights up in Bookmap, but Tradovate shows nothing. It's almost never your Apex account being a “sim”, it's Bookmap's own run mode or connection settings keeping the order local.", de: "Der Fill leuchtet in Bookmap auf, aber Tradovate zeigt nichts an. Fast nie liegt es daran, dass Ihr Apex-Konto ein „Sim“ ist – meist ist es Bookmaps eigener Ausführungsmodus oder die Verbindungseinstellungen, die die Order lokal halten.", es: "La ejecución se enciende en Bookmap, pero Tradovate no muestra nada. Casi nunca se debe a que su cuenta Apex sea una «simulación»; suele ser el modo de ejecución propio de Bookmap o la configuración de conexión lo que mantiene la orden en local.", fr: "Le fill s'affiche dans Bookmap, mais Tradovate n'indique rien. Ce n'est presque jamais parce que votre compte Apex est une «simulation» ; c'est généralement le mode d'exécution propre à Bookmap ou les paramètres de connexion qui gardent l'ordre en local.", it: "Il fill si accende in Bookmap, ma Tradovate non mostra nulla. Quasi mai dipende dal fatto che il suo conto Apex sia una «simulazione»; di solito è la modalità di esecuzione di Bookmap o le impostazioni di connessione a tenere l'ordine in locale." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You click buy on the Bookmap heatmap, the fill lights up, your position line appears, and then you glance at Tradovate and there's nothing. No order, no position, no fill. It looks like your orders just die somewhere between Bookmap and the broker. On an Apex or other prop evaluation account, the usual first guess is “my account is a sim, so maybe it can't take real orders.” That guess is almost always wrong, and chasing it wastes an afternoon." },
+    { type: "paragraph", html: "Here's the short version: when an order fills in Bookmap but never shows on Tradovate, <strong class='text-white'>the order never left Bookmap</strong>. It filled inside Bookmap's own internal simulator, or it was pointed at a connection that only carries data. The fix is about Bookmap's trading state and which account you're routing to, not about your evaluation being “simulated.” Let's find where the order is getting stuck." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist Before You Dig In",
+      items: [
+        "<strong class='text-white'>Check Bookmap's run mode.</strong> If you launched in Simulation mode, fills stay inside Bookmap and never transmit to your broker.",
+        "<strong class='text-white'>Confirm Tradovate is connected for trading, not just data.</strong> A data-only connection shows quotes but can't route orders.",
+        "<strong class='text-white'>Look at which account the Trade Control Panel is pointed at.</strong> If it says a demo or simulated account, that's where your fills are going.",
+        "<strong class='text-white'>Verify the backend your prop account uses.</strong> An Apex account issued on a different platform than the one you connected has no matching account to route to.",
+        "<strong class='text-white'>Confirm your Bookmap package allows live order routing.</strong> Trading to a funded account needs the Global+ tier.",
+        "<strong class='text-white'>Watch the Tradovate Orders panel while you send a test order.</strong> If nothing appears there, the order isn't reaching Tradovate at all.",
+      ],
+    },
+    { type: "heading", text: "Why “Filled in Bookmap, Nothing on Tradovate” Happens" },
+    { type: "paragraph", html: "Bookmap can run in two very different states, and they look almost identical on screen. In <strong class='text-white'>Simulation mode</strong>, Bookmap trades against its own internal simulator using live market data. Your orders fill, your P&amp;L moves, everything feels real, but nothing is transmitted to your brokerage account. In live trading mode, that same click sends the order out through a connected broker like Tradovate for a real fill." },
+    { type: "paragraph", html: "So there are two separate simulations that people mix up. One is <strong class='text-white'>your account</strong> being a prop evaluation (a “sim” in the sense that it's not your own cash). The other is <strong class='text-white'>Bookmap</strong> running its internal simulator instead of routing to the broker. The first one does not stop orders, prop firms route evaluation orders to Tradovate all day long. The second one absolutely stops them, because by design it keeps every fill local. When your Bookmap position and your Tradovate position disagree, the culprit is nearly always the second kind of sim, plus a handful of connection and account-selection mistakes that produce the same symptom." },
+    { type: "paragraph", html: "To route real orders, three things all have to be true at once: Bookmap has to be in a live trading run mode, the Tradovate connection has to be enabled for trading (not data only), and the Trade Control Panel has to be armed on the actual Tradovate account you intend to trade. Miss any one and your fills quietly stay inside Bookmap." },
+    { type: "heading", text: "Top Causes of Orders Not Reaching Tradovate" },
+    { type: "heading", text: "1. Bookmap is running in Simulation mode" },
+    { type: "paragraph", html: "This is the number-one cause, full stop. Bookmap picks its trading behavior from the run mode you choose when the app launches. If you selected the simulation run mode, every order fills against the built-in simulator and none of it reaches your broker. It's easy to do by accident, because simulation mode still streams live data and still shows realistic fills. The account being an “Apex sim” has nothing to do with it, the block is Bookmap simulating on its own." },
+    { type: "heading", text: "2. Tradovate is connected for data only, not trading" },
+    { type: "paragraph", html: "Bookmap lets you use Tradovate two ways: for both market data and trading, or purely for order routing while a feed like dxFeed or Rithmic supplies the chart data. If you added Tradovate as a data source but never enabled trading on that connection, you'll see quotes update perfectly and orders go nowhere. The connection reads as “connected,” which is exactly why this one fools people. Trading has to be explicitly enabled on the Tradovate connection, and the Trade Control Panel has to be turned on for order entry." },
+    { type: "heading", text: "3. The Trade Control Panel is pointed at the wrong account" },
+    { type: "paragraph", html: "Bookmap can have more than one tradable account available at the same time, the internal simulator plus your live Tradovate account, for instance. The Trade Control Panel has an account selector that decides where your clicks go. If that selector is sitting on the simulated account (or a different connection than you think), your fills land there instead of on Tradovate. It's worth checking every time, because the selection can reset when you reconnect or reopen a workspace." },
+    { type: "heading", text: "4. Your Apex account isn't on the Tradovate backend" },
+    { type: "paragraph", html: "Prop accounts are provisioned on a specific platform when you buy them, and you generally can't switch that platform mid-account. Apex's current lineup runs across Rithmic, Tradovate, and WealthCharts, and Bookmap is very commonly connected to Apex through Rithmic rather than Tradovate. If your evaluation was issued on the Rithmic backend but you set up a Tradovate connection in Bookmap, there simply is no Tradovate account for the order to reach. Which backends are available, and how each one connects, varies by firm and changes over time, so confirm your account's platform with your firm rather than assuming." },
+    { type: "heading", text: "5. Wrong credentials or the wrong login environment" },
+    { type: "paragraph", html: "A prop evaluation uses firm-issued Tradovate credentials that live on the evaluation environment, not your personal Tradovate login. If you connected Bookmap with a personal account, or pointed the connection at the wrong environment, fills go to whichever account you actually authenticated, which may not be the Apex account on your screen." },
+    { type: "heading", text: "6. Your Bookmap package doesn't include live routing" },
+    { type: "paragraph", html: "Routing orders from the Bookmap chart to a funded or evaluation account requires the Global+ package. On a lower tier, chart trading to a real broker can be disabled, which leaves you able to place simulated orders only. If trading controls look active but nothing ever reaches Tradovate and no error appears, a package limitation is worth ruling out." },
+    { type: "heading", text: "How to Get Bookmap Orders Reaching Tradovate: Step-by-Step" },
+    { type: "heading", text: "Step 1: Relaunch Bookmap in a live trading run mode" },
+    {
+      type: "steps",
+      items: [
+        { title: "Fully close Bookmap", html: "Fully close Bookmap." },
+        { title: "Choose the live trading run mode", html: "Reopen it and, at the run-mode/launch screen, choose the real or live trading mode rather than the simulation mode. The exact label wording shifts between Bookmap versions, so read the options carefully and pick the one that connects to a broker for real order routing." },
+        { title: "Restart if you're unsure which mode you're in", html: "If you're not certain which mode you're in, that alone is a strong sign this is your problem. Restart and pick the live option deliberately." },
+      ],
+    },
+    { type: "heading", text: "Step 2: Confirm the Tradovate connection is enabled for trading" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Connections > Configure", html: "Open the connections area (Connections &rsaquo; Configure) and find your Tradovate connection." },
+        { title: "Make sure trading is enabled", html: "Make sure trading is enabled on it, not just data. If you're using a separate feed for data and Tradovate only for routing, confirm Tradovate is the one carrying the order flow." },
+        { title: "Re-enter the correct credentials", html: "Enter or re-enter the correct Tradovate credentials, on a prop account, the exact firm-issued login for the correct environment." },
+      ],
+    },
+    { type: "heading", text: "Step 3: Arm the Trade Control Panel on the right account" },
+    {
+      type: "steps",
+      items: [
+        { title: "Turn on the Trade Control Panel", html: "Turn on the Trade Control Panel for your instrument so you can place orders from the chart." },
+        { title: "Select your live Tradovate account", html: "Open the account selector in the panel and confirm it's set to your live Tradovate (Apex) account, not the simulator or a different connection." },
+        { title: "Double-check the contract", html: "Double-check the instrument matches an active, current contract on Tradovate. A mismatched or expired contract can also block routing." },
+      ],
+    },
+    { type: "heading", text: "Step 4: Send one test order and verify it on Tradovate" },
+    {
+      type: "steps",
+      items: [
+        { title: "Place a small order", html: "Place a single small order from Bookmap." },
+        { title: "Check Tradovate's Orders and Positions", html: "Switch to Tradovate (web, desktop, or mobile) and open the Orders and Positions modules. If the order and position show up there, routing is working end to end." },
+        { title: "Re-check if the panel stays empty", html: "If Bookmap shows a fill but Tradovate's Orders panel stays empty, the order still isn't leaving Bookmap, go back and re-check the run mode, the trading-enabled connection, and the account selector, in that order." },
+      ],
+    },
+    { type: "quote", html: "Keep the confusion straight: an Apex evaluation being a “sim” account is normal and does not stop routing. Evaluation accounts are meant to accept routed orders. The sim that keeps your fills local is Bookmap's own Simulation run mode. Fix Bookmap's state first, then worry about the account." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Likely cause", "Fix"],
+      rows: [
+        ["Fill shows in Bookmap, nothing in Tradovate Orders/Positions", "Bookmap is in Simulation run mode", "Relaunch Bookmap in a live/real trading run mode, then connect Tradovate for trading"],
+        ["Quotes update fine but orders never route; connection shows “connected”", "Tradovate connected for data only", "Enable trading on the Tradovate connection and arm the Trade Control Panel"],
+        ["Fills land on a demo/simulated account inside Bookmap", "Trade Control Panel pointed at the wrong account", "Select your live Tradovate (Apex) account in the panel's account selector"],
+        ["Tradovate connection can't find your Apex account at all", "Account provisioned on a different backend (e.g. Rithmic)", "Connect Bookmap through the backend your account actually uses; confirm with your firm"],
+        ["Trading controls look active but nothing routes and no error appears", "Package tier doesn't include live chart trading", "Upgrade to the Global+ package that supports routing to a funded account"],
+        ["Random disconnects with Bookmap plus Tradovate web open at once", "Session limit hit on the same account", "Reduce simultaneous logins on that account while trading through Bookmap"],
+      ],
+    },
+    { type: "heading", text: "A Simpler Path to Automated Tradovate Orders" },
+    { type: "paragraph", html: "If the reason you're on Bookmap is order-flow reading, that's great, but if you're really there to <em>automate</em> a strategy into Tradovate, routing through a desktop charting app puts a lot of fragile links in the chain. One wrong run mode and your live signals quietly trade a simulator. PickMyTrade takes a different route:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Server-side routing</strong> sends your TradingView alerts or webhooks straight to Tradovate, so execution doesn't depend on a desktop app being in the right mode.",
+        "<strong class='text-white'>Prop-account aware</strong> connections work with Apex and other firm-issued Tradovate evaluation and funded accounts, with the firm's rules respected.",
+        "<strong class='text-white'>Multi-account sync</strong> mirrors one signal across every connected account at once, instead of one chart, one click, one account.",
+        "<strong class='text-white'>Clear order feedback</strong> tells you when an order routed and when it was rejected, so a silent non-fill can't hide the way a local simulation does.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Sie klicken auf Kaufen im Bookmap-Heatmap, der Fill leuchtet auf, Ihre Positionslinie erscheint, und dann werfen Sie einen Blick auf Tradovate – und da ist nichts. Keine Order, keine Position, kein Fill. Es sieht so aus, als würden Ihre Orders irgendwo zwischen Bookmap und dem Broker verschwinden. Bei einem Apex- oder anderen Prop-Evaluierungskonto lautet die übliche erste Vermutung: „Mein Konto ist eine Sim, vielleicht kann es keine echten Orders annehmen.“ Diese Vermutung ist fast immer falsch, und ihr nachzugehen kostet einen ganzen Nachmittag." },
+    { type: "paragraph", html: "Hier die Kurzfassung: Wenn eine Order in Bookmap gefüllt wird, aber nie auf Tradovate erscheint, <strong class='text-white'>hat die Order Bookmap nie verlassen</strong>. Sie wurde innerhalb von Bookmaps eigenem internen Simulator gefüllt, oder sie war auf eine Verbindung gerichtet, die nur Daten liefert. Die Lösung betrifft Bookmaps Trading-Status und das Konto, an das Sie routen – nicht die Tatsache, dass Ihre Evaluierung „simuliert“ ist. Finden wir heraus, wo die Order hängen bleibt." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste, bevor Sie tiefer einsteigen",
+      items: [
+        "<strong class='text-white'>Prüfen Sie Bookmaps Ausführungsmodus.</strong> Wenn Sie im Simulationsmodus gestartet sind, bleiben Fills innerhalb von Bookmap und werden nie an Ihren Broker übertragen.",
+        "<strong class='text-white'>Bestätigen Sie, dass Tradovate für den Handel verbunden ist, nicht nur für Daten.</strong> Eine reine Datenverbindung zeigt Kurse an, kann aber keine Orders routen.",
+        "<strong class='text-white'>Prüfen Sie, auf welches Konto das Trade Control Panel eingestellt ist.</strong> Steht dort ein Demo- oder simuliertes Konto, landen Ihre Fills genau dort.",
+        "<strong class='text-white'>Überprüfen Sie das Backend Ihres Prop-Kontos.</strong> Ein Apex-Konto, das auf einer anderen Plattform ausgestellt wurde als der, die Sie verbunden haben, hat kein passendes Konto zum Routen.",
+        "<strong class='text-white'>Bestätigen Sie, dass Ihr Bookmap-Paket Live-Order-Routing erlaubt.</strong> Handel auf ein finanziertes Konto erfordert den Global+-Tarif.",
+        "<strong class='text-white'>Beobachten Sie das Tradovate-Orders-Panel, während Sie eine Testorder senden.</strong> Erscheint dort nichts, erreicht die Order Tradovate überhaupt nicht.",
+      ],
+    },
+    { type: "heading", text: "Warum „Fill in Bookmap, nichts auf Tradovate“ passiert" },
+    { type: "paragraph", html: "Bookmap kann in zwei sehr unterschiedlichen Zuständen laufen, die auf dem Bildschirm fast identisch aussehen. Im <strong class='text-white'>Simulationsmodus</strong> handelt Bookmap gegen seinen eigenen internen Simulator mit Live-Marktdaten. Ihre Orders werden gefüllt, Ihr P&amp;L bewegt sich, alles fühlt sich echt an – aber nichts wird an Ihr Brokerage-Konto übertragen. Im Live-Trading-Modus schickt derselbe Klick die Order über einen verbundenen Broker wie Tradovate für einen echten Fill hinaus." },
+    { type: "paragraph", html: "Es gibt also zwei getrennte „Simulationen“, die Anwender verwechseln. Die eine ist <strong class='text-white'>Ihr Konto</strong>, das eine Prop-Evaluierung ist (eine „Sim“ in dem Sinne, dass es nicht Ihr eigenes Kapital ist). Die andere ist <strong class='text-white'>Bookmap</strong>, das seinen internen Simulator laufen lässt, statt zum Broker zu routen. Die erste stoppt keine Orders – Prop-Firmen routen Evaluierungsorders den ganzen Tag über an Tradovate. Die zweite stoppt sie definitiv, weil sie per Design jeden Fill lokal hält. Wenn Ihre Bookmap-Position und Ihre Tradovate-Position nicht übereinstimmen, ist fast immer die zweite Art von Sim schuld, zusammen mit ein paar Verbindungs- und Kontoauswahlfehlern, die dasselbe Symptom erzeugen." },
+    { type: "paragraph", html: "Damit echte Orders geroutet werden, müssen drei Dinge gleichzeitig zutreffen: Bookmap muss sich in einem Live-Trading-Ausführungsmodus befinden, die Tradovate-Verbindung muss für den Handel aktiviert sein (nicht nur für Daten), und das Trade Control Panel muss auf dem tatsächlichen Tradovate-Konto scharfgeschaltet sein, das Sie handeln möchten. Fehlt eines davon, bleiben Ihre Fills stillschweigend innerhalb von Bookmap." },
+    { type: "heading", text: "Häufigste Ursachen, warum Orders Tradovate nicht erreichen" },
+    { type: "heading", text: "1. Bookmap läuft im Simulationsmodus" },
+    { type: "paragraph", html: "Das ist mit Abstand die häufigste Ursache. Bookmap bestimmt sein Handelsverhalten anhand des Ausführungsmodus, den Sie beim Start der App wählen. Haben Sie den Simulationsmodus gewählt, wird jede Order gegen den eingebauten Simulator gefüllt, und keine davon erreicht Ihren Broker. Das passiert leicht versehentlich, denn der Simulationsmodus streamt weiterhin Live-Daten und zeigt weiterhin realistische Fills an. Dass das Konto ein „Apex-Sim“ ist, hat damit nichts zu tun – die Blockade ist, dass Bookmap für sich selbst simuliert." },
+    { type: "heading", text: "2. Tradovate ist nur für Daten verbunden, nicht für den Handel" },
+    { type: "paragraph", html: "Bookmap erlaubt Ihnen zwei Arten der Nutzung von Tradovate: sowohl für Marktdaten als auch für den Handel, oder rein für das Order-Routing, während ein Feed wie dxFeed oder Rithmic die Chartdaten liefert. Wenn Sie Tradovate als Datenquelle hinzugefügt, aber den Handel auf dieser Verbindung nie aktiviert haben, sehen Sie Kurse einwandfrei aktualisiert, während Orders ins Leere laufen. Die Verbindung zeigt „verbunden“ an, und genau deshalb täuscht sie viele. Der Handel muss auf der Tradovate-Verbindung ausdrücklich aktiviert werden, und das Trade Control Panel muss für die Ordereingabe eingeschaltet sein." },
+    { type: "heading", text: "3. Das Trade Control Panel ist auf das falsche Konto eingestellt" },
+    { type: "paragraph", html: "Bookmap kann gleichzeitig mehr als ein handelbares Konto zur Verfügung haben – zum Beispiel den internen Simulator plus Ihr echtes Tradovate-Konto. Das Trade Control Panel hat einen Kontoselektor, der bestimmt, wohin Ihre Klicks gehen. Steht dieser Selektor auf dem simulierten Konto (oder einer anderen Verbindung, als Sie denken), landen Ihre Fills dort statt auf Tradovate. Es lohnt sich, dies jedes Mal zu prüfen, denn die Auswahl kann beim erneuten Verbinden oder Öffnen eines Arbeitsbereichs zurückgesetzt werden." },
+    { type: "heading", text: "4. Ihr Apex-Konto liegt nicht auf dem Tradovate-Backend" },
+    { type: "paragraph", html: "Prop-Konten werden beim Kauf auf einer bestimmten Plattform bereitgestellt, und Sie können diese Plattform während der Kontolaufzeit in der Regel nicht wechseln. Apex' aktuelles Angebot läuft über Rithmic, Tradovate und WealthCharts, und Bookmap ist sehr häufig über Rithmic statt über Tradovate mit Apex verbunden. Wurde Ihre Evaluierung auf dem Rithmic-Backend ausgestellt, Sie haben aber eine Tradovate-Verbindung in Bookmap eingerichtet, gibt es schlicht kein Tradovate-Konto, das die Order erreichen kann. Welche Backends verfügbar sind und wie sich jedes verbindet, variiert je nach Firma und ändert sich mit der Zeit – bestätigen Sie die Plattform Ihres Kontos daher bei Ihrer Firma, statt es anzunehmen." },
+    { type: "heading", text: "5. Falsche Zugangsdaten oder die falsche Login-Umgebung" },
+    { type: "paragraph", html: "Eine Prop-Evaluierung nutzt von der Firma ausgestellte Tradovate-Zugangsdaten, die auf der Evaluierungsumgebung liegen, nicht Ihr persönliches Tradovate-Login. Wenn Sie Bookmap mit einem persönlichen Konto verbunden oder die Verbindung auf die falsche Umgebung gerichtet haben, gehen Fills an das Konto, mit dem Sie sich tatsächlich authentifiziert haben – das möglicherweise nicht das Apex-Konto auf Ihrem Bildschirm ist." },
+    { type: "heading", text: "6. Ihr Bookmap-Paket umfasst kein Live-Routing" },
+    { type: "paragraph", html: "Das Routen von Orders vom Bookmap-Chart auf ein finanziertes Konto oder ein Evaluierungskonto erfordert das Global+-Paket. Bei einem niedrigeren Tarif kann der Chart-Handel zu einem echten Broker deaktiviert sein, wodurch Sie nur simulierte Orders platzieren können. Wenn die Handelssteuerung aktiv aussieht, aber nie etwas Tradovate erreicht und keine Fehlermeldung erscheint, lohnt es sich, eine Paketeinschränkung auszuschließen." },
+    { type: "heading", text: "So bringen Sie Bookmap-Orders zu Tradovate: Schritt für Schritt" },
+    { type: "heading", text: "Schritt 1: Bookmap in einem Live-Trading-Ausführungsmodus neu starten" },
+    {
+      type: "steps",
+      items: [
+        { title: "Bookmap vollständig schließen", html: "Schließen Sie Bookmap vollständig." },
+        { title: "Den Live-Trading-Ausführungsmodus wählen", html: "Öffnen Sie es erneut und wählen Sie im Bildschirm für Ausführungsmodus/Start den echten oder Live-Trading-Modus statt des Simulationsmodus. Der genaue Wortlaut der Bezeichnung ändert sich zwischen Bookmap-Versionen, lesen Sie die Optionen daher sorgfältig durch und wählen Sie diejenige, die sich für echtes Order-Routing mit einem Broker verbindet." },
+        { title: "Bei Unsicherheit neu starten", html: "Wenn Sie nicht sicher sind, in welchem Modus Sie sich befinden, ist das allein schon ein starkes Anzeichen dafür, dass hier Ihr Problem liegt. Starten Sie neu und wählen Sie die Live-Option bewusst aus." },
+      ],
+    },
+    { type: "heading", text: "Schritt 2: Bestätigen, dass die Tradovate-Verbindung für den Handel aktiviert ist" },
+    {
+      type: "steps",
+      items: [
+        { title: "Verbindungen > Konfigurieren öffnen", html: "Öffnen Sie den Verbindungsbereich (Connections &rsaquo; Configure) und suchen Sie Ihre Tradovate-Verbindung." },
+        { title: "Sicherstellen, dass der Handel aktiviert ist", html: "Stellen Sie sicher, dass darauf der Handel aktiviert ist, nicht nur Daten. Wenn Sie einen separaten Feed für Daten und Tradovate nur für das Routing nutzen, bestätigen Sie, dass Tradovate den Orderfluss trägt." },
+        { title: "Die richtigen Zugangsdaten erneut eingeben", html: "Geben Sie die korrekten Tradovate-Zugangsdaten ein oder erneut ein – bei einem Prop-Konto den exakten, von der Firma ausgestellten Login für die richtige Umgebung." },
+      ],
+    },
+    { type: "heading", text: "Schritt 3: Das Trade Control Panel auf dem richtigen Konto scharfschalten" },
+    {
+      type: "steps",
+      items: [
+        { title: "Das Trade Control Panel einschalten", html: "Schalten Sie das Trade Control Panel für Ihr Instrument ein, damit Sie Orders aus dem Chart heraus platzieren können." },
+        { title: "Ihr echtes Tradovate-Konto auswählen", html: "Öffnen Sie den Kontoselektor im Panel und bestätigen Sie, dass er auf Ihr echtes Tradovate-Konto (Apex) eingestellt ist, nicht auf den Simulator oder eine andere Verbindung." },
+        { title: "Den Kontrakt doppelt prüfen", html: "Prüfen Sie doppelt, ob das Instrument einem aktiven, aktuellen Kontrakt auf Tradovate entspricht. Ein falsch zugeordneter oder abgelaufener Kontrakt kann das Routing ebenfalls blockieren." },
+      ],
+    },
+    { type: "heading", text: "Schritt 4: Eine Testorder senden und auf Tradovate überprüfen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Eine kleine Order platzieren", html: "Platzieren Sie eine einzelne kleine Order aus Bookmap." },
+        { title: "Tradovates Orders und Positions prüfen", html: "Wechseln Sie zu Tradovate (Web, Desktop oder Mobile) und öffnen Sie die Module Orders und Positions. Erscheinen Order und Position dort, funktioniert das Routing durchgängig." },
+        { title: "Erneut prüfen, wenn das Panel leer bleibt", html: "Zeigt Bookmap einen Fill an, während Tradovates Orders-Panel leer bleibt, verlässt die Order Bookmap immer noch nicht – gehen Sie zurück und prüfen Sie erneut den Ausführungsmodus, die für den Handel aktivierte Verbindung und den Kontoselektor, in dieser Reihenfolge." },
+      ],
+    },
+    { type: "quote", html: "Halten Sie die Verwirrung auseinander: Dass eine Apex-Evaluierung ein „Sim“-Konto ist, ist normal und stoppt das Routing nicht. Evaluierungskonten sind dazu gedacht, geroutete Orders anzunehmen. Die Sim, die Ihre Fills lokal hält, ist Bookmaps eigener Simulationsmodus. Beheben Sie zuerst Bookmaps Status, dann kümmern Sie sich um das Konto." },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Wahrscheinliche Ursache", "Lösung"],
+      rows: [
+        ["Fill erscheint in Bookmap, nichts in Tradovate Orders/Positions", "Bookmap läuft im Simulationsmodus", "Bookmap in einem Live-/echten Trading-Ausführungsmodus neu starten, dann Tradovate für den Handel verbinden"],
+        ["Kurse aktualisieren einwandfrei, aber Orders routen nie; Verbindung zeigt „verbunden“", "Tradovate nur für Daten verbunden", "Handel auf der Tradovate-Verbindung aktivieren und das Trade Control Panel scharfschalten"],
+        ["Fills landen auf einem Demo-/simulierten Konto in Bookmap", "Trade Control Panel auf das falsche Konto eingestellt", "Ihr echtes Tradovate-Konto (Apex) im Kontoselektor des Panels auswählen"],
+        ["Tradovate-Verbindung findet Ihr Apex-Konto überhaupt nicht", "Konto auf einem anderen Backend bereitgestellt (z. B. Rithmic)", "Bookmap über das Backend verbinden, das Ihr Konto tatsächlich nutzt; bei Ihrer Firma bestätigen"],
+        ["Handelssteuerung sieht aktiv aus, aber nichts routet und kein Fehler erscheint", "Paket-Tarif umfasst kein Live-Chart-Trading", "Auf das Global+-Paket upgraden, das Routing auf ein finanziertes Konto unterstützt"],
+        ["Zufällige Verbindungsabbrüche bei gleichzeitig geöffnetem Bookmap und Tradovate-Web", "Sitzungslimit auf demselben Konto erreicht", "Gleichzeitige Logins auf diesem Konto beim Handeln über Bookmap reduzieren"],
+      ],
+    },
+    { type: "heading", text: "Ein einfacherer Weg zu automatisierten Tradovate-Orders" },
+    { type: "paragraph", html: "Wenn Sie auf Bookmap sind, um Orderfluss zu lesen, ist das großartig – wollen Sie aber wirklich eine Strategie in Tradovate <em>automatisieren</em>, bringt das Routing über eine Desktop-Charting-App viele fragile Glieder in die Kette. Ein falscher Ausführungsmodus, und Ihre Live-Signale handeln still und leise gegen einen Simulator. PickMyTrade geht einen anderen Weg:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Serverseitiges Routing</strong> sendet Ihre TradingView-Alerts oder Webhooks direkt an Tradovate, sodass die Ausführung nicht davon abhängt, dass eine Desktop-App im richtigen Modus läuft.",
+        "<strong class='text-white'>Prop-Konto-bewusste</strong> Verbindungen funktionieren mit Apex und anderen von Firmen ausgestellten Tradovate-Evaluierungs- und finanzierten Konten, unter Einhaltung der Regeln der Firma.",
+        "<strong class='text-white'>Multi-Konto-Synchronisation</strong> spiegelt ein Signal gleichzeitig auf jedes verbundene Konto, statt ein Chart, ein Klick, ein Konto.",
+        "<strong class='text-white'>Klares Order-Feedback</strong> teilt Ihnen mit, wann eine Order geroutet und wann sie abgelehnt wurde, sodass ein stiller Nicht-Fill sich nicht so verstecken kann wie bei einer lokalen Simulation.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Hace clic en comprar en el mapa de calor de Bookmap, la ejecución se enciende, aparece su línea de posición y, al mirar Tradovate, no hay nada. Ninguna orden, ninguna posición, ninguna ejecución. Parece que sus órdenes simplemente desaparecen entre Bookmap y el bróker. En una cuenta Apex u otra evaluación de prop trading, la primera suposición habitual es: «mi cuenta es una simulación, así que quizá no puede recibir órdenes reales». Esa suposición casi siempre es errónea, y perseguirla le hace perder una tarde entera." },
+    { type: "paragraph", html: "Aquí va la versión corta: cuando una orden se ejecuta en Bookmap pero nunca aparece en Tradovate, <strong class='text-white'>la orden nunca salió de Bookmap</strong>. Se ejecutó dentro del simulador interno propio de Bookmap, o estaba apuntando a una conexión que solo transporta datos. La solución tiene que ver con el estado de trading de Bookmap y con la cuenta a la que está enrutando, no con que su evaluación esté «simulada». Averigüemos dónde se queda atascada la orden." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida antes de profundizar",
+      items: [
+        "<strong class='text-white'>Revise el modo de ejecución de Bookmap.</strong> Si inició en modo Simulación, las ejecuciones permanecen dentro de Bookmap y nunca se transmiten a su bróker.",
+        "<strong class='text-white'>Confirme que Tradovate esté conectado para trading, no solo para datos.</strong> Una conexión solo de datos muestra cotizaciones pero no puede enrutar órdenes.",
+        "<strong class='text-white'>Verifique a qué cuenta apunta el Trade Control Panel.</strong> Si indica una cuenta demo o simulada, ahí es donde van sus ejecuciones.",
+        "<strong class='text-white'>Verifique el backend que usa su cuenta de prop trading.</strong> Una cuenta Apex emitida en una plataforma distinta a la que conectó no tiene ninguna cuenta coincidente a la que enrutar.",
+        "<strong class='text-white'>Confirme que su paquete de Bookmap permita enrutamiento de órdenes en vivo.</strong> Operar en una cuenta financiada requiere el nivel Global+.",
+        "<strong class='text-white'>Observe el panel de Orders de Tradovate mientras envía una orden de prueba.</strong> Si no aparece nada ahí, la orden no está llegando a Tradovate en absoluto.",
+      ],
+    },
+    { type: "heading", text: "Por qué ocurre «ejecutada en Bookmap, nada en Tradovate»" },
+    { type: "paragraph", html: "Bookmap puede ejecutarse en dos estados muy distintos, y en pantalla se ven casi idénticos. En <strong class='text-white'>modo Simulación</strong>, Bookmap opera contra su propio simulador interno usando datos de mercado en vivo. Sus órdenes se ejecutan, su P&amp;L se mueve, todo se siente real, pero nada se transmite a su cuenta de corretaje. En modo de trading en vivo, ese mismo clic envía la orden a través de un bróker conectado como Tradovate para una ejecución real." },
+    { type: "paragraph", html: "Así que hay dos simulaciones distintas que la gente confunde. Una es que <strong class='text-white'>su cuenta</strong> sea una evaluación de prop trading (una «simulación» en el sentido de que no es su propio capital). La otra es que <strong class='text-white'>Bookmap</strong> esté ejecutando su simulador interno en lugar de enrutar al bróker. La primera no detiene las órdenes: las firmas de prop trading enrutan órdenes de evaluación a Tradovate todo el día. La segunda sí las detiene por completo, porque por diseño mantiene cada ejecución en local. Cuando su posición en Bookmap y su posición en Tradovate no coinciden, el culpable es casi siempre el segundo tipo de simulación, junto con algunos errores de conexión y de selección de cuenta que producen el mismo síntoma." },
+    { type: "paragraph", html: "Para enrutar órdenes reales, tres cosas deben cumplirse a la vez: Bookmap debe estar en un modo de ejecución de trading en vivo, la conexión de Tradovate debe estar habilitada para trading (no solo datos), y el Trade Control Panel debe estar armado en la cuenta real de Tradovate que pretende operar. Si falta una de ellas, sus ejecuciones se quedan silenciosamente dentro de Bookmap." },
+    { type: "heading", text: "Principales causas de que las órdenes no lleguen a Tradovate" },
+    { type: "heading", text: "1. Bookmap se está ejecutando en modo Simulación" },
+    { type: "paragraph", html: "Esta es, sin duda, la causa número uno. Bookmap determina su comportamiento de trading según el modo de ejecución que elija al iniciar la aplicación. Si seleccionó el modo de ejecución de simulación, cada orden se ejecuta contra el simulador integrado y ninguna llega a su bróker. Es fácil hacerlo por accidente, porque el modo simulación sigue transmitiendo datos en vivo y sigue mostrando ejecuciones realistas. Que la cuenta sea una «simulación de Apex» no tiene nada que ver; el bloqueo es que Bookmap está simulando por su cuenta." },
+    { type: "heading", text: "2. Tradovate está conectado solo para datos, no para trading" },
+    { type: "paragraph", html: "Bookmap le permite usar Tradovate de dos formas: tanto para datos de mercado como para trading, o exclusivamente para enrutamiento de órdenes mientras un feed como dxFeed o Rithmic suministra los datos del gráfico. Si añadió Tradovate como fuente de datos pero nunca habilitó el trading en esa conexión, verá que las cotizaciones se actualizan perfectamente y las órdenes no van a ninguna parte. La conexión se muestra como «conectada», que es precisamente por lo que engaña a la gente. El trading debe habilitarse explícitamente en la conexión de Tradovate, y el Trade Control Panel debe estar activado para el envío de órdenes." },
+    { type: "heading", text: "3. El Trade Control Panel apunta a la cuenta equivocada" },
+    { type: "paragraph", html: "Bookmap puede tener disponible más de una cuenta operable al mismo tiempo, por ejemplo el simulador interno además de su cuenta real de Tradovate. El Trade Control Panel tiene un selector de cuenta que decide adónde van sus clics. Si ese selector está en la cuenta simulada (o en una conexión distinta de la que cree), sus ejecuciones aterrizan ahí en lugar de en Tradovate. Vale la pena revisarlo cada vez, porque la selección puede reiniciarse al reconectar o al reabrir un espacio de trabajo." },
+    { type: "heading", text: "4. Su cuenta Apex no está en el backend de Tradovate" },
+    { type: "paragraph", html: "Las cuentas de prop trading se aprovisionan en una plataforma específica al comprarlas, y por lo general no se puede cambiar esa plataforma a mitad de cuenta. La oferta actual de Apex funciona a través de Rithmic, Tradovate y WealthCharts, y Bookmap suele conectarse a Apex a través de Rithmic en lugar de Tradovate. Si su evaluación se emitió en el backend de Rithmic pero configuró una conexión de Tradovate en Bookmap, simplemente no existe ninguna cuenta de Tradovate a la que la orden pueda llegar. Qué backends están disponibles y cómo se conecta cada uno varía según la firma y cambia con el tiempo, así que confirme la plataforma de su cuenta con su firma en lugar de asumirlo." },
+    { type: "heading", text: "5. Credenciales incorrectas o entorno de inicio de sesión equivocado" },
+    { type: "paragraph", html: "Una evaluación de prop trading usa credenciales de Tradovate emitidas por la firma que residen en el entorno de evaluación, no su inicio de sesión personal de Tradovate. Si conectó Bookmap con una cuenta personal, o apuntó la conexión al entorno equivocado, las ejecuciones van a la cuenta con la que realmente se autenticó, que puede no ser la cuenta Apex que ve en su pantalla." },
+    { type: "heading", text: "6. Su paquete de Bookmap no incluye enrutamiento en vivo" },
+    { type: "paragraph", html: "Enrutar órdenes desde el gráfico de Bookmap a una cuenta financiada o de evaluación requiere el paquete Global+. En un nivel inferior, el trading desde el gráfico hacia un bróker real puede estar deshabilitado, lo que le deja únicamente la posibilidad de colocar órdenes simuladas. Si los controles de trading se ven activos pero nada llega nunca a Tradovate y no aparece ningún error, vale la pena descartar una limitación del paquete." },
+    { type: "heading", text: "Cómo lograr que las órdenes de Bookmap lleguen a Tradovate: paso a paso" },
+    { type: "heading", text: "Paso 1: Reinicie Bookmap en un modo de ejecución de trading en vivo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cierre Bookmap por completo", html: "Cierre Bookmap por completo." },
+        { title: "Elija el modo de ejecución de trading en vivo", html: "Vuelva a abrirlo y, en la pantalla de modo de ejecución/inicio, elija el modo de trading real o en vivo en lugar del modo de simulación. La redacción exacta de la etiqueta varía entre versiones de Bookmap, así que lea las opciones con cuidado y elija la que se conecte a un bróker para enrutamiento real de órdenes." },
+        { title: "Reinicie si no está seguro de en qué modo se encuentra", html: "Si no está seguro de en qué modo se encuentra, eso por sí solo es una señal clara de que ese es su problema. Reinicie y elija la opción en vivo de forma deliberada." },
+      ],
+    },
+    { type: "heading", text: "Paso 2: Confirme que la conexión de Tradovate esté habilitada para trading" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abra Connections > Configure", html: "Abra el área de conexiones (Connections &rsaquo; Configure) y localice su conexión de Tradovate." },
+        { title: "Asegúrese de que el trading esté habilitado", html: "Asegúrese de que el trading esté habilitado en ella, no solo los datos. Si usa un feed independiente para los datos y Tradovate solo para el enrutamiento, confirme que Tradovate es la que transporta el flujo de órdenes." },
+        { title: "Vuelva a introducir las credenciales correctas", html: "Introduzca o vuelva a introducir las credenciales correctas de Tradovate; en una cuenta de prop trading, el inicio de sesión exacto emitido por la firma para el entorno correcto." },
+      ],
+    },
+    { type: "heading", text: "Paso 3: Arme el Trade Control Panel en la cuenta correcta" },
+    {
+      type: "steps",
+      items: [
+        { title: "Active el Trade Control Panel", html: "Active el Trade Control Panel para su instrumento para poder colocar órdenes desde el gráfico." },
+        { title: "Seleccione su cuenta real de Tradovate", html: "Abra el selector de cuenta en el panel y confirme que esté configurado en su cuenta real de Tradovate (Apex), no en el simulador ni en una conexión distinta." },
+        { title: "Verifique el contrato dos veces", html: "Verifique dos veces que el instrumento coincida con un contrato activo y vigente en Tradovate. Un contrato desajustado o vencido también puede bloquear el enrutamiento." },
+      ],
+    },
+    { type: "heading", text: "Paso 4: Envíe una orden de prueba y verifíquela en Tradovate" },
+    {
+      type: "steps",
+      items: [
+        { title: "Coloque una orden pequeña", html: "Coloque una única orden pequeña desde Bookmap." },
+        { title: "Revise Orders y Positions en Tradovate", html: "Cambie a Tradovate (web, escritorio o móvil) y abra los módulos de Orders y Positions. Si la orden y la posición aparecen ahí, el enrutamiento funciona de principio a fin." },
+        { title: "Vuelva a revisar si el panel permanece vacío", html: "Si Bookmap muestra una ejecución pero el panel de Orders de Tradovate permanece vacío, la orden todavía no está saliendo de Bookmap; vuelva atrás y revise de nuevo el modo de ejecución, la conexión habilitada para trading y el selector de cuenta, en ese orden." },
+      ],
+    },
+    { type: "quote", html: "Mantenga clara la confusión: que una evaluación Apex sea una cuenta «simulada» es normal y no detiene el enrutamiento. Las cuentas de evaluación están diseñadas para aceptar órdenes enrutadas. La simulación que mantiene sus ejecuciones en local es el propio modo de ejecución Simulación de Bookmap. Solucione primero el estado de Bookmap y luego preocúpese por la cuenta." },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Causa probable", "Solución"],
+      rows: [
+        ["La ejecución aparece en Bookmap, nada en Orders/Positions de Tradovate", "Bookmap está en modo de ejecución Simulación", "Reinicie Bookmap en un modo de ejecución de trading en vivo/real y luego conecte Tradovate para trading"],
+        ["Las cotizaciones se actualizan bien pero las órdenes nunca se enrutan; la conexión muestra «conectada»", "Tradovate conectado solo para datos", "Habilite el trading en la conexión de Tradovate y arme el Trade Control Panel"],
+        ["Las ejecuciones aterrizan en una cuenta demo/simulada dentro de Bookmap", "Trade Control Panel apunta a la cuenta equivocada", "Seleccione su cuenta real de Tradovate (Apex) en el selector de cuenta del panel"],
+        ["La conexión de Tradovate no encuentra su cuenta Apex en absoluto", "Cuenta aprovisionada en un backend distinto (p. ej., Rithmic)", "Conecte Bookmap a través del backend que realmente usa su cuenta; confirme con su firma"],
+        ["Los controles de trading se ven activos pero nada se enruta y no aparece ningún error", "El nivel del paquete no incluye trading en vivo desde el gráfico", "Actualice al paquete Global+ que admite enrutamiento hacia una cuenta financiada"],
+        ["Desconexiones aleatorias con Bookmap y Tradovate web abiertos a la vez", "Límite de sesión alcanzado en la misma cuenta", "Reduzca los inicios de sesión simultáneos en esa cuenta mientras opera a través de Bookmap"],
+      ],
+    },
+    { type: "heading", text: "Una vía más simple hacia órdenes automatizadas en Tradovate" },
+    { type: "paragraph", html: "Si el motivo por el que usa Bookmap es leer el flujo de órdenes, estupendo, pero si en realidad está ahí para <em>automatizar</em> una estrategia hacia Tradovate, enrutar a través de una aplicación de gráficos de escritorio añade muchos enlaces frágiles a la cadena. Un modo de ejecución equivocado y sus señales en vivo operan silenciosamente contra un simulador. PickMyTrade toma un camino distinto:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Enrutamiento del lado del servidor</strong> envía sus alertas o webhooks de TradingView directamente a Tradovate, de modo que la ejecución no depende de que una aplicación de escritorio esté en el modo correcto.",
+        "<strong class='text-white'>Conexiones conscientes de cuentas de prop trading</strong> funcionan con Apex y otras cuentas de evaluación y financiadas de Tradovate emitidas por firmas, respetando las reglas de la firma.",
+        "<strong class='text-white'>La sincronización multicuenta</strong> refleja una señal en todas las cuentas conectadas a la vez, en lugar de un gráfico, un clic, una cuenta.",
+        "<strong class='text-white'>La retroalimentación clara de órdenes</strong> le indica cuándo se enrutó una orden y cuándo fue rechazada, de modo que una no ejecución silenciosa no pueda ocultarse como lo hace una simulación local.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous cliquez sur acheter sur la heatmap Bookmap, le fill s'allume, votre ligne de position apparaît, puis vous jetez un œil à Tradovate et il n'y a rien. Pas d'ordre, pas de position, pas de fill. On dirait que vos ordres disparaissent quelque part entre Bookmap et le courtier. Sur un compte Apex ou une autre évaluation prop, la première hypothèse habituelle est : «mon compte est une simulation, donc il ne peut peut-être pas recevoir de vrais ordres». Cette hypothèse est presque toujours fausse, et la poursuivre vous fait perdre un après-midi entier." },
+    { type: "paragraph", html: "Voici la version courte : quand un ordre se remplit dans Bookmap mais n'apparaît jamais sur Tradovate, <strong class='text-white'>l'ordre n'a jamais quitté Bookmap</strong>. Il s'est rempli dans le simulateur interne propre à Bookmap, ou il visait une connexion qui ne transporte que des données. La solution concerne l'état de trading de Bookmap et le compte vers lequel vous routez, pas le fait que votre évaluation soit «simulée». Trouvons où l'ordre reste bloqué." },
+    {
+      type: "checklist",
+      heading: "Checklist rapide avant d'aller plus loin",
+      items: [
+        "<strong class='text-white'>Vérifiez le mode d'exécution de Bookmap.</strong> Si vous avez démarré en mode Simulation, les fills restent dans Bookmap et ne sont jamais transmis à votre courtier.",
+        "<strong class='text-white'>Confirmez que Tradovate est connecté pour le trading, pas seulement pour les données.</strong> Une connexion données uniquement affiche les cotations mais ne peut pas router d'ordres.",
+        "<strong class='text-white'>Regardez sur quel compte pointe le Trade Control Panel.</strong> S'il indique un compte démo ou simulé, c'est là que vont vos fills.",
+        "<strong class='text-white'>Vérifiez le backend utilisé par votre compte prop.</strong> Un compte Apex émis sur une plateforme différente de celle que vous avez connectée n'a aucun compte correspondant vers lequel router.",
+        "<strong class='text-white'>Confirmez que votre offre Bookmap autorise le routage d'ordres en direct.</strong> Trader sur un compte financé nécessite le palier Global+.",
+        "<strong class='text-white'>Surveillez le panneau Orders de Tradovate en envoyant un ordre de test.</strong> Si rien n'y apparaît, l'ordre n'atteint pas du tout Tradovate.",
+      ],
+    },
+    { type: "heading", text: "Pourquoi «rempli dans Bookmap, rien sur Tradovate» se produit" },
+    { type: "paragraph", html: "Bookmap peut fonctionner selon deux états très différents, qui se ressemblent presque à l'écran. En <strong class='text-white'>mode Simulation</strong>, Bookmap trade contre son propre simulateur interne en utilisant des données de marché en direct. Vos ordres se remplissent, votre P&amp;L bouge, tout semble réel, mais rien n'est transmis à votre compte de courtage. En mode trading en direct, ce même clic envoie l'ordre via un courtier connecté comme Tradovate pour un fill réel." },
+    { type: "paragraph", html: "Il y a donc deux simulations distinctes que les gens confondent. La première, c'est <strong class='text-white'>votre compte</strong> qui est une évaluation prop (une «simulation» au sens où ce n'est pas votre propre capital). La seconde, c'est <strong class='text-white'>Bookmap</strong> qui fait tourner son simulateur interne au lieu de router vers le courtier. La première n'empêche pas les ordres, les firmes prop routent des ordres d'évaluation vers Tradovate toute la journée. La seconde les bloque totalement, car par conception elle garde chaque fill en local. Quand votre position Bookmap et votre position Tradovate ne concordent pas, le coupable est presque toujours ce second type de simulation, plus quelques erreurs de connexion et de sélection de compte qui produisent le même symptôme." },
+    { type: "paragraph", html: "Pour router de vrais ordres, trois conditions doivent être réunies en même temps : Bookmap doit être dans un mode d'exécution de trading en direct, la connexion Tradovate doit être activée pour le trading (pas seulement les données), et le Trade Control Panel doit être armé sur le compte Tradovate réel que vous comptez trader. Si l'une manque, vos fills restent silencieusement dans Bookmap." },
+    { type: "heading", text: "Principales causes empêchant les ordres d'atteindre Tradovate" },
+    { type: "heading", text: "1. Bookmap fonctionne en mode Simulation" },
+    { type: "paragraph", html: "C'est de loin la cause numéro un. Bookmap détermine son comportement de trading à partir du mode d'exécution que vous choisissez au lancement de l'application. Si vous avez sélectionné le mode d'exécution simulation, chaque ordre se remplit contre le simulateur intégré et aucun n'atteint votre courtier. C'est facile à faire par erreur, car le mode simulation continue de diffuser des données en direct et d'afficher des fills réalistes. Le fait que le compte soit une «simulation Apex» n'a rien à voir là-dedans ; le blocage vient de Bookmap qui simule de son côté." },
+    { type: "heading", text: "2. Tradovate est connecté uniquement pour les données, pas pour le trading" },
+    { type: "paragraph", html: "Bookmap vous permet d'utiliser Tradovate de deux façons : à la fois pour les données de marché et le trading, ou uniquement pour le routage d'ordres pendant qu'un flux comme dxFeed ou Rithmic fournit les données du graphique. Si vous avez ajouté Tradovate comme source de données mais jamais activé le trading sur cette connexion, vous verrez les cotations se mettre à jour parfaitement et les ordres n'aller nulle part. La connexion s'affiche comme «connectée», ce qui explique précisément pourquoi cela trompe les gens. Le trading doit être explicitement activé sur la connexion Tradovate, et le Trade Control Panel doit être activé pour la saisie d'ordres." },
+    { type: "heading", text: "3. Le Trade Control Panel pointe vers le mauvais compte" },
+    { type: "paragraph", html: "Bookmap peut avoir plusieurs comptes tradables disponibles en même temps, le simulateur interne plus votre compte Tradovate réel, par exemple. Le Trade Control Panel dispose d'un sélecteur de compte qui décide où vont vos clics. Si ce sélecteur est réglé sur le compte simulé (ou sur une connexion différente de celle que vous pensez), vos fills y atterrissent au lieu d'aller sur Tradovate. Cela vaut la peine de le vérifier à chaque fois, car la sélection peut se réinitialiser lorsque vous vous reconnectez ou rouvrez un espace de travail." },
+    { type: "heading", text: "4. Votre compte Apex n'est pas sur le backend Tradovate" },
+    { type: "paragraph", html: "Les comptes prop sont provisionnés sur une plateforme spécifique au moment de l'achat, et vous ne pouvez généralement pas changer cette plateforme en cours de compte. La gamme actuelle d'Apex fonctionne sur Rithmic, Tradovate et WealthCharts, et Bookmap est très souvent connecté à Apex via Rithmic plutôt que Tradovate. Si votre évaluation a été émise sur le backend Rithmic mais que vous avez configuré une connexion Tradovate dans Bookmap, il n'existe tout simplement aucun compte Tradovate que l'ordre puisse atteindre. Les backends disponibles, et la façon dont chacun se connecte, varient selon la firme et évoluent avec le temps, alors confirmez la plateforme de votre compte auprès de votre firme plutôt que de supposer." },
+    { type: "heading", text: "5. Mauvais identifiants ou mauvais environnement de connexion" },
+    { type: "paragraph", html: "Une évaluation prop utilise des identifiants Tradovate émis par la firme, qui résident sur l'environnement d'évaluation, et non votre connexion Tradovate personnelle. Si vous avez connecté Bookmap avec un compte personnel, ou dirigé la connexion vers le mauvais environnement, les fills vont vers le compte avec lequel vous vous êtes réellement authentifié, qui n'est peut-être pas le compte Apex affiché à l'écran." },
+    { type: "heading", text: "6. Votre offre Bookmap n'inclut pas le routage en direct" },
+    { type: "paragraph", html: "Router des ordres depuis le graphique Bookmap vers un compte financé ou d'évaluation nécessite l'offre Global+. Sur un palier inférieur, le trading depuis le graphique vers un courtier réel peut être désactivé, ce qui vous laisse uniquement la possibilité de passer des ordres simulés. Si les contrôles de trading semblent actifs mais que rien n'atteint jamais Tradovate et qu'aucune erreur n'apparaît, il vaut la peine d'écarter une limitation liée à l'offre." },
+    { type: "heading", text: "Comment faire en sorte que les ordres Bookmap atteignent Tradovate : étape par étape" },
+    { type: "heading", text: "Étape 1 : relancez Bookmap dans un mode d'exécution de trading en direct" },
+    {
+      type: "steps",
+      items: [
+        { title: "Fermez complètement Bookmap", html: "Fermez complètement Bookmap." },
+        { title: "Choisissez le mode d'exécution de trading en direct", html: "Rouvrez-le et, sur l'écran de mode d'exécution/lancement, choisissez le mode de trading réel ou en direct plutôt que le mode simulation. Le libellé exact varie selon les versions de Bookmap, alors lisez attentivement les options et choisissez celle qui se connecte à un courtier pour un routage d'ordres réel." },
+        { title: "Redémarrez si vous n'êtes pas sûr du mode", html: "Si vous n'êtes pas certain du mode dans lequel vous vous trouvez, c'est en soi un signe fort que c'est votre problème. Redémarrez et choisissez délibérément l'option en direct." },
+      ],
+    },
+    { type: "heading", text: "Étape 2 : confirmez que la connexion Tradovate est activée pour le trading" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrez Connections > Configure", html: "Ouvrez la zone des connexions (Connections &rsaquo; Configure) et trouvez votre connexion Tradovate." },
+        { title: "Assurez-vous que le trading est activé", html: "Assurez-vous que le trading y est activé, pas seulement les données. Si vous utilisez un flux distinct pour les données et Tradovate uniquement pour le routage, confirmez que c'est bien Tradovate qui porte le flux d'ordres." },
+        { title: "Ressaisissez les bons identifiants", html: "Saisissez ou ressaisissez les identifiants Tradovate corrects, sur un compte prop, l'identifiant exact émis par la firme pour le bon environnement." },
+      ],
+    },
+    { type: "heading", text: "Étape 3 : armez le Trade Control Panel sur le bon compte" },
+    {
+      type: "steps",
+      items: [
+        { title: "Activez le Trade Control Panel", html: "Activez le Trade Control Panel pour votre instrument afin de pouvoir passer des ordres depuis le graphique." },
+        { title: "Sélectionnez votre compte Tradovate réel", html: "Ouvrez le sélecteur de compte dans le panneau et confirmez qu'il est réglé sur votre compte Tradovate réel (Apex), et non sur le simulateur ou une autre connexion." },
+        { title: "Vérifiez le contrat", html: "Vérifiez que l'instrument correspond bien à un contrat actif et en cours sur Tradovate. Un contrat mal associé ou expiré peut également bloquer le routage." },
+      ],
+    },
+    { type: "heading", text: "Étape 4 : envoyez un ordre de test et vérifiez-le sur Tradovate" },
+    {
+      type: "steps",
+      items: [
+        { title: "Passez un petit ordre", html: "Passez un seul petit ordre depuis Bookmap." },
+        { title: "Vérifiez Orders et Positions sur Tradovate", html: "Basculez sur Tradovate (web, bureau ou mobile) et ouvrez les modules Orders et Positions. Si l'ordre et la position y apparaissent, le routage fonctionne de bout en bout." },
+        { title: "Revérifiez si le panneau reste vide", html: "Si Bookmap affiche un fill mais que le panneau Orders de Tradovate reste vide, l'ordre ne quitte toujours pas Bookmap ; revenez en arrière et revérifiez le mode d'exécution, la connexion activée pour le trading et le sélecteur de compte, dans cet ordre." },
+      ],
+    },
+    { type: "quote", html: "Distinguez bien la confusion : qu'une évaluation Apex soit un compte «simulé» est normal et n'arrête pas le routage. Les comptes d'évaluation sont conçus pour accepter des ordres routés. La simulation qui garde vos fills en local est le mode d'exécution Simulation propre à Bookmap. Corrigez d'abord l'état de Bookmap, puis préoccupez-vous du compte." },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Cause probable", "Solution"],
+      rows: [
+        ["Le fill apparaît dans Bookmap, rien dans Orders/Positions Tradovate", "Bookmap est en mode d'exécution Simulation", "Relancez Bookmap dans un mode d'exécution de trading en direct/réel, puis connectez Tradovate pour le trading"],
+        ["Les cotations se mettent à jour correctement mais les ordres ne routent jamais ; la connexion indique «connectée»", "Tradovate connecté uniquement pour les données", "Activez le trading sur la connexion Tradovate et armez le Trade Control Panel"],
+        ["Les fills atterrissent sur un compte démo/simulé dans Bookmap", "Trade Control Panel pointant vers le mauvais compte", "Sélectionnez votre compte Tradovate réel (Apex) dans le sélecteur de compte du panneau"],
+        ["La connexion Tradovate ne trouve pas du tout votre compte Apex", "Compte provisionné sur un backend différent (par ex. Rithmic)", "Connectez Bookmap via le backend réellement utilisé par votre compte ; confirmez auprès de votre firme"],
+        ["Les contrôles de trading semblent actifs mais rien ne route et aucune erreur n'apparaît", "Le palier de l'offre n'inclut pas le trading en direct depuis le graphique", "Passez à l'offre Global+ qui prend en charge le routage vers un compte financé"],
+        ["Déconnexions aléatoires avec Bookmap et Tradovate web ouverts en même temps", "Limite de session atteinte sur le même compte", "Réduisez les connexions simultanées sur ce compte pendant que vous tradez via Bookmap"],
+      ],
+    },
+    { type: "heading", text: "Une voie plus simple vers des ordres Tradovate automatisés" },
+    { type: "paragraph", html: "Si la raison pour laquelle vous êtes sur Bookmap est la lecture du flux d'ordres, tant mieux, mais si vous êtes réellement là pour <em>automatiser</em> une stratégie vers Tradovate, router via une application de graphique de bureau ajoute beaucoup de maillons fragiles à la chaîne. Un mauvais mode d'exécution, et vos signaux en direct tradent silencieusement contre un simulateur. PickMyTrade emprunte une voie différente :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Le routage côté serveur</strong> envoie vos alertes ou webhooks TradingView directement vers Tradovate, de sorte que l'exécution ne dépend pas d'une application de bureau étant dans le bon mode.",
+        "<strong class='text-white'>Des connexions tenant compte des comptes prop</strong> fonctionnent avec Apex et d'autres comptes Tradovate d'évaluation et financés émis par des firmes, dans le respect des règles de la firme.",
+        "<strong class='text-white'>La synchronisation multi-comptes</strong> reflète un même signal sur chaque compte connecté à la fois, au lieu d'un graphique, un clic, un compte.",
+        "<strong class='text-white'>Un retour d'ordre clair</strong> vous indique quand un ordre a été routé et quand il a été rejeté, de sorte qu'une non-exécution silencieuse ne puisse pas se cacher comme le fait une simulation locale.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Fa clic su acquista sulla heatmap di Bookmap, il fill si accende, appare la sua linea di posizione, poi guarda Tradovate e non c'è nulla. Nessun ordine, nessuna posizione, nessun fill. Sembra che i suoi ordini spariscano da qualche parte tra Bookmap e il broker. Su un conto Apex o un'altra valutazione prop, la prima ipotesi abituale è: «il mio conto è una simulazione, quindi forse non può ricevere ordini reali». Questa ipotesi è quasi sempre sbagliata, e inseguirla fa perdere un intero pomeriggio." },
+    { type: "paragraph", html: "Ecco la versione breve: quando un ordine si riempie in Bookmap ma non compare mai su Tradovate, <strong class='text-white'>l'ordine non ha mai lasciato Bookmap</strong>. Si è riempito all'interno del simulatore interno proprio di Bookmap, oppure puntava a una connessione che trasporta solo dati. La soluzione riguarda lo stato di trading di Bookmap e il conto verso cui sta instradando, non il fatto che la sua valutazione sia «simulata». Troviamo dove l'ordine resta bloccato." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida prima di approfondire",
+      items: [
+        "<strong class='text-white'>Controlli la modalità di esecuzione di Bookmap.</strong> Se ha avviato in modalità Simulazione, i fill restano dentro Bookmap e non vengono mai trasmessi al suo broker.",
+        "<strong class='text-white'>Confermi che Tradovate sia connesso per il trading, non solo per i dati.</strong> Una connessione solo dati mostra le quotazioni ma non può instradare ordini.",
+        "<strong class='text-white'>Verifichi su quale conto punta il Trade Control Panel.</strong> Se indica un conto demo o simulato, è lì che finiscono i suoi fill.",
+        "<strong class='text-white'>Verifichi il backend usato dal suo conto prop.</strong> Un conto Apex emesso su una piattaforma diversa da quella collegata non ha alcun conto corrispondente verso cui instradare.",
+        "<strong class='text-white'>Confermi che il suo pacchetto Bookmap consenta l'instradamento di ordini live.</strong> Fare trading su un conto finanziato richiede il livello Global+.",
+        "<strong class='text-white'>Osservi il pannello Orders di Tradovate mentre invia un ordine di prova.</strong> Se non compare nulla lì, l'ordine non sta raggiungendo affatto Tradovate.",
+      ],
+    },
+    { type: "heading", text: "Perché accade «riempito in Bookmap, nulla su Tradovate»" },
+    { type: "paragraph", html: "Bookmap può funzionare in due stati molto diversi, che sullo schermo appaiono quasi identici. In <strong class='text-white'>modalità Simulazione</strong>, Bookmap opera contro il proprio simulatore interno usando dati di mercato live. I suoi ordini si riempiono, il suo P&amp;L si muove, tutto sembra reale, ma nulla viene trasmesso al suo conto di brokeraggio. In modalità trading live, lo stesso clic invia l'ordine attraverso un broker connesso come Tradovate per un fill reale." },
+    { type: "paragraph", html: "Ci sono quindi due simulazioni distinte che le persone confondono. Una è che <strong class='text-white'>il suo conto</strong> sia una valutazione prop (una «simulazione» nel senso che non è capitale suo). L'altra è che <strong class='text-white'>Bookmap</strong> stia eseguendo il proprio simulatore interno invece di instradare al broker. La prima non blocca gli ordini: le prop firm instradano ordini di valutazione a Tradovate tutto il giorno. La seconda li blocca completamente, perché per progettazione mantiene ogni fill in locale. Quando la sua posizione su Bookmap e quella su Tradovate non coincidono, il colpevole è quasi sempre il secondo tipo di simulazione, insieme a una manciata di errori di connessione e di selezione del conto che producono lo stesso sintomo." },
+    { type: "paragraph", html: "Per instradare ordini reali, tre condizioni devono essere vere contemporaneamente: Bookmap deve trovarsi in una modalità di esecuzione di trading live, la connessione Tradovate deve essere abilitata per il trading (non solo per i dati), e il Trade Control Panel deve essere armato sul conto Tradovate reale su cui intende operare. Se ne manca anche solo una, i suoi fill restano silenziosamente dentro Bookmap." },
+    { type: "heading", text: "Principali cause per cui gli ordini non raggiungono Tradovate" },
+    { type: "heading", text: "1. Bookmap è in esecuzione in modalità Simulazione" },
+    { type: "paragraph", html: "Questa è di gran lunga la causa numero uno. Bookmap determina il proprio comportamento di trading in base alla modalità di esecuzione scelta all'avvio dell'app. Se ha selezionato la modalità di esecuzione simulazione, ogni ordine si riempie contro il simulatore integrato e nessuno raggiunge il suo broker. È facile farlo per errore, perché la modalità simulazione continua comunque a trasmettere dati live e a mostrare fill realistici. Il fatto che il conto sia una «simulazione Apex» non c'entra nulla; il blocco è dato da Bookmap che simula per conto proprio." },
+    { type: "heading", text: "2. Tradovate è connesso solo per i dati, non per il trading" },
+    { type: "paragraph", html: "Bookmap consente di usare Tradovate in due modi: sia per i dati di mercato che per il trading, oppure esclusivamente per l'instradamento degli ordini mentre un feed come dxFeed o Rithmic fornisce i dati del grafico. Se ha aggiunto Tradovate come fonte dati ma non ha mai abilitato il trading su quella connessione, vedrà le quotazioni aggiornarsi perfettamente e gli ordini non andare da nessuna parte. La connessione risulta «connessa», ed è esattamente per questo che inganna le persone. Il trading deve essere esplicitamente abilitato sulla connessione Tradovate, e il Trade Control Panel deve essere attivato per l'inserimento degli ordini." },
+    { type: "heading", text: "3. Il Trade Control Panel punta al conto sbagliato" },
+    { type: "paragraph", html: "Bookmap può avere più di un conto negoziabile disponibile contemporaneamente, ad esempio il simulatore interno più il suo conto Tradovate live. Il Trade Control Panel dispone di un selettore di conto che decide dove vanno i suoi clic. Se quel selettore è impostato sul conto simulato (o su una connessione diversa da quella che pensa), i suoi fill finiscono lì invece che su Tradovate. Vale la pena controllarlo ogni volta, perché la selezione può essere reimpostata quando si riconnette o riapre uno spazio di lavoro." },
+    { type: "heading", text: "4. Il suo conto Apex non è sul backend Tradovate" },
+    { type: "paragraph", html: "I conti prop vengono forniti su una piattaforma specifica al momento dell'acquisto, e generalmente non è possibile cambiare quella piattaforma a metà conto. L'offerta attuale di Apex funziona su Rithmic, Tradovate e WealthCharts, e Bookmap è molto spesso collegato ad Apex tramite Rithmic anziché Tradovate. Se la sua valutazione è stata emessa sul backend Rithmic ma ha configurato una connessione Tradovate in Bookmap, semplicemente non esiste alcun conto Tradovate che l'ordine possa raggiungere. Quali backend sono disponibili, e come ciascuno si connette, varia da firma a firma e cambia nel tempo, quindi confermi la piattaforma del suo conto con la sua firma anziché darlo per scontato." },
+    { type: "heading", text: "5. Credenziali errate o ambiente di accesso sbagliato" },
+    { type: "paragraph", html: "Una valutazione prop utilizza credenziali Tradovate emesse dalla firma che risiedono nell'ambiente di valutazione, non il suo accesso Tradovate personale. Se ha collegato Bookmap con un conto personale, o ha puntato la connessione verso l'ambiente sbagliato, i fill vanno al conto con cui si è effettivamente autenticato, che potrebbe non essere il conto Apex visualizzato sullo schermo." },
+    { type: "heading", text: "6. Il suo pacchetto Bookmap non include l'instradamento live" },
+    { type: "paragraph", html: "Instradare ordini dal grafico Bookmap verso un conto finanziato o di valutazione richiede il pacchetto Global+. In un livello inferiore, il trading dal grafico verso un broker reale può essere disabilitato, lasciandole la possibilità di piazzare solo ordini simulati. Se i controlli di trading appaiono attivi ma nulla raggiunge mai Tradovate e non compare alcun errore, vale la pena escludere una limitazione del pacchetto." },
+    { type: "heading", text: "Come far arrivare gli ordini di Bookmap a Tradovate: passo dopo passo" },
+    { type: "heading", text: "Passo 1: riavvii Bookmap in una modalità di esecuzione di trading live" },
+    {
+      type: "steps",
+      items: [
+        { title: "Chiuda completamente Bookmap", html: "Chiuda completamente Bookmap." },
+        { title: "Scelga la modalità di esecuzione di trading live", html: "Lo riapra e, nella schermata di modalità di esecuzione/avvio, scelga la modalità di trading reale o live invece della modalità simulazione. La dicitura esatta cambia tra le versioni di Bookmap, quindi legga le opzioni con attenzione e scelga quella che si collega a un broker per un instradamento ordini reale." },
+        { title: "Riavvii se non è sicuro della modalità in cui si trova", html: "Se non è sicuro della modalità in cui si trova, questo da solo è un forte indizio che sia il suo problema. Riavvii e scelga deliberatamente l'opzione live." },
+      ],
+    },
+    { type: "heading", text: "Passo 2: confermi che la connessione Tradovate sia abilitata per il trading" },
+    {
+      type: "steps",
+      items: [
+        { title: "Apra Connections > Configure", html: "Apra l'area delle connessioni (Connections &rsaquo; Configure) e trovi la sua connessione Tradovate." },
+        { title: "Si assicuri che il trading sia abilitato", html: "Si assicuri che su di essa sia abilitato il trading, non solo i dati. Se utilizza un feed separato per i dati e Tradovate solo per l'instradamento, confermi che sia Tradovate a trasportare il flusso degli ordini." },
+        { title: "Reinserisca le credenziali corrette", html: "Inserisca o reinserisca le credenziali Tradovate corrette, su un conto prop, l'accesso esatto emesso dalla firma per l'ambiente corretto." },
+      ],
+    },
+    { type: "heading", text: "Passo 3: armi il Trade Control Panel sul conto giusto" },
+    {
+      type: "steps",
+      items: [
+        { title: "Attivi il Trade Control Panel", html: "Attivi il Trade Control Panel per il suo strumento in modo da poter piazzare ordini dal grafico." },
+        { title: "Selezioni il suo conto Tradovate live", html: "Apra il selettore di conto nel pannello e confermi che sia impostato sul suo conto Tradovate live (Apex), non sul simulatore o su una connessione diversa." },
+        { title: "Ricontrolli il contratto", html: "Ricontrolli che lo strumento corrisponda a un contratto attivo e attuale su Tradovate. Un contratto non corrispondente o scaduto può anch'esso bloccare l'instradamento." },
+      ],
+    },
+    { type: "heading", text: "Passo 4: invii un ordine di prova e lo verifichi su Tradovate" },
+    {
+      type: "steps",
+      items: [
+        { title: "Piazzi un piccolo ordine", html: "Piazzi un singolo piccolo ordine da Bookmap." },
+        { title: "Controlli Orders e Positions su Tradovate", html: "Passi a Tradovate (web, desktop o mobile) e apra i moduli Orders e Positions. Se l'ordine e la posizione compaiono lì, l'instradamento funziona end-to-end." },
+        { title: "Ricontrolli se il pannello resta vuoto", html: "Se Bookmap mostra un fill ma il pannello Orders di Tradovate resta vuoto, l'ordine ancora non sta lasciando Bookmap: torni indietro e ricontrolli la modalità di esecuzione, la connessione abilitata per il trading e il selettore di conto, in quest'ordine." },
+      ],
+    },
+    { type: "quote", html: "Tenga distinta la confusione: che una valutazione Apex sia un conto «simulato» è normale e non blocca l'instradamento. I conti di valutazione sono pensati per accettare ordini instradati. La simulazione che mantiene i suoi fill in locale è la modalità di esecuzione Simulazione propria di Bookmap. Risolva prima lo stato di Bookmap, poi si preoccupi del conto." },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Causa probabile", "Soluzione"],
+      rows: [
+        ["Il fill compare in Bookmap, nulla in Orders/Positions di Tradovate", "Bookmap è in modalità di esecuzione Simulazione", "Riavvii Bookmap in una modalità di esecuzione di trading live/reale, poi colleghi Tradovate per il trading"],
+        ["Le quotazioni si aggiornano correttamente ma gli ordini non vengono mai instradati; la connessione risulta «connessa»", "Tradovate connesso solo per i dati", "Abiliti il trading sulla connessione Tradovate e armi il Trade Control Panel"],
+        ["I fill finiscono su un conto demo/simulato dentro Bookmap", "Trade Control Panel puntato sul conto sbagliato", "Selezioni il suo conto Tradovate live (Apex) nel selettore di conto del pannello"],
+        ["La connessione Tradovate non trova affatto il suo conto Apex", "Conto fornito su un backend diverso (ad es. Rithmic)", "Colleghi Bookmap tramite il backend effettivamente usato dal suo conto; confermi con la sua firma"],
+        ["I controlli di trading appaiono attivi ma nulla si instrada e non compare alcun errore", "Il livello del pacchetto non include il trading live dal grafico", "Passi al pacchetto Global+ che supporta l'instradamento verso un conto finanziato"],
+        ["Disconnessioni casuali con Bookmap e Tradovate web aperti contemporaneamente", "Limite di sessione raggiunto sullo stesso conto", "Riduca gli accessi simultanei su quel conto mentre opera tramite Bookmap"],
+      ],
+    },
+    { type: "heading", text: "Un percorso più semplice verso ordini Tradovate automatizzati" },
+    { type: "paragraph", html: "Se il motivo per cui è su Bookmap è leggere il flusso degli ordini, ottimo, ma se è davvero lì per <em>automatizzare</em> una strategia verso Tradovate, instradare tramite un'app di grafici desktop aggiunge molti anelli fragili alla catena. Una modalità di esecuzione sbagliata, e i suoi segnali live operano silenziosamente contro un simulatore. PickMyTrade percorre una strada diversa:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>L'instradamento lato server</strong> invia i suoi avvisi o webhook di TradingView direttamente a Tradovate, così l'esecuzione non dipende dal fatto che un'app desktop sia nella modalità giusta.",
+        "<strong class='text-white'>Le connessioni consapevoli dei conti prop</strong> funzionano con Apex e altri conti Tradovate di valutazione e finanziati emessi dalle firme, nel rispetto delle regole della firma.",
+        "<strong class='text-white'>La sincronizzazione multi-conto</strong> replica un segnale su ogni conto collegato contemporaneamente, invece di un grafico, un clic, un conto.",
+        "<strong class='text-white'>Un feedback chiaro sugli ordini</strong> le dice quando un ordine è stato instradato e quando è stato rifiutato, così un mancato fill silenzioso non può nascondersi come fa una simulazione locale.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Stop Losing Fills to a Local Simulator", de: "Verlieren Sie keine Fills mehr an einen lokalen Simulator", es: "Deje de perder ejecuciones por culpa de un simulador local", fr: "Arrêtez de perdre des fills à cause d'un simulateur local", it: "Smetta di perdere fill a causa di un simulatore locale" },
+  ctaText: { en: "Automate your Tradovate and Apex orders with PickMyTrade, so execution never depends on Bookmap being in the right run mode.", de: "Automatisieren Sie Ihre Tradovate- und Apex-Orders mit PickMyTrade, sodass die Ausführung nie davon abhängt, dass Bookmap im richtigen Modus läuft.", es: "Automatice sus órdenes de Tradovate y Apex con PickMyTrade, para que la ejecución nunca dependa de que Bookmap esté en el modo correcto.", fr: "Automatisez vos ordres Tradovate et Apex avec PickMyTrade, afin que l'exécution ne dépende jamais du fait que Bookmap soit dans le bon mode.", it: "Automatizzi i suoi ordini Tradovate e Apex con PickMyTrade, così l'esecuzione non dipende mai dal fatto che Bookmap sia nella modalità giusta." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Comience su prueba gratuita de 5 días", fr: "Commencez votre essai gratuit de 5 jours", it: "Inizi la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why do my orders fill in Bookmap but not on Tradovate?", a: "Almost always because Bookmap is routing the order to its own internal simulator, or the Tradovate connection is set up for data only. In Bookmap's Simulation mode the fill happens on the Bookmap client and nothing is transmitted to your brokerage account, so Tradovate never sees the order." },
+    { q: "Does an Apex sim or evaluation account stop orders from routing?", a: "No. An evaluation account is built to receive routed orders, that's how you trade a prop eval every day. The simulation that blocks routing is Bookmap's own Simulation run mode, not your account's evaluation status. Don't get the two confused." },
+    { q: "How do I switch Bookmap from simulation to live trading?", a: "Close Bookmap and relaunch it, then pick the real or live trading run mode instead of Simulation, and connect Tradovate for trading rather than data only. Confirm the exact wording of the run-mode option in your current build, since Bookmap adjusts these labels over time." },
+    { q: "Do I connect Bookmap to my Apex account through Tradovate or Rithmic?", a: "It depends on which backend your account was issued on when you bought it. Prop accounts are usually locked to one platform at purchase, and Bookmap is commonly fed through Rithmic. If your evaluation lives on a different backend than the one you connected, orders have nowhere to route. Check your firm's current setup." },
+    { q: "Do I need a specific Bookmap plan to route real orders?", a: "Routing orders from the Bookmap chart to a funded or evaluation account requires the Global+ package. On a lower tier, chart trading to your broker may be disabled, which leaves you stuck placing simulated orders only." },
+    { q: "Can I use Tradovate only for order routing and keep a different data feed?", a: "Yes. Bookmap supports using Tradovate solely for order routing while a provider like dxFeed or Rithmic supplies the chart data. Just make sure the connection you route orders through is the Tradovate trading connection, not the data feed." },
+    { q: "Everything looks connected but orders still don't reach Tradovate. Who do I contact?", a: "Contact Bookmap support to confirm your run mode and that the Tradovate connection is enabled for trading, and contact your prop firm to confirm which backend your account uses and whether third-party front-ends are allowed to route to it. Have your account ID ready." },
+    { q: "Could running Bookmap and Tradovate web at the same time cause this?", a: "It can. Logging the same account into Bookmap plus Tradovate web or TradingView at once can hit session limits and trigger disconnects that look like routing failures. Keep simultaneous logins to a minimum while you troubleshoot." },
+  ], de: [
+    { q: "Warum werden meine Orders in Bookmap gefüllt, aber nicht auf Tradovate?", a: "Fast immer, weil Bookmap die Order an seinen eigenen internen Simulator routet oder weil die Tradovate-Verbindung nur für Daten eingerichtet ist. Im Simulationsmodus von Bookmap findet der Fill auf dem Bookmap-Client statt, und nichts wird an Ihr Brokerage-Konto übertragen, sodass Tradovate die Order nie sieht." },
+    { q: "Stoppt eine Apex-Sim bzw. ein Evaluierungskonto das Routen von Orders?", a: "Nein. Ein Evaluierungskonto ist dafür gebaut, geroutete Orders zu empfangen – so handeln Sie eine Prop-Evaluierung jeden Tag. Die Simulation, die das Routing blockiert, ist Bookmaps eigener Simulationsmodus, nicht der Evaluierungsstatus Ihres Kontos. Verwechseln Sie die beiden nicht." },
+    { q: "Wie wechsle ich Bookmap von Simulation zu Live-Trading?", a: "Schließen Sie Bookmap und starten Sie es neu, wählen Sie dann den echten oder Live-Trading-Ausführungsmodus statt Simulation und verbinden Sie Tradovate für den Handel statt nur für Daten. Bestätigen Sie den genauen Wortlaut der Ausführungsmodus-Option in Ihrer aktuellen Version, da Bookmap diese Bezeichnungen im Laufe der Zeit anpasst." },
+    { q: "Verbinde ich Bookmap mit meinem Apex-Konto über Tradovate oder Rithmic?", a: "Das hängt davon ab, auf welchem Backend Ihr Konto beim Kauf ausgestellt wurde. Prop-Konten sind beim Kauf meist an eine Plattform gebunden, und Bookmap wird häufig über Rithmic gespeist. Liegt Ihre Evaluierung auf einem anderen Backend als dem, das Sie verbunden haben, haben Orders nirgendwo hin zu routen. Prüfen Sie das aktuelle Setup Ihrer Firma." },
+    { q: "Brauche ich ein bestimmtes Bookmap-Paket, um echte Orders zu routen?", a: "Das Routen von Orders vom Bookmap-Chart auf ein finanziertes Konto oder ein Evaluierungskonto erfordert das Global+-Paket. Bei einem niedrigeren Tarif kann der Chart-Handel zu Ihrem Broker deaktiviert sein, wodurch Sie nur simulierte Orders platzieren können." },
+    { q: "Kann ich Tradovate nur für das Order-Routing nutzen und einen anderen Datenfeed behalten?", a: "Ja. Bookmap unterstützt es, Tradovate ausschließlich für das Order-Routing zu nutzen, während ein Anbieter wie dxFeed oder Rithmic die Chartdaten liefert. Achten Sie nur darauf, dass die Verbindung, über die Sie Orders routen, die Tradovate-Handelsverbindung ist, nicht der Datenfeed." },
+    { q: "Alles scheint verbunden, aber Orders erreichen Tradovate immer noch nicht. An wen wende ich mich?", a: "Wenden Sie sich an den Bookmap-Support, um Ihren Ausführungsmodus zu bestätigen und sicherzustellen, dass die Tradovate-Verbindung für den Handel aktiviert ist, und an Ihre Prop-Firma, um zu klären, welches Backend Ihr Konto nutzt und ob Drittanbieter-Frontends zum Routen zugelassen sind. Halten Sie Ihre Konto-ID bereit." },
+    { q: "Könnte das gleichzeitige Ausführen von Bookmap und Tradovate Web dieses Problem verursachen?", a: "Ja, das ist möglich. Wenn dasselbe Konto gleichzeitig in Bookmap sowie in Tradovate Web oder TradingView angemeldet ist, kann das Sitzungslimits erreichen und Verbindungsabbrüche auslösen, die wie Routing-Fehler aussehen. Halten Sie gleichzeitige Logins während der Fehlersuche auf ein Minimum." },
+  ], es: [
+    { q: "¿Por qué mis órdenes se ejecutan en Bookmap pero no en Tradovate?", a: "Casi siempre porque Bookmap está enrutando la orden a su propio simulador interno, o porque la conexión de Tradovate está configurada solo para datos. En el modo Simulación de Bookmap, la ejecución ocurre en el cliente de Bookmap y nada se transmite a su cuenta de corretaje, por lo que Tradovate nunca ve la orden." },
+    { q: "¿Una cuenta simulada o de evaluación de Apex impide que las órdenes se enruten?", a: "No. Una cuenta de evaluación está diseñada para recibir órdenes enrutadas; así es como se opera una evaluación de prop trading todos los días. La simulación que bloquea el enrutamiento es el propio modo de ejecución Simulación de Bookmap, no el estado de evaluación de su cuenta. No confunda ambas cosas." },
+    { q: "¿Cómo cambio Bookmap del modo simulación al trading en vivo?", a: "Cierre Bookmap y vuelva a abrirlo, luego elija el modo de ejecución de trading real o en vivo en lugar de Simulación, y conecte Tradovate para trading en lugar de solo para datos. Confirme la redacción exacta de la opción de modo de ejecución en su versión actual, ya que Bookmap ajusta estas etiquetas con el tiempo." },
+    { q: "¿Conecto Bookmap a mi cuenta Apex mediante Tradovate o Rithmic?", a: "Depende del backend en el que se emitió su cuenta al comprarla. Las cuentas de prop trading suelen quedar bloqueadas a una plataforma en el momento de la compra, y Bookmap suele alimentarse mediante Rithmic. Si su evaluación reside en un backend distinto al que conectó, las órdenes no tienen adónde enrutarse. Consulte la configuración actual de su firma." },
+    { q: "¿Necesito un plan específico de Bookmap para enrutar órdenes reales?", a: "Enrutar órdenes desde el gráfico de Bookmap a una cuenta financiada o de evaluación requiere el paquete Global+. En un nivel inferior, el trading desde el gráfico hacia su bróker puede estar deshabilitado, lo que le deja atascado colocando solo órdenes simuladas." },
+    { q: "¿Puedo usar Tradovate solo para el enrutamiento de órdenes y mantener un feed de datos distinto?", a: "Sí. Bookmap admite usar Tradovate exclusivamente para el enrutamiento de órdenes mientras un proveedor como dxFeed o Rithmic suministra los datos del gráfico. Solo asegúrese de que la conexión mediante la que enruta las órdenes sea la conexión de trading de Tradovate, no el feed de datos." },
+    { q: "Todo parece conectado, pero las órdenes siguen sin llegar a Tradovate. ¿Con quién debo contactar?", a: "Contacte con el soporte de Bookmap para confirmar su modo de ejecución y que la conexión de Tradovate esté habilitada para trading, y contacte con su firma de prop trading para confirmar qué backend usa su cuenta y si se permite que aplicaciones de terceros enruten hacia ella. Tenga a mano el identificador de su cuenta." },
+    { q: "¿Podría causar esto el uso simultáneo de Bookmap y Tradovate web?", a: "Sí, es posible. Iniciar sesión con la misma cuenta en Bookmap y en Tradovate web o TradingView a la vez puede alcanzar límites de sesión y provocar desconexiones que parecen fallos de enrutamiento. Mantenga al mínimo los inicios de sesión simultáneos mientras resuelve el problema." },
+  ], fr: [
+    { q: "Pourquoi mes ordres se remplissent-ils dans Bookmap mais pas sur Tradovate ?", a: "Presque toujours parce que Bookmap route l'ordre vers son propre simulateur interne, ou parce que la connexion Tradovate est configurée uniquement pour les données. En mode Simulation de Bookmap, le fill se produit sur le client Bookmap et rien n'est transmis à votre compte de courtage, donc Tradovate ne voit jamais l'ordre." },
+    { q: "Un compte Apex simulé ou en évaluation empêche-t-il le routage des ordres ?", a: "Non. Un compte d'évaluation est conçu pour recevoir des ordres routés, c'est ainsi que vous tradez une évaluation prop au quotidien. La simulation qui bloque le routage est le mode d'exécution Simulation propre à Bookmap, pas le statut d'évaluation de votre compte. Ne confondez pas les deux." },
+    { q: "Comment passer Bookmap du mode simulation au trading en direct ?", a: "Fermez Bookmap et relancez-le, puis choisissez le mode d'exécution de trading réel ou en direct plutôt que Simulation, et connectez Tradovate pour le trading plutôt que pour les données uniquement. Confirmez le libellé exact de l'option de mode d'exécution dans votre version actuelle, car Bookmap ajuste ces libellés au fil du temps." },
+    { q: "Est-ce que je connecte Bookmap à mon compte Apex via Tradovate ou Rithmic ?", a: "Cela dépend du backend sur lequel votre compte a été émis lors de l'achat. Les comptes prop sont généralement verrouillés sur une plateforme à l'achat, et Bookmap est couramment alimenté via Rithmic. Si votre évaluation se trouve sur un backend différent de celui que vous avez connecté, les ordres n'ont nulle part où router. Vérifiez la configuration actuelle de votre firme." },
+    { q: "Ai-je besoin d'une offre Bookmap spécifique pour router de vrais ordres ?", a: "Router des ordres depuis le graphique Bookmap vers un compte financé ou d'évaluation nécessite l'offre Global+. Sur un palier inférieur, le trading depuis le graphique vers votre courtier peut être désactivé, ce qui vous limite à passer uniquement des ordres simulés." },
+    { q: "Puis-je utiliser Tradovate uniquement pour le routage des ordres et conserver un flux de données différent ?", a: "Oui. Bookmap prend en charge l'utilisation de Tradovate uniquement pour le routage des ordres pendant qu'un fournisseur comme dxFeed ou Rithmic fournit les données du graphique. Assurez-vous simplement que la connexion via laquelle vous routez les ordres est bien la connexion de trading Tradovate, pas le flux de données." },
+    { q: "Tout semble connecté, mais les ordres n'atteignent toujours pas Tradovate. Qui dois-je contacter ?", a: "Contactez le support Bookmap pour confirmer votre mode d'exécution et que la connexion Tradovate est activée pour le trading, et contactez votre firme prop pour confirmer quel backend utilise votre compte et si les applications tierces sont autorisées à y router. Ayez votre identifiant de compte à portée de main." },
+    { q: "L'exécution simultanée de Bookmap et de Tradovate web pourrait-elle causer cela ?", a: "C'est possible. Connecter le même compte à la fois sur Bookmap et sur Tradovate web ou TradingView peut atteindre des limites de session et déclencher des déconnexions qui ressemblent à des échecs de routage. Limitez au maximum les connexions simultanées pendant votre dépannage." },
+  ], it: [
+    { q: "Perché i miei ordini si riempiono in Bookmap ma non su Tradovate?", a: "Quasi sempre perché Bookmap sta instradando l'ordine verso il proprio simulatore interno, oppure perché la connessione Tradovate è impostata solo per i dati. In modalità Simulazione di Bookmap, il fill avviene sul client Bookmap e nulla viene trasmesso al suo conto di brokeraggio, quindi Tradovate non vede mai l'ordine." },
+    { q: "Un conto Apex simulato o in valutazione blocca l'instradamento degli ordini?", a: "No. Un conto di valutazione è pensato per ricevere ordini instradati: è così che si opera una valutazione prop ogni giorno. La simulazione che blocca l'instradamento è la modalità di esecuzione Simulazione propria di Bookmap, non lo stato di valutazione del suo conto. Non confonda le due cose." },
+    { q: "Come passo Bookmap dalla simulazione al trading live?", a: "Chiuda Bookmap e lo riavvii, poi scelga la modalità di esecuzione di trading reale o live invece di Simulazione, e colleghi Tradovate per il trading anziché solo per i dati. Confermi la dicitura esatta dell'opzione di modalità di esecuzione nella sua versione attuale, poiché Bookmap adegua queste etichette nel tempo." },
+    { q: "Collego Bookmap al mio conto Apex tramite Tradovate o Rithmic?", a: "Dipende dal backend su cui è stato emesso il suo conto al momento dell'acquisto. I conti prop sono di solito vincolati a una piattaforma al momento dell'acquisto, e Bookmap è comunemente alimentato tramite Rithmic. Se la sua valutazione risiede su un backend diverso da quello collegato, gli ordini non hanno dove essere instradati. Verifichi la configurazione attuale della sua firma." },
+    { q: "Mi serve un piano Bookmap specifico per instradare ordini reali?", a: "Instradare ordini dal grafico Bookmap verso un conto finanziato o di valutazione richiede il pacchetto Global+. In un livello inferiore, il trading dal grafico verso il suo broker può essere disabilitato, lasciandole solo la possibilità di piazzare ordini simulati." },
+    { q: "Posso usare Tradovate solo per l'instradamento degli ordini e mantenere un feed di dati diverso?", a: "Sì. Bookmap supporta l'uso di Tradovate esclusivamente per l'instradamento degli ordini mentre un provider come dxFeed o Rithmic fornisce i dati del grafico. Si assicuri solo che la connessione tramite cui instrada gli ordini sia la connessione di trading di Tradovate, non il feed di dati." },
+    { q: "Sembra tutto connesso ma gli ordini ancora non raggiungono Tradovate. Chi devo contattare?", a: "Contatti il supporto di Bookmap per confermare la sua modalità di esecuzione e che la connessione Tradovate sia abilitata per il trading, e contatti la sua prop firm per confermare quale backend usa il suo conto e se ai front-end di terze parti è consentito instradare verso di esso. Tenga a portata di mano l'ID del suo conto." },
+    { q: "L'esecuzione contemporanea di Bookmap e Tradovate web potrebbe causare questo problema?", a: "Sì, è possibile. Accedere allo stesso conto contemporaneamente su Bookmap e su Tradovate web o TradingView può raggiungere i limiti di sessione e provocare disconnessioni che sembrano errori di instradamento. Riduca al minimo gli accessi simultanei durante la risoluzione del problema." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich zu Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder befürwortet noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie daher vor dem Handeln stets den aktuellen Ablauf in der offiziellen Plattformdokumentation.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todo inversor. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent avec le temps ; confirmez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a ogni investitore. PickMyTrade è una piattaforma di automazione di terze parti indipendente e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

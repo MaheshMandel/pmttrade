@@ -1,0 +1,493 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "custom-indicator-stack-overflow";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Indicator Stack Overflow at ~63,500 Bars";
+const META_DESCRIPTION =
+  "Custom chart overlays stall and throw a call-stack error past roughly 63,500 bars. Cap the loaded candle range to keep indicators calculating.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate: desbordamiento de pila a ~63.500 barras", fr: "Tradovate : dépassement de pile à ~63 500 bougies", it: "Tradovate: overflow dello stack a ~63.500 barre" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Indikator-Stapelüberlauf bei ~63.500 Bars", es: "Desbordamiento de pila del indicador en Tradovate a ~63.500 barras", fr: "Dépassement de pile de l'indicateur Tradovate à ~63 500 bougies", it: "Overflow dello stack dell'indicatore Tradovate a ~63.500 barre" },
+  dek: { en: "Scroll a custom overlay back far enough and it just stops, with a Maximum call stack size exceeded error in the console. It's a browser ceiling around 63,500 candles, and the fix is to load less history, not more.", de: "Scrollen Sie einen benutzerdefinierten Indikator weit genug zurück, und er bleibt einfach stehen, mit einem Maximum call stack size exceeded-Fehler in der Konsole. Es handelt sich um eine Browser-Obergrenze bei rund 63.500 Kerzen, und die Lösung besteht darin, weniger Historie zu laden, nicht mehr.", es: "Si desplaza un indicador de superposición personalizado lo suficientemente atrás, simplemente se detiene, con un error Maximum call stack size exceeded en la consola. Es un límite del navegador alrededor de las 63.500 velas, y la solución es cargar menos historial, no más.", fr: "Faites défiler un indicateur personnalisé suffisamment loin en arrière et il finit par s'arrêter, avec une erreur Maximum call stack size exceeded dans la console. Il s'agit d'un plafond du navigateur situé autour de 63 500 bougies, et la solution consiste à charger moins d'historique, pas plus.", it: "Faccia scorrere indietro abbastanza un overlay personalizzato e questo semplicemente si ferma, con un errore Maximum call stack size exceeded nella console. È un limite del browser intorno alle 63.500 candele, e la soluzione è caricare meno storico, non di più." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-09",
+  blocks: { en: [
+    { type: "paragraph", html: "You're deep into a backtest, scrolling a custom overlay back across months of one-minute bars, and somewhere along the way the indicator just stops. The line flatlines, the bands vanish, or the overlay quietly refuses to redraw. Pop open the browser console and there it is: RangeError: Maximum call stack size exceeded. This isn't a corrupt chart, a bad data feed, or something you configured wrong. It's a ceiling. Custom overlay indicators on Tradovate reliably fall over once the loaded chart crosses roughly 63,500 candles, and no amount of buying data or switching browsers moves that wall. The fix is almost counterintuitive: load less history, not more. Here's exactly what's happening and how to keep your overlays alive." },
+    {
+      type: "checklist",
+      heading: "Quick Fix for the Stack Overflow at ~63,500 Bars",
+      items: [
+        "<strong class='text-white'>Load fewer candles, full stop.</strong> The overflow is triggered by too many bars in memory, so trimming the loaded range under ~63,500 is the whole game.",
+        "<strong class='text-white'>Jump to a higher timeframe.</strong> The same calendar range needs a fraction of the bars on a 5-minute or 15-minute chart versus a 1-minute chart.",
+        "<strong class='text-white'>Stop scrolling so far back.</strong> Every scroll-back loads more history into the calculation. Study a tighter window and the overlay keeps drawing.",
+        "<strong class='text-white'>Don't crank Minimum Number of Bars to Load.</strong> Pushing that setting higher moves you toward the ceiling, not away from it.",
+        "<strong class='text-white'>Split long backtests into chunks.</strong> Review a wide period in shorter date segments so no single view crosses the limit.",
+        "<strong class='text-white'>Skip the dead-end fixes.</strong> Buying more historical data, changing browsers, and removing indicators don't help. Only fewer candles does.",
+      ],
+    },
+    { type: "heading", text: "What “Maximum Call Stack Size Exceeded” Means Here" },
+    { type: "paragraph", html: "Tradovate's charts run in the browser, in JavaScript. Every indicator you add is code that walks the bars on the chart and recalculates its values. A custom overlay, something that draws on top of price like moving averages, Bollinger Bands, or VWAP, has to process the whole loaded series to render itself correctly. That processing leans on the browser's call stack, a fixed-size scratchpad the engine uses to keep track of nested function calls. Every browser caps how deep that stack can go, and when a calculation runs deeper than the cap, the engine throws a hard stop: RangeError: Maximum call stack size exceeded." },
+    { type: "paragraph", html: "On Tradovate the specific failure point for custom overlays lands around 63,500 candles. Cross it and the overlay stops calculating, often with an error that traces back to the chart's internal time-series routine (you'll see something like replaceTail in the console if you look). Notably, ~63,500 sits right next to 65,536, the classic 64K boundary. That's a strong hint this is a built-in ceiling in the charting engine rather than a random glitch, which is exactly why hammering it from different angles never breaks through." },
+    { type: "heading", text: "Why It Hits Custom Overlays Specifically" },
+    { type: "heading", text: "The trigger is total candle count, not what's on screen" },
+    { type: "paragraph", html: "This is the part that throws people. You might be looking at a couple hundred visible bars when the overlay dies, so it feels random. But the chart doesn't just hold what's in the viewport, it holds everything you've loaded. Scroll back far enough, run a long market replay, or open a wide date range, and thousands of off-screen bars are sitting in memory feeding the overlay's math. The visible chart looks calm; the underlying series is what tips over the edge." },
+    { type: "heading", text: "Low timeframes reach the ceiling fast" },
+    { type: "paragraph", html: "Bars add up quickly on small intervals. A one-minute chart of continuous futures data stacks up tens of thousands of candles in just a couple of months, so a backtest that feels short can blow straight past 63,500 without warning. Bump the same study to 5-minute or 15-minute bars and that identical stretch of history needs a fraction of the candles, which keeps you well under the wall." },
+    { type: "heading", text: "One overlay is still one full recalculation" },
+    { type: "paragraph", html: "Stripping your chart down to a single custom overlay feels like it should help, and it doesn't. That lone overlay still has to recalculate across every loaded bar. The stack depth is driven by the size of the series, not by how many indicators are stacked on it. So the count of candles is the number that matters, and it's the only number worth attacking." },
+    { type: "heading", text: "How to Fix the Stack Overflow: Step-by-Step" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cut the loaded candle range", html: "Right-click the chart and open its settings. Find the loading control, usually labeled something like Minimum Number of Bars to Load, and keep it modest rather than maxed. Confirm the current label in your build, since Tradovate tweaks wording over time. The instinct when an indicator won't draw is to load more history so it has &ldquo;enough&rdquo; data. Resist that here. With this error, more bars is the problem. You want fewer candles feeding the overlay, so the recalculation stays shallow enough for the browser's stack." },
+        { title: "Move to a higher timeframe", html: "This is the single most effective lever. Open the interval selector and step up from 1-minute to 5-minute, 15-minute, or higher. Because each bar now covers more time, the same date range collapses to far fewer candles, and you drop back under the ceiling immediately. If your strategy genuinely needs one-minute resolution, you can still get it, you just study it in shorter windows rather than one giant continuous load." },
+        { title: "Stop scrolling so far into the past", html: "Every time you drag the chart left, Tradovate pulls in more history and hands it to the overlay. If you've been scrolling back for weeks or months of low-timeframe data, that's your candle count climbing in real time. Reset the chart to a recent window and let it reload with a smaller series. The overlay that just died will start calculating again the moment the loaded count drops back under the limit." },
+        { title: "Rebuild the view with a template, then add the overlay", html: "Changing a chart's bar setting after the fact doesn't always make the smaller series take effect cleanly. The reliable move is to set up a chart the way you want it, at a higher timeframe with a modest load, save it as a template, then apply that template on a fresh chart before you add the custom overlay. Loading the overlay onto an already-trimmed chart avoids replaying the whole oversized calculation and gives you a clean render." },
+        { title: "Split long backtests into segments", html: "If you're reviewing a whole quarter or year on a small interval, don't try to hold it all in one continuous load. Break it into shorter date segments, a few weeks at a time on a low timeframe, or step the whole thing up to a higher interval. You get the same analysis without ever asking a single overlay to chew through 60,000-plus bars at once." },
+        { title: "Report it to support if you're stuck under the ceiling", html: "If an overlay throws the call-stack error on a modest, clearly-under-the-limit chart, that's worth flagging. Send Tradovate support the exact instrument, the timeframe, roughly how many bars were loaded, and the full console error including the replaceTail trace if you can grab it. Concrete numbers help them reproduce it. Just go in knowing the ~63,500 wall itself is a known behavior, not something a support ticket flips off." },
+      ],
+    },
+    { type: "heading", text: "What Doesn't Fix It" },
+    { type: "paragraph", html: "Plenty of reasonable-sounding fixes do nothing here, and knowing that saves you an afternoon:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Buying more historical data.</strong> This is the big one. Extra data pushes you further past the limit, since the overflow is caused by candle volume in the first place.",
+        "<strong class='text-white'>Switching browsers.</strong> The call-stack cap is roughly the same across Chrome, Edge, Firefox, and Safari, so a new browser barely nudges the ceiling.",
+        "<strong class='text-white'>Removing every indicator but one.</strong> A single overlay still recalculates across the full series, so the count of loaded candles, not the count of indicators, is what overflows.",
+        "<strong class='text-white'>Cranking Minimum Number of Bars to Load higher.</strong> That drives the candle count up toward the wall. It's the wrong direction.",
+      ],
+    },
+    { type: "paragraph", html: "Every one of these leaves the ~63,500 ceiling exactly where it is. The only lever that moves the outcome is loading fewer candles." },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Likely cause", "Fix"],
+      rows: [
+        ["Custom overlay stops drawing after scrolling far back", "Loaded candle count crossed ~63,500", "Reset to a recent window; move to a higher timeframe"],
+        ["Console shows &ldquo;Maximum call stack size exceeded&rdquo;", "Overlay recalculation ran deeper than the browser call stack", "Reduce the loaded range until the count drops under the ceiling"],
+        ["Bands/averages die on a long 1-minute backtest", "Low timeframe piled up too many bars", "Step up the interval or split the period into shorter segments"],
+        ["Buying more data made it worse", "Extra history pushed the count further past the limit", "Trim history instead; less data, not more"],
+        ["Raising Minimum Bars to Load didn't help", "Higher load moved you toward the ceiling", "Lower the load and apply a trimmed template before adding the overlay"],
+        ["Error fires on a small, clearly-under-limit chart", "Possible defect worth reporting", "Send support the instrument, timeframe, bar count, and full error trace"],
+      ],
+    },
+    { type: "heading", text: "Run the Strategy Off-Chart with PickMyTrade" },
+    { type: "paragraph", html: "Here's the wider point. If a browser overlay is doing real work in your process, feeding entries during a backtest or driving a live signal, you're depending on a chart engine that has a hard ceiling baked in. That's fine for eyeballing a setup. It's a liability for automation. The cleaner approach is to run the logic somewhere built to hold it, and keep the chart for what charts are good at: looking at price." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Build the condition where it scales.</strong> A charting platform like TradingView can express your overlay logic in a script and fire a webhook the instant your conditions hit, no dependence on a loaded candle count sitting in a browser tab.",
+        "<strong class='text-white'>Route it straight to Tradovate.</strong> PickMyTrade takes that webhook and places the order on your Tradovate account automatically, so the signal becomes a fill without a chart in the middle.",
+        "<strong class='text-white'>Mirror across accounts.</strong> The same trigger can drive several evaluation or funded accounts at once, so you're not re-running a fragile overlay on every screen.",
+        "<strong class='text-white'>Rate-limit-safe routing.</strong> Order flow is spaced to stay inside Tradovate's request limits, avoiding the retry storms that cause separate lockouts.",
+      ],
+    },
+    { type: "paragraph", html: "You keep your overlays for visual analysis, trimmed under the ceiling, and hand the execution to a pipeline that doesn't care how many candles a chart happens to be holding." },
+  ], de: [
+    { type: "paragraph", html: "Sie sind mitten in einem Backtest, scrollen einen benutzerdefinierten Overlay-Indikator über Monate von Ein-Minuten-Bars zurück, und irgendwann bleibt der Indikator einfach stehen. Die Linie wird flach, die Bänder verschwinden, oder der Indikator weigert sich stillschweigend, weiterzuzeichnen. Öffnen Sie die Browser-Konsole, und da ist es: RangeError: Maximum call stack size exceeded. Das ist kein beschädigter Chart, kein fehlerhafter Datenfeed und keine falsche Konfiguration Ihrerseits. Es ist eine Obergrenze. Benutzerdefinierte Overlay-Indikatoren auf Tradovate brechen zuverlässig zusammen, sobald der geladene Chart etwa 63.500 Kerzen überschreitet, und keine Menge an zusätzlich gekauften Daten oder Browserwechsel verschiebt diese Wand. Die Lösung ist fast kontraintuitiv: weniger Historie laden, nicht mehr. Hier erfahren Sie genau, was passiert und wie Sie Ihre Overlays am Laufen halten." },
+    {
+      type: "checklist",
+      heading: "Schnelle Lösung für den Stapelüberlauf bei ~63.500 Bars",
+      items: [
+        "<strong class='text-white'>Laden Sie weniger Kerzen, Punkt.</strong> Der Überlauf wird durch zu viele Bars im Speicher ausgelöst, daher ist das Kürzen des geladenen Bereichs unter ~63.500 der ganze Trick.",
+        "<strong class='text-white'>Wechseln Sie zu einem höheren Zeitrahmen.</strong> Derselbe Kalenderzeitraum benötigt auf einem 5-Minuten- oder 15-Minuten-Chart nur einen Bruchteil der Bars im Vergleich zu einem 1-Minuten-Chart.",
+        "<strong class='text-white'>Scrollen Sie nicht so weit zurück.</strong> Jedes Zurückscrollen lädt mehr Historie in die Berechnung. Betrachten Sie ein engeres Fenster, und der Indikator zeichnet weiter.",
+        "<strong class='text-white'>Drehen Sie Minimum Number of Bars to Load nicht hoch.</strong> Diese Einstellung höher zu stellen bringt Sie näher an die Obergrenze, nicht weiter davon weg.",
+        "<strong class='text-white'>Teilen Sie lange Backtests in Abschnitte auf.</strong> Prüfen Sie einen weiten Zeitraum in kürzeren Datumssegmenten, sodass keine einzelne Ansicht die Grenze überschreitet.",
+        "<strong class='text-white'>Verzichten Sie auf Sackgassen-Lösungen.</strong> Mehr historische Daten kaufen, den Browser wechseln und Indikatoren entfernen hilft nicht. Nur weniger Kerzen helfen.",
+      ],
+    },
+    { type: "heading", text: "Was „Maximum Call Stack Size Exceeded“ hier bedeutet" },
+    { type: "paragraph", html: "Die Charts von Tradovate laufen im Browser, in JavaScript. Jeder Indikator, den Sie hinzufügen, ist Code, der die Bars im Chart durchläuft und seine Werte neu berechnet. Ein benutzerdefiniertes Overlay, also etwas, das über dem Preis gezeichnet wird wie gleitende Durchschnitte, Bollinger-Bänder oder VWAP, muss die gesamte geladene Serie verarbeiten, um sich korrekt darzustellen. Diese Verarbeitung stützt sich auf den Call Stack des Browsers, einen Arbeitsspeicherbereich fester Größe, den die Engine nutzt, um verschachtelte Funktionsaufrufe im Blick zu behalten. Jeder Browser begrenzt, wie tief dieser Stack werden kann, und wenn eine Berechnung tiefer läuft als diese Grenze, wirft die Engine einen harten Stopp: RangeError: Maximum call stack size exceeded." },
+    { type: "paragraph", html: "Bei Tradovate liegt der konkrete Fehlerpunkt für benutzerdefinierte Overlays bei etwa 63.500 Kerzen. Überschreiten Sie ihn, stoppt der Indikator die Berechnung, oft mit einem Fehler, der auf die interne Zeitreihenroutine des Charts zurückgeht (Sie sehen in der Konsole etwas wie replaceTail, wenn Sie nachsehen). Bemerkenswert ist, dass ~63.500 direkt neben 65.536 liegt, der klassischen 64K-Grenze. Das ist ein starker Hinweis darauf, dass es sich um eine fest eingebaute Obergrenze in der Chart-Engine handelt und nicht um einen zufälligen Fehler, was genau erklärt, warum das Problem aus keiner Richtung durchbrochen werden kann." },
+    { type: "heading", text: "Warum es speziell benutzerdefinierte Overlays trifft" },
+    { type: "heading", text: "Der Auslöser ist die Gesamtzahl der Kerzen, nicht das, was auf dem Bildschirm sichtbar ist" },
+    { type: "paragraph", html: "Das ist der Teil, der Leute verwirrt. Sie sehen vielleicht nur ein paar hundert sichtbare Bars, wenn der Indikator stirbt, sodass es zufällig wirkt. Aber der Chart hält nicht nur das, was im Sichtfenster ist, er hält alles, was Sie geladen haben. Scrollen Sie weit genug zurück, führen Sie einen langen Market-Replay aus, oder öffnen Sie einen weiten Datumsbereich, und Tausende von Bars außerhalb des Bildschirms sitzen im Speicher und speisen die Berechnung des Indikators. Der sichtbare Chart wirkt ruhig; die zugrunde liegende Serie ist es, die die Sache zum Kippen bringt." },
+    { type: "heading", text: "Niedrige Zeitrahmen erreichen die Obergrenze schnell" },
+    { type: "paragraph", html: "Bars summieren sich auf kleinen Intervallen schnell. Ein Ein-Minuten-Chart mit fortlaufenden Futures-Daten stapelt in nur wenigen Monaten Zehntausende von Kerzen an, sodass ein Backtest, der sich kurz anfühlt, ohne Vorwarnung deutlich über 63.500 hinausschießen kann. Stellen Sie dieselbe Studie auf 5-Minuten- oder 15-Minuten-Bars um, und derselbe historische Zeitraum benötigt nur einen Bruchteil der Kerzen, was Sie deutlich unter der Wand hält." },
+    { type: "heading", text: "Ein Overlay ist immer noch eine vollständige Neuberechnung" },
+    { type: "paragraph", html: "Ihren Chart auf ein einziges benutzerdefiniertes Overlay zu reduzieren, fühlt sich an, als sollte es helfen, tut es aber nicht. Dieses eine Overlay muss sich immer noch über jede geladene Bar neu berechnen. Die Stacktiefe wird von der Größe der Serie bestimmt, nicht davon, wie viele Indikatoren darauf gestapelt sind. Die Anzahl der Kerzen ist also die entscheidende Zahl, und es ist die einzige Zahl, an der es sich zu arbeiten lohnt." },
+    { type: "heading", text: "So beheben Sie den Stapelüberlauf: Schritt für Schritt" },
+    {
+      type: "steps",
+      items: [
+        { title: "Kürzen Sie den geladenen Kerzenbereich", html: "Klicken Sie mit der rechten Maustaste auf den Chart und öffnen Sie seine Einstellungen. Suchen Sie die Ladeeinstellung, die meist so etwas wie Minimum Number of Bars to Load heißt, und halten Sie sie moderat statt auf Maximum. Prüfen Sie die aktuelle Bezeichnung in Ihrer Version, da Tradovate die Formulierungen im Lauf der Zeit anpasst. Der Instinkt, wenn ein Indikator nicht zeichnet, ist, mehr Historie zu laden, damit er &ldquo;genug&rdquo; Daten hat. Widerstehen Sie dem hier. Bei diesem Fehler sind mehr Bars das Problem. Sie wollen weniger Kerzen, die den Indikator speisen, damit die Neuberechnung flach genug für den Stack des Browsers bleibt." },
+        { title: "Wechseln Sie zu einem höheren Zeitrahmen", html: "Das ist der mit Abstand wirksamste Hebel. Öffnen Sie den Intervall-Auswähler und steigen Sie von 1 Minute auf 5 Minuten, 15 Minuten oder höher um. Da jede Bar jetzt mehr Zeit abdeckt, schrumpft derselbe Datumsbereich auf deutlich weniger Kerzen, und Sie fallen sofort wieder unter die Obergrenze. Wenn Ihre Strategie tatsächlich eine Ein-Minuten-Auflösung benötigt, können Sie diese trotzdem bekommen, Sie betrachten sie einfach in kürzeren Fenstern statt in einem einzigen riesigen durchgehenden Ladevorgang." },
+        { title: "Scrollen Sie nicht mehr so weit in die Vergangenheit", html: "Jedes Mal, wenn Sie den Chart nach links ziehen, holt Tradovate mehr Historie und gibt sie an das Overlay weiter. Wenn Sie wochen- oder monatelang durch Daten mit niedrigem Zeitrahmen zurückgescrollt sind, steigt Ihre Kerzenzahl in Echtzeit. Setzen Sie den Chart auf ein aktuelles Fenster zurück und lassen Sie ihn mit einer kleineren Serie neu laden. Der Indikator, der gerade gestorben ist, beginnt wieder zu rechnen, sobald die geladene Anzahl wieder unter die Grenze fällt." },
+        { title: "Bauen Sie die Ansicht mit einer Vorlage neu auf, dann fügen Sie das Overlay hinzu", html: "Das nachträgliche Ändern der Bar-Einstellung eines Charts sorgt nicht immer dafür, dass die kleinere Serie sauber wirksam wird. Der zuverlässige Weg ist, einen Chart genau so einzurichten, wie Sie ihn möchten, auf einem höheren Zeitrahmen mit moderater Ladung, ihn als Vorlage zu speichern und diese Vorlage dann auf einen neuen Chart anzuwenden, bevor Sie das benutzerdefinierte Overlay hinzufügen. Das Laden des Overlays auf einen bereits reduzierten Chart vermeidet das erneute Durchlaufen der gesamten überdimensionierten Berechnung und liefert Ihnen ein sauberes Rendering." },
+        { title: "Teilen Sie lange Backtests in Segmente auf", html: "Wenn Sie ein ganzes Quartal oder Jahr auf einem kleinen Intervall überprüfen, versuchen Sie nicht, alles in einem einzigen durchgehenden Ladevorgang zu halten. Teilen Sie es in kürzere Datumssegmente auf, jeweils ein paar Wochen auf einem niedrigen Zeitrahmen, oder stellen Sie das Ganze auf ein höheres Intervall um. Sie erhalten dieselbe Analyse, ohne jemals ein einzelnes Overlay dazu zu zwingen, mehr als 60.000 Bars auf einmal zu verarbeiten." },
+        { title: "Melden Sie es dem Support, wenn Sie unter der Obergrenze feststecken", html: "Wenn ein Overlay den Call-Stack-Fehler auf einem moderaten, klar unter der Grenze liegenden Chart auslöst, lohnt es sich, das zu melden. Senden Sie dem Tradovate-Support das genaue Instrument, den Zeitrahmen, ungefähr wie viele Bars geladen waren, und den vollständigen Konsolenfehler einschließlich des replaceTail-Traces, falls Sie ihn erfassen können. Konkrete Zahlen helfen ihnen, das Problem zu reproduzieren. Gehen Sie einfach mit dem Wissen hinein, dass die ~63.500er-Wand selbst ein bekanntes Verhalten ist und nichts, was ein Support-Ticket abschaltet." },
+      ],
+    },
+    { type: "heading", text: "Was das Problem nicht behebt" },
+    { type: "paragraph", html: "Viele plausibel klingende Lösungen bewirken hier gar nichts, und das zu wissen erspart Ihnen einen ganzen Nachmittag:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Mehr historische Daten kaufen.</strong> Das ist der größte Fehler. Zusätzliche Daten treiben Sie noch weiter über die Grenze hinaus, da der Überlauf ja gerade durch das Kerzenvolumen verursacht wird.",
+        "<strong class='text-white'>Den Browser wechseln.</strong> Die Call-Stack-Grenze ist bei Chrome, Edge, Firefox und Safari ungefähr gleich, sodass ein neuer Browser die Obergrenze kaum verschiebt.",
+        "<strong class='text-white'>Alle Indikatoren bis auf einen entfernen.</strong> Ein einzelnes Overlay berechnet sich weiterhin über die gesamte Serie neu, daher ist die Anzahl der geladenen Kerzen, nicht die Anzahl der Indikatoren, das, was überläuft.",
+        "<strong class='text-white'>Minimum Number of Bars to Load höher drehen.</strong> Das treibt die Kerzenzahl in Richtung der Wand. Das ist die falsche Richtung.",
+      ],
+    },
+    { type: "paragraph", html: "Jede dieser Maßnahmen lässt die ~63.500er-Obergrenze genau dort, wo sie ist. Der einzige Hebel, der das Ergebnis verändert, ist das Laden weniger Kerzen." },
+    { type: "heading", text: "Troubleshooting-Tabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Wahrscheinliche Ursache", "Lösung"],
+      rows: [
+        ["Benutzerdefiniertes Overlay hört nach weitem Zurückscrollen auf zu zeichnen", "Geladene Kerzenzahl hat ~63.500 überschritten", "Auf ein aktuelles Fenster zurücksetzen; zu einem höheren Zeitrahmen wechseln"],
+        ["Konsole zeigt &ldquo;Maximum call stack size exceeded&rdquo;", "Die Neuberechnung des Overlays lief tiefer als der Call Stack des Browsers", "Geladenen Bereich reduzieren, bis die Zahl unter die Obergrenze fällt"],
+        ["Bänder/Durchschnitte sterben bei einem langen 1-Minuten-Backtest", "Niedriger Zeitrahmen hat zu viele Bars angehäuft", "Intervall erhöhen oder den Zeitraum in kürzere Segmente aufteilen"],
+        ["Mehr Daten kaufen hat es verschlimmert", "Zusätzliche Historie hat die Zahl noch weiter über die Grenze getrieben", "Historie stattdessen kürzen; weniger Daten, nicht mehr"],
+        ["Minimum Bars to Load zu erhöhen hat nicht geholfen", "Höhere Ladung hat Sie näher an die Obergrenze gebracht", "Ladung reduzieren und eine gekürzte Vorlage anwenden, bevor Sie das Overlay hinzufügen"],
+        ["Fehler tritt auf einem kleinen, klar unter der Grenze liegenden Chart auf", "Möglicher meldenswerter Defekt", "Support Instrument, Zeitrahmen, Kerzenzahl und vollständigen Fehler-Trace senden"],
+      ],
+    },
+    { type: "heading", text: "Führen Sie die Strategie außerhalb des Charts mit PickMyTrade aus" },
+    { type: "paragraph", html: "Hier kommt der größere Punkt. Wenn ein Browser-Overlay echte Arbeit in Ihrem Prozess leistet, Einstiege während eines Backtests liefert oder ein Live-Signal steuert, sind Sie von einer Chart-Engine abhängig, die eine feste Obergrenze eingebaut hat. Das ist in Ordnung, um sich ein Setup anzusehen. Es ist ein Risiko für die Automatisierung. Der sauberere Ansatz ist, die Logik an einer dafür gebauten Stelle laufen zu lassen und den Chart für das zu nutzen, worin Charts gut sind: den Preis zu betrachten." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Bauen Sie die Bedingung dort, wo sie skaliert.</strong> Eine Chartplattform wie TradingView kann Ihre Overlay-Logik in einem Skript ausdrücken und einen Webhook auslösen, sobald Ihre Bedingungen eintreten, ohne Abhängigkeit von einer geladenen Kerzenzahl in einem Browser-Tab.",
+        "<strong class='text-white'>Leiten Sie es direkt an Tradovate weiter.</strong> PickMyTrade nimmt diesen Webhook entgegen und platziert die Order automatisch auf Ihrem Tradovate-Konto, sodass das Signal ohne Chart dazwischen zu einer Ausführung wird.",
+        "<strong class='text-white'>Spiegeln Sie über Konten hinweg.</strong> Derselbe Auslöser kann mehrere Evaluierungs- oder finanzierte Konten gleichzeitig steuern, sodass Sie kein fragiles Overlay auf jedem Bildschirm erneut ausführen müssen.",
+        "<strong class='text-white'>Ratenlimit-sicheres Routing.</strong> Der Orderfluss wird zeitlich gestaffelt, um innerhalb der Anfragegrenzen von Tradovate zu bleiben, und vermeidet so die Retry-Stürme, die separate Sperrungen verursachen.",
+      ],
+    },
+    { type: "paragraph", html: "Sie behalten Ihre Overlays für die visuelle Analyse, gekürzt unter der Obergrenze, und übergeben die Ausführung an eine Pipeline, die es nicht kümmert, wie viele Kerzen ein Chart gerade lädt." },
+  ], es: [
+    { type: "paragraph", html: "Está en medio de un backtest, desplazando un indicador de superposición personalizado varios meses atrás en velas de un minuto, y en algún momento el indicador simplemente se detiene. La línea se aplana, las bandas desaparecen o la superposición se niega silenciosamente a redibujarse. Abre la consola del navegador y ahí está: RangeError: Maximum call stack size exceeded. Esto no es un gráfico corrupto, un feed de datos defectuoso ni algo que haya configurado mal. Es un límite. Los indicadores de superposición personalizados en Tradovate fallan de forma constante en cuanto el gráfico cargado supera aproximadamente las 63.500 velas, y ninguna cantidad de datos comprados ni de cambios de navegador mueve esa pared. La solución es casi contraintuitiva: cargar menos historial, no más. A continuación se explica exactamente qué está pasando y cómo mantener sus superposiciones funcionando." },
+    {
+      type: "checklist",
+      heading: "Solución rápida para el desbordamiento de pila en ~63.500 barras",
+      items: [
+        "<strong class='text-white'>Cargue menos velas, punto.</strong> El desbordamiento se produce por tener demasiadas barras en memoria, así que reducir el rango cargado por debajo de ~63.500 es la clave de todo.",
+        "<strong class='text-white'>Pase a un marco temporal mayor.</strong> El mismo rango de calendario necesita solo una fracción de las barras en un gráfico de 5 o 15 minutos frente a uno de 1 minuto.",
+        "<strong class='text-white'>Deje de desplazarse tan atrás.</strong> Cada desplazamiento hacia atrás carga más historial en el cálculo. Analice una ventana más ajustada y la superposición seguirá dibujándose.",
+        "<strong class='text-white'>No suba el valor de Minimum Number of Bars to Load.</strong> Aumentar ese ajuste lo acerca al límite, no lo aleja de él.",
+        "<strong class='text-white'>Divida los backtests largos en tramos.</strong> Revise un período amplio en segmentos de fechas más cortos para que ninguna vista individual supere el límite.",
+        "<strong class='text-white'>Evite las soluciones sin salida.</strong> Comprar más datos históricos, cambiar de navegador y quitar indicadores no ayuda. Solo ayuda cargar menos velas.",
+      ],
+    },
+    { type: "heading", text: "Qué significa aquí “Maximum Call Stack Size Exceeded”" },
+    { type: "paragraph", html: "Los gráficos de Tradovate se ejecutan en el navegador, en JavaScript. Cada indicador que agrega es código que recorre las barras del gráfico y recalcula sus valores. Una superposición personalizada, algo que se dibuja sobre el precio como medias móviles, Bandas de Bollinger o VWAP, tiene que procesar toda la serie cargada para renderizarse correctamente. Ese procesamiento depende de la pila de llamadas del navegador, un espacio de trabajo de tamaño fijo que el motor utiliza para llevar el control de las llamadas de función anidadas. Cada navegador limita la profundidad que puede alcanzar esa pila, y cuando un cálculo se ejecuta más profundo que ese límite, el motor lanza una parada total: RangeError: Maximum call stack size exceeded." },
+    { type: "paragraph", html: "En Tradovate, el punto de fallo específico para las superposiciones personalizadas se sitúa alrededor de las 63.500 velas. Al superarlo, la superposición deja de calcular, a menudo con un error que se remonta a la rutina interna de series temporales del gráfico (verá algo como replaceTail en la consola si lo comprueba). Cabe destacar que ~63.500 está justo al lado de 65.536, el clásico límite de 64K. Esto es un fuerte indicio de que se trata de un límite incorporado en el motor de gráficos y no de un fallo aleatorio, que es exactamente la razón por la que atacarlo desde distintos ángulos nunca lo supera." },
+    { type: "heading", text: "Por qué afecta específicamente a las superposiciones personalizadas" },
+    { type: "heading", text: "El desencadenante es el número total de velas, no lo que se ve en pantalla" },
+    { type: "paragraph", html: "Esta es la parte que desconcierta a la gente. Puede que solo esté viendo un par de cientos de barras visibles cuando la superposición falla, así que parece aleatorio. Pero el gráfico no solo contiene lo que está en el área visible, contiene todo lo que ha cargado. Desplácese lo suficientemente atrás, ejecute una repetición de mercado larga o abra un rango de fechas amplio, y miles de barras fuera de pantalla estarán en memoria alimentando los cálculos de la superposición. El gráfico visible se ve tranquilo; es la serie subyacente la que hace que se desborde." },
+    { type: "heading", text: "Los marcos temporales bajos alcanzan el límite rápido" },
+    { type: "paragraph", html: "Las barras se acumulan rápidamente en intervalos pequeños. Un gráfico de un minuto de datos continuos de futuros acumula decenas de miles de velas en apenas un par de meses, así que un backtest que parece corto puede superar las 63.500 sin previo aviso. Suba ese mismo estudio a velas de 5 o 15 minutos y ese mismo tramo de historial necesita solo una fracción de las velas, lo que lo mantiene bien por debajo del límite." },
+    { type: "heading", text: "Una sola superposición sigue siendo un recálculo completo" },
+    { type: "paragraph", html: "Reducir el gráfico a una sola superposición personalizada parece que debería ayudar, y no ayuda. Esa única superposición sigue teniendo que recalcular en todas las barras cargadas. La profundidad de la pila depende del tamaño de la serie, no de cuántos indicadores tenga apilados. Así que el número de velas es lo que importa, y es el único número que vale la pena atacar." },
+    { type: "heading", text: "Cómo solucionar el desbordamiento de pila: paso a paso" },
+    {
+      type: "steps",
+      items: [
+        { title: "Reduzca el rango de velas cargado", html: "Haga clic derecho en el gráfico y abra su configuración. Busque el control de carga, normalmente etiquetado como algo similar a Minimum Number of Bars to Load, y manténgalo modesto en lugar de al máximo. Confirme la etiqueta actual en su versión, ya que Tradovate ajusta el texto con el tiempo. El instinto cuando un indicador no se dibuja es cargar más historial para que tenga &ldquo;suficientes&rdquo; datos. Resista esa tentación aquí. Con este error, más barras es el problema. Quiere menos velas alimentando la superposición, para que el recálculo se mantenga lo bastante superficial para la pila del navegador." },
+        { title: "Pase a un marco temporal mayor", html: "Esta es, con diferencia, la palanca más efectiva. Abra el selector de intervalo y suba de 1 minuto a 5, 15 minutos o más. Como cada barra ahora cubre más tiempo, el mismo rango de fechas se reduce a muchas menos velas, y vuelve a estar por debajo del límite de inmediato. Si su estrategia realmente necesita resolución de un minuto, aún puede tenerla, simplemente la estudia en ventanas más cortas en lugar de una única carga continua gigante." },
+        { title: "Deje de desplazarse tan atrás en el pasado", html: "Cada vez que arrastra el gráfico hacia la izquierda, Tradovate trae más historial y se lo entrega a la superposición. Si ha estado desplazándose semanas o meses de datos de marco temporal bajo, eso hace que su número de velas aumente en tiempo real. Reinicie el gráfico a una ventana reciente y deje que se recargue con una serie más pequeña. La superposición que acaba de fallar volverá a calcular en cuanto el número cargado vuelva a estar por debajo del límite." },
+        { title: "Reconstruya la vista con una plantilla y luego añada la superposición", html: "Cambiar el ajuste de barras de un gráfico después de los hechos no siempre hace que la serie más pequeña se aplique de forma limpia. La opción fiable es configurar un gráfico como lo desea, en un marco temporal mayor con una carga modesta, guardarlo como plantilla y luego aplicar esa plantilla en un gráfico nuevo antes de añadir la superposición personalizada. Cargar la superposición en un gráfico ya reducido evita repetir todo el cálculo sobredimensionado y le da un renderizado limpio." },
+        { title: "Divida los backtests largos en segmentos", html: "Si está revisando un trimestre o un año entero en un intervalo pequeño, no intente mantenerlo todo en una sola carga continua. Divídalo en segmentos de fechas más cortos, unas pocas semanas cada vez en un marco temporal bajo, o suba todo el conjunto a un intervalo mayor. Obtiene el mismo análisis sin pedirle jamás a una sola superposición que procese más de 60.000 barras de una vez." },
+        { title: "Repórtelo a soporte si el problema persiste por debajo del límite", html: "Si una superposición lanza el error de pila en un gráfico modesto, claramente por debajo del límite, vale la pena reportarlo. Envíe al soporte de Tradovate el instrumento exacto, el marco temporal, aproximadamente cuántas barras se cargaron y el error completo de la consola, incluida la traza de replaceTail si puede capturarla. Los números concretos les ayudan a reproducirlo. Eso sí, tenga en cuenta que el límite de ~63.500 en sí es un comportamiento conocido, no algo que un ticket de soporte vaya a eliminar." },
+      ],
+    },
+    { type: "heading", text: "Qué no lo soluciona" },
+    { type: "paragraph", html: "Muchas soluciones que suenan razonables no sirven de nada aquí, y saberlo le ahorra una tarde entera:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Comprar más datos históricos.</strong> Esta es la gran trampa. Los datos adicionales lo empujan aún más allá del límite, ya que el desbordamiento se debe precisamente al volumen de velas.",
+        "<strong class='text-white'>Cambiar de navegador.</strong> El límite de la pila de llamadas es aproximadamente el mismo en Chrome, Edge, Firefox y Safari, así que un navegador nuevo apenas mueve el límite.",
+        "<strong class='text-white'>Quitar todos los indicadores menos uno.</strong> Una sola superposición sigue recalculando toda la serie, así que lo que desborda es el número de velas cargadas, no el número de indicadores.",
+        "<strong class='text-white'>Subir el valor de Minimum Number of Bars to Load.</strong> Eso empuja el número de velas hacia el límite. Es la dirección equivocada.",
+      ],
+    },
+    { type: "paragraph", html: "Todas y cada una de estas dejan el límite de ~63.500 exactamente donde está. La única palanca que cambia el resultado es cargar menos velas." },
+    { type: "heading", text: "Tabla de resolución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Causa probable", "Solución"],
+      rows: [
+        ["La superposición personalizada deja de dibujarse tras desplazarse muy atrás", "El número de velas cargadas superó ~63.500", "Reinicie a una ventana reciente; pase a un marco temporal mayor"],
+        ["La consola muestra &ldquo;Maximum call stack size exceeded&rdquo;", "El recálculo de la superposición superó la profundidad de la pila del navegador", "Reduzca el rango cargado hasta que el número baje del límite"],
+        ["Las bandas/medias fallan en un backtest largo de 1 minuto", "El marco temporal bajo acumuló demasiadas barras", "Suba el intervalo o divida el período en segmentos más cortos"],
+        ["Comprar más datos empeoró la situación", "El historial adicional empujó el número más allá del límite", "Recorte el historial en su lugar; menos datos, no más"],
+        ["Subir Minimum Bars to Load no ayudó", "Una carga mayor lo acercó al límite", "Reduzca la carga y aplique una plantilla recortada antes de añadir la superposición"],
+        ["El error aparece en un gráfico pequeño, claramente por debajo del límite", "Posible defecto que vale la pena reportar", "Envíe a soporte el instrumento, el marco temporal, el número de barras y la traza completa del error"],
+      ],
+    },
+    { type: "heading", text: "Ejecute la estrategia fuera del gráfico con PickMyTrade" },
+    { type: "paragraph", html: "Aquí está el punto más amplio. Si una superposición del navegador está haciendo trabajo real en su proceso, alimentando entradas durante un backtest o impulsando una señal en vivo, está dependiendo de un motor de gráficos que tiene un límite duro incorporado. Eso está bien para evaluar visualmente una configuración. Es un riesgo para la automatización. El enfoque más limpio es ejecutar la lógica en algún lugar construido para soportarla, y reservar el gráfico para lo que los gráficos hacen bien: mirar el precio." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Construya la condición donde sí escala.</strong> Una plataforma de gráficos como TradingView puede expresar la lógica de su superposición en un script y disparar un webhook en el instante en que se cumplan sus condiciones, sin depender del número de velas cargadas en una pestaña del navegador.",
+        "<strong class='text-white'>Enrútelo directo a Tradovate.</strong> PickMyTrade toma ese webhook y coloca la orden en su cuenta de Tradovate automáticamente, de modo que la señal se convierte en una ejecución sin un gráfico de por medio.",
+        "<strong class='text-white'>Replique en varias cuentas.</strong> El mismo disparador puede impulsar varias cuentas de evaluación o fondeadas a la vez, para que no tenga que volver a ejecutar una superposición frágil en cada pantalla.",
+        "<strong class='text-white'>Enrutamiento seguro frente a los límites de solicitudes.</strong> El flujo de órdenes se espacia para mantenerse dentro de los límites de solicitudes de Tradovate, evitando las tormentas de reintentos que provocan bloqueos independientes.",
+      ],
+    },
+    { type: "paragraph", html: "Conserva sus superposiciones para el análisis visual, recortadas por debajo del límite, y entrega la ejecución a un pipeline al que no le importa cuántas velas tenga cargadas un gráfico." },
+  ], fr: [
+    { type: "paragraph", html: "Vous êtes en plein backtest, en train de faire défiler un indicateur personnalisé sur plusieurs mois de bougies d'une minute, et à un moment donné l'indicateur s'arrête tout simplement. La ligne se fige, les bandes disparaissent, ou l'indicateur refuse silencieusement de se redessiner. Ouvrez la console du navigateur et voilà : RangeError: Maximum call stack size exceeded. Ce n'est pas un graphique corrompu, un flux de données défaillant, ou une mauvaise configuration de votre part. C'est un plafond. Les indicateurs personnalisés superposés sur Tradovate s'effondrent systématiquement une fois que le graphique chargé dépasse environ 63 500 bougies, et aucune quantité de données achetées ni aucun changement de navigateur ne déplace ce mur. La solution est presque contre-intuitive : charger moins d'historique, pas plus. Voici exactement ce qui se passe et comment garder vos indicateurs opérationnels." },
+    {
+      type: "checklist",
+      heading: "Solution rapide au dépassement de pile à ~63 500 bougies",
+      items: [
+        "<strong class='text-white'>Chargez moins de bougies, un point c'est tout.</strong> Le dépassement est déclenché par un trop grand nombre de bougies en mémoire, donc réduire la plage chargée sous ~63 500 est l'essentiel de la solution.",
+        "<strong class='text-white'>Passez à une unité de temps supérieure.</strong> La même plage calendaire nécessite une fraction des bougies sur un graphique en 5 minutes ou 15 minutes par rapport à un graphique en 1 minute.",
+        "<strong class='text-white'>Arrêtez de faire défiler aussi loin en arrière.</strong> Chaque retour en arrière charge davantage d'historique dans le calcul. Étudiez une fenêtre plus restreinte et l'indicateur continue de se dessiner.",
+        "<strong class='text-white'>Ne poussez pas le réglage Minimum Number of Bars to Load.</strong> Augmenter ce réglage vous rapproche du plafond, pas l'inverse.",
+        "<strong class='text-white'>Découpez les longs backtests en segments.</strong> Passez en revue une longue période en segments de dates plus courts afin qu'aucune vue unique ne dépasse la limite.",
+        "<strong class='text-white'>Évitez les fausses solutions.</strong> Acheter plus de données historiques, changer de navigateur et retirer des indicateurs n'aident pas. Seul un nombre réduit de bougies fonctionne.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie « Maximum Call Stack Size Exceeded » ici" },
+    { type: "paragraph", html: "Les graphiques de Tradovate s'exécutent dans le navigateur, en JavaScript. Chaque indicateur que vous ajoutez est du code qui parcourt les bougies du graphique et recalcule ses valeurs. Un indicateur personnalisé superposé, quelque chose qui se dessine par-dessus le prix comme les moyennes mobiles, les bandes de Bollinger ou le VWAP, doit traiter l'intégralité de la série chargée pour se rendre correctement. Ce traitement s'appuie sur la pile d'appels du navigateur, un espace de travail de taille fixe que le moteur utilise pour suivre les appels de fonctions imbriqués. Chaque navigateur plafonne la profondeur que peut atteindre cette pile, et lorsqu'un calcul va plus profond que ce plafond, le moteur déclenche un arrêt brutal : RangeError: Maximum call stack size exceeded." },
+    { type: "paragraph", html: "Sur Tradovate, le point de rupture précis pour les indicateurs personnalisés se situe autour de 63 500 bougies. Au-delà, l'indicateur cesse de se calculer, souvent avec une erreur qui remonte à la routine interne de série temporelle du graphique (vous verrez quelque chose comme replaceTail dans la console si vous regardez). Fait notable, ~63 500 se situe juste à côté de 65 536, la limite classique des 64K. C'est un indice fort qu'il s'agit d'un plafond intégré au moteur graphique plutôt que d'un bug aléatoire, ce qui explique exactement pourquoi s'y attaquer sous différents angles ne permet jamais de le franchir." },
+    { type: "heading", text: "Pourquoi cela touche spécifiquement les indicateurs personnalisés superposés" },
+    { type: "heading", text: "Le déclencheur est le nombre total de bougies, pas ce qui est affiché à l'écran" },
+    { type: "paragraph", html: "C'est la partie qui déroute les gens. Vous ne voyez peut-être que quelques centaines de bougies visibles lorsque l'indicateur meurt, ce qui donne l'impression que c'est aléatoire. Mais le graphique ne contient pas seulement ce qui est dans la fenêtre visible, il contient tout ce que vous avez chargé. Faites défiler suffisamment loin en arrière, lancez un long replay de marché, ou ouvrez une large plage de dates, et des milliers de bougies hors écran se retrouvent en mémoire à alimenter les calculs de l'indicateur. Le graphique visible paraît calme ; c'est la série sous-jacente qui fait basculer la situation." },
+    { type: "heading", text: "Les unités de temps courtes atteignent vite le plafond" },
+    { type: "paragraph", html: "Les bougies s'accumulent rapidement sur de petits intervalles. Un graphique en une minute de données futures continues empile des dizaines de milliers de bougies en seulement quelques mois, si bien qu'un backtest qui paraît court peut dépasser franchement 63 500 sans prévenir. Passez la même étude en bougies de 5 ou 15 minutes et cette même période historique ne nécessite qu'une fraction des bougies, ce qui vous maintient bien en dessous du mur." },
+    { type: "heading", text: "Un seul indicateur reste un recalcul complet" },
+    { type: "paragraph", html: "Réduire votre graphique à un seul indicateur personnalisé superposé donne l'impression que cela devrait aider, mais ce n'est pas le cas. Cet unique indicateur doit tout de même se recalculer sur l'ensemble des bougies chargées. La profondeur de la pile est déterminée par la taille de la série, pas par le nombre d'indicateurs empilés dessus. C'est donc le nombre de bougies qui compte, et c'est le seul chiffre qui vaille la peine d'être attaqué." },
+    { type: "heading", text: "Comment corriger le dépassement de pile : étape par étape" },
+    {
+      type: "steps",
+      items: [
+        { title: "Réduisez la plage de bougies chargées", html: "Faites un clic droit sur le graphique et ouvrez ses paramètres. Trouvez le réglage de chargement, généralement intitulé quelque chose comme Minimum Number of Bars to Load, et gardez-le modeste plutôt que poussé au maximum. Vérifiez l'intitulé actuel dans votre version, car Tradovate modifie le libellé au fil du temps. Le réflexe lorsqu'un indicateur refuse de se dessiner est de charger plus d'historique pour qu'il ait &ldquo;assez&rdquo; de données. Résistez à cette tentation ici. Avec cette erreur, plus de bougies est le problème. Vous voulez moins de bougies alimentant l'indicateur, afin que le recalcul reste assez peu profond pour la pile du navigateur." },
+        { title: "Passez à une unité de temps supérieure", html: "C'est le levier le plus efficace à lui seul. Ouvrez le sélecteur d'intervalle et passez de 1 minute à 5 minutes, 15 minutes, ou plus. Comme chaque bougie couvre désormais plus de temps, la même plage de dates se réduit à beaucoup moins de bougies, et vous repassez immédiatement sous le plafond. Si votre stratégie a vraiment besoin d'une résolution d'une minute, vous pouvez toujours l'obtenir, il suffit de l'étudier sur des fenêtres plus courtes plutôt que sur un seul chargement continu géant." },
+        { title: "Arrêtez de faire défiler aussi loin dans le passé", html: "Chaque fois que vous faites glisser le graphique vers la gauche, Tradovate récupère plus d'historique et le transmet à l'indicateur. Si vous avez fait défiler en arrière sur des semaines ou des mois de données en unité de temps courte, c'est votre nombre de bougies qui grimpe en temps réel. Réinitialisez le graphique sur une fenêtre récente et laissez-le se recharger avec une série plus petite. L'indicateur qui vient de s'arrêter recommencera à se calculer dès que le nombre chargé repassera sous la limite." },
+        { title: "Reconstruisez la vue avec un modèle, puis ajoutez l'indicateur", html: "Modifier le réglage du nombre de bougies d'un graphique après coup ne fait pas toujours prendre effet proprement à la série réduite. La méthode fiable consiste à configurer un graphique comme vous le souhaitez, sur une unité de temps supérieure avec un chargement modeste, à l'enregistrer comme modèle, puis à appliquer ce modèle sur un nouveau graphique avant d'ajouter l'indicateur personnalisé. Charger l'indicateur sur un graphique déjà réduit évite de rejouer l'ensemble du calcul surdimensionné et vous donne un rendu propre." },
+        { title: "Découpez les longs backtests en segments", html: "Si vous passez en revue un trimestre ou une année entière sur un petit intervalle, n'essayez pas de tout charger en un seul bloc continu. Découpez-le en segments de dates plus courts, quelques semaines à la fois sur une unité de temps courte, ou passez l'ensemble à un intervalle supérieur. Vous obtenez la même analyse sans jamais demander à un seul indicateur de traiter plus de 60 000 bougies d'un coup." },
+        { title: "Signalez-le au support si vous êtes bloqué sous le plafond", html: "Si un indicateur déclenche l'erreur de pile d'appels sur un graphique modeste, clairement sous la limite, cela vaut la peine de le signaler. Envoyez au support Tradovate l'instrument exact, l'unité de temps, une estimation du nombre de bougies chargées, et l'erreur console complète, y compris la trace replaceTail si vous parvenez à la récupérer. Des chiffres concrets les aident à reproduire le problème. Sachez simplement d'emblée que le mur des ~63 500 lui-même est un comportement connu, et non quelque chose qu'un ticket de support fera disparaître." },
+      ],
+    },
+    { type: "heading", text: "Ce qui ne résout pas le problème" },
+    { type: "paragraph", html: "De nombreuses solutions qui semblent raisonnables ne servent à rien ici, et le savoir vous fait gagner un après-midi :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Acheter plus de données historiques.</strong> C'est le principal piège. Des données supplémentaires vous éloignent davantage de la limite, puisque le dépassement est causé par le volume de bougies en premier lieu.",
+        "<strong class='text-white'>Changer de navigateur.</strong> Le plafond de la pile d'appels est à peu près le même sur Chrome, Edge, Firefox et Safari, donc un nouveau navigateur ne déplace le plafond que très légèrement.",
+        "<strong class='text-white'>Retirer tous les indicateurs sauf un.</strong> Un seul indicateur superposé se recalcule tout de même sur l'ensemble de la série, donc c'est le nombre de bougies chargées, et non le nombre d'indicateurs, qui provoque le dépassement.",
+        "<strong class='text-white'>Augmenter le réglage Minimum Number of Bars to Load.</strong> Cela pousse le nombre de bougies vers le mur. C'est la mauvaise direction.",
+      ],
+    },
+    { type: "paragraph", html: "Chacune de ces approches laisse le plafond des ~63 500 exactement là où il est. Le seul levier qui change le résultat est de charger moins de bougies." },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Cause probable", "Solution"],
+      rows: [
+        ["L'indicateur personnalisé cesse de se dessiner après un défilement lointain en arrière", "Le nombre de bougies chargées a dépassé ~63 500", "Réinitialisez sur une fenêtre récente ; passez à une unité de temps supérieure"],
+        ["La console affiche &ldquo;Maximum call stack size exceeded&rdquo;", "Le recalcul de l'indicateur est allé plus profond que la pile d'appels du navigateur", "Réduisez la plage chargée jusqu'à ce que le nombre repasse sous le plafond"],
+        ["Les bandes/moyennes s'arrêtent lors d'un long backtest en 1 minute", "L'unité de temps courte a accumulé trop de bougies", "Passez à un intervalle supérieur ou découpez la période en segments plus courts"],
+        ["Acheter plus de données a aggravé la situation", "L'historique supplémentaire a poussé le nombre encore plus loin au-delà de la limite", "Réduisez plutôt l'historique ; moins de données, pas plus"],
+        ["Augmenter Minimum Bars to Load n'a pas aidé", "Un chargement plus élevé vous a rapproché du plafond", "Réduisez le chargement et appliquez un modèle allégé avant d'ajouter l'indicateur"],
+        ["L'erreur survient sur un petit graphique, clairement sous la limite", "Défaut possible à signaler", "Envoyez au support l'instrument, l'unité de temps, le nombre de bougies et la trace d'erreur complète"],
+      ],
+    },
+    { type: "heading", text: "Exécutez la stratégie hors du graphique avec PickMyTrade" },
+    { type: "paragraph", html: "Voici l'idée générale. Si un indicateur superposé dans le navigateur effectue un travail réel dans votre processus, en alimentant des entrées pendant un backtest ou en pilotant un signal en direct, vous dépendez d'un moteur graphique doté d'un plafond intégré. C'est acceptable pour observer une configuration à l'œil. C'est un risque pour l'automatisation. L'approche la plus propre consiste à exécuter la logique ailleurs, à un endroit conçu pour la supporter, et à garder le graphique pour ce dont les graphiques sont bons : regarder le prix." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Construisez la condition là où elle est scalable.</strong> Une plateforme de graphiques comme TradingView peut exprimer la logique de votre indicateur dans un script et déclencher un webhook dès que vos conditions sont remplies, sans dépendre d'un nombre de bougies chargées dans un onglet de navigateur.",
+        "<strong class='text-white'>Acheminez-le directement vers Tradovate.</strong> PickMyTrade récupère ce webhook et place l'ordre sur votre compte Tradovate automatiquement, de sorte que le signal devient une exécution sans graphique intermédiaire.",
+        "<strong class='text-white'>Répliquez sur plusieurs comptes.</strong> Le même déclencheur peut piloter plusieurs comptes d'évaluation ou financés à la fois, sans que vous ayez à réexécuter un indicateur fragile sur chaque écran.",
+        "<strong class='text-white'>Acheminement sécurisé contre les limites de débit.</strong> Le flux d'ordres est espacé pour rester dans les limites de requêtes de Tradovate, évitant les tempêtes de nouvelles tentatives qui provoquent des blocages distincts.",
+      ],
+    },
+    { type: "paragraph", html: "Vous conservez vos indicateurs superposés pour l'analyse visuelle, maintenus sous le plafond, et confiez l'exécution à un pipeline qui se moque du nombre de bougies que contient un graphique." },
+  ], it: [
+    { type: "paragraph", html: "È nel bel mezzo di un backtest, sta facendo scorrere indietro un overlay personalizzato attraverso mesi di barre a un minuto, e a un certo punto l'indicatore semplicemente si ferma. La linea si appiattisce, le bande scompaiono, oppure l'overlay si rifiuta silenziosamente di ridisegnarsi. Apra la console del browser ed eccolo: RangeError: Maximum call stack size exceeded. Non si tratta di un grafico corrotto, di un feed di dati difettoso o di qualcosa che ha configurato male. È un limite. Gli indicatori overlay personalizzati su Tradovate si bloccano in modo affidabile non appena il grafico caricato supera circa 63.500 candele, e nessuna quantità di dati acquistati o cambio di browser sposta quel muro. La soluzione è quasi controintuitiva: caricare meno storico, non di più. Ecco esattamente cosa sta succedendo e come mantenere i suoi overlay funzionanti." },
+    {
+      type: "checklist",
+      heading: "Soluzione rapida per lo stack overflow a ~63.500 barre",
+      items: [
+        "<strong class='text-white'>Carichi meno candele, punto.</strong> L'overflow è causato da troppe barre in memoria, quindi ridurre l'intervallo caricato sotto ~63.500 è tutto ciò che conta.",
+        "<strong class='text-white'>Passi a un timeframe superiore.</strong> Lo stesso intervallo di calendario richiede una frazione delle barre su un grafico a 5 o 15 minuti rispetto a uno a 1 minuto.",
+        "<strong class='text-white'>Smetta di scorrere così indietro.</strong> Ogni scorrimento all'indietro carica più storico nel calcolo. Studi una finestra più ristretta e l'overlay continuerà a disegnarsi.",
+        "<strong class='text-white'>Non alzi Minimum Number of Bars to Load.</strong> Aumentare quell'impostazione la avvicina al limite, non la allontana.",
+        "<strong class='text-white'>Suddivida i backtest lunghi in blocchi.</strong> Analizzi un periodo ampio in segmenti di date più brevi in modo che nessuna singola vista superi il limite.",
+        "<strong class='text-white'>Eviti le soluzioni senza uscita.</strong> Acquistare più dati storici, cambiare browser e rimuovere indicatori non aiutano. Solo meno candele fanno la differenza.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa qui “Maximum Call Stack Size Exceeded”" },
+    { type: "paragraph", html: "I grafici di Tradovate vengono eseguiti nel browser, in JavaScript. Ogni indicatore che aggiunge è codice che scorre le barre del grafico e ricalcola i suoi valori. Un overlay personalizzato, qualcosa che si disegna sopra il prezzo come le medie mobili, le Bande di Bollinger o il VWAP, deve elaborare l'intera serie caricata per essere renderizzato correttamente. Questa elaborazione si appoggia sullo stack delle chiamate del browser, un'area di lavoro di dimensione fissa che il motore utilizza per tenere traccia delle chiamate di funzione annidate. Ogni browser limita la profondità che questo stack può raggiungere, e quando un calcolo va più in profondità del limite, il motore genera un arresto forzato: RangeError: Maximum call stack size exceeded." },
+    { type: "paragraph", html: "Su Tradovate il punto di rottura specifico per gli overlay personalizzati si colloca intorno alle 63.500 candele. Superatelo e l'overlay smette di calcolare, spesso con un errore che risale alla routine interna di serie temporali del grafico (se guarda, vedrà qualcosa come replaceTail nella console). È degno di nota che ~63.500 si trovi proprio accanto a 65.536, il classico limite dei 64K. Questo è un forte indizio che si tratti di un limite integrato nel motore grafico piuttosto che di un difetto casuale, il che spiega esattamente perché attaccarlo da angolazioni diverse non lo supera mai." },
+    { type: "heading", text: "Perché colpisce in modo specifico gli overlay personalizzati" },
+    { type: "heading", text: "Il fattore scatenante è il numero totale di candele, non ciò che è visibile a schermo" },
+    { type: "paragraph", html: "Questa è la parte che spiazza le persone. Potrebbe star guardando solo un paio di centinaia di barre visibili quando l'overlay si blocca, quindi sembra casuale. Ma il grafico non contiene solo ciò che è nella finestra visibile, contiene tutto ciò che ha caricato. Scorra abbastanza indietro, esegua un lungo replay di mercato o apra un intervallo di date ampio, e migliaia di barre fuori schermo restano in memoria ad alimentare i calcoli dell'overlay. Il grafico visibile sembra tranquillo; è la serie sottostante a far traboccare il vaso." },
+    { type: "heading", text: "I timeframe bassi raggiungono il limite rapidamente" },
+    { type: "paragraph", html: "Le barre si accumulano rapidamente su intervalli piccoli. Un grafico a un minuto di dati futures continui accumula decine di migliaia di candele in appena un paio di mesi, quindi un backtest che sembra breve può superare le 63.500 senza preavviso. Porti lo stesso studio a barre da 5 o 15 minuti e quello stesso arco di storico richiede solo una frazione delle candele, mantenendola ben al di sotto del muro." },
+    { type: "heading", text: "Un solo overlay resta comunque un ricalcolo completo" },
+    { type: "paragraph", html: "Ridurre il grafico a un solo overlay personalizzato sembra che dovrebbe aiutare, e invece non lo fa. Quel singolo overlay deve comunque ricalcolare su ogni barra caricata. La profondità dello stack è determinata dalla dimensione della serie, non dal numero di indicatori sovrapposti. Quindi il numero di candele è ciò che conta, ed è l'unico numero su cui vale la pena agire." },
+    { type: "heading", text: "Come risolvere lo stack overflow: passo dopo passo" },
+    {
+      type: "steps",
+      items: [
+        { title: "Riduca l'intervallo di candele caricato", html: "Faccia clic destro sul grafico e apra le sue impostazioni. Trovi il controllo di caricamento, solitamente etichettato come Minimum Number of Bars to Load, e lo mantenga moderato anziché al massimo. Verifichi l'etichetta attuale nella sua versione, poiché Tradovate modifica il testo nel tempo. L'istinto quando un indicatore non si disegna è caricare più storico affinché abbia &ldquo;abbastanza&rdquo; dati. Resista a questo impulso qui. Con questo errore, più barre è il problema. Vuole meno candele ad alimentare l'overlay, in modo che il ricalcolo resti abbastanza superficiale per lo stack del browser." },
+        { title: "Passi a un timeframe superiore", html: "Questa è di gran lunga la leva più efficace. Apra il selettore degli intervalli e salga da 1 minuto a 5 minuti, 15 minuti o superiore. Poiché ogni barra ora copre più tempo, lo stesso intervallo di date si riduce a molte meno candele, e torna immediatamente sotto il limite. Se la sua strategia richiede davvero una risoluzione a un minuto, può comunque ottenerla, semplicemente la studia in finestre più brevi anziché in un unico caricamento continuo gigante." },
+        { title: "Smetta di scorrere così indietro nel passato", html: "Ogni volta che trascina il grafico a sinistra, Tradovate recupera più storico e lo consegna all'overlay. Se ha scorso indietro settimane o mesi di dati a basso timeframe, è il suo numero di candele a salire in tempo reale. Riporti il grafico a una finestra recente e lo lasci ricaricare con una serie più piccola. L'overlay appena bloccato ricomincerà a calcolare non appena il numero caricato scenderà di nuovo sotto il limite." },
+        { title: "Ricostruisca la vista con un template, poi aggiunga l'overlay", html: "Cambiare l'impostazione delle barre di un grafico a posteriori non sempre fa sì che la serie ridotta abbia effetto in modo pulito. La mossa affidabile è configurare un grafico come lo desidera, con un timeframe superiore e un caricamento modesto, salvarlo come template, quindi applicare quel template a un grafico nuovo prima di aggiungere l'overlay personalizzato. Caricare l'overlay su un grafico già ridotto evita di rieseguire l'intero calcolo sovradimensionato e le offre un rendering pulito." },
+        { title: "Suddivida i backtest lunghi in segmenti", html: "Se sta esaminando un intero trimestre o anno su un intervallo piccolo, non cerchi di tenerlo tutto in un unico caricamento continuo. Lo divida in segmenti di date più brevi, poche settimane alla volta su un timeframe basso, oppure porti l'intero periodo a un intervallo superiore. Ottiene la stessa analisi senza mai chiedere a un singolo overlay di elaborare più di 60.000 barre in una volta." },
+        { title: "Lo segnali al supporto se resta bloccato sotto il limite", html: "Se un overlay genera l'errore di stack su un grafico modesto, chiaramente sotto il limite, vale la pena segnalarlo. Invii al supporto Tradovate lo strumento esatto, il timeframe, circa quante barre erano caricate e l'errore completo della console, inclusa la traccia replaceTail se riesce a recuperarla. Numeri concreti li aiutano a riprodurlo. Tenga presente fin da subito che il muro di ~63.500 in sé è un comportamento noto, non qualcosa che un ticket di supporto possa eliminare." },
+      ],
+    },
+    { type: "heading", text: "Cosa non risolve il problema" },
+    { type: "paragraph", html: "Molte soluzioni che sembrano ragionevoli non servono a nulla qui, e saperlo le risparmia un pomeriggio intero:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Acquistare più dati storici.</strong> Questo è l'errore principale. I dati aggiuntivi la spingono ancora più oltre il limite, dato che l'overflow è causato proprio dal volume di candele.",
+        "<strong class='text-white'>Cambiare browser.</strong> Il limite dello stack delle chiamate è pressoché lo stesso su Chrome, Edge, Firefox e Safari, quindi un nuovo browser sposta a malapena il limite.",
+        "<strong class='text-white'>Rimuovere tutti gli indicatori tranne uno.</strong> Un singolo overlay ricalcola comunque sull'intera serie, quindi è il numero di candele caricate, non il numero di indicatori, a causare l'overflow.",
+        "<strong class='text-white'>Alzare Minimum Number of Bars to Load.</strong> Questo spinge il numero di candele verso il muro. È la direzione sbagliata.",
+      ],
+    },
+    { type: "paragraph", html: "Ognuna di queste lascia il limite di ~63.500 esattamente dove si trova. L'unica leva che cambia il risultato è caricare meno candele." },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Causa probabile", "Soluzione"],
+      rows: [
+        ["L'overlay personalizzato smette di disegnarsi dopo aver scorso molto indietro", "Il numero di candele caricate ha superato ~63.500", "Ripristini una finestra recente; passi a un timeframe superiore"],
+        ["La console mostra &ldquo;Maximum call stack size exceeded&rdquo;", "Il ricalcolo dell'overlay è andato più in profondità dello stack delle chiamate del browser", "Riduca l'intervallo caricato finché il numero non scende sotto il limite"],
+        ["Bande/medie si bloccano in un lungo backtest a 1 minuto", "Il timeframe basso ha accumulato troppe barre", "Aumenti l'intervallo o divida il periodo in segmenti più brevi"],
+        ["Acquistare più dati ha peggiorato la situazione", "Lo storico aggiuntivo ha spinto il numero ancora oltre il limite", "Riduca invece lo storico; meno dati, non di più"],
+        ["Alzare Minimum Bars to Load non ha aiutato", "Un caricamento maggiore l'ha avvicinata al limite", "Riduca il caricamento e applichi un template ridotto prima di aggiungere l'overlay"],
+        ["L'errore si verifica su un grafico piccolo, chiaramente sotto il limite", "Possibile difetto da segnalare", "Invii al supporto lo strumento, il timeframe, il numero di barre e la traccia completa dell'errore"],
+      ],
+    },
+    { type: "heading", text: "Esegua la strategia fuori dal grafico con PickMyTrade" },
+    { type: "paragraph", html: "Ecco il punto più ampio. Se un overlay del browser sta svolgendo un lavoro reale nel suo processo, alimentando gli ingressi durante un backtest o guidando un segnale live, sta dipendendo da un motore grafico che ha un limite rigido incorporato. Va bene per valutare visivamente un setup. È un rischio per l'automazione. L'approccio più pulito è eseguire la logica altrove, in un luogo costruito per sostenerla, e riservare il grafico a ciò in cui i grafici sono bravi: guardare il prezzo." },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Costruisca la condizione dove è scalabile.</strong> Una piattaforma di grafici come TradingView può esprimere la logica del suo overlay in uno script e inviare un webhook nell'istante in cui le sue condizioni si verificano, senza dipendere dal numero di candele caricate in una scheda del browser.",
+        "<strong class='text-white'>Lo instradi direttamente verso Tradovate.</strong> PickMyTrade riceve quel webhook e piazza l'ordine sul suo account Tradovate automaticamente, così il segnale diventa un'esecuzione senza un grafico di mezzo.",
+        "<strong class='text-white'>Replichi su più account.</strong> Lo stesso trigger può guidare più account di valutazione o finanziati contemporaneamente, così non deve rieseguire un overlay fragile su ogni schermo.",
+        "<strong class='text-white'>Instradamento sicuro rispetto ai rate limit.</strong> Il flusso degli ordini è scaglionato per restare entro i limiti di richieste di Tradovate, evitando le tempeste di tentativi che causano blocchi separati.",
+      ],
+    },
+    { type: "paragraph", html: "Mantiene i suoi overlay per l'analisi visiva, ridotti sotto il limite, e affida l'esecuzione a una pipeline a cui non importa quante candele contenga in quel momento un grafico." },
+  ] },
+  ctaHeading: { en: "Run Your Strategy Off the Chart Engine", de: "Führen Sie Ihre Strategie außerhalb der Chart-Engine aus", es: "Ejecute su estrategia fuera del motor de gráficos", fr: "Exécutez votre stratégie en dehors du moteur graphique", it: "Esegua la sua strategia fuori dal motore grafico" },
+  ctaText: { en: "Build your overlay logic in TradingView and let PickMyTrade route the signal to Tradovate, no candle-count ceiling in the way.", de: "Bauen Sie Ihre Overlay-Logik in TradingView auf und lassen Sie PickMyTrade das Signal an Tradovate weiterleiten, ohne dass eine Kerzenzahl-Obergrenze im Weg steht.", es: "Construya la lógica de su superposición en TradingView y deje que PickMyTrade enrute la señal a Tradovate, sin ningún límite de velas de por medio.", fr: "Construisez la logique de votre indicateur dans TradingView et laissez PickMyTrade acheminer le signal vers Tradovate, sans plafond de nombre de bougies en travers du chemin.", it: "Costruisca la logica del suo overlay in TradingView e lasci che PickMyTrade instradi il segnale a Tradovate, senza alcun limite di candele in mezzo." },
+  ctaButtonText: { en: "Start Your Free Trial", de: "Starten Sie Ihre kostenlose Testversion", es: "Comience su prueba gratuita", fr: "Démarrez votre essai gratuit", it: "Inizi la sua prova gratuita" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does “Maximum call stack size exceeded” mean on a Tradovate chart?", a: "It's a browser-side error. The chart runs in JavaScript, and every custom overlay recalculates itself across the bars on the chart. Once the number of loaded candles gets large enough, that calculation runs deeper than the browser's call stack allows and throws a RangeError: Maximum call stack size exceeded. On Tradovate this shows up around 63,500 candles for custom overlay indicators, and the overlay simply stops drawing or updating from that point." },
+    { q: "Why do my custom overlays stop calculating after I load a lot of history?", a: "Because the trigger is the total candle count, not what you can see on screen. Scrolling far back, running a long replay, or backtesting over a wide date range on a low timeframe piles up bars in memory. When the overlay's recalculation crosses roughly 63,500 candles, the call stack overflows and the indicator quits. Cut the loaded range back under that ceiling and it starts calculating again." },
+    { q: "Is roughly 63,500 candles an official Tradovate limit?", a: "It's not a published spec, it's the practical point where custom overlays fall over. The figure sits right around the 64,000 mark, which is a classic sign of an internal ceiling in the charting engine rather than an arbitrary number. Treat it as a hard working limit: keep the loaded candle count comfortably below it and the overlays behave." },
+    { q: "How do I reduce the number of candles loaded on a chart?", a: "Do the opposite of loading more history. Move to a higher timeframe so the same date range needs far fewer bars, stop scrolling so far into the past, narrow the window you're studying, and keep the Minimum Number of Bars to Load modest instead of maxed out. If you're backtesting a long period, split it into shorter chunks so no single view crosses the ceiling." },
+    { q: "Does buying more historical data fix the stack overflow?", a: "No. More data makes it worse, not better. The overflow is caused by too many candles being processed at once, so adding history pushes you further past the limit. Purchasing extra data, switching browsers, or stripping the chart down to a single overlay all leave the ceiling exactly where it is. The only lever that helps is loading fewer candles." },
+    { q: "Will switching browsers or removing indicators help?", a: "Not meaningfully. The call-stack ceiling is roughly the same across mainstream browsers, so a different browser buys you almost nothing. Removing indicators down to one overlay doesn't help either, because a single custom overlay still has to recalculate across the full candle count. Reducing the loaded range is what actually clears it." },
+    { q: "Can I run my strategy without depending on the chart engine?", a: "Yes, and for automation that's the cleaner path. Instead of leaning on a browser overlay that chokes on long histories, build your logic in a charting platform like TradingView and fire a webhook when your conditions hit. Route that webhook through an automation bridge so it places the trade on your Tradovate account. The strategy runs off-chart, so a call-stack limit on a loaded chart never sits between your signal and your fill." },
+  ], de: [
+    { q: "Was bedeutet „Maximum call stack size exceeded“ auf einem Tradovate-Chart?", a: "Es handelt sich um einen browserseitigen Fehler. Der Chart läuft in JavaScript, und jedes benutzerdefinierte Overlay berechnet sich selbst über die Bars im Chart neu. Sobald die Anzahl der geladenen Kerzen groß genug wird, läuft diese Berechnung tiefer, als der Call Stack des Browsers zulässt, und wirft einen RangeError: Maximum call stack size exceeded. Bei Tradovate tritt das bei benutzerdefinierten Overlay-Indikatoren bei rund 63.500 Kerzen auf, und das Overlay hört ab diesem Punkt einfach auf zu zeichnen oder zu aktualisieren." },
+    { q: "Warum hören meine benutzerdefinierten Overlays auf zu rechnen, nachdem ich viel Historie geladen habe?", a: "Weil der Auslöser die Gesamtzahl der Kerzen ist, nicht das, was Sie auf dem Bildschirm sehen können. Weit zurückscrollen, einen langen Replay ausführen oder über einen weiten Datumsbereich auf einem niedrigen Zeitrahmen backtesten häuft Bars im Speicher an. Wenn die Neuberechnung des Overlays etwa 63.500 Kerzen überschreitet, läuft der Call Stack über und der Indikator gibt auf. Kürzen Sie den geladenen Bereich wieder unter diese Obergrenze, und er beginnt wieder zu rechnen." },
+    { q: "Sind rund 63.500 Kerzen ein offizielles Tradovate-Limit?", a: "Es ist keine veröffentlichte Spezifikation, sondern der praktische Punkt, an dem benutzerdefinierte Overlays zusammenbrechen. Die Zahl liegt genau um die 64.000-Marke, was ein klassisches Zeichen für eine interne Obergrenze in der Chart-Engine ist und nicht für eine willkürliche Zahl. Behandeln Sie es als feste Arbeitsgrenze: Halten Sie die geladene Kerzenzahl komfortabel darunter, und die Overlays verhalten sich normal." },
+    { q: "Wie reduziere ich die Anzahl der auf einem Chart geladenen Kerzen?", a: "Tun Sie das Gegenteil von mehr Historie laden. Wechseln Sie zu einem höheren Zeitrahmen, sodass derselbe Datumsbereich deutlich weniger Bars benötigt, scrollen Sie nicht mehr so weit in die Vergangenheit, verengen Sie das Fenster, das Sie betrachten, und halten Sie Minimum Number of Bars to Load moderat statt auf Maximum. Wenn Sie einen langen Zeitraum backtesten, teilen Sie ihn in kürzere Abschnitte, sodass keine einzelne Ansicht die Obergrenze überschreitet." },
+    { q: "Behebt der Kauf von mehr historischen Daten den Stapelüberlauf?", a: "Nein. Mehr Daten machen es schlimmer, nicht besser. Der Überlauf wird dadurch verursacht, dass zu viele Kerzen gleichzeitig verarbeitet werden, sodass zusätzliche Historie Sie weiter über die Grenze hinaustreibt. Zusätzliche Daten kaufen, den Browser wechseln oder den Chart auf ein einziges Overlay reduzieren lassen die Obergrenze alle genau dort, wo sie ist. Der einzige Hebel, der hilft, ist das Laden weniger Kerzen." },
+    { q: "Hilft ein Browserwechsel oder das Entfernen von Indikatoren?", a: "Nicht nennenswert. Die Call-Stack-Obergrenze ist bei den gängigen Browsern in etwa gleich, sodass ein anderer Browser fast nichts bringt. Auch das Entfernen von Indikatoren bis auf ein Overlay hilft nicht, da ein einzelnes benutzerdefiniertes Overlay sich weiterhin über die gesamte Kerzenzahl neu berechnen muss. Das Reduzieren des geladenen Bereichs ist es, was das Problem tatsächlich löst." },
+    { q: "Kann ich meine Strategie ausführen, ohne von der Chart-Engine abhängig zu sein?", a: "Ja, und für die Automatisierung ist das der sauberere Weg. Statt sich auf ein Browser-Overlay zu verlassen, das bei langen Historien in die Knie geht, bauen Sie Ihre Logik in einer Chartplattform wie TradingView auf und lösen einen Webhook aus, sobald Ihre Bedingungen eintreten. Leiten Sie diesen Webhook durch eine Automatisierungsbrücke, sodass sie den Trade auf Ihrem Tradovate-Konto platziert. Die Strategie läuft außerhalb des Charts, sodass ein Call-Stack-Limit auf einem geladenen Chart nie zwischen Ihrem Signal und Ihrer Ausführung steht." },
+  ], es: [
+    { q: "¿Qué significa “Maximum call stack size exceeded” en un gráfico de Tradovate?", a: "Es un error del lado del navegador. El gráfico se ejecuta en JavaScript, y cada superposición personalizada se recalcula a sí misma en todas las barras del gráfico. Cuando el número de velas cargadas es lo bastante grande, ese cálculo se ejecuta más profundo de lo que permite la pila de llamadas del navegador y lanza un RangeError: Maximum call stack size exceeded. En Tradovate esto aparece alrededor de las 63.500 velas para los indicadores de superposición personalizados, y la superposición simplemente deja de dibujarse o actualizarse a partir de ese punto." },
+    { q: "¿Por qué mis superposiciones personalizadas dejan de calcular después de cargar mucho historial?", a: "Porque el desencadenante es el número total de velas, no lo que se ve en pantalla. Desplazarse muy atrás, ejecutar una repetición larga o hacer backtest de un rango de fechas amplio en un marco temporal bajo acumula barras en memoria. Cuando el recálculo de la superposición supera aproximadamente las 63.500 velas, la pila de llamadas se desborda y el indicador se detiene. Reduzca el rango cargado por debajo de ese límite y volverá a calcular." },
+    { q: "¿Son aproximadamente 63.500 velas un límite oficial de Tradovate?", a: "No es una especificación publicada, es el punto práctico en el que las superposiciones personalizadas fallan. La cifra se sitúa justo alrededor de la marca de 64.000, lo cual es un indicio clásico de un límite interno en el motor de gráficos y no un número arbitrario. Trátelo como un límite de trabajo firme: mantenga el número de velas cargadas cómodamente por debajo de él y las superposiciones se comportarán bien." },
+    { q: "¿Cómo reduzco el número de velas cargadas en un gráfico?", a: "Haga lo contrario de cargar más historial. Pase a un marco temporal mayor para que el mismo rango de fechas necesite muchas menos barras, deje de desplazarse tan atrás en el pasado, reduzca la ventana que está estudiando y mantenga Minimum Number of Bars to Load en un valor modesto en lugar de al máximo. Si está haciendo backtest de un período largo, divídalo en tramos más cortos para que ninguna vista individual supere el límite." },
+    { q: "¿Comprar más datos históricos soluciona el desbordamiento de pila?", a: "No. Más datos empeoran la situación, no la mejoran. El desbordamiento se debe a que se procesan demasiadas velas a la vez, así que añadir historial lo empuja aún más allá del límite. Comprar datos adicionales, cambiar de navegador o reducir el gráfico a una sola superposición dejan el límite exactamente donde está. La única palanca que ayuda es cargar menos velas." },
+    { q: "¿Ayudará cambiar de navegador o quitar indicadores?", a: "No de forma significativa. El límite de la pila de llamadas es aproximadamente el mismo en los navegadores más comunes, así que un navegador distinto apenas aporta algo. Quitar indicadores hasta dejar una sola superposición tampoco ayuda, porque una única superposición personalizada sigue teniendo que recalcular todo el número de velas. Reducir el rango cargado es lo que realmente lo soluciona." },
+    { q: "¿Puedo ejecutar mi estrategia sin depender del motor de gráficos?", a: "Sí, y para la automatización es el camino más limpio. En lugar de depender de una superposición del navegador que se atasca con historiales largos, construya su lógica en una plataforma de gráficos como TradingView y dispare un webhook cuando se cumplan sus condiciones. Enrute ese webhook a través de un puente de automatización para que coloque la operación en su cuenta de Tradovate. La estrategia se ejecuta fuera del gráfico, así que un límite de pila de llamadas en un gráfico cargado nunca se interpone entre su señal y su ejecución." },
+  ], fr: [
+    { q: "Que signifie « Maximum call stack size exceeded » sur un graphique Tradovate ?", a: "C'est une erreur côté navigateur. Le graphique s'exécute en JavaScript, et chaque indicateur personnalisé superposé se recalcule sur l'ensemble des bougies du graphique. Une fois que le nombre de bougies chargées devient assez élevé, ce calcul va plus profond que ce que permet la pile d'appels du navigateur et déclenche une RangeError: Maximum call stack size exceeded. Sur Tradovate, cela apparaît autour de 63 500 bougies pour les indicateurs personnalisés superposés, et l'indicateur cesse simplement de se dessiner ou de se mettre à jour à partir de ce point." },
+    { q: "Pourquoi mes indicateurs personnalisés cessent-ils de se calculer après le chargement d'un long historique ?", a: "Parce que le déclencheur est le nombre total de bougies, pas ce que vous voyez à l'écran. Faire défiler loin en arrière, lancer un long replay, ou backtester sur une large plage de dates en unité de temps courte accumule des bougies en mémoire. Lorsque le recalcul de l'indicateur dépasse environ 63 500 bougies, la pile d'appels déborde et l'indicateur s'arrête. Réduisez la plage chargée sous ce plafond et il recommence à se calculer." },
+    { q: "Le chiffre d'environ 63 500 bougies est-il une limite officielle de Tradovate ?", a: "Ce n'est pas une spécification publiée, c'est le point pratique où les indicateurs personnalisés s'effondrent. Le chiffre se situe juste autour de la barre des 64 000, ce qui est un signe classique d'un plafond interne dans le moteur graphique plutôt qu'un nombre arbitraire. Traitez-le comme une limite de travail stricte : maintenez le nombre de bougies chargées confortablement en dessous et les indicateurs se comportent normalement." },
+    { q: "Comment réduire le nombre de bougies chargées sur un graphique ?", a: "Faites l'inverse de charger plus d'historique. Passez à une unité de temps supérieure pour que la même plage de dates nécessite beaucoup moins de bougies, arrêtez de faire défiler aussi loin dans le passé, réduisez la fenêtre que vous étudiez, et gardez le réglage Minimum Number of Bars to Load modeste plutôt que poussé au maximum. Si vous backtestez une longue période, découpez-la en segments plus courts afin qu'aucune vue unique ne dépasse le plafond." },
+    { q: "Acheter plus de données historiques corrige-t-il le dépassement de pile ?", a: "Non. Plus de données aggrave la situation, ne l'améliore pas. Le dépassement est causé par un traitement simultané de trop nombreuses bougies, donc ajouter de l'historique vous éloigne davantage de la limite. Acheter des données supplémentaires, changer de navigateur, ou réduire le graphique à un seul indicateur laissent tous le plafond exactement là où il est. Le seul levier qui aide est de charger moins de bougies." },
+    { q: "Changer de navigateur ou retirer des indicateurs aidera-t-il ?", a: "Pas significativement. Le plafond de la pile d'appels est à peu près le même sur les navigateurs courants, donc un navigateur différent ne vous apporte presque rien. Retirer les indicateurs jusqu'à n'en garder qu'un seul n'aide pas non plus, car un seul indicateur personnalisé superposé doit toujours se recalculer sur l'ensemble du nombre de bougies. Réduire la plage chargée est ce qui règle réellement le problème." },
+    { q: "Puis-je exécuter ma stratégie sans dépendre du moteur graphique ?", a: "Oui, et pour l'automatisation c'est la voie la plus propre. Plutôt que de vous appuyer sur un indicateur du navigateur qui s'étouffe sur de longs historiques, construisez votre logique dans une plateforme de graphiques comme TradingView et déclenchez un webhook lorsque vos conditions sont remplies. Acheminez ce webhook via un pont d'automatisation afin qu'il place l'ordre sur votre compte Tradovate. La stratégie s'exécute hors graphique, de sorte qu'une limite de pile d'appels sur un graphique chargé ne se retrouve jamais entre votre signal et votre exécution." },
+  ], it: [
+    { q: "Cosa significa “Maximum call stack size exceeded” su un grafico Tradovate?", a: "È un errore lato browser. Il grafico viene eseguito in JavaScript, e ogni overlay personalizzato si ricalcola su tutte le barre del grafico. Quando il numero di candele caricate diventa sufficientemente grande, quel calcolo va più in profondità di quanto lo stack delle chiamate del browser consenta e genera un RangeError: Maximum call stack size exceeded. Su Tradovate questo si manifesta intorno alle 63.500 candele per gli indicatori overlay personalizzati, e l'overlay semplicemente smette di disegnarsi o aggiornarsi da quel punto in poi." },
+    { q: "Perché i miei overlay personalizzati smettono di calcolare dopo aver caricato molto storico?", a: "Perché il fattore scatenante è il numero totale di candele, non ciò che vede a schermo. Scorrere molto indietro, eseguire un lungo replay o fare backtest su un ampio intervallo di date con un timeframe basso accumula barre in memoria. Quando il ricalcolo dell'overlay supera circa 63.500 candele, lo stack delle chiamate va in overflow e l'indicatore si ferma. Riduca l'intervallo caricato sotto quel limite e ricomincerà a calcolare." },
+    { q: "63.500 candele circa sono un limite ufficiale di Tradovate?", a: "Non è una specifica pubblicata, è il punto pratico in cui gli overlay personalizzati si bloccano. La cifra si colloca proprio intorno alla soglia dei 64.000, il che è un segno classico di un limite interno nel motore grafico piuttosto che un numero arbitrario. Lo consideri un limite di lavoro rigido: mantenga il numero di candele caricate comodamente al di sotto di esso e gli overlay si comporteranno correttamente." },
+    { q: "Come riduco il numero di candele caricate su un grafico?", a: "Faccia il contrario di caricare più storico. Passi a un timeframe superiore in modo che lo stesso intervallo di date richieda molte meno barre, smetta di scorrere così indietro nel passato, restringa la finestra che sta studiando e mantenga Minimum Number of Bars to Load su un valore modesto anziché al massimo. Se sta facendo backtest su un periodo lungo, lo divida in blocchi più brevi in modo che nessuna singola vista superi il limite." },
+    { q: "Acquistare più dati storici risolve lo stack overflow?", a: "No. Più dati peggiorano la situazione, non la migliorano. L'overflow è causato dall'elaborazione simultanea di troppe candele, quindi aggiungere storico la spinge ancora più oltre il limite. Acquistare dati aggiuntivi, cambiare browser o ridurre il grafico a un solo overlay lasciano tutti il limite esattamente dove si trova. L'unica leva che aiuta è caricare meno candele." },
+    { q: "Cambiare browser o rimuovere indicatori aiuta?", a: "Non in modo significativo. Il limite dello stack delle chiamate è pressoché lo stesso sui browser principali, quindi un browser diverso non le porta quasi nulla. Anche rimuovere gli indicatori fino a lasciarne uno solo non aiuta, perché un singolo overlay personalizzato deve comunque ricalcolare sull'intero numero di candele. Ridurre l'intervallo caricato è ciò che effettivamente risolve il problema." },
+    { q: "Posso eseguire la mia strategia senza dipendere dal motore grafico?", a: "Sì, e per l'automazione è il percorso più pulito. Invece di affidarsi a un overlay del browser che si blocca con storici lunghi, costruisca la sua logica in una piattaforma di grafici come TradingView e invii un webhook quando le sue condizioni si verificano. Instradi quel webhook attraverso un ponte di automazione in modo che piazzi l'operazione sul suo account Tradovate. La strategia viene eseguita fuori dal grafico, quindi un limite dello stack delle chiamate su un grafico caricato non si troverà mai tra il suo segnale e la sua esecuzione." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Ähnliche Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie daher immer den aktuellen Ablauf in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à, ni approuvée par, ni parrainée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent avec le temps ; vérifiez toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e le procedure della piattaforma cambiano nel tempo, quindi verifichi sempre il processo attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-09",
+  dateModified: "2026-07-09",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

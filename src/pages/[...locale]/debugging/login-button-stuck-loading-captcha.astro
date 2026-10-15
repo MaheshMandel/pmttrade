@@ -1,0 +1,674 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "login-button-stuck-loading-captcha";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate Login Stuck on Loading / Captcha Fails";
+const META_DESCRIPTION =
+  "Tradovate login stuck on loading or captcha keeps failing? Sync your system clock, clear the cache, and get back into your account in minutes.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate-Login hängt bei „Loading“ / Captcha schlägt fehl", es: "El inicio de sesión de Tradovate se queda en Loading / el captcha falla", fr: "Connexion Tradovate bloquée sur Loading / échec du captcha", it: "Login Tradovate bloccato su Loading / il captcha non funziona" },
+  dek: { en: "The Login button just spins, the page sits on \"Loading…,\" or the captcha loops forever. Nine times out of ten your account is fine, your clock just drifted. Here's every fix, in the order to try them.", de: "Der Login-Button dreht sich nur, die Seite bleibt auf „Loading…“ stehen oder das Captcha läuft endlos im Kreis. In neun von zehn Fällen ist Ihr Konto in Ordnung, nur Ihre Uhr ist aus dem Takt geraten. Hier sind alle Lösungen in der Reihenfolge, in der Sie sie ausprobieren sollten.", es: "El botón de Login solo gira, la página se queda en «Loading…» o el captcha se repite sin fin. En nueve de cada diez casos su cuenta está bien, simplemente su reloj se ha desajustado. Aquí tiene todas las soluciones, en el orden en que debe probarlas.", fr: "Le bouton Login tourne dans le vide, la page reste sur « Loading… » ou le captcha boucle sans fin. Dans neuf cas sur dix, votre compte n'a aucun problème : c'est simplement votre horloge qui a dérivé. Voici toutes les solutions, dans l'ordre où les essayer.", it: "Il pulsante Login gira a vuoto, la pagina resta su «Loading…» o il captcha si ripete all'infinito. Nove volte su dieci il suo account è a posto, è semplicemente il suo orologio che si è sfasato. Ecco tutte le soluzioni, nell'ordine in cui provarle." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "The market's open, your setup is live, and Tradovate won't let you in. The Login button just spins, the screen sits on <em>&ldquo;Loading&hellip;&rdquo;</em>, or the captcha challenge loops forever without ever clearing. When you're waiting on an ES or NQ entry, every second locked out is a second you can't manage risk. Here's the reassuring part: a Tradovate login stuck on loading almost never means your account is broken. Nine times out of ten the cause is mundane and fixable in under two minutes, your computer's clock has drifted out of sync with Tradovate's servers, so the authentication tokens get rejected and the captcha can't validate. This guide walks through every common cause of the stuck-login and failing-captcha problem, the exact fixes in the order you should try them, and how PickMyTrade keeps your automation flowing even when a browser session is misbehaving." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for a Tradovate Login Stuck on Loading",
+      items: [
+        "<strong class='text-white'>System clock is off</strong>, enable automatic time and click <em>Sync now</em> (Windows: <em>Set time automatically</em> &rarr; <em>Sync now</em>). This is the single most common fix for both the stuck spinner and a failing captcha.",
+        "<strong class='text-white'>Captcha keeps looping</strong>, same root cause. Sync the clock first, then reload the page instead of hammering retry.",
+        "<strong class='text-white'>Browser cache is stale</strong>, clear cached images and cookies, or open the login page in a private/incognito window.",
+        "<strong class='text-white'>Wrong credentials</strong>, Tradovate usernames are case-sensitive and are <em>not</em> your email. Check Caps Lock and strip any trailing spaces.",
+        "<strong class='text-white'>Too many sessions open</strong>, Tradovate caps concurrent sessions, so log out of web, desktop, mobile and TradingView, then sign in on one device.",
+        "<strong class='text-white'>Repeated failed attempts</strong>, rapid-fire retries can trigger a temporary lockout. Stop, wait, and retry once with the correct details.",
+      ],
+    },
+    { type: "heading", text: "What \"Login Stuck on Loading\" and Captcha Failures Mean" },
+    { type: "paragraph", html: "A Tradovate login stuck on loading is what happens when the platform accepts your click but never completes the handshake with its authentication servers. The button shows a spinner, the page stays on <em>&ldquo;Loading&hellip;&rdquo;</em>, and nothing errors out, it just never finishes. A failing captcha is the same handshake breaking at the security-challenge stage: you solve it (or it auto-verifies), the token gets rejected, and the challenge re-appears in a loop." },
+    { type: "paragraph", html: "Why do these two symptoms share one root cause? Timing. Login tokens and captcha responses are time-stamped and only valid for a short window. If your computer's clock is even a couple of minutes ahead of or behind real network time, Tradovate's servers treat the token as already expired, or not yet valid, and silently reject it. There's no clear error message, so it <em>looks</em> like the platform is frozen when it's really just refusing a stale credential. That's exactly why &ldquo;sync your clock&rdquo; is the first move for a stuck login or a looping captcha." },
+    { type: "paragraph", html: "Less often, the stall comes from a corrupted browser cache, a flaky network path, wrong credentials, or too many active sessions competing for the same account. We'll cover each below, in the order you should try them." },
+    { type: "heading", text: "Top Causes of a Tradovate Login Stuck on Loading in 2026" },
+    { type: "heading", text: "1. System Clock Out of Sync" },
+    { type: "paragraph", html: "This is the number-one cause, full stop. When your PC or Mac clock drifts from real network time, common after a sleep/wake cycle, a dead CMOS battery, a VPS with no time daemon, or a manually set clock, the authentication tokens fall outside their valid window. The login spins forever and the captcha refuses to clear. Sync the clock and the majority of these cases resolve on the spot." },
+    { type: "heading", text: "2. Captcha Validation Looping" },
+    { type: "paragraph", html: "A captcha that keeps re-appearing is usually the clock problem wearing a different mask: the challenge is solved, but the time-stamped response gets rejected, so the platform serves it right back. It can also be aggravated by aggressive ad-blockers, privacy extensions, or a VPN whose exit node has a poor reputation, any of which can interfere with the captcha script loading or validating." },
+    { type: "heading", text: "3. Stale Browser Cache or Cookies" },
+    { type: "paragraph", html: "An out-of-date cached copy of the login page, or a stale session cookie from a previous sign-in, can leave the page half-loaded or looping. That's why the problem often clears the instant you open the same URL in a fresh incognito window, no old cache, no old cookies." },
+    { type: "heading", text: "4. Incorrect or Mistyped Credentials" },
+    { type: "paragraph", html: "Tradovate credentials are <strong class='text-white'>case-sensitive</strong>, and your login <strong class='text-white'>username is not your email address</strong>, a point that trips up traders who registered through a prop firm and later try their email. Caps Lock left on, a trailing space pasted from a password manager, or the wrong username from a second Tradovate or evaluation account will all block login. Depending on the flow, this can surface as a failed sign-in rather than a clean error." },
+    { type: "heading", text: "5. Too Many Active Sessions or a Retry Lockout" },
+    { type: "paragraph", html: "Tradovate limits how many sessions can be connected to one account at the same time across web, desktop, mobile and the TradingView add-on. If you already have sessions open elsewhere, a new login can stall or bounce. Separately, mashing the login button after a few failed attempts can trip a temporary anti-abuse lockout, where every extra retry only extends the wait, so slow down the moment you see it hanging." },
+    { type: "heading", text: "How to Fix a Tradovate Login Stuck on Loading: Step-by-Step" },
+    { type: "paragraph", html: "Work through these in order. Most traders are back in after the first fix." },
+    { type: "heading", text: "Fixing the System Clock (Do This First)" },
+    { type: "paragraph", html: "Syncing your clock aligns your machine with network time so tokens and captcha responses validate." },
+    { type: "paragraph", html: "<strong class='text-white'>On Windows:</strong>" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Date & time settings", html: "Open <strong class='text-white'>Settings &rarr; Time &amp; language &rarr; Date &amp; time</strong> (or right-click the clock in the taskbar and choose <strong class='text-white'>Adjust date/time</strong>)." },
+        { title: "Turn on Set time automatically", html: "Turn <strong class='text-white'>Set time automatically</strong> to <strong class='text-white'>On</strong>." },
+        { title: "Confirm the time zone and Sync now", html: "Confirm the <strong class='text-white'>Time zone</strong> is correct, then click <strong class='text-white'>Sync now</strong>." },
+        { title: "Reload and sign in again", html: "Wait for the &ldquo;last synced&rdquo; confirmation, then reload the Tradovate login page and sign in again." },
+      ],
+    },
+    { type: "paragraph", html: "<strong class='text-white'>On macOS:</strong>" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Date & Time settings", html: "Open <strong class='text-white'>System Settings &rarr; General &rarr; Date &amp; Time</strong>." },
+        { title: "Enable automatic date and time", html: "Enable <strong class='text-white'>Set time and date automatically</strong>." },
+        { title: "Confirm the time zone and retry", html: "Confirm the correct time zone, then retry the login." },
+      ],
+    },
+    { type: "paragraph", html: "On a VPS or cloud desktop, double-check that its time service is actually running. Headless servers ship with clock drift more often than you'd think, and that drift is exactly what leaves a Tradovate login hanging there." },
+    { type: "heading", text: "Clearing the Cache or Using a Clean Browser" },
+    { type: "paragraph", html: "If the clock is correct and it still hangs, remove the stale cache and cookies:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Open Clear browsing data", html: "Open your browser's <strong class='text-white'>Clear browsing data</strong> dialog (in Chrome: <strong class='text-white'>Settings &rarr; Privacy and security &rarr; Clear browsing data</strong>)." },
+        { title: "Select cache and cookies, then clear", html: "Select <strong class='text-white'>Cached images and files</strong> and <strong class='text-white'>Cookies and other site data</strong>, then clear." },
+        { title: "Reload and sign in", html: "Reload the Tradovate login page and sign in." },
+      ],
+    },
+    { type: "paragraph", html: "The fast shortcut is to open the login URL in a <strong class='text-white'>private/incognito window</strong>, which ignores your existing cache and cookies entirely. If it works there, a cache clear on your normal window will fix it permanently. While you're at it, temporarily disable ad-blockers or privacy extensions on the login page, they can block the captcha script from loading." },
+    { type: "heading", text: "Checking Your Credentials" },
+    { type: "paragraph", html: "Rule out a simple credential mistake before you assume a platform fault:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirm you're entering your username", html: "Confirm you're entering your <strong class='text-white'>Tradovate username</strong>, not your email address." },
+        { title: "Check Caps Lock", html: "Check <strong class='text-white'>Caps Lock</strong>, usernames and passwords are case-sensitive." },
+        { title: "Retype the password by hand", html: "Retype the password by hand instead of pasting, to avoid a trailing space or hidden character." },
+        { title: "Confirm you're using the right login pair", html: "If you have more than one Tradovate or evaluation login, make sure you're using the correct pair for the account you actually want." },
+      ],
+    },
+    { type: "heading", text: "Freeing Up Sessions and the Network Path" },
+    { type: "paragraph", html: "If it still won't load:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Log out of every session", html: "<strong class='text-white'>Log out of every Tradovate session</strong>, web tabs, the desktop app, mobile, and the TradingView add-on, then sign in on a single device. This clears session-limit conflicts." },
+        { title: "Stop retrying rapidly", html: "<strong class='text-white'>Stop retrying rapidly.</strong> If repeated attempts have triggered a temporary lockout, wait a while and try once more with confirmed-correct details; more retries only extend the block." },
+        { title: "Stabilise the connection", html: "<strong class='text-white'>Stabilise the connection.</strong> Switch from Wi-Fi to a wired connection, restart your modem/router, and if needed try a reliable public DNS such as 8.8.8.8 (Google) or 1.1.1.1 (Cloudflare). Toggle off any VPN for the login, some exit nodes get flagged and break captcha validation." },
+        { title: "Check for a platform-wide outage", html: "Still stuck? Check Tradovate's service-status page for a platform-wide incident before contacting support." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "Likely Meaning", "Fix"],
+      rows: [
+        ["Login button spins, page stuck on &ldquo;Loading&hellip;&rdquo;", "Clock out of sync; tokens rejected", "Enable automatic time and click Sync now, then retry"],
+        ["Captcha keeps looping / never clears", "Time-stamped captcha response rejected, or blocked script", "Sync the clock; disable ad-blocker/VPN on the login page"],
+        ["Works in incognito but not normal window", "Stale cache or cookies", "Clear cached images and cookies, then sign in"],
+        ["Login rejected outright", "Wrong/case-mismatched credentials or email used as username", "Use the exact Tradovate username; check Caps Lock and spaces"],
+        ["Hangs, and you're logged in elsewhere", "Concurrent-session limit reached", "Log out of all sessions; sign in on one device"],
+        ["Gets slower/blocked after several tries", "Temporary retry lockout", "Stop retrying, wait, then attempt once with correct details"],
+        ["Every platform down at once", "Tradovate-side outage", "Check the service-status page; wait for it to clear"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "A stuck browser login shouldn't be the thing standing between your TradingView signal and a filled order. PickMyTrade links your TradingView alerts straight to Tradovate through a maintained connection, so your automation keeps routing even when a manual browser session is misbehaving:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Persistent, Managed Connection</strong>, your alerts route through PickMyTrade's link to Tradovate instead of depending on a single browser tab that can hang on a captcha or a stale cache.",
+        "<strong class='text-white'>Credential Setup Once</strong>, connect your account once and let orders flow, rather than fighting a case-sensitive login mid-session while price runs away.",
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, order flow is spaced out so a burst of activity doesn't trip Tradovate's anti-abuse limits the way rapid manual retries can.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mirror the same automated flow across every connected Tradovate account, so one flaky login on one machine doesn't take your whole strategy offline.",
+      ],
+    },
+    { type: "paragraph", html: "The point isn't to skip the login fix, always keep your clock synced. It's to make sure a browser hiccup never silently kills your trade routing." },
+  ], de: [
+    { type: "paragraph",html: "Die Börse ist geöffnet, Ihr Setup ist live, und Tradovate lässt Sie nicht hinein. Der Login-Button dreht sich nur, der Bildschirm bleibt auf <em>&ldquo;Loading&hellip;&rdquo;</em> stehen oder die Captcha-Aufgabe läuft endlos, ohne je zu verschwinden. Wenn Sie auf einen ES- oder NQ-Einstieg warten, ist jede Sekunde ausgesperrt eine Sekunde, in der Sie kein Risiko steuern können. Die beruhigende Nachricht: Ein hängender Tradovate-Login bedeutet fast nie, dass Ihr Konto defekt ist. In neun von zehn Fällen ist die Ursache banal und in unter zwei Minuten behoben: Die Uhr Ihres Computers ist gegenüber den Servern von Tradovate aus dem Takt geraten, sodass die Authentifizierungs-Tokens abgelehnt werden und das Captcha nicht validiert werden kann. Diese Anleitung führt Sie durch alle häufigen Ursachen für das Hängen des Logins und das fehlschlagende Captcha, die genauen Lösungen in der empfohlenen Reihenfolge und zeigt, wie PickMyTrade Ihre Automatisierung am Laufen hält, selbst wenn eine Browser-Sitzung Probleme macht." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste bei hängendem Tradovate-Login",
+      items: [
+        "<strong class='text-white'>Systemuhr geht falsch</strong>, aktivieren Sie die automatische Zeit und klicken Sie auf <em>Sync now</em> (Windows: <em>Set time automatically</em> &rarr; <em>Sync now</em>). Das ist die häufigste Lösung sowohl für den hängenden Spinner als auch für ein fehlschlagendes Captcha.",
+        "<strong class='text-white'>Captcha läuft in einer Schleife</strong>, gleiche Ursache. Synchronisieren Sie zuerst die Uhr und laden Sie dann die Seite neu, statt wiederholt auf Wiederholen zu klicken.",
+        "<strong class='text-white'>Browser-Cache ist veraltet</strong>, löschen Sie zwischengespeicherte Bilder und Cookies oder öffnen Sie die Login-Seite in einem privaten Fenster/Inkognito-Fenster.",
+        "<strong class='text-white'>Falsche Zugangsdaten</strong>, bei Tradovate-Benutzernamen wird zwischen Groß- und Kleinschreibung unterschieden, und sie sind <em>nicht</em> Ihre E-Mail-Adresse. Prüfen Sie die Feststelltaste und entfernen Sie Leerzeichen am Ende.",
+        "<strong class='text-white'>Zu viele offene Sitzungen</strong>, Tradovate begrenzt gleichzeitige Sitzungen. Melden Sie sich daher bei Web, Desktop, Mobilgerät und TradingView ab und dann auf einem Gerät an.",
+        "<strong class='text-white'>Wiederholte fehlgeschlagene Versuche</strong>, schnelle Wiederholungen können eine vorübergehende Sperre auslösen. Hören Sie auf, warten Sie und versuchen Sie es einmal mit den richtigen Angaben erneut.",
+      ],
+    },
+    { type: "heading",text: "Was „Login hängt bei Loading“ und Captcha-Fehler bedeuten" },
+    { type: "paragraph",html: "Ein hängender Tradovate-Login entsteht, wenn die Plattform Ihren Klick annimmt, den Handshake mit ihren Authentifizierungsservern aber nie abschließt. Der Button zeigt einen Spinner, die Seite bleibt auf <em>&ldquo;Loading&hellip;&rdquo;</em> stehen, und es erscheint kein Fehler, es wird einfach nie fertig. Ein fehlschlagendes Captcha ist derselbe Handshake, der in der Sicherheitsabfrage scheitert: Sie lösen es (oder es wird automatisch verifiziert), das Token wird abgelehnt und die Aufgabe erscheint in einer Schleife erneut." },
+    { type: "paragraph",html: "Warum haben diese beiden Symptome dieselbe Ursache? Timing. Login-Tokens und Captcha-Antworten tragen einen Zeitstempel und sind nur kurze Zeit gültig. Geht die Uhr Ihres Computers auch nur ein paar Minuten vor oder nach der echten Netzwerkzeit, behandeln die Server von Tradovate das Token als bereits abgelaufen oder noch nicht gültig und lehnen es stillschweigend ab. Es gibt keine klare Fehlermeldung, daher <em>sieht</em> es so aus, als sei die Plattform eingefroren, obwohl sie lediglich eine veraltete Anmeldeinformation verweigert. Genau deshalb ist „Uhr synchronisieren“ der erste Schritt bei hängendem Login oder endlosem Captcha." },
+    { type: "paragraph",html: "Seltener entsteht das Hängen durch einen beschädigten Browser-Cache, einen instabilen Netzwerkpfad, falsche Zugangsdaten oder zu viele aktive Sitzungen, die um dasselbe Konto konkurrieren. Wir behandeln alle unten, in der Reihenfolge, in der Sie sie ausprobieren sollten." },
+    { type: "heading",text: "Die häufigsten Ursachen für einen hängenden Tradovate-Login im Jahr 2026" },
+    { type: "heading",text: "1. Systemuhr nicht synchron" },
+    { type: "paragraph",html: "Das ist die Ursache Nummer eins, ohne Wenn und Aber. Wenn die Uhr Ihres PCs oder Macs von der echten Netzwerkzeit abweicht, etwa nach dem Ruhezustand, bei leerer CMOS-Batterie, auf einem VPS ohne Zeitdienst oder bei manuell eingestellter Uhr, liegen die Authentifizierungs-Tokens außerhalb ihres Gültigkeitsfensters. Der Login dreht sich endlos und das Captcha lässt sich nicht lösen. Synchronisieren Sie die Uhr, und die meisten dieser Fälle lösen sich sofort." },
+    { type: "heading",text: "2. Captcha-Validierung in Endlosschleife" },
+    { type: "paragraph",html: "Ein Captcha, das immer wieder erscheint, ist meist das Uhrenproblem in anderer Verkleidung: Die Aufgabe wird gelöst, aber die mit Zeitstempel versehene Antwort wird abgelehnt, sodass die Plattform sie sofort erneut ausspielt. Verschärft werden kann das durch aggressive Werbeblocker, Datenschutz-Erweiterungen oder ein VPN, dessen Exit-Node einen schlechten Ruf hat. Alle drei können das Laden oder Validieren des Captcha-Skripts stören." },
+    { type: "heading",text: "3. Veralteter Browser-Cache oder Cookies" },
+    { type: "paragraph",html: "Eine veraltete zwischengespeicherte Kopie der Login-Seite oder ein altes Sitzungs-Cookie einer früheren Anmeldung kann dazu führen, dass die Seite nur halb lädt oder sich wiederholt. Deshalb verschwindet das Problem oft sofort, wenn Sie dieselbe URL in einem frischen Inkognito-Fenster öffnen, ohne alten Cache und ohne alte Cookies." },
+    { type: "heading",text: "4. Falsche oder falsch eingegebene Zugangsdaten" },
+    { type: "paragraph",html: "Tradovate-Zugangsdaten unterscheiden <strong class='text-white'>zwischen Groß- und Kleinschreibung</strong>, und Ihr <strong class='text-white'>Login-Benutzername ist nicht Ihre E-Mail-Adresse</strong>, ein Punkt, an dem Trader scheitern, die sich über eine Prop-Firma registriert haben und später ihre E-Mail-Adresse verwenden. Eine aktivierte Feststelltaste, ein aus dem Passwortmanager eingefügtes Leerzeichen am Ende oder der falsche Benutzername eines zweiten Tradovate- oder Evaluierungskontos blockieren den Login. Je nach Ablauf kann sich das als fehlgeschlagene Anmeldung statt als klare Fehlermeldung zeigen." },
+    { type: "heading",text: "5. Zu viele aktive Sitzungen oder eine Sperre nach Wiederholungen" },
+    { type: "paragraph",html: "Tradovate begrenzt, wie viele Sitzungen gleichzeitig mit einem Konto verbunden sein dürfen, über Web, Desktop, Mobilgerät und das TradingView-Add-on hinweg. Sind bereits Sitzungen an anderer Stelle geöffnet, kann ein neuer Login hängen bleiben oder abprallen. Unabhängig davon kann das wiederholte Klicken auf den Login-Button nach einigen fehlgeschlagenen Versuchen eine vorübergehende Anti-Missbrauchs-Sperre auslösen, bei der jeder weitere Versuch die Wartezeit nur verlängert. Werden Sie also langsamer, sobald Sie das Hängen bemerken." },
+    { type: "heading",text: "So beheben Sie einen hängenden Tradovate-Login: Schritt für Schritt" },
+    { type: "paragraph",html: "Gehen Sie diese Schritte der Reihe nach durch. Die meisten Trader sind nach der ersten Lösung wieder drin." },
+    { type: "heading",text: "Die Systemuhr korrigieren (zuerst tun)" },
+    { type: "paragraph",html: "Die Synchronisierung Ihrer Uhr gleicht Ihren Rechner mit der Netzwerkzeit ab, sodass Tokens und Captcha-Antworten validiert werden." },
+    { type: "paragraph",html: "<strong class='text-white'>Unter Windows:</strong>" },
+    {
+      type: "steps",
+      items: [
+        { title: "Date & time-Einstellungen öffnen", html: "Öffnen Sie <strong class='text-white'>Settings &rarr; Time &amp; language &rarr; Date &amp; time</strong> (oder klicken Sie mit der rechten Maustaste auf die Uhr in der Taskleiste und wählen Sie <strong class='text-white'>Adjust date/time</strong>)." },
+        { title: "Set time automatically aktivieren", html: "Stellen Sie <strong class='text-white'>Set time automatically</strong> auf <strong class='text-white'>On</strong>." },
+        { title: "Zeitzone prüfen und Sync now klicken", html: "Prüfen Sie, ob die <strong class='text-white'>Time zone</strong> korrekt ist, und klicken Sie dann auf <strong class='text-white'>Sync now</strong>." },
+        { title: "Neu laden und erneut anmelden", html: "Warten Sie die Bestätigung „last synced“ ab, laden Sie dann die Tradovate-Login-Seite neu und melden Sie sich erneut an." },
+      ],
+    },
+    { type: "paragraph",html: "<strong class='text-white'>Unter macOS:</strong>" },
+    {
+      type: "steps",
+      items: [
+        { title: "Date & Time-Einstellungen öffnen", html: "Öffnen Sie <strong class='text-white'>System Settings &rarr; General &rarr; Date &amp; Time</strong>." },
+        { title: "Automatisches Datum und Uhrzeit aktivieren", html: "Aktivieren Sie <strong class='text-white'>Set time and date automatically</strong>." },
+        { title: "Zeitzone prüfen und erneut versuchen", html: "Prüfen Sie die korrekte Zeitzone und versuchen Sie den Login dann erneut." },
+      ],
+    },
+    { type: "paragraph",html: "Prüfen Sie auf einem VPS oder Cloud-Desktop zusätzlich, ob der Zeitdienst tatsächlich läuft. Headless-Server weichen häufiger von der Zeit ab, als man denkt, und genau diese Abweichung lässt dort einen Tradovate-Login hängen." },
+    { type: "heading",text: "Den Cache leeren oder einen sauberen Browser verwenden" },
+    { type: "paragraph",html: "Ist die Uhr korrekt und es hängt trotzdem, entfernen Sie veralteten Cache und Cookies:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Clear browsing data öffnen", html: "Öffnen Sie in Ihrem Browser den Dialog <strong class='text-white'>Clear browsing data</strong> (in Chrome: <strong class='text-white'>Settings &rarr; Privacy and security &rarr; Clear browsing data</strong>)." },
+        { title: "Cache und Cookies auswählen und löschen", html: "Wählen Sie <strong class='text-white'>Cached images and files</strong> und <strong class='text-white'>Cookies and other site data</strong> aus und löschen Sie sie." },
+        { title: "Neu laden und anmelden", html: "Laden Sie die Tradovate-Login-Seite neu und melden Sie sich an." },
+      ],
+    },
+    { type: "paragraph",html: "Die schnelle Abkürzung: Öffnen Sie die Login-URL in einem <strong class='text-white'>privaten Fenster/Inkognito-Fenster</strong>, das Ihren vorhandenen Cache und Ihre Cookies komplett ignoriert. Funktioniert es dort, behebt das Leeren des Caches in Ihrem normalen Fenster das Problem dauerhaft. Deaktivieren Sie bei der Gelegenheit vorübergehend Werbeblocker oder Datenschutz-Erweiterungen auf der Login-Seite, denn sie können das Laden des Captcha-Skripts blockieren." },
+    { type: "heading",text: "Zugangsdaten prüfen" },
+    { type: "paragraph",html: "Schließen Sie einen simplen Fehler bei den Zugangsdaten aus, bevor Sie einen Plattformfehler vermuten:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Bestätigen, dass Sie den Benutzernamen eingeben", html: "Vergewissern Sie sich, dass Sie Ihren <strong class='text-white'>Tradovate-Benutzernamen</strong> eingeben, nicht Ihre E-Mail-Adresse." },
+        { title: "Feststelltaste prüfen", html: "Prüfen Sie die <strong class='text-white'>Feststelltaste</strong>, bei Benutzernamen und Passwörtern wird zwischen Groß- und Kleinschreibung unterschieden." },
+        { title: "Passwort von Hand neu eingeben", html: "Geben Sie das Passwort von Hand neu ein, statt es einzufügen, um ein Leerzeichen am Ende oder ein verstecktes Zeichen zu vermeiden." },
+        { title: "Das richtige Login-Paar bestätigen", html: "Wenn Sie mehr als einen Tradovate- oder Evaluierungs-Login haben, stellen Sie sicher, dass Sie das richtige Paar für das Konto verwenden, das Sie tatsächlich möchten." },
+      ],
+    },
+    { type: "heading",text: "Sitzungen freigeben und den Netzwerkpfad prüfen" },
+    { type: "paragraph",html: "Wenn es weiterhin nicht lädt:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Von jeder Sitzung abmelden", html: "<strong class='text-white'>Melden Sie sich von jeder Tradovate-Sitzung ab</strong>, Web-Tabs, Desktop-App, Mobilgerät und TradingView-Add-on, und melden Sie sich dann auf einem einzigen Gerät an. Das beseitigt Konflikte mit dem Sitzungslimit." },
+        { title: "Nicht mehr schnell wiederholen", html: "<strong class='text-white'>Hören Sie auf, schnell zu wiederholen.</strong> Haben wiederholte Versuche eine vorübergehende Sperre ausgelöst, warten Sie eine Weile und versuchen Sie es noch einmal mit bestätigt korrekten Angaben. Weitere Versuche verlängern die Sperre nur." },
+        { title: "Verbindung stabilisieren", html: "<strong class='text-white'>Stabilisieren Sie die Verbindung.</strong> Wechseln Sie vom WLAN auf eine Kabelverbindung, starten Sie Modem/Router neu und probieren Sie bei Bedarf einen zuverlässigen öffentlichen DNS wie 8.8.8.8 (Google) oder 1.1.1.1 (Cloudflare). Schalten Sie für den Login jedes VPN aus, manche Exit-Nodes werden markiert und stören die Captcha-Validierung." },
+        { title: "Auf eine plattformweite Störung prüfen", html: "Hängt es immer noch? Prüfen Sie die Statusseite von Tradovate auf eine plattformweite Störung, bevor Sie den Support kontaktieren." },
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlersuche" },
+    { type: "table", headers: ["Symptom","Wahrscheinliche Bedeutung","Lösung"], rows: [
+      ["Login-Button dreht sich, Seite bleibt auf &ldquo;Loading&hellip;&rdquo;","Uhr nicht synchron; Tokens abgelehnt","Automatische Zeit aktivieren und auf Sync now klicken, dann erneut versuchen"],
+      ["Captcha läuft in Schleife / verschwindet nie","Mit Zeitstempel versehene Captcha-Antwort abgelehnt oder Skript blockiert","Uhr synchronisieren; Werbeblocker/VPN auf der Login-Seite deaktivieren"],
+      ["Funktioniert im Inkognito-Modus, aber nicht im normalen Fenster","Veralteter Cache oder Cookies","Zwischengespeicherte Bilder und Cookies löschen, dann anmelden"],
+      ["Login wird direkt abgelehnt","Falsche/in der Schreibweise abweichende Zugangsdaten oder E-Mail als Benutzername verwendet","Den exakten Tradovate-Benutzernamen verwenden; Feststelltaste und Leerzeichen prüfen"],
+      ["Hängt, und Sie sind anderswo angemeldet","Limit für gleichzeitige Sitzungen erreicht","Von allen Sitzungen abmelden; auf einem Gerät anmelden"],
+      ["Wird nach mehreren Versuchen langsamer/blockiert","Vorübergehende Sperre nach Wiederholungen","Nicht mehr wiederholen, warten, dann einmal mit korrekten Angaben versuchen"],
+      ["Alle Plattformen gleichzeitig down","Störung auf Seiten von Tradovate","Statusseite prüfen; warten, bis es sich löst"],
+    ] },
+    { type: "heading",text: "Vorbeugen mit PickMyTrade" },
+    { type: "paragraph",html: "Ein hängender Browser-Login sollte nicht das sein, was zwischen Ihrem TradingView-Signal und einer ausgeführten Order steht. PickMyTrade verbindet Ihre TradingView-Alerts über eine gepflegte Verbindung direkt mit Tradovate, sodass Ihre Automatisierung auch dann weiter routet, wenn eine manuelle Browser-Sitzung Probleme macht:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Dauerhafte, verwaltete Verbindung</strong>, Ihre Alerts laufen über die Verbindung von PickMyTrade zu Tradovate, statt von einem einzelnen Browser-Tab abzuhängen, der bei einem Captcha oder einem veralteten Cache hängen kann.",
+        "<strong class='text-white'>Zugangsdaten nur einmal einrichten</strong>, verbinden Sie Ihr Konto einmal und lassen Sie Orders fließen, statt mitten in der Sitzung mit einem groß-/kleinschreibungsabhängigen Login zu kämpfen, während der Kurs davonläuft.",
+        "<strong class='text-white'>Ratenlimit-sicheres Routing</strong>, der Order-Fluss wird zeitlich gestreckt, sodass ein Aktivitätsschub nicht die Anti-Missbrauchs-Limits von Tradovate auslöst, wie es schnelle manuelle Wiederholungen tun können.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong>, spiegeln Sie denselben automatisierten Ablauf auf alle verbundenen Tradovate-Konten, sodass ein instabiler Login auf einem Rechner nicht Ihre gesamte Strategie lahmlegt.",
+      ],
+    },
+    { type: "paragraph",html: "Es geht nicht darum, die Login-Lösung zu überspringen, halten Sie Ihre Uhr immer synchron. Es geht darum sicherzustellen, dass ein Browser-Aussetzer Ihr Trade-Routing nie unbemerkt lahmlegt." },
+  ], es: [
+    { type: "paragraph",html: "El mercado está abierto, su configuración está activa y Tradovate no le deja entrar. El botón de Login solo gira, la pantalla se queda en <em>&ldquo;Loading&hellip;&rdquo;</em> o el desafío del captcha se repite sin fin sin llegar a resolverse. Cuando está esperando una entrada en ES o NQ, cada segundo bloqueado es un segundo en que no puede gestionar el riesgo. Lo tranquilizador: un inicio de sesión de Tradovate bloqueado en Loading casi nunca significa que su cuenta esté rota. En nueve de cada diez casos la causa es mundana y se arregla en menos de dos minutos: el reloj de su ordenador se ha desincronizado de los servidores de Tradovate, por lo que los tokens de autenticación se rechazan y el captcha no puede validarse. Esta guía repasa todas las causas habituales del bloqueo del inicio de sesión y del fallo del captcha, las soluciones exactas en el orden en que debe probarlas, y cómo PickMyTrade mantiene su automatización en marcha incluso cuando una sesión del navegador da problemas." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para un inicio de sesión de Tradovate bloqueado en Loading",
+      items: [
+        "<strong class='text-white'>El reloj del sistema está desajustado</strong>, active la hora automática y haga clic en <em>Sync now</em> (Windows: <em>Set time automatically</em> &rarr; <em>Sync now</em>). Es la solución más común tanto para el spinner bloqueado como para un captcha que falla.",
+        "<strong class='text-white'>El captcha se repite en bucle</strong>, misma causa raíz. Sincronice primero el reloj y luego recargue la página en lugar de insistir con reintentos.",
+        "<strong class='text-white'>La caché del navegador está obsoleta</strong>, borre las imágenes en caché y las cookies, o abra la página de inicio de sesión en una ventana privada/de incógnito.",
+        "<strong class='text-white'>Credenciales incorrectas</strong>, los nombres de usuario de Tradovate distinguen mayúsculas y minúsculas y <em>no</em> son su correo electrónico. Revise el bloqueo de mayúsculas y elimine los espacios finales.",
+        "<strong class='text-white'>Demasiadas sesiones abiertas</strong>, Tradovate limita las sesiones simultáneas, así que cierre sesión en web, escritorio, móvil y TradingView, y luego inicie sesión en un solo dispositivo.",
+        "<strong class='text-white'>Intentos fallidos repetidos</strong>, los reintentos en ráfaga pueden provocar un bloqueo temporal. Deténgase, espere y reintente una vez con los datos correctos.",
+      ],
+    },
+    { type: "heading",text: "Qué significan «Login bloqueado en Loading» y los fallos del captcha" },
+    { type: "paragraph",html: "Un inicio de sesión de Tradovate bloqueado en Loading ocurre cuando la plataforma acepta su clic pero nunca completa el handshake con sus servidores de autenticación. El botón muestra un spinner, la página se queda en <em>&ldquo;Loading&hellip;&rdquo;</em> y no aparece ningún error, simplemente nunca termina. Un captcha que falla es el mismo handshake rompiéndose en la fase del desafío de seguridad: usted lo resuelve (o se verifica automáticamente), el token se rechaza y el desafío reaparece en bucle." },
+    { type: "paragraph",html: "¿Por qué comparten estos dos síntomas una misma causa raíz? El tiempo. Los tokens de inicio de sesión y las respuestas del captcha llevan marca de tiempo y solo son válidos durante una ventana corta. Si el reloj de su ordenador va solo un par de minutos adelantado o atrasado respecto a la hora real de red, los servidores de Tradovate tratan el token como ya caducado o aún no válido y lo rechazan en silencio. No hay un mensaje de error claro, así que <em>parece</em> que la plataforma está congelada cuando en realidad solo rechaza una credencial obsoleta. Por eso «sincronice su reloj» es el primer paso ante un inicio de sesión bloqueado o un captcha en bucle." },
+    { type: "paragraph",html: "Con menos frecuencia, el bloqueo viene de una caché del navegador dañada, una ruta de red inestable, credenciales incorrectas o demasiadas sesiones activas compitiendo por la misma cuenta. Cubrimos cada una a continuación, en el orden en que debe probarlas." },
+    { type: "heading",text: "Principales causas de un inicio de sesión de Tradovate bloqueado en Loading en 2026" },
+    { type: "heading",text: "1. Reloj del sistema desincronizado" },
+    { type: "paragraph",html: "Esta es la causa número uno, sin discusión. Cuando el reloj de su PC o Mac se desvía de la hora real de red, algo habitual tras un ciclo de suspensión/reactivación, una pila CMOS agotada, un VPS sin servicio de hora o un reloj ajustado manualmente, los tokens de autenticación quedan fuera de su ventana de validez. El inicio de sesión gira sin fin y el captcha se niega a resolverse. Sincronice el reloj y la mayoría de estos casos se resuelven al instante." },
+    { type: "heading",text: "2. Validación del captcha en bucle" },
+    { type: "paragraph",html: "Un captcha que sigue reapareciendo suele ser el problema del reloj con otra máscara: el desafío se resuelve, pero la respuesta con marca de tiempo se rechaza y la plataforma lo vuelve a mostrar. También puede agravarse por bloqueadores de anuncios agresivos, extensiones de privacidad o una VPN cuyo nodo de salida tiene mala reputación; cualquiera de ellos puede interferir en la carga o validación del script del captcha." },
+    { type: "heading",text: "3. Caché o cookies del navegador obsoletas" },
+    { type: "paragraph",html: "Una copia en caché desactualizada de la página de inicio de sesión, o una cookie de sesión antigua de un inicio de sesión anterior, puede dejar la página a medio cargar o en bucle. Por eso el problema suele desaparecer en cuanto abre la misma URL en una ventana de incógnito nueva, sin caché ni cookies antiguas." },
+    { type: "heading",text: "4. Credenciales incorrectas o mal escritas" },
+    { type: "paragraph",html: "Las credenciales de Tradovate <strong class='text-white'>distinguen mayúsculas y minúsculas</strong>, y su <strong class='text-white'>nombre de usuario no es su correo electrónico</strong>, un punto que confunde a los traders que se registraron a través de una prop firm y luego intentan usar su correo. El bloqueo de mayúsculas activado, un espacio final pegado desde un gestor de contraseñas o el usuario equivocado de una segunda cuenta de Tradovate o de evaluación bloquearán el acceso. Según el flujo, esto puede aparecer como un inicio de sesión fallido en lugar de un error claro." },
+    { type: "heading",text: "5. Demasiadas sesiones activas o un bloqueo por reintentos" },
+    { type: "paragraph",html: "Tradovate limita cuántas sesiones pueden estar conectadas a la misma cuenta a la vez entre web, escritorio, móvil y el complemento de TradingView. Si ya tiene sesiones abiertas en otro lugar, un nuevo inicio de sesión puede bloquearse o rebotar. Por separado, machacar el botón de login tras unos cuantos intentos fallidos puede activar un bloqueo temporal antiabuso, donde cada reintento extra solo alarga la espera, así que reduzca el ritmo en cuanto vea que se queda colgado." },
+    { type: "heading",text: "Cómo arreglar un inicio de sesión de Tradovate bloqueado en Loading: paso a paso" },
+    { type: "paragraph",html: "Siga estos pasos en orden. La mayoría de los traders vuelven a entrar tras la primera solución." },
+    { type: "heading",text: "Arreglar el reloj del sistema (haga esto primero)" },
+    { type: "paragraph",html: "Sincronizar su reloj alinea su equipo con la hora de red para que los tokens y las respuestas del captcha se validen." },
+    { type: "paragraph",html: "<strong class='text-white'>En Windows:</strong>" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abrir la configuración de Date & time", html: "Abra <strong class='text-white'>Settings &rarr; Time &amp; language &rarr; Date &amp; time</strong> (o haga clic derecho en el reloj de la barra de tareas y elija <strong class='text-white'>Adjust date/time</strong>)." },
+        { title: "Activar Set time automatically", html: "Ponga <strong class='text-white'>Set time automatically</strong> en <strong class='text-white'>On</strong>." },
+        { title: "Confirmar la zona horaria y hacer Sync now", html: "Confirme que la <strong class='text-white'>Time zone</strong> es correcta y luego haga clic en <strong class='text-white'>Sync now</strong>." },
+        { title: "Recargar e iniciar sesión de nuevo", html: "Espere la confirmación «last synced», luego recargue la página de inicio de sesión de Tradovate e inicie sesión de nuevo." },
+      ],
+    },
+    { type: "paragraph",html: "<strong class='text-white'>En macOS:</strong>" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abrir la configuración de Date & Time", html: "Abra <strong class='text-white'>System Settings &rarr; General &rarr; Date &amp; Time</strong>." },
+        { title: "Activar fecha y hora automáticas", html: "Active <strong class='text-white'>Set time and date automatically</strong>." },
+        { title: "Confirmar la zona horaria y reintentar", html: "Confirme la zona horaria correcta y luego reintente el inicio de sesión." },
+      ],
+    },
+    { type: "paragraph",html: "En un VPS o escritorio en la nube, compruebe además que su servicio de hora esté realmente en ejecución. Los servidores sin interfaz sufren desvíos del reloj con más frecuencia de la que cree, y ese desvío es precisamente lo que deja un inicio de sesión de Tradovate colgado allí." },
+    { type: "heading",text: "Borrar la caché o usar un navegador limpio" },
+    { type: "paragraph",html: "Si el reloj es correcto y aun así se cuelga, elimine la caché y las cookies obsoletas:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Abrir Clear browsing data", html: "Abra el cuadro de diálogo <strong class='text-white'>Clear browsing data</strong> de su navegador (en Chrome: <strong class='text-white'>Settings &rarr; Privacy and security &rarr; Clear browsing data</strong>)." },
+        { title: "Seleccionar caché y cookies, y borrar", html: "Seleccione <strong class='text-white'>Cached images and files</strong> y <strong class='text-white'>Cookies and other site data</strong> y bórrelos." },
+        { title: "Recargar e iniciar sesión", html: "Recargue la página de inicio de sesión de Tradovate e inicie sesión." },
+      ],
+    },
+    { type: "paragraph",html: "El atajo rápido es abrir la URL de inicio de sesión en una <strong class='text-white'>ventana privada/de incógnito</strong>, que ignora por completo su caché y cookies existentes. Si funciona allí, borrar la caché de su ventana normal lo arreglará de forma permanente. Mientras tanto, desactive temporalmente los bloqueadores de anuncios o las extensiones de privacidad en la página de inicio de sesión, ya que pueden bloquear la carga del script del captcha." },
+    { type: "heading",text: "Comprobar sus credenciales" },
+    { type: "paragraph",html: "Descarte un simple error de credenciales antes de asumir un fallo de la plataforma:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirmar que introduce su nombre de usuario", html: "Confirme que introduce su <strong class='text-white'>nombre de usuario de Tradovate</strong>, no su correo electrónico." },
+        { title: "Revisar el bloqueo de mayúsculas", html: "Revise el <strong class='text-white'>bloqueo de mayúsculas</strong>, los usuarios y contraseñas distinguen mayúsculas y minúsculas." },
+        { title: "Volver a escribir la contraseña a mano", html: "Vuelva a escribir la contraseña a mano en lugar de pegarla, para evitar un espacio final o un carácter oculto." },
+        { title: "Confirmar que usa el par de credenciales correcto", html: "Si tiene más de un inicio de sesión de Tradovate o de evaluación, asegúrese de usar el par correcto para la cuenta que realmente desea." },
+      ],
+    },
+    { type: "heading",text: "Liberar sesiones y la ruta de red" },
+    { type: "paragraph",html: "Si sigue sin cargar:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Cerrar todas las sesiones", html: "<strong class='text-white'>Cierre todas las sesiones de Tradovate</strong>, pestañas web, la app de escritorio, el móvil y el complemento de TradingView, y luego inicie sesión en un solo dispositivo. Esto elimina los conflictos por el límite de sesiones." },
+        { title: "Dejar de reintentar rápidamente", html: "<strong class='text-white'>Deje de reintentar rápidamente.</strong> Si los intentos repetidos han provocado un bloqueo temporal, espere un rato e inténtelo una vez más con datos confirmados como correctos; más reintentos solo prolongan el bloqueo." },
+        { title: "Estabilizar la conexión", html: "<strong class='text-white'>Estabilice la conexión.</strong> Cambie de Wi-Fi a una conexión por cable, reinicie su módem/router y, si es necesario, pruebe un DNS público fiable como 8.8.8.8 (Google) o 1.1.1.1 (Cloudflare). Desactive cualquier VPN para el inicio de sesión; algunos nodos de salida están marcados y rompen la validación del captcha." },
+        { title: "Comprobar si hay una caída general de la plataforma", html: "¿Sigue bloqueado? Consulte la página de estado del servicio de Tradovate para ver si hay una incidencia general antes de contactar con soporte." },
+      ],
+    },
+    { type: "heading",text: "Tabla de resolución de problemas" },
+    { type: "table", headers: ["Síntoma","Significado probable","Solución"], rows: [
+      ["El botón de login gira, página atascada en &ldquo;Loading&hellip;&rdquo;","Reloj desincronizado; tokens rechazados","Active la hora automática y haga clic en Sync now, luego reintente"],
+      ["El captcha se repite / nunca se resuelve","Respuesta del captcha con marca de tiempo rechazada, o script bloqueado","Sincronice el reloj; desactive el bloqueador de anuncios/VPN en la página de inicio de sesión"],
+      ["Funciona en incógnito pero no en la ventana normal","Caché o cookies obsoletas","Borre las imágenes en caché y las cookies, luego inicie sesión"],
+      ["Inicio de sesión rechazado directamente","Credenciales incorrectas o con mayúsculas distintas, o correo usado como usuario","Use el nombre de usuario exacto de Tradovate; revise el bloqueo de mayúsculas y los espacios"],
+      ["Se cuelga y tiene sesión iniciada en otro lugar","Se alcanzó el límite de sesiones simultáneas","Cierre todas las sesiones; inicie sesión en un solo dispositivo"],
+      ["Se vuelve más lento/bloqueado tras varios intentos","Bloqueo temporal por reintentos","Deje de reintentar, espere y luego intente una vez con los datos correctos"],
+      ["Todas las plataformas caídas a la vez","Caída del lado de Tradovate","Consulte la página de estado del servicio; espere a que se resuelva"],
+    ] },
+    { type: "heading",text: "Prevéngalo con PickMyTrade" },
+    { type: "paragraph",html: "Un inicio de sesión bloqueado en el navegador no debería ser lo que se interponga entre su señal de TradingView y una orden ejecutada. PickMyTrade conecta sus alertas de TradingView directamente con Tradovate mediante una conexión mantenida, de modo que su automatización sigue enrutando incluso cuando una sesión manual del navegador da problemas:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Conexión persistente y gestionada</strong>, sus alertas se enrutan a través del enlace de PickMyTrade con Tradovate en lugar de depender de una sola pestaña del navegador que puede colgarse con un captcha o una caché obsoleta.",
+        "<strong class='text-white'>Credenciales configuradas una sola vez</strong>, conecte su cuenta una vez y deje fluir las órdenes, en lugar de pelear con un inicio de sesión sensible a mayúsculas en plena sesión mientras el precio se escapa.",
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de tasa</strong>, el flujo de órdenes se espacia para que una ráfaga de actividad no active los límites antiabuso de Tradovate como pueden hacerlo los reintentos manuales rápidos.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, replique el mismo flujo automatizado en todas las cuentas de Tradovate conectadas, de modo que un inicio de sesión inestable en una máquina no deje fuera de línea toda su estrategia.",
+      ],
+    },
+    { type: "paragraph",html: "El objetivo no es saltarse la solución del inicio de sesión, mantenga siempre su reloj sincronizado. Es asegurarse de que un fallo del navegador nunca detenga en silencio el enrutamiento de sus operaciones." },
+  ], fr: [
+    { type: "paragraph",html: "Le marché est ouvert, votre configuration est active, et Tradovate ne vous laisse pas entrer. Le bouton Login tourne dans le vide, l'écran reste sur <em>&ldquo;Loading&hellip;&rdquo;</em> ou le défi captcha boucle sans jamais se valider. Quand vous attendez une entrée sur ES ou NQ, chaque seconde d'exclusion est une seconde pendant laquelle vous ne pouvez pas gérer votre risque. Voici la bonne nouvelle : une connexion Tradovate bloquée sur Loading ne signifie presque jamais que votre compte est défectueux. Dans neuf cas sur dix, la cause est banale et se règle en moins de deux minutes : l'horloge de votre ordinateur a dérivé par rapport aux serveurs de Tradovate, si bien que les jetons d'authentification sont rejetés et que le captcha ne peut pas se valider. Ce guide passe en revue toutes les causes courantes du blocage de connexion et de l'échec du captcha, les solutions exactes dans l'ordre où les essayer, et la façon dont PickMyTrade maintient votre automatisation en marche même lorsqu'une session de navigateur déraille." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour une connexion Tradovate bloquée sur Loading",
+      items: [
+        "<strong class='text-white'>L'horloge système est décalée</strong>, activez l'heure automatique et cliquez sur <em>Sync now</em> (Windows : <em>Set time automatically</em> &rarr; <em>Sync now</em>). C'est la solution la plus courante, à la fois pour le spinner bloqué et pour un captcha en échec.",
+        "<strong class='text-white'>Le captcha boucle</strong>, même cause racine. Synchronisez d'abord l'horloge, puis rechargez la page au lieu de marteler le bouton de nouvel essai.",
+        "<strong class='text-white'>Le cache du navigateur est obsolète</strong>, effacez les images en cache et les cookies, ou ouvrez la page de connexion dans une fenêtre privée/de navigation privée.",
+        "<strong class='text-white'>Identifiants erronés</strong>, les noms d'utilisateur Tradovate sont sensibles à la casse et ne sont <em>pas</em> votre adresse e-mail. Vérifiez le verrouillage des majuscules et supprimez les espaces en fin de saisie.",
+        "<strong class='text-white'>Trop de sessions ouvertes</strong>, Tradovate plafonne les sessions simultanées ; déconnectez-vous donc du web, du bureau, du mobile et de TradingView, puis connectez-vous sur un seul appareil.",
+        "<strong class='text-white'>Tentatives échouées répétées</strong>, des essais en rafale peuvent déclencher un verrouillage temporaire. Arrêtez, patientez et réessayez une fois avec les bons identifiants.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifient « Login bloqué sur Loading » et les échecs de captcha" },
+    { type: "paragraph",html: "Une connexion Tradovate bloquée sur Loading se produit lorsque la plateforme accepte votre clic mais ne termine jamais la poignée de main avec ses serveurs d'authentification. Le bouton affiche un spinner, la page reste sur <em>&ldquo;Loading&hellip;&rdquo;</em>, et aucune erreur ne s'affiche : cela ne se termine simplement jamais. Un captcha en échec est la même poignée de main qui échoue à l'étape du défi de sécurité : vous le résolvez (ou il se valide automatiquement), le jeton est rejeté et le défi réapparaît en boucle." },
+    { type: "paragraph",html: "Pourquoi ces deux symptômes partagent-ils une même cause racine ? Le timing. Les jetons de connexion et les réponses de captcha sont horodatés et ne sont valides que sur une courte fenêtre. Si l'horloge de votre ordinateur avance ou retarde ne serait-ce que de quelques minutes par rapport à l'heure réseau réelle, les serveurs de Tradovate considèrent le jeton comme déjà expiré ou pas encore valide et le rejettent silencieusement. Il n'y a pas de message d'erreur clair, donc cela <em>donne l'impression</em> que la plateforme est figée alors qu'elle refuse simplement un identifiant périmé. C'est précisément pourquoi « synchronisez votre horloge » est le premier réflexe face à une connexion bloquée ou un captcha qui boucle." },
+    { type: "paragraph",html: "Plus rarement, le blocage provient d'un cache de navigateur corrompu, d'un chemin réseau instable, d'identifiants erronés ou de trop nombreuses sessions actives en concurrence pour le même compte. Nous traitons chaque cas ci-dessous, dans l'ordre où les essayer." },
+    { type: "heading",text: "Principales causes d'une connexion Tradovate bloquée sur Loading en 2026" },
+    { type: "heading",text: "1. Horloge système désynchronisée" },
+    { type: "paragraph",html: "C'est la cause numéro un, sans conteste. Lorsque l'horloge de votre PC ou Mac dérive par rapport à l'heure réseau réelle, ce qui est courant après un cycle de veille/réveil, une pile CMOS épuisée, un VPS sans démon de synchronisation ou une horloge réglée manuellement, les jetons d'authentification sortent de leur fenêtre de validité. La connexion tourne indéfiniment et le captcha refuse de se valider. Synchronisez l'horloge et la majorité de ces cas se résolvent sur-le-champ." },
+    { type: "heading",text: "2. Validation du captcha en boucle" },
+    { type: "paragraph",html: "Un captcha qui réapparaît sans cesse est généralement le problème d'horloge sous un autre masque : le défi est résolu, mais la réponse horodatée est rejetée, donc la plateforme vous le renvoie aussitôt. Cela peut aussi être aggravé par des bloqueurs de publicités agressifs, des extensions de confidentialité ou un VPN dont le nœud de sortie a une mauvaise réputation ; chacun peut perturber le chargement ou la validation du script du captcha." },
+    { type: "heading",text: "3. Cache ou cookies du navigateur obsolètes" },
+    { type: "paragraph",html: "Une copie en cache périmée de la page de connexion, ou un cookie de session obsolète issu d'une connexion précédente, peut laisser la page à moitié chargée ou en boucle. C'est pourquoi le problème disparaît souvent dès que vous ouvrez la même URL dans une fenêtre de navigation privée neuve, sans ancien cache ni anciens cookies." },
+    { type: "heading",text: "4. Identifiants incorrects ou mal saisis" },
+    { type: "paragraph",html: "Les identifiants Tradovate sont <strong class='text-white'>sensibles à la casse</strong>, et votre <strong class='text-white'>nom d'utilisateur n'est pas votre adresse e-mail</strong>, un point qui piège les traders inscrits via une prop firm qui essaient ensuite leur e-mail. Un verrouillage des majuscules resté actif, un espace final collé depuis un gestionnaire de mots de passe ou le mauvais nom d'utilisateur d'un second compte Tradovate ou d'évaluation bloqueront la connexion. Selon le parcours, cela peut apparaître comme une connexion échouée plutôt qu'une erreur claire." },
+    { type: "heading",text: "5. Trop de sessions actives ou verrouillage après des essais répétés" },
+    { type: "paragraph",html: "Tradovate limite le nombre de sessions pouvant être connectées simultanément à un même compte sur le web, le bureau, le mobile et le module complémentaire TradingView. Si vous avez déjà des sessions ouvertes ailleurs, une nouvelle connexion peut se bloquer ou être rejetée. Par ailleurs, marteler le bouton de connexion après quelques échecs peut déclencher un verrouillage anti-abus temporaire, où chaque essai supplémentaire ne fait que prolonger l'attente ; ralentissez donc dès que vous voyez que cela se fige." },
+    { type: "heading",text: "Comment réparer une connexion Tradovate bloquée sur Loading : pas à pas" },
+    { type: "paragraph",html: "Suivez ces étapes dans l'ordre. La plupart des traders reviennent après la première solution." },
+    { type: "heading",text: "Corriger l'horloge système (à faire en premier)" },
+    { type: "paragraph",html: "Synchroniser votre horloge aligne votre machine sur l'heure réseau afin que les jetons et les réponses de captcha se valident." },
+    { type: "paragraph",html: "<strong class='text-white'>Sous Windows :</strong>" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrir les paramètres Date & time", html: "Ouvrez <strong class='text-white'>Settings &rarr; Time &amp; language &rarr; Date &amp; time</strong> (ou faites un clic droit sur l'horloge de la barre des tâches et choisissez <strong class='text-white'>Adjust date/time</strong>)." },
+        { title: "Activer Set time automatically", html: "Réglez <strong class='text-white'>Set time automatically</strong> sur <strong class='text-white'>On</strong>." },
+        { title: "Confirmer le fuseau horaire et cliquer sur Sync now", html: "Vérifiez que le <strong class='text-white'>Time zone</strong> est correct, puis cliquez sur <strong class='text-white'>Sync now</strong>." },
+        { title: "Recharger et se reconnecter", html: "Attendez la confirmation « last synced », puis rechargez la page de connexion Tradovate et reconnectez-vous." },
+      ],
+    },
+    { type: "paragraph",html: "<strong class='text-white'>Sous macOS :</strong>" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrir les paramètres Date & Time", html: "Ouvrez <strong class='text-white'>System Settings &rarr; General &rarr; Date &amp; Time</strong>." },
+        { title: "Activer la date et l'heure automatiques", html: "Activez <strong class='text-white'>Set time and date automatically</strong>." },
+        { title: "Confirmer le fuseau horaire et réessayer", html: "Vérifiez le bon fuseau horaire, puis réessayez la connexion." },
+      ],
+    },
+    { type: "paragraph",html: "Sur un VPS ou un bureau cloud, vérifiez que son service de temps est bien en cours d'exécution. Les serveurs sans interface dérivent plus souvent qu'on ne le croit, et cette dérive est précisément ce qui laisse une connexion Tradovate bloquée à cet endroit." },
+    { type: "heading",text: "Vider le cache ou utiliser un navigateur propre" },
+    { type: "paragraph",html: "Si l'horloge est correcte et que cela se fige toujours, supprimez le cache et les cookies obsolètes :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Ouvrir Clear browsing data", html: "Ouvrez la boîte de dialogue <strong class='text-white'>Clear browsing data</strong> de votre navigateur (dans Chrome : <strong class='text-white'>Settings &rarr; Privacy and security &rarr; Clear browsing data</strong>)." },
+        { title: "Sélectionner le cache et les cookies, puis effacer", html: "Sélectionnez <strong class='text-white'>Cached images and files</strong> et <strong class='text-white'>Cookies and other site data</strong>, puis effacez." },
+        { title: "Recharger et se connecter", html: "Rechargez la page de connexion Tradovate et connectez-vous." },
+      ],
+    },
+    { type: "paragraph",html: "Le raccourci rapide consiste à ouvrir l'URL de connexion dans une <strong class='text-white'>fenêtre privée/de navigation privée</strong>, qui ignore complètement votre cache et vos cookies existants. Si cela fonctionne ainsi, vider le cache de votre fenêtre habituelle règlera le problème durablement. Pendant que vous y êtes, désactivez temporairement les bloqueurs de publicités ou les extensions de confidentialité sur la page de connexion, car ils peuvent empêcher le chargement du script du captcha." },
+    { type: "heading",text: "Vérifier vos identifiants" },
+    { type: "paragraph",html: "Écartez une simple erreur d'identifiants avant de supposer une panne de la plateforme :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confirmer que vous saisissez votre nom d'utilisateur", html: "Vérifiez que vous saisissez votre <strong class='text-white'>nom d'utilisateur Tradovate</strong>, et non votre adresse e-mail." },
+        { title: "Vérifier le verrouillage des majuscules", html: "Vérifiez le <strong class='text-white'>verrouillage des majuscules</strong> : les noms d'utilisateur et les mots de passe sont sensibles à la casse." },
+        { title: "Retaper le mot de passe à la main", html: "Retapez le mot de passe à la main au lieu de le coller, pour éviter un espace final ou un caractère caché." },
+        { title: "Confirmer que vous utilisez le bon couple d'identifiants", html: "Si vous avez plusieurs identifiants Tradovate ou d'évaluation, assurez-vous d'utiliser le bon couple pour le compte que vous souhaitez réellement." },
+      ],
+    },
+    { type: "heading",text: "Libérer les sessions et le chemin réseau" },
+    { type: "paragraph",html: "Si cela ne charge toujours pas :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Se déconnecter de toutes les sessions", html: "<strong class='text-white'>Déconnectez-vous de toutes les sessions Tradovate</strong>, onglets web, application de bureau, mobile et module complémentaire TradingView, puis connectez-vous sur un seul appareil. Cela supprime les conflits de limite de sessions." },
+        { title: "Arrêter de réessayer rapidement", html: "<strong class='text-white'>Arrêtez de réessayer rapidement.</strong> Si des tentatives répétées ont déclenché un verrouillage temporaire, patientez un moment et réessayez une fois avec des identifiants confirmés corrects ; davantage d'essais ne font que prolonger le blocage." },
+        { title: "Stabiliser la connexion", html: "<strong class='text-white'>Stabilisez la connexion.</strong> Passez du Wi-Fi à une connexion filaire, redémarrez votre modem/routeur et, si nécessaire, essayez un DNS public fiable tel que 8.8.8.8 (Google) ou 1.1.1.1 (Cloudflare). Désactivez tout VPN pour la connexion ; certains nœuds de sortie sont signalés et perturbent la validation du captcha." },
+        { title: "Vérifier une panne générale de la plateforme", html: "Toujours bloqué ? Consultez la page d'état du service de Tradovate pour détecter un incident général avant de contacter le support." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Symptôme","Signification probable","Solution"], rows: [
+      ["Le bouton Login tourne, la page reste bloquée sur &ldquo;Loading&hellip;&rdquo;","Horloge désynchronisée ; jetons rejetés","Activez l'heure automatique et cliquez sur Sync now, puis réessayez"],
+      ["Le captcha boucle / ne se valide jamais","Réponse horodatée du captcha rejetée, ou script bloqué","Synchronisez l'horloge ; désactivez le bloqueur de publicités/VPN sur la page de connexion"],
+      ["Fonctionne en navigation privée mais pas dans la fenêtre normale","Cache ou cookies obsolètes","Effacez les images en cache et les cookies, puis connectez-vous"],
+      ["Connexion rejetée d'emblée","Identifiants erronés/casse différente ou e-mail utilisé comme nom d'utilisateur","Utilisez le nom d'utilisateur Tradovate exact ; vérifiez les majuscules et les espaces"],
+      ["Se fige, et vous êtes connecté ailleurs","Limite de sessions simultanées atteinte","Déconnectez-vous de toutes les sessions ; connectez-vous sur un seul appareil"],
+      ["Devient plus lent/bloqué après plusieurs essais","Verrouillage temporaire après essais répétés","Arrêtez de réessayer, patientez, puis tentez une fois avec les bons identifiants"],
+      ["Toutes les plateformes en panne en même temps","Panne côté Tradovate","Consultez la page d'état du service ; attendez le rétablissement"],
+    ] },
+    { type: "heading",text: "Prévenir cela avec PickMyTrade" },
+    { type: "paragraph",html: "Une connexion de navigateur bloquée ne devrait pas se dresser entre votre signal TradingView et un ordre exécuté. PickMyTrade relie vos alertes TradingView directement à Tradovate via une connexion maintenue, afin que votre automatisation continue d'acheminer les ordres même lorsqu'une session de navigateur manuelle déraille :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connexion persistante et gérée</strong>, vos alertes transitent par la liaison de PickMyTrade vers Tradovate plutôt que de dépendre d'un seul onglet de navigateur qui peut se figer sur un captcha ou un cache obsolète.",
+        "<strong class='text-white'>Identifiants configurés une seule fois</strong>, connectez votre compte une fois et laissez les ordres circuler, plutôt que de lutter contre une connexion sensible à la casse en pleine session pendant que le prix s'envole.",
+        "<strong class='text-white'>Acheminement respectueux des limites de débit</strong>, le flux d'ordres est espacé afin qu'une rafale d'activité ne déclenche pas les limites anti-abus de Tradovate, comme peuvent le faire des tentatives manuelles rapides.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, répliquez le même flux automatisé sur tous les comptes Tradovate connectés, afin qu'une connexion instable sur une machine ne mette pas toute votre stratégie hors ligne.",
+      ],
+    },
+    { type: "paragraph",html: "L'objectif n'est pas de contourner la correction de connexion, gardez toujours votre horloge synchronisée. C'est de s'assurer qu'un accroc de navigateur ne coupe jamais silencieusement l'acheminement de vos ordres." },
+  ], it: [
+    { type: "paragraph",html: "Il mercato è aperto, la sua configurazione è attiva e Tradovate non la fa entrare. Il pulsante Login gira a vuoto, la schermata resta su <em>&ldquo;Loading&hellip;&rdquo;</em> o la sfida captcha si ripete all'infinito senza mai risolversi. Quando sta aspettando un ingresso su ES o NQ, ogni secondo fuori è un secondo in cui non può gestire il rischio. La parte rassicurante: un login Tradovate bloccato su Loading non significa quasi mai che il suo account sia compromesso. Nove volte su dieci la causa è banale e si risolve in meno di due minuti: l'orologio del suo computer si è sfasato rispetto ai server di Tradovate, quindi i token di autenticazione vengono rifiutati e il captcha non riesce a validarsi. Questa guida illustra tutte le cause più comuni del login bloccato e del captcha che fallisce, le soluzioni esatte nell'ordine in cui provarle e il modo in cui PickMyTrade mantiene la sua automazione in funzione anche quando una sessione del browser dà problemi." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per un login Tradovate bloccato su Loading",
+      items: [
+        "<strong class='text-white'>L'orologio di sistema è sfasato</strong>, attivi l'ora automatica e faccia clic su <em>Sync now</em> (Windows: <em>Set time automatically</em> &rarr; <em>Sync now</em>). È la soluzione singola più comune sia per lo spinner bloccato sia per un captcha che fallisce.",
+        "<strong class='text-white'>Il captcha continua a ripetersi</strong>, stessa causa di fondo. Sincronizzi prima l'orologio, poi ricarichi la pagina invece di insistere con i tentativi.",
+        "<strong class='text-white'>La cache del browser è obsoleta</strong>, cancelli immagini in cache e cookie, oppure apra la pagina di login in una finestra privata/in incognito.",
+        "<strong class='text-white'>Credenziali errate</strong>, i nomi utente di Tradovate distinguono tra maiuscole e minuscole e <em>non</em> sono il suo indirizzo e-mail. Controlli il blocco maiuscole e rimuova gli spazi finali.",
+        "<strong class='text-white'>Troppe sessioni aperte</strong>, Tradovate limita le sessioni simultanee, quindi esca da web, desktop, mobile e TradingView, poi acceda da un solo dispositivo.",
+        "<strong class='text-white'>Ripetuti tentativi falliti</strong>, tentativi a raffica possono attivare un blocco temporaneo. Si fermi, attenda e riprovi una sola volta con i dati corretti.",
+      ],
+    },
+    { type: "heading",text: "Cosa significano «Login bloccato su Loading» e i fallimenti del captcha" },
+    { type: "paragraph",html: "Un login Tradovate bloccato su Loading si verifica quando la piattaforma accetta il suo clic ma non completa mai l'handshake con i propri server di autenticazione. Il pulsante mostra uno spinner, la pagina resta su <em>&ldquo;Loading&hellip;&rdquo;</em> e non compare alcun errore: semplicemente non finisce mai. Un captcha che fallisce è lo stesso handshake che si interrompe alla fase della sfida di sicurezza: lei lo risolve (o si verifica automaticamente), il token viene rifiutato e la sfida riappare in loop." },
+    { type: "paragraph",html: "Perché questi due sintomi condividono un'unica causa? Il tempismo. I token di login e le risposte del captcha hanno un timestamp e sono validi solo per una breve finestra. Se l'orologio del suo computer è anche solo di un paio di minuti avanti o indietro rispetto all'ora di rete reale, i server di Tradovate trattano il token come già scaduto o non ancora valido e lo rifiutano in silenzio. Non c'è un messaggio di errore chiaro, quindi <em>sembra</em> che la piattaforma sia bloccata quando in realtà sta solo rifiutando una credenziale obsoleta. Ecco perché «sincronizzi l'orologio» è la prima mossa per un login bloccato o un captcha in loop." },
+    { type: "paragraph",html: "Meno spesso, il blocco deriva da una cache del browser corrotta, da un percorso di rete instabile, da credenziali errate o da troppe sessioni attive in competizione per lo stesso account. Le tratteremo tutte qui sotto, nell'ordine in cui provarle." },
+    { type: "heading",text: "Principali cause di un login Tradovate bloccato su Loading nel 2026" },
+    { type: "heading",text: "1. Orologio di sistema non sincronizzato" },
+    { type: "paragraph",html: "Questa è la causa numero uno, senza dubbio. Quando l'orologio del suo PC o Mac si discosta dall'ora di rete reale, cosa comune dopo un ciclo di sospensione/riattivazione, una batteria CMOS scarica, una VPS senza servizio di sincronizzazione dell'ora o un orologio impostato manualmente, i token di autenticazione escono dalla loro finestra di validità. Il login gira all'infinito e il captcha non si risolve. Sincronizzi l'orologio e la maggior parte di questi casi si risolve all'istante." },
+    { type: "heading",text: "2. Validazione del captcha in loop" },
+    { type: "paragraph",html: "Un captcha che continua a ripresentarsi è di solito il problema dell'orologio sotto mentite spoglie: la sfida viene risolta, ma la risposta con timestamp viene rifiutata, così la piattaforma la ripropone subito. Può essere aggravato anche da ad-blocker aggressivi, estensioni per la privacy o da una VPN il cui nodo di uscita ha una cattiva reputazione; ognuno di questi può interferire con il caricamento o la validazione dello script del captcha." },
+    { type: "heading",text: "3. Cache o cookie del browser obsoleti" },
+    { type: "paragraph",html: "Una copia in cache non aggiornata della pagina di login, o un cookie di sessione obsoleto di un accesso precedente, può lasciare la pagina caricata a metà o in loop. Ecco perché il problema spesso sparisce nell'istante in cui apre lo stesso URL in una nuova finestra in incognito, senza vecchia cache né vecchi cookie." },
+    { type: "heading",text: "4. Credenziali errate o digitate male" },
+    { type: "paragraph",html: "Le credenziali di Tradovate <strong class='text-white'>distinguono tra maiuscole e minuscole</strong> e il suo <strong class='text-white'>nome utente non è il suo indirizzo e-mail</strong>, un punto in cui inciampano i trader che si sono registrati tramite una prop firm e poi provano con l'e-mail. Il blocco maiuscole attivo, uno spazio finale incollato da un gestore di password o il nome utente sbagliato di un secondo account Tradovate o di valutazione bloccheranno il login. A seconda del flusso, può comparire come un accesso fallito anziché come un errore chiaro." },
+    { type: "heading",text: "5. Troppe sessioni attive o un blocco per tentativi ripetuti" },
+    { type: "paragraph",html: "Tradovate limita quante sessioni possono essere connesse contemporaneamente a un account tra web, desktop, mobile e il componente aggiuntivo di TradingView. Se ha già sessioni aperte altrove, un nuovo login può bloccarsi o essere respinto. Separatamente, martellare il pulsante di login dopo alcuni tentativi falliti può attivare un blocco anti-abuso temporaneo, in cui ogni tentativo in più allunga soltanto l'attesa, quindi rallenti non appena nota che si blocca." },
+    { type: "heading",text: "Come risolvere un login Tradovate bloccato su Loading: passo dopo passo" },
+    { type: "paragraph",html: "Segua questi passaggi nell'ordine. La maggior parte dei trader rientra dopo la prima soluzione." },
+    { type: "heading",text: "Correggere l'orologio di sistema (da fare per primo)" },
+    { type: "paragraph",html: "Sincronizzare l'orologio allinea la sua macchina all'ora di rete, così token e risposte del captcha vengono validati." },
+    { type: "paragraph",html: "<strong class='text-white'>Su Windows:</strong>" },
+    {
+      type: "steps",
+      items: [
+        { title: "Aprire le impostazioni Date & time", html: "Apra <strong class='text-white'>Settings &rarr; Time &amp; language &rarr; Date &amp; time</strong> (oppure faccia clic con il tasto destro sull'orologio nella barra delle applicazioni e scelga <strong class='text-white'>Adjust date/time</strong>)." },
+        { title: "Attivare Set time automatically", html: "Imposti <strong class='text-white'>Set time automatically</strong> su <strong class='text-white'>On</strong>." },
+        { title: "Confermare il fuso orario e fare Sync now", html: "Verifichi che il <strong class='text-white'>Time zone</strong> sia corretto, quindi faccia clic su <strong class='text-white'>Sync now</strong>." },
+        { title: "Ricaricare e accedere di nuovo", html: "Attenda la conferma «last synced», poi ricarichi la pagina di login di Tradovate e acceda di nuovo." },
+      ],
+    },
+    { type: "paragraph",html: "<strong class='text-white'>Su macOS:</strong>" },
+    {
+      type: "steps",
+      items: [
+        { title: "Aprire le impostazioni Date & Time", html: "Apra <strong class='text-white'>System Settings &rarr; General &rarr; Date &amp; Time</strong>." },
+        { title: "Attivare data e ora automatiche", html: "Attivi <strong class='text-white'>Set time and date automatically</strong>." },
+        { title: "Confermare il fuso orario e riprovare", html: "Confermi il fuso orario corretto, poi riprovi il login." },
+      ],
+    },
+    { type: "paragraph",html: "Su una VPS o un desktop cloud, verifichi che il servizio di sincronizzazione dell'ora sia effettivamente in esecuzione. I server headless si sfasano più spesso di quanto si pensi, ed è proprio questa deriva a lasciare lì un login Tradovate bloccato." },
+    { type: "heading",text: "Cancellare la cache o usare un browser pulito" },
+    { type: "paragraph",html: "Se l'orologio è corretto e continua a bloccarsi, rimuova cache e cookie obsoleti:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Aprire Clear browsing data", html: "Apra la finestra di dialogo <strong class='text-white'>Clear browsing data</strong> del suo browser (in Chrome: <strong class='text-white'>Settings &rarr; Privacy and security &rarr; Clear browsing data</strong>)." },
+        { title: "Selezionare cache e cookie, poi cancellare", html: "Selezioni <strong class='text-white'>Cached images and files</strong> e <strong class='text-white'>Cookies and other site data</strong>, poi cancelli." },
+        { title: "Ricaricare e accedere", html: "Ricarichi la pagina di login di Tradovate e acceda." },
+      ],
+    },
+    { type: "paragraph",html: "La scorciatoia rapida è aprire l'URL di login in una <strong class='text-white'>finestra privata/in incognito</strong>, che ignora completamente cache e cookie esistenti. Se lì funziona, cancellare la cache nella sua finestra normale risolverà il problema in modo permanente. Già che c'è, disattivi temporaneamente ad-blocker o estensioni per la privacy nella pagina di login, perché possono bloccare il caricamento dello script del captcha." },
+    { type: "heading",text: "Controllare le credenziali" },
+    { type: "paragraph",html: "Escluda un semplice errore nelle credenziali prima di supporre un guasto della piattaforma:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Confermare di inserire il nome utente", html: "Confermi di inserire il suo <strong class='text-white'>nome utente Tradovate</strong>, non il suo indirizzo e-mail." },
+        { title: "Controllare il blocco maiuscole", html: "Controlli il <strong class='text-white'>blocco maiuscole</strong>, nomi utente e password distinguono tra maiuscole e minuscole." },
+        { title: "Digitare di nuovo la password a mano", html: "Digiti di nuovo la password a mano anziché incollarla, per evitare uno spazio finale o un carattere nascosto." },
+        { title: "Confermare di usare la coppia di credenziali giusta", html: "Se ha più di un login Tradovate o di valutazione, si assicuri di usare la coppia corretta per l'account che desidera davvero." },
+      ],
+    },
+    { type: "heading",text: "Liberare le sessioni e il percorso di rete" },
+    { type: "paragraph",html: "Se continua a non caricarsi:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Uscire da ogni sessione", html: "<strong class='text-white'>Esca da ogni sessione Tradovate</strong>, schede web, app desktop, mobile e componente aggiuntivo di TradingView, poi acceda da un solo dispositivo. Questo elimina i conflitti sul limite di sessioni." },
+        { title: "Smettere di riprovare rapidamente", html: "<strong class='text-white'>Smetta di riprovare rapidamente.</strong> Se i tentativi ripetuti hanno attivato un blocco temporaneo, attenda un po' e riprovi una volta con dati confermati corretti; ulteriori tentativi non fanno che prolungare il blocco." },
+        { title: "Stabilizzare la connessione", html: "<strong class='text-white'>Stabilizzi la connessione.</strong> Passi dal Wi-Fi a una connessione cablata, riavvii modem/router e, se necessario, provi un DNS pubblico affidabile come 8.8.8.8 (Google) o 1.1.1.1 (Cloudflare). Disattivi qualsiasi VPN per il login, alcuni nodi di uscita vengono segnalati e interrompono la validazione del captcha." },
+        { title: "Verificare un'interruzione generale della piattaforma", html: "Ancora bloccato? Controlli la pagina di stato del servizio di Tradovate per un incidente a livello di piattaforma prima di contattare il supporto." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Sintomo","Significato probabile","Soluzione"], rows: [
+      ["Il pulsante Login gira, pagina bloccata su &ldquo;Loading&hellip;&rdquo;","Orologio non sincronizzato; token rifiutati","Attivi l'ora automatica e faccia clic su Sync now, poi riprovi"],
+      ["Il captcha si ripete / non si risolve mai","Risposta del captcha con timestamp rifiutata, o script bloccato","Sincronizzi l'orologio; disattivi ad-blocker/VPN nella pagina di login"],
+      ["Funziona in incognito ma non nella finestra normale","Cache o cookie obsoleti","Cancelli immagini in cache e cookie, poi acceda"],
+      ["Login rifiutato subito","Credenziali errate/con maiuscole diverse o e-mail usata come nome utente","Usi l'esatto nome utente Tradovate; controlli blocco maiuscole e spazi"],
+      ["Si blocca, e lei è connesso altrove","Limite di sessioni simultanee raggiunto","Esca da tutte le sessioni; acceda da un solo dispositivo"],
+      ["Diventa più lento/bloccato dopo vari tentativi","Blocco temporaneo per tentativi ripetuti","Smetta di riprovare, attenda, poi tenti una volta con i dati corretti"],
+      ["Tutte le piattaforme non funzionano insieme","Interruzione lato Tradovate","Controlli la pagina di stato del servizio; attenda che si risolva"],
+    ] },
+    { type: "heading",text: "Preveniamo il problema con PickMyTrade" },
+    { type: "paragraph",html: "Un login del browser bloccato non dovrebbe essere ciò che si frappone tra il suo segnale di TradingView e un ordine eseguito. PickMyTrade collega i suoi alert di TradingView direttamente a Tradovate tramite una connessione mantenuta, così la sua automazione continua a instradare anche quando una sessione manuale del browser dà problemi:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connessione persistente e gestita</strong>, i suoi alert passano attraverso il collegamento di PickMyTrade con Tradovate anziché dipendere da una singola scheda del browser che può bloccarsi su un captcha o su una cache obsoleta.",
+        "<strong class='text-white'>Credenziali configurate una sola volta</strong>, colleghi il suo account una volta e lasci fluire gli ordini, invece di lottare con un login sensibile alle maiuscole a sessione in corso mentre il prezzo scappa.",
+        "<strong class='text-white'>Instradamento sicuro rispetto ai limiti di frequenza</strong>, il flusso degli ordini è distanziato in modo che un'ondata di attività non faccia scattare i limiti anti-abuso di Tradovate come possono fare i rapidi tentativi manuali.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, replichi lo stesso flusso automatizzato su tutti gli account Tradovate collegati, così un login instabile su una macchina non mette offline l'intera strategia.",
+      ],
+    },
+    { type: "paragraph",html: "Lo scopo non è saltare la correzione del login, mantenga sempre sincronizzato l'orologio. È assicurarsi che un intoppo del browser non interrompa mai in silenzio l'instradamento dei suoi trade." },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Handeln ohne Ablehnungen", es: "Opere sin rechazos", fr: "Tradez sans rejet", it: "Faccia trading senza rifiuti" },
+  ctaText: { en: "PickMyTrade links your TradingView alerts straight to Tradovate through a maintained connection, so your automation keeps routing even when a manual browser session is misbehaving.", de: "PickMyTrade verbindet Ihre TradingView-Alerts über eine gepflegte Verbindung direkt mit Tradovate, sodass Ihre Automatisierung auch dann weiter routet, wenn eine manuelle Browser-Sitzung Probleme macht.", es: "PickMyTrade conecta sus alertas de TradingView directamente con Tradovate mediante una conexión mantenida, de modo que su automatización sigue enrutando incluso cuando una sesión manual del navegador da problemas.", fr: "PickMyTrade relie vos alertes TradingView directement à Tradovate via une connexion maintenue, afin que votre automatisation continue d'acheminer les ordres même lorsqu'une session de navigateur manuelle déraille.", it: "PickMyTrade collega i suoi alert di TradingView direttamente a Tradovate tramite una connessione mantenuta, così la sua automazione continua a instradare anche quando una sessione manuale del browser dà problemi." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why is my Tradovate login stuck on loading?", a: "The most common cause is a system clock that's out of sync with Tradovate's servers. Login tokens are time-stamped, so if your clock has drifted, the token is rejected and the page hangs on \"Loading…\". Enabling automatic time and clicking Sync now fixes it in most cases." },
+    { q: "Why does the Tradovate captcha keep failing or looping?", a: "A looping captcha is usually the same clock-sync problem, the time-stamped captcha response is rejected, so the challenge re-appears. Sync your clock first. If it still loops, disable ad-blockers, privacy extensions or a VPN on the login page, which can block the captcha from validating." },
+    { q: "How do I sync my clock to fix the Tradovate login?", a: "On Windows, open Settings → Time & language → Date & time, turn on Set time automatically, confirm your time zone, and click Sync now. On macOS, open System Settings → General → Date & Time and enable Set time and date automatically. Then reload the login page." },
+    { q: "The login works in incognito but not my normal browser, why?", a: "Your normal window has a stale cached copy of the login page or an old session cookie. Clear cached images and files and cookies for Tradovate, or keep using a private window. That removes the corrupted data causing the stall." },
+    { q: "I keep getting rejected even though the page loads, what's wrong?", a: "Check your credentials. Tradovate usernames are case-sensitive and are not your email address, so if you signed up through a prop firm you must use the platform username they issued. Watch for Caps Lock and trailing spaces from pasted passwords." },
+    { q: "Why does retrying the login make it worse?", a: "Repeated failed attempts in quick succession can trigger a temporary anti-abuse lockout where each new try extends the wait. Stop retrying, confirm your username and password are correct, wait a while, and then attempt once." },
+    { q: "Could too many open sessions cause the login to hang?", a: "Yes. Tradovate limits concurrent sessions across web, desktop, mobile and the TradingView add-on. If you're already signed in elsewhere, a new login can stall. Log out of every session and sign in on a single device." },
+    { q: "Does PickMyTrade fix a stuck Tradovate login?", a: "PickMyTrade can't override a browser or clock problem, you should still keep your system time synced. What it does is route your TradingView alerts to Tradovate over a managed connection, so your automated orders keep flowing even when a manual browser session is stuck on loading." },
+  ], de: [
+    { q: "Warum hängt mein Tradovate-Login bei „Loading“?", a: "Die häufigste Ursache ist eine Systemuhr, die nicht mit den Servern von Tradovate synchron ist. Login-Tokens sind mit einem Zeitstempel versehen. Wenn Ihre Uhr abgedriftet ist, wird das Token abgelehnt und die Seite bleibt bei „Loading…“ hängen. Das Aktivieren der automatischen Zeit und ein Klick auf Sync now lösen das in den meisten Fällen." },
+    { q: "Warum schlägt das Tradovate-Captcha ständig fehl oder läuft in einer Schleife?", a: "Ein sich wiederholendes Captcha ist meist dasselbe Uhrenproblem: Die mit Zeitstempel versehene Captcha-Antwort wird abgelehnt, daher erscheint die Aufgabe erneut. Synchronisieren Sie zuerst Ihre Uhr. Läuft es weiterhin in einer Schleife, deaktivieren Sie Werbeblocker, Datenschutz-Erweiterungen oder ein VPN auf der Login-Seite, da diese die Validierung des Captchas verhindern können." },
+    { q: "Wie synchronisiere ich meine Uhr, um den Tradovate-Login zu reparieren?", a: "Öffnen Sie unter Windows Settings → Time & language → Date & time, aktivieren Sie Set time automatically, prüfen Sie Ihre Zeitzone und klicken Sie auf Sync now. Öffnen Sie unter macOS System Settings → General → Date & Time und aktivieren Sie Set time and date automatically. Laden Sie anschließend die Login-Seite neu." },
+    { q: "Der Login funktioniert im Inkognito-Modus, aber nicht in meinem normalen Browser. Warum?", a: "Ihr normales Fenster enthält eine veraltete, zwischengespeicherte Kopie der Login-Seite oder ein altes Sitzungs-Cookie. Löschen Sie zwischengespeicherte Bilder und Dateien sowie Cookies für Tradovate oder nutzen Sie weiterhin ein privates Fenster. Dadurch werden die beschädigten Daten entfernt, die den Stillstand verursachen." },
+    { q: "Ich werde abgelehnt, obwohl die Seite lädt. Was stimmt nicht?", a: "Prüfen Sie Ihre Zugangsdaten. Bei Tradovate-Benutzernamen wird zwischen Groß- und Kleinschreibung unterschieden, und sie sind nicht Ihre E-Mail-Adresse. Wenn Sie sich über eine Prop-Firma angemeldet haben, müssen Sie den von ihr ausgestellten Plattform-Benutzernamen verwenden. Achten Sie auf die Feststelltaste und auf Leerzeichen am Ende eingefügter Passwörter." },
+    { q: "Warum wird es schlimmer, wenn ich den Login wiederholt versuche?", a: "Mehrere fehlgeschlagene Versuche in kurzer Folge können eine vorübergehende Anti-Missbrauchs-Sperre auslösen, bei der jeder neue Versuch die Wartezeit verlängert. Hören Sie auf, es erneut zu versuchen, prüfen Sie Benutzernamen und Passwort, warten Sie eine Weile und versuchen Sie es dann einmal." },
+    { q: "Können zu viele offene Sitzungen den Login zum Hängen bringen?", a: "Ja. Tradovate begrenzt gleichzeitige Sitzungen über Web, Desktop, Mobilgerät und das TradingView-Add-on hinweg. Wenn Sie bereits an anderer Stelle angemeldet sind, kann ein neuer Login hängen bleiben. Melden Sie sich von allen Sitzungen ab und melden Sie sich auf einem einzigen Gerät an." },
+    { q: "Behebt PickMyTrade einen hängenden Tradovate-Login?", a: "PickMyTrade kann ein Browser- oder Uhrenproblem nicht außer Kraft setzen. Sie sollten Ihre Systemzeit weiterhin synchron halten. Was es tut: Es leitet Ihre TradingView-Alerts über eine verwaltete Verbindung an Tradovate weiter, sodass Ihre automatisierten Orders weiterfließen, selbst wenn eine manuelle Browser-Sitzung bei „Loading“ hängt." },
+  ], es: [
+    { q: "¿Por qué mi inicio de sesión de Tradovate se queda en Loading?", a: "La causa más común es un reloj del sistema desincronizado con los servidores de Tradovate. Los tokens de inicio de sesión llevan marca de tiempo, así que si su reloj se ha desajustado, el token se rechaza y la página se queda en «Loading…». Activar la hora automática y hacer clic en Sync now lo soluciona en la mayoría de los casos." },
+    { q: "¿Por qué el captcha de Tradovate falla o se repite una y otra vez?", a: "Un captcha en bucle suele ser el mismo problema del reloj: la respuesta del captcha, con marca de tiempo, se rechaza y por eso el desafío reaparece. Sincronice primero su reloj. Si sigue en bucle, desactive los bloqueadores de anuncios, las extensiones de privacidad o una VPN en la página de inicio de sesión, ya que pueden impedir que el captcha se valide." },
+    { q: "¿Cómo sincronizo mi reloj para arreglar el inicio de sesión de Tradovate?", a: "En Windows, abra Settings → Time & language → Date & time, active Set time automatically, confirme su zona horaria y haga clic en Sync now. En macOS, abra System Settings → General → Date & Time y active Set time and date automatically. Después, recargue la página de inicio de sesión." },
+    { q: "El inicio de sesión funciona en incógnito pero no en mi navegador normal, ¿por qué?", a: "Su ventana normal tiene una copia en caché obsoleta de la página de inicio de sesión o una cookie de sesión antigua. Borre las imágenes y archivos en caché y las cookies de Tradovate, o siga usando una ventana privada. Eso elimina los datos dañados que causan el bloqueo." },
+    { q: "Me siguen rechazando aunque la página carga, ¿qué ocurre?", a: "Revise sus credenciales. Los nombres de usuario de Tradovate distinguen entre mayúsculas y minúsculas y no son su correo electrónico, así que si se registró a través de una prop firm debe usar el nombre de usuario de la plataforma que le emitieron. Preste atención al bloqueo de mayúsculas y a los espacios finales de las contraseñas pegadas." },
+    { q: "¿Por qué reintentar el inicio de sesión empeora la situación?", a: "Los intentos fallidos repetidos en rápida sucesión pueden provocar un bloqueo temporal antiabuso en el que cada nuevo intento alarga la espera. Deje de reintentar, confirme que su usuario y contraseña son correctos, espere un rato y entonces intente una sola vez." },
+    { q: "¿Pueden demasiadas sesiones abiertas hacer que el inicio de sesión se cuelgue?", a: "Sí. Tradovate limita las sesiones simultáneas entre web, escritorio, móvil y el complemento de TradingView. Si ya tiene la sesión iniciada en otro lugar, un nuevo inicio de sesión puede bloquearse. Cierre todas las sesiones e inicie sesión en un solo dispositivo." },
+    { q: "¿PickMyTrade arregla un inicio de sesión de Tradovate bloqueado?", a: "PickMyTrade no puede anular un problema del navegador o del reloj, así que debe seguir manteniendo sincronizada la hora de su sistema. Lo que hace es enrutar sus alertas de TradingView a Tradovate mediante una conexión gestionada, de modo que sus órdenes automáticas sigan fluyendo incluso cuando una sesión manual del navegador está atascada en Loading." },
+  ], fr: [
+    { q: "Pourquoi ma connexion Tradovate reste-t-elle bloquée sur Loading ?", a: "La cause la plus fréquente est une horloge système désynchronisée par rapport aux serveurs de Tradovate. Les jetons de connexion sont horodatés : si votre horloge a dérivé, le jeton est rejeté et la page reste figée sur « Loading… ». Activer l'heure automatique et cliquer sur Sync now règle le problème dans la plupart des cas." },
+    { q: "Pourquoi le captcha Tradovate échoue-t-il ou boucle-t-il sans cesse ?", a: "Un captcha en boucle est généralement le même problème d'horloge : la réponse horodatée du captcha est rejetée, donc le défi réapparaît. Synchronisez d'abord votre horloge. Si cela boucle toujours, désactivez les bloqueurs de publicités, les extensions de confidentialité ou un VPN sur la page de connexion, qui peuvent empêcher la validation du captcha." },
+    { q: "Comment synchroniser mon horloge pour réparer la connexion Tradovate ?", a: "Sous Windows, ouvrez Settings → Time & language → Date & time, activez Set time automatically, confirmez votre fuseau horaire et cliquez sur Sync now. Sous macOS, ouvrez System Settings → General → Date & Time et activez Set time and date automatically. Rechargez ensuite la page de connexion." },
+    { q: "La connexion fonctionne en navigation privée mais pas dans mon navigateur habituel, pourquoi ?", a: "Votre fenêtre habituelle contient une copie en cache obsolète de la page de connexion ou un ancien cookie de session. Effacez les images et fichiers en cache ainsi que les cookies de Tradovate, ou continuez à utiliser une fenêtre privée. Cela supprime les données corrompues à l'origine du blocage." },
+    { q: "Je suis rejeté alors que la page se charge, que se passe-t-il ?", a: "Vérifiez vos identifiants. Les noms d'utilisateur Tradovate sont sensibles à la casse et ne correspondent pas à votre adresse e-mail ; si vous vous êtes inscrit via une prop firm, vous devez utiliser le nom d'utilisateur de plateforme qu'elle vous a attribué. Faites attention au verrouillage des majuscules et aux espaces en fin de mot de passe collé." },
+    { q: "Pourquoi réessayer la connexion aggrave-t-il la situation ?", a: "Des tentatives échouées répétées en succession rapide peuvent déclencher un verrouillage anti-abus temporaire où chaque nouvel essai prolonge l'attente. Arrêtez de réessayer, vérifiez que votre nom d'utilisateur et votre mot de passe sont corrects, patientez un moment, puis tentez une seule fois." },
+    { q: "Trop de sessions ouvertes peuvent-elles bloquer la connexion ?", a: "Oui. Tradovate limite les sessions simultanées sur le web, le bureau, le mobile et le module complémentaire TradingView. Si vous êtes déjà connecté ailleurs, une nouvelle connexion peut se bloquer. Déconnectez-vous de toutes les sessions et connectez-vous sur un seul appareil." },
+    { q: "PickMyTrade corrige-t-il une connexion Tradovate bloquée ?", a: "PickMyTrade ne peut pas contourner un problème de navigateur ou d'horloge ; vous devez donc toujours garder l'heure de votre système synchronisée. Ce qu'il fait, c'est acheminer vos alertes TradingView vers Tradovate via une connexion gérée, afin que vos ordres automatisés continuent de circuler même lorsqu'une session de navigateur manuelle reste bloquée sur Loading." },
+  ], it: [
+    { q: "Perché il mio login Tradovate resta bloccato su Loading?", a: "La causa più comune è un orologio di sistema non sincronizzato con i server di Tradovate. I token di login hanno un timestamp: se il suo orologio si è sfasato, il token viene rifiutato e la pagina resta bloccata su «Loading…». Attivare l'ora automatica e fare clic su Sync now risolve nella maggior parte dei casi." },
+    { q: "Perché il captcha di Tradovate continua a fallire o a ripetersi?", a: "Un captcha in loop è di solito lo stesso problema dell'orologio: la risposta del captcha con timestamp viene rifiutata, quindi la sfida riappare. Sincronizzi prima il suo orologio. Se continua a ripetersi, disattivi ad-blocker, estensioni per la privacy o una VPN nella pagina di login, che possono impedire la validazione del captcha." },
+    { q: "Come sincronizzo l'orologio per risolvere il login di Tradovate?", a: "Su Windows, apra Settings → Time & language → Date & time, attivi Set time automatically, confermi il fuso orario e faccia clic su Sync now. Su macOS, apra System Settings → General → Date & Time e attivi Set time and date automatically. Poi ricarichi la pagina di login." },
+    { q: "Il login funziona in incognito ma non nel mio browser normale, perché?", a: "La sua finestra normale ha una copia obsoleta della pagina di login in cache o un vecchio cookie di sessione. Cancelli immagini e file memorizzati nella cache e i cookie di Tradovate, oppure continui a usare una finestra privata. Questo rimuove i dati corrotti che causano il blocco." },
+    { q: "Continuo a essere rifiutato anche se la pagina si carica, cosa non va?", a: "Controlli le credenziali. I nomi utente di Tradovate distinguono tra maiuscole e minuscole e non sono il suo indirizzo e-mail, quindi se si è registrato tramite una prop firm deve usare il nome utente della piattaforma che le è stato assegnato. Faccia attenzione al blocco maiuscole e agli spazi finali nelle password incollate." },
+    { q: "Perché riprovare il login peggiora le cose?", a: "Ripetuti tentativi falliti in rapida successione possono attivare un blocco anti-abuso temporaneo in cui ogni nuovo tentativo allunga l'attesa. Smetta di riprovare, verifichi che nome utente e password siano corretti, attenda un po' e poi provi una sola volta." },
+    { q: "Troppe sessioni aperte possono bloccare il login?", a: "Sì. Tradovate limita le sessioni simultanee tra web, desktop, mobile e il componente aggiuntivo di TradingView. Se è già connesso altrove, un nuovo login può bloccarsi. Esca da tutte le sessioni e acceda da un solo dispositivo." },
+    { q: "PickMyTrade risolve un login Tradovate bloccato?", a: "PickMyTrade non può sostituirsi a un problema del browser o dell'orologio, quindi deve comunque mantenere sincronizzata l'ora del sistema. Quello che fa è instradare i suoi alert di TradingView verso Tradovate tramite una connessione gestita, così i suoi ordini automatici continuano a fluire anche quando una sessione manuale del browser è bloccata su Loading." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Diese Anleitung dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap, wird von diesen nicht unterstützt und nicht gesponsert. Alle genannten Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit. Prüfen Sie den aktuellen Ablauf daher immer in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos dueños. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading des contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée, ni approuvée, ni parrainée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; confirmez donc toujours la procédure actuelle dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre la procedura attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

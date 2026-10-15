@@ -1,0 +1,593 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "api-p-ticket-p-time-time-penalty";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate API p-ticket / p-time Time Penalty";
+const META_DESCRIPTION =
+  "Tradovate p-ticket / p-time time penalty fix: wait p-time seconds, resend your API request with the p-ticket, and avoid 429 rate-limit lockouts.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate API: penalización de tiempo p-ticket / p-time" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate-API p-ticket / p-time-Zeitstrafe", es: "Penalización de tiempo p-ticket / p-time de la API de Tradovate", fr: "Pénalité de temps p-ticket / p-time de l'API Tradovate", it: "Penalità di tempo p-ticket / p-time dell'API Tradovate" },
+  dek: { en: "The API quietly stops handling your calls and hands back a p-ticket / p-time response instead of a fill. The fix is deterministic: wait, then resend with the ticket attached.", de: "Die API stellt die Verarbeitung Ihrer Aufrufe unbemerkt ein und liefert statt einer Ausführung eine p-ticket / p-time-Antwort zurück. Die Lösung ist eindeutig: warten und dann mit dem Ticket erneut senden.", es: "La API deja de procesar silenciosamente sus llamadas y devuelve una respuesta p-ticket / p-time en lugar de una ejecución. La solución es determinista: espere y luego reenvíe la solicitud con el ticket adjunto.", fr: "L'API cesse silencieusement de traiter vos appels et renvoie une réponse p-ticket / p-time au lieu d'une exécution. La solution est déterministe : attendez, puis renvoyez la requête avec le ticket joint.", it: "L'API smette silenziosamente di gestire le chiamate e restituisce una risposta p-ticket / p-time invece di un'esecuzione. La soluzione è deterministica: attendere, quindi reinviare la richiesta con il ticket allegato." },
+  readTime: { en: "8 min read", de: "8 Minuten Lesezeit", es: "Lectura de 8 minutos", fr: "Lecture de 8 minutes", it: "Lettura di 8 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "When your bot is firing orders into fast futures like ES or NQ, nothing stalls an automated Tradovate strategy quicker than a sudden <code>p-ticket</code> / <code>p-time</code> response. The API quietly stops handling your calls and hands back a &ldquo;time penalty&rdquo; instead of a fill. You might also see a bare <code>429 Too Many Requests</code>, a longer freeze that locks your account for minutes, or a <code>p-captcha</code> object that shuts you out for roughly an hour. Every one of these is Tradovate's rate-limiting doing exactly what it was built to do: throttle clients that send requests too fast." },
+    { type: "paragraph", html: "Here's the reassuring part. The fix is deterministic. Wait the number of seconds the server tells you, then resend the same request with the ticket attached. And if you'd rather not hand-roll that logic at all, a properly paced automation layer like PickMyTrade spaces your order flow so the penalty rarely fires in the first place." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Tradovate Time-Penalty Errors",
+      items: [
+        "<strong class='text-white'>Got a p-ticket and p-time?</strong> Wait <code>p-time</code> seconds, then resend the <em>original</em> request with <code>\"p-ticket\"</code> added to the body.",
+        "<strong class='text-white'>Seeing 429 Too Many Requests?</strong> You hit the rate cap. Back off, then retry after the short cooldown (often around 20-30 seconds; duration varies).",
+        "<strong class='text-white'>Response has a p-captcha field?</strong> Stop retrying and wait about an hour. Automated retries won't clear it.",
+        "<strong class='text-white'>Penalty keeps coming back?</strong> You're structurally over the cap. Throttle your request rate, not just the single call.",
+        "<strong class='text-white'>Reconnecting in a loop?</strong> Frequent re-auth and reconnect storms are a top trigger. Add a delay between reconnects.",
+        "<strong class='text-white'>Running many accounts?</strong> Fan-out multiplies your request count. Pace or queue orders so the fleet stays under the limit.",
+      ],
+    },
+    { type: "heading", text: "What the “p-ticket / p-time” Time-Penalty Response Means" },
+    { type: "paragraph", html: "Tradovate enforces request-rate limits on its REST API. Cross a threshold and the server does <strong class='text-white'>not</strong> process your request. Instead it returns a small JSON object describing a <em>time penalty</em>. Two fields matter: <code>p-ticket</code> (a one-time token that proves you were penalized) and <code>p-time</code> (the number of seconds you have to wait before you're allowed to try again). Getting this object means your call was rejected, not queued. Nothing happened on the server, and it's on your client to wait and re-submit." },
+    { type: "paragraph", html: "This is deliberately different from a hard failure. The penalty is a &ldquo;cool down and come back&rdquo; signal. Once you wait the specified <code>p-time</code> seconds and resend the exact same request with the <code>p-ticket</code> value included, the server accepts it as your sanctioned retry. Alongside this, Tradovate may also return a plain <code>429 Too Many Requests</code> HTTP status when a limit is hit. Both are symptoms of the same root cause: you sent requests faster than the API allows." },
+    { type: "paragraph", html: "There's a third, more serious variant. If a response contains a <code>p-captcha</code> field, Tradovate's own documentation states that a third-party application can't complete the request and that clients &ldquo;should be directed to try again in an hour.&rdquo; This usually shows up after repeated bad-credential logins or aggressive automated retries. Unlike a normal <code>p-time</code> wait of a few seconds, it won't clear by hammering the endpoint." },
+    { type: "heading", text: "Top Causes of Tradovate Time Penalties" },
+    { type: "heading", text: "1. Exceeding the request-rate caps" },
+    { type: "paragraph", html: "Tradovate applies limits across per-second, per-minute, and per-hour windows. The caps commonly land around <strong class='text-white'>5,000 requests per hour and about 80 requests per minute</strong>, with a short block (often cited at ~20-30 seconds) the first time you cross a limit. Treat these figures as guidance, not gospel. The exact caps can change, so confirm the current numbers in Tradovate's live API docs. The moment you breach a window, the server stops handling requests and issues the time penalty." },
+    { type: "heading", text: "2. Rapid reconnections and re-auth loops" },
+    { type: "paragraph", html: "Authentication and WebSocket reconnection calls count against your budget. A client that logs in, drops, and re-authenticates in a tight loop can burn through the cap purely on housekeeping, before it ever places an order. Reconnect storms are one of the most common ways to trip the penalty." },
+    { type: "heading", text: "3. Excessive order modifications and trailing stops" },
+    { type: "paragraph", html: "Every modify, cancel, and replace is a separate request. Strategies that constantly nudge stops, like trailing logic that rewrites the stop price tick by tick across several accounts, generate a torrent of calls. This is a leading cause of penalties for copy-trading and multi-account setups." },
+    { type: "heading", text: "4. Repeated bad-credential logins (the p-captcha path)" },
+    { type: "paragraph", html: "Sending the wrong username, password, or app credentials over and over doesn't just fail, it escalates. Tradovate treats a flood of failed auth attempts as abuse and can return the <code>p-captcha</code> object, pushing you into the roughly one-hour cool-down rather than a few-second <code>p-time</code> wait." },
+    { type: "heading", text: "5. Multi-account fan-out" },
+    { type: "paragraph", html: "Mirroring one signal across many Tradovate accounts multiplies your request count by the number of accounts. What feels like &ldquo;one trade&rdquo; to you can be dozens of API calls in a burst. Without pacing, a large fleet reaches the hourly cap quickly and every account starts collecting penalties." },
+    { type: "heading", text: "How to Fix Tradovate Time Penalties: Step-by-Step" },
+    { type: "heading", text: "Satisfying a p-ticket / p-time penalty" },
+    { type: "paragraph", html: "This is the core fix, and it's the pattern Tradovate documents directly:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Detect the penalty.</strong> After each request, check the response body for <code>p-ticket</code> and <code>p-time</code> (and watch for a <code>429</code> status). If they're present, the request was rejected.",
+        "<strong class='text-white'>Read p-time.</strong> This is your wait, in seconds. Don't retry before it elapses. An early retry just earns another penalty.",
+        "<strong class='text-white'>Wait the full duration.</strong> Sleep for <code>p-time</code> seconds (multiply by 1,000 for milliseconds if your timer expects them).",
+        "<strong class='text-white'>Resend the original request, with the ticket.</strong> Send the <em>exact same</em> endpoint and payload you sent before, but add the returned ticket value as a <code>\"p-ticket\"</code> field in the body.",
+      ],
+    },
+    { type: "paragraph", html: "In JavaScript, the official example looks like this:" },
+    { type: "quote", html: "<code>// You received: { \"p-ticket\": pTicket, \"p-time\": pTime }<br>setTimeout(async () =&gt; {<br>&nbsp;&nbsp;const okResponse = await fetch(URL + '/order/placeOrder', {<br>&nbsp;&nbsp;&nbsp;&nbsp;method: 'POST',<br>&nbsp;&nbsp;&nbsp;&nbsp;body: JSON.stringify({<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;accountSpec: yourUserName,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;accountId: yourAcctId,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;action: 'Buy',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;symbol: 'MYMM1',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;orderQty: 1,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;orderType: 'Market',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;isAutomated: true,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'p-ticket': pTicket &nbsp;&nbsp;&nbsp;&nbsp;// attach the ticket to the retry<br>&nbsp;&nbsp;&nbsp;&nbsp;})<br>&nbsp;&nbsp;})<br>}, 1000 * pTime) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// wait p-time seconds first</code>" },
+    { type: "paragraph", html: "The key details: keep the original payload identical, attach <code>p-ticket</code>, and only fire after <code>p-time</code> has fully elapsed." },
+    { type: "heading", text: "Handling a p-captcha response" },
+    { type: "paragraph", html: "A <code>p-captcha</code> field isn't a short wait, it's a stop sign:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Halt automated retries immediately.</strong> Continuing to call the endpoint keeps the block in place and can extend it.",
+        "<strong class='text-white'>Verify your credentials.</strong> Confirm the username, password, and app/API credentials are correct so the next attempt actually succeeds.",
+        "<strong class='text-white'>Wait about an hour</strong>, per Tradovate's guidance, before trying again.",
+        "<strong class='text-white'>Re-authenticate once</strong>, cleanly, after the cool-down. Don't resume a retry loop.",
+      ],
+    },
+    { type: "heading", text: "Clearing a severe or persistent p-ticket" },
+    { type: "paragraph", html: "If short <code>p-time</code> waits keep repeating, or your API access looks reduced or blocked for an extended period, you've moved past a single-call penalty into a structural rate problem. Fix the <em>rate</em>, not the symptom:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Throttle at the source.</strong> Add a token-bucket or fixed delay so you never approach the per-minute/per-hour caps.",
+        "<strong class='text-white'>Prefer WebSockets over REST polling.</strong> Subscribe to order and position events instead of repeatedly polling list endpoints.",
+        "<strong class='text-white'>Cut modify/cancel churn.</strong> Batch or debounce stop updates rather than rewriting them on every tick.",
+        "<strong class='text-white'>Stagger reconnections.</strong> Add a backoff delay between reconnect attempts so re-auth doesn't spike.",
+        "<strong class='text-white'>If access stays blocked</strong>, contact Tradovate support to confirm whether a manual reset is required. Some prolonged penalties won't clear on their own.",
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Response / error", "What it means", "Fix"],
+      rows: [
+        ["\"p-ticket\" + \"p-time\" in body", "Time penalty: request rejected, must wait then retry", "Wait p-time seconds, resend original request with \"p-ticket\" added"],
+        ["429 Too Many Requests", "You hit a per-second/minute/hour rate cap", "Back off, wait the short cooldown, then retry with reduced request rate"],
+        ["\"p-captcha\" in response", "Third-party app can't complete; treated as abuse/bad-credential lockout", "Stop retrying, verify credentials, wait ~1 hour before a single clean retry"],
+        ["Penalty repeats after each retry", "Sustained rate over the cap, not a one-off spike", "Throttle request rate, switch polling to WebSockets, reduce modifies"],
+        ["API access blocked for an extended period", "Escalated/severe penalty from repeated violations", "Pace all traffic; if still blocked, contact Tradovate support about a reset"],
+        ["Penalty right after login loop", "Reconnect/re-auth storm burned the cap", "Add backoff between reconnects; keep one stable session"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade routes your TradingView alerts to Tradovate through a managed automation layer, so you never hand-roll retry logic against the raw API:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Rate-Limit-Safe Routing</strong>, spaces order flow so calls stay under Tradovate's per-minute and per-hour caps instead of bursting into a penalty.",
+        "<strong class='text-white'>Built-In Retry &amp; Backoff</strong>, respects <code>p-time</code> waits and re-submits cleanly, so a transient penalty doesn't drop your trade.",
+        "<strong class='text-white'>Reconnect Management</strong>, maintains stable sessions with staggered reconnects, avoiding the re-auth storms that trigger <code>p-captcha</code>.",
+        "<strong class='text-white'>Multi-Account Pacing</strong>, fans a single signal out across accounts without multiplying you straight past the rate limit.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Wenn Ihr Bot Orders in schnelle Futures wie ES oder NQ feuert, bremst nichts eine automatisierte Tradovate-Strategie schneller aus als eine plötzliche <code>p-ticket</code> / <code>p-time</code>-Antwort. Die API stellt die Verarbeitung Ihrer Aufrufe unbemerkt ein und liefert statt einer Ausführung eine &ldquo;Zeitstrafe&rdquo; zurück. Sie können auch einen einfachen <code>429 Too Many Requests</code>, eine längere Sperre, die Ihr Konto für mehrere Minuten blockiert, oder ein <code>p-captcha</code>-Objekt sehen, das Sie für etwa eine Stunde aussperrt. All das ist Tradovates Rate-Limiting, das genau das tut, wofür es gebaut wurde: Clients zu drosseln, die zu schnell Anfragen senden." },
+    { type: "paragraph", html: "Die gute Nachricht: Die Lösung ist eindeutig festgelegt. Warten Sie die vom Server angegebene Anzahl an Sekunden ab und senden Sie dieselbe Anfrage anschließend mit dem angehängten Ticket erneut. Und wenn Sie diese Logik lieber nicht selbst programmieren möchten, sorgt eine sauber getaktete Automatisierungsebene wie PickMyTrade dafür, dass Ihr Orderfluss so verteilt wird, dass die Strafe erst gar nicht ausgelöst wird." },
+    {
+      type: "checklist",
+      heading: "Schnelle Checkliste für Tradovate-Zeitstrafenfehler",
+      items: [
+        "<strong class='text-white'>p-ticket und p-time erhalten?</strong> Warten Sie <code>p-time</code> Sekunden und senden Sie dann die <em>ursprüngliche</em> Anfrage erneut, mit <code>\"p-ticket\"</code> im Body.",
+        "<strong class='text-white'>429 Too Many Requests gesehen?</strong> Sie haben das Ratenlimit erreicht. Drosseln Sie und versuchen Sie es nach der kurzen Abkühlphase erneut (oft rund 20-30 Sekunden; die Dauer kann variieren).",
+        "<strong class='text-white'>Antwort enthält ein p-captcha-Feld?</strong> Stoppen Sie weitere Versuche und warten Sie etwa eine Stunde. Automatisierte Wiederholungen heben die Sperre nicht auf.",
+        "<strong class='text-white'>Strafe kommt immer wieder?</strong> Sie liegen strukturell über dem Limit. Drosseln Sie Ihre Anfragerate, nicht nur den einzelnen Aufruf.",
+        "<strong class='text-white'>Wiederholt in einer Schleife neu verbunden?</strong> Häufige Neuauthentifizierungen und Reconnect-Stürme sind ein Hauptauslöser. Fügen Sie eine Verzögerung zwischen den Verbindungsversuchen ein.",
+        "<strong class='text-white'>Sie betreiben viele Konten?</strong> Fan-out multipliziert Ihre Anfragenzahl. Takten oder verwenden Sie eine Warteschlange für Orders, damit die gesamte Flotte unter dem Limit bleibt.",
+      ],
+    },
+    { type: "heading", text: "Was die „p-ticket / p-time“-Zeitstrafenantwort bedeutet" },
+    { type: "paragraph", html: "Tradovate setzt Anfrageraten-Limits für seine REST-API durch. Überschreiten Sie einen Schwellenwert, verarbeitet der Server Ihre Anfrage <strong class='text-white'>nicht</strong>. Stattdessen gibt er ein kleines JSON-Objekt zurück, das eine <em>Zeitstrafe</em> beschreibt. Zwei Felder sind entscheidend: <code>p-ticket</code> (ein einmaliges Token, das belegt, dass Sie bestraft wurden) und <code>p-time</code> (die Anzahl der Sekunden, die Sie warten müssen, bevor Sie es erneut versuchen dürfen). Erhalten Sie dieses Objekt, bedeutet das, dass Ihr Aufruf abgelehnt und nicht in eine Warteschlange gestellt wurde. Auf dem Server ist nichts passiert, und es liegt an Ihrem Client, zu warten und erneut zu senden." },
+    { type: "paragraph", html: "Das unterscheidet sich bewusst von einem harten Fehler. Die Strafe ist ein &ldquo;Abkühlen und wiederkommen&rdquo;-Signal. Sobald Sie die angegebenen <code>p-time</code>-Sekunden abwarten und dieselbe Anfrage mit dem enthaltenen <code>p-ticket</code>-Wert erneut senden, akzeptiert der Server dies als Ihren autorisierten Wiederholungsversuch. Daneben kann Tradovate bei Erreichen eines Limits auch einfach einen <code>429 Too Many Requests</code>-HTTP-Status zurückgeben. Beide sind Symptome derselben Ursache: Sie haben Anfragen schneller gesendet, als die API zulässt." },
+    { type: "paragraph", html: "Es gibt eine dritte, ernstere Variante. Enthält eine Antwort ein <code>p-captcha</code>-Feld, besagt Tradovates eigene Dokumentation, dass eine Drittanbieteranwendung die Anfrage nicht abschließen kann und Clients &ldquo;angewiesen werden sollten, es in einer Stunde erneut zu versuchen.&rdquo; Dies tritt üblicherweise nach wiederholten Anmeldungen mit falschen Zugangsdaten oder aggressiven automatisierten Wiederholungsversuchen auf. Anders als bei einer normalen <code>p-time</code>-Wartezeit von wenigen Sekunden löst sich diese Sperre nicht durch fortgesetztes Anfragen an den Endpunkt." },
+    { type: "heading", text: "Häufigste Ursachen für Tradovate-Zeitstrafen" },
+    { type: "heading", text: "1. Überschreiten der Anfrageraten-Limits" },
+    { type: "paragraph", html: "Tradovate wendet Limits über Sekunden-, Minuten- und Stundenfenster an. Die Grenzwerte liegen üblicherweise bei etwa <strong class='text-white'>5.000 Anfragen pro Stunde und rund 80 Anfragen pro Minute</strong>, mit einer kurzen Sperre (häufig rund 20-30 Sekunden), wenn Sie ein Limit erstmals überschreiten. Betrachten Sie diese Werte als Orientierung, nicht als feste Regel. Die genauen Limits können sich ändern, prüfen Sie daher die aktuellen Zahlen in Tradovates Live-API-Dokumentation. Sobald Sie ein Zeitfenster überschreiten, stellt der Server die Verarbeitung von Anfragen ein und verhängt die Zeitstrafe." },
+    { type: "heading", text: "2. Schnelle Neuverbindungen und Re-Auth-Schleifen" },
+    { type: "paragraph", html: "Authentifizierungs- und WebSocket-Reconnect-Aufrufe zählen zu Ihrem Budget. Ein Client, der sich in einer engen Schleife anmeldet, die Verbindung verliert und sich erneut authentifiziert, kann das Limit rein durch diese Verwaltungsaufgaben aufbrauchen, noch bevor überhaupt eine Order platziert wird. Reconnect-Stürme sind eine der häufigsten Ursachen für die Strafe." },
+    { type: "heading", text: "3. Übermäßige Orderänderungen und Trailing-Stops" },
+    { type: "paragraph", html: "Jede Änderung, Stornierung und Ersetzung ist eine separate Anfrage. Strategien, die Stops laufend anpassen, etwa eine Trailing-Logik, die den Stop-Preis Tick für Tick über mehrere Konten hinweg neu schreibt, erzeugen eine Flut von Aufrufen. Dies ist eine der Hauptursachen für Strafen bei Copy-Trading- und Multi-Konto-Setups." },
+    { type: "heading", text: "4. Wiederholte Anmeldungen mit falschen Zugangsdaten (der p-captcha-Pfad)" },
+    { type: "paragraph", html: "Immer wieder den falschen Benutzernamen, das falsche Passwort oder falsche App-Zugangsdaten zu senden, führt nicht nur zu einem Fehlschlag, sondern eskaliert. Tradovate wertet eine Flut fehlgeschlagener Anmeldeversuche als Missbrauch und kann das <code>p-captcha</code>-Objekt zurückgeben, wodurch Sie statt einer wenige Sekunden dauernden <code>p-time</code>-Wartezeit in die etwa einstündige Abkühlphase geraten." },
+    { type: "heading", text: "5. Multi-Konto-Fan-out" },
+    { type: "paragraph", html: "Das Spiegeln eines Signals auf viele Tradovate-Konten multipliziert Ihre Anfragenzahl mit der Anzahl der Konten. Was sich für Sie wie &ldquo;ein Trade&rdquo; anfühlt, kann in Wirklichkeit Dutzende von API-Aufrufen in einer Burst sein. Ohne Taktung erreicht eine große Flotte schnell das Stundenlimit, und jedes Konto beginnt, Strafen zu sammeln." },
+    { type: "heading", text: "So beheben Sie Tradovate-Zeitstrafen: Schritt für Schritt" },
+    { type: "heading", text: "Eine p-ticket / p-time-Strafe auflösen" },
+    { type: "paragraph", html: "Dies ist die zentrale Lösung, und es ist genau das Muster, das Tradovate direkt dokumentiert:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Strafe erkennen.</strong> Prüfen Sie nach jeder Anfrage den Antwort-Body auf <code>p-ticket</code> und <code>p-time</code> (und achten Sie auf einen <code>429</code>-Status). Sind sie vorhanden, wurde die Anfrage abgelehnt.",
+        "<strong class='text-white'>p-time auslesen.</strong> Das ist Ihre Wartezeit in Sekunden. Versuchen Sie es nicht erneut, bevor diese abgelaufen ist. Ein zu früher Versuch bringt lediglich eine weitere Strafe ein.",
+        "<strong class='text-white'>Die volle Dauer abwarten.</strong> Pausieren Sie für <code>p-time</code> Sekunden (multiplizieren Sie mit 1.000, um Millisekunden zu erhalten, falls Ihr Timer diese erwartet).",
+        "<strong class='text-white'>Die ursprüngliche Anfrage mit dem Ticket erneut senden.</strong> Senden Sie <em>exakt denselben</em> Endpunkt und Payload wie zuvor, fügen Sie jedoch den zurückgegebenen Ticket-Wert als <code>\"p-ticket\"</code>-Feld im Body hinzu.",
+      ],
+    },
+    { type: "paragraph", html: "In JavaScript sieht das offizielle Beispiel so aus:" },
+    { type: "quote", html: "<code>// You received: { \"p-ticket\": pTicket, \"p-time\": pTime }<br>setTimeout(async () =&gt; {<br>&nbsp;&nbsp;const okResponse = await fetch(URL + '/order/placeOrder', {<br>&nbsp;&nbsp;&nbsp;&nbsp;method: 'POST',<br>&nbsp;&nbsp;&nbsp;&nbsp;body: JSON.stringify({<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;accountSpec: yourUserName,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;accountId: yourAcctId,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;action: 'Buy',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;symbol: 'MYMM1',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;orderQty: 1,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;orderType: 'Market',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;isAutomated: true,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'p-ticket': pTicket &nbsp;&nbsp;&nbsp;&nbsp;// attach the ticket to the retry<br>&nbsp;&nbsp;&nbsp;&nbsp;})<br>&nbsp;&nbsp;})<br>}, 1000 * pTime) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// wait p-time seconds first</code>" },
+    { type: "paragraph", html: "Die entscheidenden Details: den ursprünglichen Payload unverändert lassen, <code>p-ticket</code> anhängen und erst auslösen, nachdem <code>p-time</code> vollständig verstrichen ist." },
+    { type: "heading", text: "Umgang mit einer p-captcha-Antwort" },
+    { type: "paragraph", html: "Ein <code>p-captcha</code>-Feld ist keine kurze Wartezeit, sondern ein Stoppschild:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Automatisierte Wiederholungsversuche sofort stoppen.</strong> Wenn Sie den Endpunkt weiter aufrufen, bleibt die Sperre bestehen und kann sich verlängern.",
+        "<strong class='text-white'>Zugangsdaten überprüfen.</strong> Stellen Sie sicher, dass Benutzername, Passwort und App-/API-Zugangsdaten korrekt sind, damit der nächste Versuch tatsächlich erfolgreich ist.",
+        "<strong class='text-white'>Etwa eine Stunde warten</strong>, gemäß den Vorgaben von Tradovate, bevor Sie es erneut versuchen.",
+        "<strong class='text-white'>Einmal sauber neu authentifizieren</strong>, nach der Abkühlphase. Nehmen Sie keine Wiederholungsschleife wieder auf.",
+      ],
+    },
+    { type: "heading", text: "Eine schwerwiegende oder anhaltende p-ticket-Sperre aufheben" },
+    { type: "paragraph", html: "Wiederholen sich kurze <code>p-time</code>-Wartezeiten ständig, oder wirkt Ihr API-Zugriff über einen längeren Zeitraum eingeschränkt oder blockiert, sind Sie über eine einzelne Strafe hinaus in ein strukturelles Ratenproblem geraten. Beheben Sie die <em>Rate</em>, nicht nur das Symptom:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>An der Quelle drosseln.</strong> Fügen Sie einen Token-Bucket oder eine feste Verzögerung ein, damit Sie sich den Minuten-/Stundenlimits nie annähern.",
+        "<strong class='text-white'>WebSockets statt REST-Polling bevorzugen.</strong> Abonnieren Sie Order- und Positionsereignisse, anstatt Listen-Endpunkte wiederholt abzufragen.",
+        "<strong class='text-white'>Änderungen/Stornierungen reduzieren.</strong> Bündeln oder entprellen Sie Stop-Updates, statt sie bei jedem Tick neu zu schreiben.",
+        "<strong class='text-white'>Reconnects staffeln.</strong> Fügen Sie eine Backoff-Verzögerung zwischen den Verbindungsversuchen ein, damit Re-Auth nicht sprunghaft ansteigt.",
+        "<strong class='text-white'>Bleibt der Zugriff blockiert</strong>, wenden Sie sich an den Tradovate-Support, um zu klären, ob ein manueller Reset erforderlich ist. Manche anhaltenden Strafen lösen sich nicht von selbst.",
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Antwort / Fehler", "Was es bedeutet", "Lösung"],
+      rows: [
+        ["\"p-ticket\" + \"p-time\" im Body", "Zeitstrafe: Anfrage abgelehnt, warten und dann erneut senden", "p-time Sekunden warten, ursprüngliche Anfrage mit hinzugefügtem \"p-ticket\" erneut senden"],
+        ["429 Too Many Requests", "Sie haben ein Sekunden-/Minuten-/Stundenlimit erreicht", "Drosseln, kurze Abkühlphase abwarten und mit reduzierter Anfragerate erneut versuchen"],
+        ["\"p-captcha\" in der Antwort", "Drittanbieteranwendung kann nicht abschließen; wird als Missbrauch/Sperre wegen falscher Zugangsdaten behandelt", "Wiederholungsversuche stoppen, Zugangsdaten prüfen, ca. 1 Stunde warten, dann einmal sauber erneut versuchen"],
+        ["Strafe wiederholt sich nach jedem Versuch", "Anhaltende Rate über dem Limit, kein einmaliger Ausreißer", "Anfragerate drosseln, Polling auf WebSockets umstellen, Änderungen reduzieren"],
+        ["API-Zugriff über einen längeren Zeitraum blockiert", "Eskalierte/schwerwiegende Strafe durch wiederholte Verstöße", "Gesamten Datenverkehr takten; bleibt der Zugriff blockiert, Tradovate-Support wegen eines Resets kontaktieren"],
+        ["Strafe direkt nach einer Login-Schleife", "Reconnect-/Re-Auth-Sturm hat das Limit aufgebraucht", "Backoff zwischen Reconnects einfügen; eine stabile Sitzung beibehalten"],
+      ],
+    },
+    { type: "heading", text: "So verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade leitet Ihre TradingView-Alerts über eine verwaltete Automatisierungsebene an Tradovate weiter, sodass Sie niemals selbst Retry-Logik gegen die reine API programmieren müssen:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ratenlimit-sicheres Routing</strong>, verteilt den Orderfluss so, dass Aufrufe unter Tradovates Minuten- und Stundenlimits bleiben, statt in eine Strafe zu münden.",
+        "<strong class='text-white'>Integriertes Retry &amp; Backoff</strong>, respektiert <code>p-time</code>-Wartezeiten und sendet sauber erneut, sodass eine vorübergehende Strafe Ihren Trade nicht verwirft.",
+        "<strong class='text-white'>Reconnect-Management</strong>, hält stabile Sitzungen mit gestaffelten Reconnects aufrecht und vermeidet so die Re-Auth-Stürme, die <code>p-captcha</code> auslösen.",
+        "<strong class='text-white'>Multi-Konto-Taktung</strong>, verteilt ein einzelnes Signal über mehrere Konten, ohne Sie direkt über das Ratenlimit hinaus zu multiplizieren.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Cuando su bot dispara órdenes en futuros rápidos como el ES o el NQ, nada frena una estrategia automatizada de Tradovate más rápido que una respuesta repentina de <code>p-ticket</code> / <code>p-time</code>. La API deja de procesar silenciosamente sus llamadas y devuelve una &ldquo;penalización de tiempo&rdquo; en lugar de una ejecución. También puede ver un simple <code>429 Too Many Requests</code>, un bloqueo más largo que congela su cuenta durante varios minutos, o un objeto <code>p-captcha</code> que le deja fuera durante aproximadamente una hora. Todo esto es el límite de frecuencia de Tradovate haciendo exactamente lo que fue diseñado para hacer: limitar a los clientes que envían solicitudes demasiado rápido." },
+    { type: "paragraph", html: "La buena noticia es que la solución es determinista. Espere el número de segundos que le indique el servidor y, después, reenvíe la misma solicitud con el ticket adjunto. Y si prefiere no programar usted mismo esa lógica, una capa de automatización correctamente calibrada como PickMyTrade distribuye su flujo de órdenes para que la penalización rara vez llegue a activarse." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para errores de penalización de tiempo de Tradovate",
+      items: [
+        "<strong class='text-white'>¿Recibió un p-ticket y un p-time?</strong> Espere <code>p-time</code> segundos y reenvíe la solicitud <em>original</em> con <code>\"p-ticket\"</code> añadido al cuerpo.",
+        "<strong class='text-white'>¿Ve un 429 Too Many Requests?</strong> Ha alcanzado el límite de frecuencia. Reduzca el ritmo y vuelva a intentarlo tras el breve periodo de espera (a menudo unos 20-30 segundos; la duración varía).",
+        "<strong class='text-white'>¿La respuesta contiene un campo p-captcha?</strong> Deje de reintentar y espere aproximadamente una hora. Los reintentos automáticos no la eliminarán.",
+        "<strong class='text-white'>¿La penalización sigue repitiéndose?</strong> Está superando el límite de forma estructural. Limite su tasa de solicitudes, no solo la llamada individual.",
+        "<strong class='text-white'>¿Se reconecta en bucle?</strong> Las reautenticaciones frecuentes y las ráfagas de reconexión son una causa principal. Añada un retardo entre las reconexiones.",
+        "<strong class='text-white'>¿Gestiona muchas cuentas?</strong> La distribución multiplica su número de solicitudes. Regule o encole las órdenes para que toda la flota se mantenga por debajo del límite.",
+      ],
+    },
+    { type: "heading", text: "Qué significa la respuesta de penalización de tiempo «p-ticket / p-time»" },
+    { type: "paragraph", html: "Tradovate aplica límites de frecuencia de solicitudes en su API REST. Si supera un umbral, el servidor <strong class='text-white'>no</strong> procesa su solicitud. En su lugar, devuelve un pequeño objeto JSON que describe una <em>penalización de tiempo</em>. Dos campos son relevantes: <code>p-ticket</code> (un token de un solo uso que certifica que fue penalizado) y <code>p-time</code> (el número de segundos que debe esperar antes de poder intentarlo de nuevo). Recibir este objeto significa que su llamada fue rechazada, no puesta en cola. No ha ocurrido nada en el servidor, y le corresponde a su cliente esperar y reenviar la solicitud." },
+    { type: "paragraph", html: "Esto es deliberadamente distinto de un fallo grave. La penalización es una señal de &ldquo;enfríese y vuelva&rdquo;. En cuanto espere los segundos de <code>p-time</code> indicados y reenvíe exactamente la misma solicitud incluyendo el valor de <code>p-ticket</code>, el servidor la acepta como su reintento autorizado. Además, Tradovate también puede devolver un simple estado HTTP <code>429 Too Many Requests</code> cuando se alcanza un límite. Ambos son síntomas de la misma causa raíz: envió solicitudes más rápido de lo que permite la API." },
+    { type: "paragraph", html: "Existe una tercera variante, más grave. Si una respuesta contiene un campo <code>p-captcha</code>, la propia documentación de Tradovate indica que una aplicación de terceros no puede completar la solicitud y que a los clientes &ldquo;se les debe indicar que lo intenten de nuevo en una hora.&rdquo; Esto suele aparecer tras repetidos inicios de sesión con credenciales incorrectas o reintentos automáticos agresivos. A diferencia de una espera normal de <code>p-time</code> de unos segundos, no se resuelve insistiendo contra el endpoint." },
+    { type: "heading", text: "Principales causas de las penalizaciones de tiempo de Tradovate" },
+    { type: "heading", text: "1. Superar los límites de frecuencia de solicitudes" },
+    { type: "paragraph", html: "Tradovate aplica límites en ventanas por segundo, por minuto y por hora. Los topes suelen situarse en torno a <strong class='text-white'>5.000 solicitudes por hora y unas 80 solicitudes por minuto</strong>, con un bloqueo breve (a menudo citado en torno a 20-30 segundos) la primera vez que supera un límite. Considere estas cifras como orientativas, no como norma fija. Los límites exactos pueden cambiar, así que confirme las cifras actuales en la documentación en vivo de la API de Tradovate. En el momento en que sobrepasa una ventana, el servidor deja de procesar solicitudes e impone la penalización de tiempo." },
+    { type: "heading", text: "2. Reconexiones rápidas y bucles de reautenticación" },
+    { type: "paragraph", html: "Las llamadas de autenticación y reconexión de WebSocket cuentan dentro de su presupuesto de solicitudes. Un cliente que inicia sesión, se desconecta y se reautentica en un bucle cerrado puede agotar el límite únicamente con estas tareas de mantenimiento, antes incluso de colocar una orden. Las ráfagas de reconexión son una de las causas más comunes de esta penalización." },
+    { type: "heading", text: "3. Modificaciones excesivas de órdenes y stops dinámicos" },
+    { type: "paragraph", html: "Cada modificación, cancelación y reemplazo es una solicitud independiente. Las estrategias que ajustan constantemente los stops, como una lógica de seguimiento que reescribe el precio de stop tick a tick en varias cuentas, generan un torrente de llamadas. Esta es una causa principal de penalizaciones en configuraciones de copy-trading y de múltiples cuentas." },
+    { type: "heading", text: "4. Inicios de sesión repetidos con credenciales incorrectas (la vía del p-captcha)" },
+    { type: "paragraph", html: "Enviar repetidamente el nombre de usuario, la contraseña o las credenciales de la aplicación incorrectas no solo falla, sino que escala. Tradovate trata una avalancha de intentos de autenticación fallidos como abuso y puede devolver el objeto <code>p-captcha</code>, lo que le lleva a un enfriamiento de aproximadamente una hora en lugar de una espera de <code>p-time</code> de unos segundos." },
+    { type: "heading", text: "5. Distribución en múltiples cuentas" },
+    { type: "paragraph", html: "Replicar una señal en muchas cuentas de Tradovate multiplica su número de solicitudes por la cantidad de cuentas. Lo que a usted le parece &ldquo;una operación&rdquo; puede traducirse en docenas de llamadas a la API en ráfaga. Sin una regulación adecuada, una flota grande alcanza rápidamente el límite horario y cada cuenta empieza a acumular penalizaciones." },
+    { type: "heading", text: "Cómo solucionar las penalizaciones de tiempo de Tradovate: paso a paso" },
+    { type: "heading", text: "Cómo resolver una penalización p-ticket / p-time" },
+    { type: "paragraph", html: "Esta es la solución principal, y es el patrón que Tradovate documenta directamente:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Detecte la penalización.</strong> Tras cada solicitud, revise el cuerpo de la respuesta en busca de <code>p-ticket</code> y <code>p-time</code> (y vigile un estado <code>429</code>). Si están presentes, la solicitud fue rechazada.",
+        "<strong class='text-white'>Lea p-time.</strong> Este es su tiempo de espera, en segundos. No reintente antes de que transcurra. Un reintento anticipado solo genera otra penalización.",
+        "<strong class='text-white'>Espere la duración completa.</strong> Pause durante <code>p-time</code> segundos (multiplique por 1000 para obtener milisegundos si su temporizador los requiere).",
+        "<strong class='text-white'>Reenvíe la solicitud original con el ticket.</strong> Envíe <em>exactamente el mismo</em> endpoint y payload que envió antes, pero añada el valor del ticket devuelto como campo <code>\"p-ticket\"</code> en el cuerpo.",
+      ],
+    },
+    { type: "paragraph", html: "En JavaScript, el ejemplo oficial es el siguiente:" },
+    { type: "quote", html: "<code>// You received: { \"p-ticket\": pTicket, \"p-time\": pTime }<br>setTimeout(async () =&gt; {<br>&nbsp;&nbsp;const okResponse = await fetch(URL + '/order/placeOrder', {<br>&nbsp;&nbsp;&nbsp;&nbsp;method: 'POST',<br>&nbsp;&nbsp;&nbsp;&nbsp;body: JSON.stringify({<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;accountSpec: yourUserName,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;accountId: yourAcctId,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;action: 'Buy',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;symbol: 'MYMM1',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;orderQty: 1,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;orderType: 'Market',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;isAutomated: true,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'p-ticket': pTicket &nbsp;&nbsp;&nbsp;&nbsp;// attach the ticket to the retry<br>&nbsp;&nbsp;&nbsp;&nbsp;})<br>&nbsp;&nbsp;})<br>}, 1000 * pTime) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// wait p-time seconds first</code>" },
+    { type: "paragraph", html: "Los detalles clave: mantenga el payload original idéntico, adjunte <code>p-ticket</code> y dispare la solicitud solo cuando <code>p-time</code> haya transcurrido por completo." },
+    { type: "heading", text: "Cómo gestionar una respuesta p-captcha" },
+    { type: "paragraph", html: "Un campo <code>p-captcha</code> no es una espera breve, es una señal de alto:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Detenga de inmediato los reintentos automáticos.</strong> Seguir llamando al endpoint mantiene el bloqueo y puede prolongarlo.",
+        "<strong class='text-white'>Verifique sus credenciales.</strong> Confirme que el nombre de usuario, la contraseña y las credenciales de la aplicación o de la API sean correctos para que el siguiente intento tenga éxito.",
+        "<strong class='text-white'>Espere aproximadamente una hora</strong>, según las indicaciones de Tradovate, antes de volver a intentarlo.",
+        "<strong class='text-white'>Reautentíquese una sola vez</strong>, de forma limpia, tras el periodo de enfriamiento. No reanude un bucle de reintentos.",
+      ],
+    },
+    { type: "heading", text: "Cómo resolver un p-ticket grave o persistente" },
+    { type: "paragraph", html: "Si las esperas breves de <code>p-time</code> se repiten constantemente, o si su acceso a la API parece reducido o bloqueado durante un periodo prolongado, ha pasado de una penalización puntual a un problema estructural de frecuencia. Corrija la <em>frecuencia</em>, no el síntoma:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Limite en el origen.</strong> Añada un token-bucket o un retardo fijo para no acercarse nunca a los límites por minuto/hora.",
+        "<strong class='text-white'>Prefiera WebSockets al polling REST.</strong> Suscríbase a eventos de órdenes y posiciones en lugar de consultar repetidamente los endpoints de listas.",
+        "<strong class='text-white'>Reduzca las modificaciones/cancelaciones excesivas.</strong> Agrupe o limite la frecuencia de las actualizaciones de stop en lugar de reescribirlas en cada tick.",
+        "<strong class='text-white'>Escalone las reconexiones.</strong> Añada un retardo con backoff entre los intentos de reconexión para que la reautenticación no se dispare.",
+        "<strong class='text-white'>Si el acceso sigue bloqueado</strong>, póngase en contacto con el soporte de Tradovate para confirmar si es necesario un restablecimiento manual. Algunas penalizaciones prolongadas no se resuelven por sí solas.",
+      ],
+    },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Respuesta / error", "Qué significa", "Solución"],
+      rows: [
+        ["\"p-ticket\" + \"p-time\" en el cuerpo", "Penalización de tiempo: solicitud rechazada, debe esperar y reintentar", "Espere p-time segundos, reenvíe la solicitud original con \"p-ticket\" añadido"],
+        ["429 Too Many Requests", "Ha alcanzado un límite de frecuencia por segundo/minuto/hora", "Reduzca el ritmo, espere el breve enfriamiento y reintente con una tasa de solicitudes menor"],
+        ["\"p-captcha\" en la respuesta", "La aplicación de terceros no puede completarse; se trata como abuso/bloqueo por credenciales incorrectas", "Deje de reintentar, verifique las credenciales, espere ~1 hora antes de un único reintento limpio"],
+        ["La penalización se repite en cada reintento", "Tasa sostenida por encima del límite, no un pico puntual", "Limite la tasa de solicitudes, cambie el polling a WebSockets, reduzca las modificaciones"],
+        ["Acceso a la API bloqueado durante un periodo prolongado", "Penalización agravada/grave por infracciones repetidas", "Regule todo el tráfico; si sigue bloqueado, contacte con el soporte de Tradovate sobre un restablecimiento"],
+        ["Penalización justo después de un bucle de inicio de sesión", "Una ráfaga de reconexión/reautenticación agotó el límite", "Añada backoff entre las reconexiones; mantenga una única sesión estable"],
+      ],
+    },
+    { type: "heading", text: "Cómo evitarlo con PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade encamina sus alertas de TradingView hacia Tradovate a través de una capa de automatización gestionada, para que nunca tenga que programar usted mismo la lógica de reintento contra la API en bruto:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Enrutamiento seguro frente a límites de frecuencia</strong>, distribuye el flujo de órdenes para que las llamadas se mantengan por debajo de los límites por minuto y por hora de Tradovate en lugar de desembocar en una penalización.",
+        "<strong class='text-white'>Reintento y backoff integrados</strong>, respeta las esperas de <code>p-time</code> y reenvía de forma limpia, para que una penalización pasajera no le haga perder la operación.",
+        "<strong class='text-white'>Gestión de reconexiones</strong>, mantiene sesiones estables con reconexiones escalonadas, evitando las ráfagas de reautenticación que activan <code>p-captcha</code>.",
+        "<strong class='text-white'>Regulación multi-cuenta</strong>, distribuye una sola señal entre varias cuentas sin multiplicarla directamente por encima del límite de frecuencia.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Lorsque votre bot envoie des ordres sur des contrats à terme rapides comme le ES ou le NQ, rien ne bloque plus vite une stratégie Tradovate automatisée qu'une réponse soudaine <code>p-ticket</code> / <code>p-time</code>. L'API cesse silencieusement de traiter vos appels et renvoie une &ldquo;pénalité de temps&rdquo; au lieu d'une exécution. Vous pouvez aussi voir un simple <code>429 Too Many Requests</code>, un blocage plus long qui verrouille votre compte pendant plusieurs minutes, ou un objet <code>p-captcha</code> qui vous exclut pendant environ une heure. Tout cela est la limitation de débit de Tradovate qui fait exactement ce pour quoi elle a été conçue : freiner les clients qui envoient des requêtes trop rapidement." },
+    { type: "paragraph", html: "Voici la partie rassurante : la solution est déterministe. Attendez le nombre de secondes indiqué par le serveur, puis renvoyez la même requête avec le ticket joint. Et si vous préférez ne pas coder cette logique vous-même, une couche d'automatisation correctement cadencée comme PickMyTrade répartit votre flux d'ordres afin que la pénalité se déclenche rarement." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide pour les erreurs de pénalité de temps Tradovate",
+      items: [
+        "<strong class='text-white'>Vous avez reçu un p-ticket et un p-time ?</strong> Attendez <code>p-time</code> secondes, puis renvoyez la requête <em>d'origine</em> avec <code>\"p-ticket\"</code> ajouté au corps.",
+        "<strong class='text-white'>Vous voyez un 429 Too Many Requests ?</strong> Vous avez atteint la limite de débit. Ralentissez, puis réessayez après le court délai de récupération (souvent environ 20 à 30 secondes ; la durée varie).",
+        "<strong class='text-white'>La réponse contient un champ p-captcha ?</strong> Arrêtez de réessayer et attendez environ une heure. Les nouvelles tentatives automatiques ne lèveront pas le blocage.",
+        "<strong class='text-white'>La pénalité revient sans cesse ?</strong> Vous dépassez la limite de manière structurelle. Limitez votre débit de requêtes, pas seulement l'appel isolé.",
+        "<strong class='text-white'>Reconnexions en boucle ?</strong> Les réauthentifications fréquentes et les rafales de reconnexion sont une cause majeure. Ajoutez un délai entre les reconnexions.",
+        "<strong class='text-white'>Vous gérez de nombreux comptes ?</strong> La diffusion multiplie votre nombre de requêtes. Cadencez ou mettez les ordres en file d'attente pour que l'ensemble du parc reste sous la limite.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie la réponse de pénalité de temps « p-ticket / p-time »" },
+    { type: "paragraph", html: "Tradovate applique des limites de débit de requêtes sur son API REST. Si vous franchissez un seuil, le serveur ne traite <strong class='text-white'>pas</strong> votre requête. Il renvoie à la place un petit objet JSON décrivant une <em>pénalité de temps</em>. Deux champs comptent : <code>p-ticket</code> (un jeton à usage unique prouvant que vous avez été pénalisé) et <code>p-time</code> (le nombre de secondes à attendre avant d'être autorisé à réessayer). Recevoir cet objet signifie que votre appel a été rejeté, et non mis en file d'attente. Rien ne s'est produit côté serveur, et c'est à votre client d'attendre puis de renvoyer la requête." },
+    { type: "paragraph", html: "Ceci diffère volontairement d'un échec définitif. La pénalité est un signal de type &ldquo;patientez, puis revenez&rdquo;. Dès que vous attendez les secondes de <code>p-time</code> indiquées et renvoyez exactement la même requête en incluant la valeur de <code>p-ticket</code>, le serveur l'accepte comme votre nouvelle tentative autorisée. Par ailleurs, Tradovate peut aussi renvoyer un simple statut HTTP <code>429 Too Many Requests</code> lorsqu'une limite est atteinte. Les deux sont les symptômes d'une même cause : vous avez envoyé des requêtes plus vite que l'API ne le permet." },
+    { type: "paragraph", html: "Il existe une troisième variante, plus grave. Si une réponse contient un champ <code>p-captcha</code>, la documentation de Tradovate elle-même indique qu'une application tierce ne peut pas finaliser la requête et que les clients &ldquo;doivent être invités à réessayer dans une heure.&rdquo; Cela survient généralement après des connexions répétées avec des identifiants incorrects ou des tentatives automatiques agressives. Contrairement à une attente normale de <code>p-time</code> de quelques secondes, ce blocage ne se lève pas en martelant l'endpoint." },
+    { type: "heading", text: "Principales causes des pénalités de temps Tradovate" },
+    { type: "heading", text: "1. Dépassement des limites de débit de requêtes" },
+    { type: "paragraph", html: "Tradovate applique des limites sur des fenêtres par seconde, par minute et par heure. Les plafonds se situent généralement autour de <strong class='text-white'>5 000 requêtes par heure et environ 80 requêtes par minute</strong>, avec un court blocage (souvent cité autour de 20 à 30 secondes) la première fois que vous dépassez une limite. Considérez ces chiffres comme indicatifs, pas comme une règle absolue. Les plafonds exacts peuvent évoluer, vérifiez donc les valeurs actuelles dans la documentation API en direct de Tradovate. Dès que vous dépassez une fenêtre, le serveur cesse de traiter les requêtes et applique la pénalité de temps." },
+    { type: "heading", text: "2. Reconnexions rapides et boucles de réauthentification" },
+    { type: "paragraph", html: "Les appels d'authentification et de reconnexion WebSocket comptent dans votre budget de requêtes. Un client qui se connecte, se déconnecte et se réauthentifie dans une boucle serrée peut épuiser la limite rien qu'avec ces tâches d'entretien, avant même de placer un ordre. Les rafales de reconnexion sont l'une des causes les plus fréquentes de cette pénalité." },
+    { type: "heading", text: "3. Modifications d'ordres excessives et stops suiveurs" },
+    { type: "paragraph", html: "Chaque modification, annulation et remplacement constitue une requête distincte. Les stratégies qui ajustent constamment les stops, comme une logique de trailing qui réécrit le prix du stop tick par tick sur plusieurs comptes, génèrent un torrent d'appels. C'est l'une des principales causes de pénalités pour les configurations de copy-trading et multi-comptes." },
+    { type: "heading", text: "4. Connexions répétées avec des identifiants incorrects (la voie du p-captcha)" },
+    { type: "paragraph", html: "Envoyer à répétition un nom d'utilisateur, un mot de passe ou des identifiants d'application incorrects ne se contente pas d'échouer, cela s'aggrave. Tradovate considère une avalanche de tentatives d'authentification échouées comme un abus et peut renvoyer l'objet <code>p-captcha</code>, vous plongeant dans un temps de récupération d'environ une heure au lieu d'une attente de <code>p-time</code> de quelques secondes." },
+    { type: "heading", text: "5. Diffusion multi-comptes" },
+    { type: "paragraph", html: "Répliquer un signal sur de nombreux comptes Tradovate multiplie votre nombre de requêtes par le nombre de comptes. Ce qui vous semble être &ldquo;un seul trade&rdquo; peut représenter des dizaines d'appels API en rafale. Sans cadencement, un grand parc de comptes atteint rapidement le plafond horaire et chaque compte commence à accumuler des pénalités." },
+    { type: "heading", text: "Comment corriger les pénalités de temps Tradovate : étape par étape" },
+    { type: "heading", text: "Répondre à une pénalité p-ticket / p-time" },
+    { type: "paragraph", html: "Voici la solution principale, et c'est le schéma que Tradovate documente directement :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Détectez la pénalité.</strong> Après chaque requête, vérifiez le corps de la réponse pour <code>p-ticket</code> et <code>p-time</code> (et surveillez un statut <code>429</code>). S'ils sont présents, la requête a été rejetée.",
+        "<strong class='text-white'>Lisez p-time.</strong> Il s'agit de votre délai d'attente, en secondes. Ne réessayez pas avant qu'il ne soit écoulé. Une nouvelle tentative anticipée n'apporte qu'une pénalité supplémentaire.",
+        "<strong class='text-white'>Attendez la durée complète.</strong> Suspendez l'exécution pendant <code>p-time</code> secondes (multipliez par 1 000 pour obtenir des millisecondes si votre minuteur les attend).",
+        "<strong class='text-white'>Renvoyez la requête d'origine, avec le ticket.</strong> Envoyez <em>exactement le même</em> endpoint et la même charge utile qu'auparavant, en ajoutant la valeur du ticket renvoyé comme champ <code>\"p-ticket\"</code> dans le corps.",
+      ],
+    },
+    { type: "paragraph", html: "En JavaScript, l'exemple officiel se présente ainsi :" },
+    { type: "quote", html: "<code>// You received: { \"p-ticket\": pTicket, \"p-time\": pTime }<br>setTimeout(async () =&gt; {<br>&nbsp;&nbsp;const okResponse = await fetch(URL + '/order/placeOrder', {<br>&nbsp;&nbsp;&nbsp;&nbsp;method: 'POST',<br>&nbsp;&nbsp;&nbsp;&nbsp;body: JSON.stringify({<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;accountSpec: yourUserName,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;accountId: yourAcctId,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;action: 'Buy',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;symbol: 'MYMM1',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;orderQty: 1,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;orderType: 'Market',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;isAutomated: true,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'p-ticket': pTicket &nbsp;&nbsp;&nbsp;&nbsp;// attach the ticket to the retry<br>&nbsp;&nbsp;&nbsp;&nbsp;})<br>&nbsp;&nbsp;})<br>}, 1000 * pTime) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// wait p-time seconds first</code>" },
+    { type: "paragraph", html: "Les points clés : conservez la charge utile d'origine à l'identique, joignez <code>p-ticket</code>, et ne déclenchez la requête qu'une fois <code>p-time</code> entièrement écoulé." },
+    { type: "heading", text: "Gérer une réponse p-captcha" },
+    { type: "paragraph", html: "Un champ <code>p-captcha</code> n'est pas une courte attente, c'est un panneau stop :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Arrêtez immédiatement les tentatives automatiques.</strong> Continuer à appeler l'endpoint maintient le blocage en place et peut le prolonger.",
+        "<strong class='text-white'>Vérifiez vos identifiants.</strong> Confirmez que le nom d'utilisateur, le mot de passe et les identifiants de l'application/API sont corrects afin que la prochaine tentative aboutisse réellement.",
+        "<strong class='text-white'>Attendez environ une heure</strong>, conformément aux recommandations de Tradovate, avant de réessayer.",
+        "<strong class='text-white'>Réauthentifiez-vous une seule fois</strong>, proprement, après le temps de récupération. Ne relancez pas une boucle de tentatives.",
+      ],
+    },
+    { type: "heading", text: "Lever un p-ticket sévère ou persistant" },
+    { type: "paragraph", html: "Si de courtes attentes de <code>p-time</code> se répètent sans cesse, ou si votre accès à l'API semble réduit ou bloqué sur une période prolongée, vous êtes passé d'une pénalité ponctuelle à un problème structurel de débit. Corrigez le <em>débit</em>, pas le symptôme :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Limitez à la source.</strong> Ajoutez un token-bucket ou un délai fixe pour ne jamais approcher des plafonds par minute/heure.",
+        "<strong class='text-white'>Préférez les WebSockets au polling REST.</strong> Abonnez-vous aux événements d'ordres et de positions au lieu d'interroger sans cesse les endpoints de liste.",
+        "<strong class='text-white'>Réduisez le va-et-vient de modifications/annulations.</strong> Regroupez ou temporisez les mises à jour de stop plutôt que de les réécrire à chaque tick.",
+        "<strong class='text-white'>Échelonnez les reconnexions.</strong> Ajoutez un délai de backoff entre les tentatives de reconnexion pour éviter un pic de réauthentification.",
+        "<strong class='text-white'>Si l'accès reste bloqué</strong>, contactez le support Tradovate pour confirmer si une réinitialisation manuelle est nécessaire. Certaines pénalités prolongées ne se lèvent pas d'elles-mêmes.",
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Réponse / erreur", "Ce que cela signifie", "Solution"],
+      rows: [
+        ["\"p-ticket\" + \"p-time\" dans le corps", "Pénalité de temps : requête rejetée, attendre puis réessayer", "Attendez p-time secondes, renvoyez la requête d'origine avec \"p-ticket\" ajouté"],
+        ["429 Too Many Requests", "Vous avez atteint une limite de débit par seconde/minute/heure", "Ralentissez, attendez le court délai de récupération, puis réessayez avec un débit réduit"],
+        ["\"p-captcha\" dans la réponse", "Application tierce incapable de finaliser ; traité comme un abus/blocage lié à des identifiants incorrects", "Arrêtez de réessayer, vérifiez les identifiants, attendez ~1 heure avant une seule tentative propre"],
+        ["La pénalité se répète à chaque tentative", "Débit soutenu au-dessus de la limite, pas un pic isolé", "Limitez le débit de requêtes, remplacez le polling par des WebSockets, réduisez les modifications"],
+        ["Accès API bloqué sur une période prolongée", "Pénalité aggravée/sévère due à des infractions répétées", "Cadencez l'ensemble du trafic ; si le blocage persiste, contactez le support Tradovate au sujet d'une réinitialisation"],
+        ["Pénalité juste après une boucle de connexion", "Une rafale de reconnexion/réauthentification a épuisé la limite", "Ajoutez un backoff entre les reconnexions ; conservez une seule session stable"],
+      ],
+    },
+    { type: "heading", text: "Comment éviter cela avec PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade achemine vos alertes TradingView vers Tradovate via une couche d'automatisation gérée, afin que vous n'ayez jamais à coder vous-même la logique de nouvelle tentative face à l'API brute :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Routage sécurisé vis-à-vis des limites de débit</strong>, répartit le flux d'ordres pour que les appels restent sous les plafonds par minute et par heure de Tradovate au lieu de déclencher une pénalité.",
+        "<strong class='text-white'>Nouvelle tentative et backoff intégrés</strong>, respecte les attentes de <code>p-time</code> et renvoie proprement, afin qu'une pénalité passagère ne fasse pas perdre votre trade.",
+        "<strong class='text-white'>Gestion des reconnexions</strong>, maintient des sessions stables avec des reconnexions échelonnées, évitant les rafales de réauthentification qui déclenchent <code>p-captcha</code>.",
+        "<strong class='text-white'>Cadencement multi-comptes</strong>, diffuse un seul signal sur plusieurs comptes sans vous faire dépasser directement la limite de débit par simple multiplication.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Quando il bot invia ordini su future veloci come ES o NQ, nulla blocca una strategia Tradovate automatizzata più rapidamente di un'improvvisa risposta <code>p-ticket</code> / <code>p-time</code>. L'API smette silenziosamente di gestire le chiamate e restituisce una &ldquo;penalità di tempo&rdquo; invece di un'esecuzione. Può anche comparire un semplice <code>429 Too Many Requests</code>, un blocco più lungo che congela l'account per alcuni minuti, oppure un oggetto <code>p-captcha</code> che esclude l'accesso per circa un'ora. Tutto ciò è il rate-limiting di Tradovate che fa esattamente ciò per cui è stato progettato: frenare i client che inviano richieste troppo rapidamente." },
+    { type: "paragraph", html: "Ecco la parte rassicurante: la soluzione è deterministica. Attenda il numero di secondi indicato dal server, quindi reinvii la stessa richiesta con il ticket allegato. E se preferisce non implementare questa logica da sé, un livello di automazione correttamente calibrato come PickMyTrade distribuisce il flusso di ordini in modo che la penalità si attivi raramente." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per gli errori di penalità di tempo di Tradovate",
+      items: [
+        "<strong class='text-white'>Ha ricevuto un p-ticket e un p-time?</strong> Attenda <code>p-time</code> secondi, quindi reinvii la richiesta <em>originale</em> con <code>\"p-ticket\"</code> aggiunto al body.",
+        "<strong class='text-white'>Compare 429 Too Many Requests?</strong> Ha raggiunto il limite di frequenza. Rallenti e riprovi dopo il breve periodo di attesa (spesso circa 20-30 secondi; la durata varia).",
+        "<strong class='text-white'>La risposta contiene un campo p-captcha?</strong> Interrompa i tentativi e attenda circa un'ora. I tentativi automatici non lo rimuoveranno.",
+        "<strong class='text-white'>La penalità continua a ripresentarsi?</strong> Sta superando il limite in modo strutturale. Limiti la frequenza delle richieste, non solo la singola chiamata.",
+        "<strong class='text-white'>Si riconnette in loop?</strong> Le riautenticazioni frequenti e le raffiche di riconnessione sono una causa principale. Aggiunga un ritardo tra le riconnessioni.",
+        "<strong class='text-white'>Gestisce molti account?</strong> Il fan-out moltiplica il numero di richieste. Scandisca o metta in coda gli ordini affinché l'intera flotta resti sotto il limite.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa la risposta di penalità di tempo «p-ticket / p-time»" },
+    { type: "paragraph", html: "Tradovate applica limiti di frequenza delle richieste sulla sua API REST. Se si supera una soglia, il server <strong class='text-white'>non</strong> elabora la richiesta. Restituisce invece un piccolo oggetto JSON che descrive una <em>penalità di tempo</em>. Due campi sono rilevanti: <code>p-ticket</code> (un token monouso che dimostra che è stata applicata una penalità) e <code>p-time</code> (il numero di secondi da attendere prima di poter riprovare). Ricevere questo oggetto significa che la chiamata è stata rifiutata, non messa in coda. Sul server non è successo nulla, e spetta al client attendere e reinviare la richiesta." },
+    { type: "paragraph", html: "Questo è volutamente diverso da un errore grave. La penalità è un segnale del tipo &ldquo;attenda e ritorni&rdquo;. Non appena attende i secondi di <code>p-time</code> indicati e reinvia esattamente la stessa richiesta includendo il valore di <code>p-ticket</code>, il server la accetta come nuovo tentativo autorizzato. Inoltre, Tradovate può anche restituire un semplice stato HTTP <code>429 Too Many Requests</code> quando viene raggiunto un limite. Entrambi sono sintomi della stessa causa: sono state inviate richieste più velocemente di quanto l'API consenta." },
+    { type: "paragraph", html: "Esiste una terza variante, più grave. Se una risposta contiene un campo <code>p-captcha</code>, la documentazione ufficiale di Tradovate afferma che un'applicazione di terze parti non può completare la richiesta e che ai client &ldquo;deve essere indicato di riprovare tra un'ora.&rdquo; Questo si verifica solitamente dopo ripetuti accessi con credenziali errate o tentativi automatici aggressivi. A differenza di una normale attesa di <code>p-time</code> di pochi secondi, non si risolve continuando a colpire l'endpoint." },
+    { type: "heading", text: "Le principali cause delle penalità di tempo di Tradovate" },
+    { type: "heading", text: "1. Superamento dei limiti di frequenza delle richieste" },
+    { type: "paragraph", html: "Tradovate applica limiti su finestre al secondo, al minuto e all'ora. I tetti si attestano solitamente intorno a <strong class='text-white'>5.000 richieste all'ora e circa 80 richieste al minuto</strong>, con un breve blocco (spesso citato intorno a 20-30 secondi) la prima volta che si supera un limite. Consideri questi valori come indicativi, non come regola fissa. I limiti esatti possono cambiare, quindi verifichi i numeri attuali nella documentazione API live di Tradovate. Nel momento in cui si supera una finestra, il server smette di gestire le richieste e applica la penalità di tempo." },
+    { type: "heading", text: "2. Riconnessioni rapide e loop di riautenticazione" },
+    { type: "paragraph", html: "Le chiamate di autenticazione e di riconnessione WebSocket rientrano nel budget di richieste. Un client che effettua login, si disconnette e si riautentica in un loop stretto può esaurire il limite solo con queste operazioni di gestione, ancora prima di inviare un ordine. Le raffiche di riconnessione sono una delle cause più comuni di questa penalità." },
+    { type: "heading", text: "3. Modifiche eccessive agli ordini e stop dinamici" },
+    { type: "paragraph", html: "Ogni modifica, cancellazione e sostituzione è una richiesta separata. Le strategie che regolano costantemente gli stop, come una logica trailing che riscrive il prezzo dello stop tick dopo tick su più account, generano un torrente di chiamate. Questa è una delle cause principali delle penalità nelle configurazioni di copy-trading e multi-account." },
+    { type: "heading", text: "4. Accessi ripetuti con credenziali errate (il percorso p-captcha)" },
+    { type: "paragraph", html: "Inviare ripetutamente nome utente, password o credenziali dell'app errati non si limita a fallire, ma peggiora la situazione. Tradovate considera un'ondata di tentativi di autenticazione falliti come un abuso e può restituire l'oggetto <code>p-captcha</code>, facendo scattare un raffreddamento di circa un'ora anziché una semplice attesa di <code>p-time</code> di pochi secondi." },
+    { type: "heading", text: "5. Fan-out su più account" },
+    { type: "paragraph", html: "Replicare un segnale su molti account Tradovate moltiplica il numero di richieste per il numero di account. Quello che per l'utente sembra &ldquo;un solo trade&rdquo; può tradursi in decine di chiamate API in un'unica raffica. Senza una corretta scansione, una flotta ampia raggiunge rapidamente il tetto orario e ogni account inizia ad accumulare penalità." },
+    { type: "heading", text: "Come risolvere le penalità di tempo di Tradovate: passo dopo passo" },
+    { type: "heading", text: "Come soddisfare una penalità p-ticket / p-time" },
+    { type: "paragraph", html: "Questa è la soluzione principale, ed è esattamente il pattern documentato direttamente da Tradovate:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Rilevi la penalità.</strong> Dopo ogni richiesta, controlli il corpo della risposta per <code>p-ticket</code> e <code>p-time</code> (e verifichi un eventuale stato <code>429</code>). Se sono presenti, la richiesta è stata rifiutata.",
+        "<strong class='text-white'>Legga p-time.</strong> È il tempo di attesa, in secondi. Non riprovi prima che sia trascorso. Un nuovo tentativo anticipato comporta solo un'ulteriore penalità.",
+        "<strong class='text-white'>Attenda l'intera durata.</strong> Sospenda l'esecuzione per <code>p-time</code> secondi (moltiplichi per 1.000 per ottenere i millisecondi se il timer li richiede).",
+        "<strong class='text-white'>Reinvii la richiesta originale, con il ticket.</strong> Invii <em>esattamente lo stesso</em> endpoint e lo stesso payload inviati in precedenza, aggiungendo il valore del ticket restituito come campo <code>\"p-ticket\"</code> nel body.",
+      ],
+    },
+    { type: "paragraph", html: "In JavaScript, l'esempio ufficiale è il seguente:" },
+    { type: "quote", html: "<code>// You received: { \"p-ticket\": pTicket, \"p-time\": pTime }<br>setTimeout(async () =&gt; {<br>&nbsp;&nbsp;const okResponse = await fetch(URL + '/order/placeOrder', {<br>&nbsp;&nbsp;&nbsp;&nbsp;method: 'POST',<br>&nbsp;&nbsp;&nbsp;&nbsp;body: JSON.stringify({<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;accountSpec: yourUserName,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;accountId: yourAcctId,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;action: 'Buy',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;symbol: 'MYMM1',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;orderQty: 1,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;orderType: 'Market',<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;isAutomated: true,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'p-ticket': pTicket &nbsp;&nbsp;&nbsp;&nbsp;// attach the ticket to the retry<br>&nbsp;&nbsp;&nbsp;&nbsp;})<br>&nbsp;&nbsp;})<br>}, 1000 * pTime) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// wait p-time seconds first</code>" },
+    { type: "paragraph", html: "I dettagli chiave: mantenere il payload originale identico, allegare <code>p-ticket</code> e inviare solo dopo che <code>p-time</code> è completamente trascorso." },
+    { type: "heading", text: "Come gestire una risposta p-captcha" },
+    { type: "paragraph", html: "Un campo <code>p-captcha</code> non è una breve attesa, è un segnale di stop:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Interrompa immediatamente i tentativi automatici.</strong> Continuare a chiamare l'endpoint mantiene il blocco attivo e può prolungarlo.",
+        "<strong class='text-white'>Verifichi le proprie credenziali.</strong> Confermi che nome utente, password e credenziali dell'app/API siano corretti, in modo che il tentativo successivo vada effettivamente a buon fine.",
+        "<strong class='text-white'>Attenda circa un'ora</strong>, secondo le indicazioni di Tradovate, prima di riprovare.",
+        "<strong class='text-white'>Si riautentichi una sola volta</strong>, in modo pulito, dopo il periodo di raffreddamento. Non riprenda un loop di tentativi.",
+      ],
+    },
+    { type: "heading", text: "Come risolvere un p-ticket grave o persistente" },
+    { type: "paragraph", html: "Se le brevi attese di <code>p-time</code> continuano a ripetersi, o se l'accesso all'API risulta ridotto o bloccato per un periodo prolungato, si è passati da una penalità isolata a un problema strutturale di frequenza. Corregga la <em>frequenza</em>, non il sintomo:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Limiti alla fonte.</strong> Aggiunga un token-bucket o un ritardo fisso per non avvicinarsi mai ai limiti per minuto/ora.",
+        "<strong class='text-white'>Preferisca i WebSocket al polling REST.</strong> Si abboni agli eventi di ordini e posizioni invece di interrogare ripetutamente gli endpoint di elenco.",
+        "<strong class='text-white'>Riduca il churn di modifiche/cancellazioni.</strong> Raggruppi o applichi un debounce agli aggiornamenti dello stop invece di riscriverli a ogni tick.",
+        "<strong class='text-white'>Scagli le riconnessioni.</strong> Aggiunga un ritardo di backoff tra i tentativi di riconnessione per evitare picchi di riautenticazione.",
+        "<strong class='text-white'>Se l'accesso resta bloccato</strong>, contatti il supporto Tradovate per verificare se sia necessario un ripristino manuale. Alcune penalità prolungate non si risolvono da sole.",
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Risposta / errore", "Cosa significa", "Soluzione"],
+      rows: [
+        ["\"p-ticket\" + \"p-time\" nel body", "Penalità di tempo: richiesta rifiutata, attendere e poi riprovare", "Attenda p-time secondi, reinvii la richiesta originale con \"p-ticket\" aggiunto"],
+        ["429 Too Many Requests", "È stato raggiunto un limite di frequenza al secondo/minuto/ora", "Rallenti, attenda il breve periodo di raffreddamento, quindi riprovi con una frequenza di richieste ridotta"],
+        ["\"p-captcha\" nella risposta", "L'app di terze parti non può completare l'operazione; trattato come abuso/blocco per credenziali errate", "Interrompa i tentativi, verifichi le credenziali, attenda ~1 ora prima di un unico tentativo pulito"],
+        ["La penalità si ripete a ogni tentativo", "Frequenza sostenuta oltre il limite, non un picco isolato", "Limiti la frequenza delle richieste, passi dal polling ai WebSocket, riduca le modifiche"],
+        ["Accesso API bloccato per un periodo prolungato", "Penalità aggravata/grave da violazioni ripetute", "Scandisca tutto il traffico; se il blocco persiste, contatti il supporto Tradovate per un ripristino"],
+        ["Penalità subito dopo un loop di login", "Una raffica di riconnessione/riautenticazione ha esaurito il limite", "Aggiunga un backoff tra le riconnessioni; mantenga un'unica sessione stabile"],
+      ],
+    },
+    { type: "heading", text: "Come prevenirlo con PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade instrada gli avvisi TradingView verso Tradovate attraverso un livello di automazione gestito, così da non dover mai implementare da soli la logica di retry contro l'API grezza:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Routing sicuro rispetto ai limiti di frequenza</strong>, distribuisce il flusso di ordini in modo che le chiamate restino sotto i tetti per minuto e per ora di Tradovate invece di sfociare in una penalità.",
+        "<strong class='text-white'>Retry e backoff integrati</strong>, rispetta le attese di <code>p-time</code> e reinvia in modo pulito, così una penalità temporanea non fa perdere il trade.",
+        "<strong class='text-white'>Gestione delle riconnessioni</strong>, mantiene sessioni stabili con riconnessioni scaglionate, evitando le raffiche di riautenticazione che attivano <code>p-captcha</code>.",
+        "<strong class='text-white'>Scansione multi-account</strong>, distribuisce un singolo segnale su più account senza moltiplicarlo direttamente oltre il limite di frequenza.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Penalty-Free", de: "Handeln Sie strafenfrei", es: "Opere sin penalizaciones", fr: "Négociez sans pénalité", it: "Faccia trading senza penalità" },
+  ctaText: { en: "Start your free 7-day trial and link your TradingView alerts to Tradovate today, PickMyTrade paces every request so a time penalty rarely fires.", de: "Starten Sie noch heute Ihre kostenlose 5-Tage-Testphase und verknüpfen Sie Ihre TradingView-Alerts mit Tradovate, PickMyTrade taktet jede Anfrage, sodass eine Zeitstrafe nur selten ausgelöst wird.", es: "Comience hoy mismo su prueba gratuita de 5 días y conecte sus alertas de TradingView con Tradovate, PickMyTrade regula cada solicitud para que una penalización de tiempo rara vez se active.", fr: "Démarrez dès aujourd'hui votre essai gratuit de 5 jours et connectez vos alertes TradingView à Tradovate, PickMyTrade cadence chaque requête afin qu'une pénalité de temps se déclenche rarement.", it: "Avvii oggi stesso la prova gratuita di 5 giorni e colleghi i propri avvisi TradingView a Tradovate: PickMyTrade scandisce ogni richiesta affinché una penalità di tempo si attivi raramente." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testphase", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvii la prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What are p-ticket and p-time in a Tradovate API response?", a: "They're the two fields of Tradovate's time-penalty response. p-ticket is a one-time token proving you were penalized, and p-time is the number of seconds you must wait before retrying. Seeing them means your request was rejected, not processed." },
+    { q: "How do I satisfy the time penalty?", a: "Wait p-time seconds, then resend the exact same request you originally sent, same endpoint and payload, with the returned ticket added as a \"p-ticket\" field in the body. The server accepts that as your sanctioned retry." },
+    { q: "How is a 429 Too Many Requests different from a p-ticket?", a: "They share a cause. 429 is the HTTP status telling you a rate cap was hit; the p-ticket / p-time object is the structured penalty telling you exactly how long to wait and how to retry. Handle both by backing off and slowing your request rate." },
+    { q: "What does a p-captcha field mean, and can I retry through it?", a: "It means a third-party application can't complete the request, typically after repeated failed logins or aggressive retries. Per Tradovate, you should wait about an hour before trying again, automated retries won't clear it and can prolong the block." },
+    { q: "What are Tradovate's actual API rate limits?", a: "Tradovate limits requests across per-second, per-minute, and per-hour windows. Commonly cited figures are roughly 5,000 requests per hour and about 80 per minute, with a short cooldown on first breach, but exact caps can change, so verify the current numbers in Tradovate's official API documentation." },
+    { q: "Why do I keep getting penalized even after waiting?", a: "Repeated penalties mean your sustained request rate is over the cap, not just one spike. Throttle the source, switch REST polling to WebSocket subscriptions, reduce order modifications, and stagger reconnections." },
+    { q: "Do I need to contact Tradovate support to remove a penalty?", a: "Normal p-time penalties clear themselves once you wait. Only a severe, extended block from repeated violations may need a manual reset, if your access stays blocked well beyond the stated wait, reach out to Tradovate support." },
+    { q: "How can I avoid time penalties on a multi-account setup?", a: "Pace and queue your order flow so the whole fleet stays under the hourly cap, minimize per-tick stop modifications, and let a rate-limit-aware routing layer handle the spacing instead of firing every account at once." },
+  ], de: [
+    { q: "Was sind p-ticket und p-time in einer Tradovate-API-Antwort?", a: "Das sind die beiden Felder der Zeitstrafenantwort von Tradovate. p-ticket ist ein einmaliges Token, das belegt, dass Sie bestraft wurden, und p-time ist die Anzahl der Sekunden, die Sie vor einem erneuten Versuch warten müssen. Erscheinen sie, bedeutet das, dass Ihre Anfrage abgelehnt und nicht verarbeitet wurde." },
+    { q: "Wie erfülle ich die Zeitstrafe?", a: "Warten Sie p-time Sekunden und senden Sie dann exakt dieselbe Anfrage erneut, die Sie ursprünglich gesendet haben, gleicher Endpunkt und gleicher Payload, wobei Sie das zurückgegebene Ticket als \"p-ticket\"-Feld im Body hinzufügen. Der Server akzeptiert dies als Ihren autorisierten Wiederholungsversuch." },
+    { q: "Wie unterscheidet sich ein 429 Too Many Requests von einem p-ticket?", a: "Sie haben dieselbe Ursache. 429 ist der HTTP-Status, der Ihnen mitteilt, dass ein Ratenlimit erreicht wurde; das p-ticket / p-time-Objekt ist die strukturierte Strafe, die Ihnen genau mitteilt, wie lange Sie warten und wie Sie erneut versuchen sollen. Behandeln Sie beide, indem Sie drosseln und Ihre Anfragerate verlangsamen." },
+    { q: "Was bedeutet ein p-captcha-Feld, und kann ich es durch Wiederholungen umgehen?", a: "Es bedeutet, dass eine Drittanbieteranwendung die Anfrage nicht abschließen kann, typischerweise nach wiederholten fehlgeschlagenen Anmeldungen oder aggressiven Wiederholungsversuchen. Laut Tradovate sollten Sie etwa eine Stunde warten, bevor Sie es erneut versuchen, automatisierte Wiederholungen heben die Sperre nicht auf und können sie sogar verlängern." },
+    { q: "Wie hoch sind die tatsächlichen API-Ratenlimits von Tradovate?", a: "Tradovate begrenzt Anfragen über Sekunden-, Minuten- und Stundenfenster. Üblicherweise genannte Werte liegen bei etwa 5.000 Anfragen pro Stunde und rund 80 pro Minute, mit einer kurzen Abkühlphase beim ersten Verstoß. Die genauen Limits können sich jedoch ändern, prüfen Sie daher die aktuellen Zahlen in der offiziellen API-Dokumentation von Tradovate." },
+    { q: "Warum werde ich immer wieder bestraft, auch nachdem ich gewartet habe?", a: "Wiederholte Strafen bedeuten, dass Ihre anhaltende Anfragerate über dem Limit liegt, nicht nur ein einmaliger Ausreißer. Drosseln Sie an der Quelle, wechseln Sie von REST-Polling zu WebSocket-Abonnements, reduzieren Sie Orderänderungen und staffeln Sie Ihre Reconnects." },
+    { q: "Muss ich den Tradovate-Support kontaktieren, um eine Strafe aufzuheben?", a: "Normale p-time-Strafen lösen sich von selbst auf, sobald Sie gewartet haben. Nur eine schwerwiegende, längere Sperre durch wiederholte Verstöße erfordert möglicherweise einen manuellen Reset. Bleibt Ihr Zugriff deutlich länger blockiert als angegeben, wenden Sie sich an den Tradovate-Support." },
+    { q: "Wie vermeide ich Zeitstrafen bei einem Multi-Konto-Setup?", a: "Takten und stellen Sie Ihren Orderfluss in eine Warteschlange, damit die gesamte Flotte unter dem Stundenlimit bleibt, minimieren Sie Stop-Änderungen bei jedem Tick, und lassen Sie eine ratenlimitbewusste Routing-Ebene die Taktung übernehmen, statt jedes Konto gleichzeitig auszulösen." },
+  ], es: [
+    { q: "¿Qué son p-ticket y p-time en una respuesta de la API de Tradovate?", a: "Son los dos campos de la respuesta de penalización de tiempo de Tradovate. p-ticket es un token de un solo uso que certifica que fue penalizado, y p-time es el número de segundos que debe esperar antes de reintentar. Si aparecen, significa que su solicitud fue rechazada, no procesada." },
+    { q: "¿Cómo resuelvo la penalización de tiempo?", a: "Espere p-time segundos y luego reenvíe exactamente la misma solicitud que envió originalmente, mismo endpoint y mismo payload, añadiendo el ticket devuelto como campo \"p-ticket\" en el cuerpo. El servidor lo acepta como su reintento autorizado." },
+    { q: "¿En qué se diferencia un 429 Too Many Requests de un p-ticket?", a: "Comparten la misma causa. 429 es el estado HTTP que le indica que se alcanzó un límite de frecuencia; el objeto p-ticket / p-time es la penalización estructurada que le indica exactamente cuánto esperar y cómo reintentar. Gestione ambos reduciendo el ritmo y ralentizando su tasa de solicitudes." },
+    { q: "¿Qué significa un campo p-captcha y puedo eludirlo con reintentos?", a: "Significa que una aplicación de terceros no puede completar la solicitud, normalmente tras repetidos inicios de sesión fallidos o reintentos agresivos. Según Tradovate, debe esperar aproximadamente una hora antes de volver a intentarlo; los reintentos automáticos no la eliminan y pueden prolongar el bloqueo." },
+    { q: "¿Cuáles son los límites de frecuencia reales de la API de Tradovate?", a: "Tradovate limita las solicitudes en ventanas por segundo, por minuto y por hora. Las cifras habitualmente citadas son unas 5000 solicitudes por hora y unas 80 por minuto, con un breve enfriamiento en la primera infracción, pero los límites exactos pueden cambiar, así que verifique las cifras actuales en la documentación oficial de la API de Tradovate." },
+    { q: "¿Por qué sigo siendo penalizado incluso después de esperar?", a: "Las penalizaciones repetidas significan que su tasa de solicitudes sostenida está por encima del límite, no un solo pico. Limite en el origen, cambie el polling REST por suscripciones WebSocket, reduzca las modificaciones de órdenes y escalone las reconexiones." },
+    { q: "¿Necesito contactar con el soporte de Tradovate para eliminar una penalización?", a: "Las penalizaciones normales de p-time se resuelven por sí solas una vez que espera. Solo un bloqueo grave y prolongado por infracciones repetidas puede requerir un restablecimiento manual; si su acceso permanece bloqueado mucho más allá de la espera indicada, póngase en contacto con el soporte de Tradovate." },
+    { q: "¿Cómo puedo evitar penalizaciones de tiempo en una configuración de múltiples cuentas?", a: "Regule y ponga en cola el flujo de órdenes para que toda la flota se mantenga por debajo del límite horario, minimice las modificaciones de stop en cada tick y deje que una capa de enrutamiento consciente del límite de frecuencia gestione la distribución en lugar de disparar todas las cuentas a la vez." },
+  ], fr: [
+    { q: "Que sont p-ticket et p-time dans une réponse de l'API Tradovate ?", a: "Ce sont les deux champs de la réponse de pénalité de temps de Tradovate. p-ticket est un jeton à usage unique prouvant que vous avez été pénalisé, et p-time est le nombre de secondes à attendre avant de réessayer. Leur présence signifie que votre requête a été rejetée, et non traitée." },
+    { q: "Comment répondre à la pénalité de temps ?", a: "Attendez p-time secondes, puis renvoyez exactement la même requête que celle envoyée initialement, même endpoint et même charge utile, en ajoutant le ticket renvoyé comme champ \"p-ticket\" dans le corps. Le serveur l'accepte comme votre nouvelle tentative autorisée." },
+    { q: "En quoi un 429 Too Many Requests diffère-t-il d'un p-ticket ?", a: "Ils partagent la même cause. 429 est le statut HTTP indiquant qu'une limite de débit a été atteinte ; l'objet p-ticket / p-time est la pénalité structurée qui vous indique précisément combien de temps attendre et comment réessayer. Traitez les deux en ralentissant et en réduisant votre débit de requêtes." },
+    { q: "Que signifie un champ p-captcha, et puis-je le contourner en réessayant ?", a: "Cela signifie qu'une application tierce ne peut pas finaliser la requête, généralement après des connexions échouées répétées ou des tentatives agressives. Selon Tradovate, vous devez attendre environ une heure avant de réessayer ; les tentatives automatiques ne lèvent pas le blocage et peuvent même le prolonger." },
+    { q: "Quelles sont les limites de débit réelles de l'API Tradovate ?", a: "Tradovate limite les requêtes sur des fenêtres par seconde, par minute et par heure. Les chiffres généralement cités sont d'environ 5 000 requêtes par heure et environ 80 par minute, avec un court temps de récupération à la première infraction, mais les plafonds exacts peuvent évoluer ; vérifiez donc les chiffres actuels dans la documentation officielle de l'API Tradovate." },
+    { q: "Pourquoi suis-je toujours pénalisé même après avoir attendu ?", a: "Des pénalités répétées signifient que votre débit de requêtes soutenu dépasse la limite, et non un simple pic isolé. Limitez à la source, remplacez le polling REST par des abonnements WebSocket, réduisez les modifications d'ordres et échelonnez les reconnexions." },
+    { q: "Dois-je contacter le support Tradovate pour lever une pénalité ?", a: "Les pénalités p-time normales se lèvent d'elles-mêmes une fois l'attente écoulée. Seul un blocage sévère et prolongé dû à des infractions répétées peut nécessiter une réinitialisation manuelle ; si votre accès reste bloqué bien au-delà de l'attente indiquée, contactez le support Tradovate." },
+    { q: "Comment éviter les pénalités de temps sur une configuration multi-comptes ?", a: "Cadencez et mettez en file d'attente votre flux d'ordres pour que l'ensemble du parc reste sous le plafond horaire, minimisez les modifications de stop à chaque tick, et laissez une couche de routage sensible aux limites de débit gérer l'échelonnement plutôt que de déclencher tous les comptes en même temps." },
+  ], it: [
+    { q: "Cosa sono p-ticket e p-time in una risposta dell'API Tradovate?", a: "Sono i due campi della risposta di penalità di tempo di Tradovate. p-ticket è un token monouso che dimostra che è stata applicata una penalità, mentre p-time è il numero di secondi da attendere prima di riprovare. La loro presenza significa che la richiesta è stata rifiutata, non elaborata." },
+    { q: "Come si soddisfa la penalità di tempo?", a: "Attenda p-time secondi, quindi reinvii esattamente la stessa richiesta inviata in origine, stesso endpoint e stesso payload, aggiungendo il ticket restituito come campo \"p-ticket\" nel body. Il server la accetta come nuovo tentativo autorizzato." },
+    { q: "In cosa differisce un 429 Too Many Requests da un p-ticket?", a: "Condividono la stessa causa. 429 è lo stato HTTP che indica il raggiungimento di un limite di frequenza; l'oggetto p-ticket / p-time è la penalità strutturata che indica esattamente quanto attendere e come riprovare. Gestisca entrambi rallentando e riducendo la frequenza delle richieste." },
+    { q: "Cosa significa un campo p-captcha, e si può aggirare riprovando?", a: "Significa che un'applicazione di terze parti non può completare la richiesta, in genere dopo ripetuti accessi falliti o tentativi aggressivi. Secondo Tradovate, occorre attendere circa un'ora prima di riprovare; i tentativi automatici non lo rimuovono e possono prolungare il blocco." },
+    { q: "Quali sono gli effettivi limiti di frequenza dell'API di Tradovate?", a: "Tradovate limita le richieste su finestre al secondo, al minuto e all'ora. Le cifre comunemente citate sono circa 5.000 richieste all'ora e circa 80 al minuto, con un breve raffreddamento alla prima violazione, ma i limiti esatti possono cambiare, quindi verifichi i numeri attuali nella documentazione ufficiale dell'API di Tradovate." },
+    { q: "Perché continuo a ricevere penalità anche dopo aver atteso?", a: "Penalità ripetute indicano che la frequenza di richieste sostenuta supera il limite, non si tratta di un singolo picco. Limiti alla fonte, passi dal polling REST agli abbonamenti WebSocket, riduca le modifiche degli ordini e scaglioni le riconnessioni." },
+    { q: "È necessario contattare il supporto Tradovate per rimuovere una penalità?", a: "Le normali penalità p-time si risolvono da sole una volta trascorsa l'attesa. Solo un blocco grave e prolungato dovuto a violazioni ripetute può richiedere un ripristino manuale; se l'accesso resta bloccato ben oltre l'attesa indicata, contatti il supporto Tradovate." },
+    { q: "Come posso evitare le penalità di tempo in una configurazione multi-account?", a: "Scandisca e metta in coda il flusso di ordini in modo che l'intera flotta resti sotto il tetto orario, riduca al minimo le modifiche dello stop a ogni tick, e lasci che un livello di routing consapevole dei limiti di frequenza gestisca la distribuzione invece di attivare tutti gli account contemporaneamente." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -abläufe ändern sich im Laufe der Zeit, bestätigen Sie daher stets den aktuellen Prozess in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo considerable de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que siempre debe confirmar el proceso vigente en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent dans le temps ; confirmez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha finalità esclusivamente educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di future e altri prodotti a leva comporta un rischio significativo di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, sostenuta o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, pertanto verifichi sempre il processo attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

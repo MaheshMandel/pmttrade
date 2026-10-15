@@ -1,0 +1,613 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "dom-lagging-slow-updates";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate DOM Lagging / Slow Order-Book Updates";
+const META_DESCRIPTION =
+  "Tradovate DOM lagging or slow order-book updates? Cut local load, fix your session and network, and learn why the ladder refreshes about once a second.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { es: "Tradovate: DOM con retraso y libro de órdenes lento", fr: "Tradovate : DOM en retard, carnet d'ordres lent", it: "Tradovate: DOM in ritardo, book degli ordini lento" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate DOM hinkt hinterher / langsame Orderbuch-Updates", es: "El DOM de Tradovate se retrasa o las actualizaciones del libro de órdenes son lentas", fr: "Le DOM Tradovate est en retard / mises à jour lentes du carnet d'ordres", it: "Il DOM di Tradovate è in ritardo / aggiornamenti lenti del book degli ordini" },
+  dek: { en: "The DOM updates about once a second, the LAST price looks frozen, and the whole ladder falls behind in volatility. Most of it is fixable from your side, and one piece isn't.", de: "Der DOM aktualisiert sich etwa einmal pro Sekunde, der LAST-Preis wirkt eingefroren, und die gesamte Preisleiter hinkt bei Volatilität hinterher. Das meiste davon lässt sich auf Ihrer Seite beheben, ein Teil jedoch nicht.", es: "El DOM se actualiza aproximadamente una vez por segundo, el precio LAST parece congelado, y toda la escalera se queda atrás durante la volatilidad. La mayor parte se puede solucionar de su lado, y una parte no.", fr: "Le DOM se met à jour environ une fois par seconde, le prix LAST semble figé, et toute l'échelle prend du retard en cas de volatilité. La plupart de ces problèmes sont réparables de votre côté, et un seul ne l'est pas.", it: "Il DOM si aggiorna circa una volta al secondo, il prezzo LAST sembra congelato, e l'intera scala rimane indietro durante la volatilità. La maggior parte è risolvibile dal vostro lato, e una parte no." },
+  readTime: { en: "7 min read", de: "7 Minuten Lesezeit", es: "Lectura de 7 minutos", fr: "Lecture de 7 minutes", it: "Lettura di 7 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "When you're scalping fast-moving futures like ES or NQ, a laggy ladder is the difference between a clean fill and a chased entry. DOM lag is one of Tradovate's most stubborn order-flow complaints: the depth of market updates about once a second, the LAST price looks frozen while the bid and ask columns keep ticking, and the whole ladder falls behind the market when volatility spikes, and it happens on both the Chrome web platform and the desktop app. Here's the good news: a lot of it is fixable from your side. Local CPU load, extra sessions, and a shaky connection all pile on top of each other. The one piece you can't tune away, that roughly once-per-second refresh baked into the current data pipeline, is exactly why it's worth taking your finger off a hand-read ladder and letting signal-based automation pull the trigger instead." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Tradovate DOM Lag",
+      items: [
+        "<strong class='text-white'>Check your CPU and memory first.</strong> Open Task Manager and watch the platform's usage. If it's maxed out, the lag is local, not the market.",
+        "<strong class='text-white'>Close every panel you aren't using.</strong> Extra charts, DOMs, and workspaces all eat resources and slow down order-book redraws.",
+        "<strong class='text-white'>Get down to a single session.</strong> Log out of duplicate web, desktop, mobile, and TradingView logins that fight over the same account.",
+        "<strong class='text-white'>Stabilize your connection.</strong> A wired network and a synced system clock stop the stalls that look like DOM lag.",
+        "<strong class='text-white'>Refresh or restart, then update.</strong> Reload the web app (F5) or restart the desktop app, and make sure you're on the latest build.",
+        "<strong class='text-white'>Report persistent, market-wide lag to support.</strong> If the feed itself is behind during calm conditions, that's a platform-side issue to raise, not a setting you can change.",
+      ],
+    },
+    { type: "heading", text: "What “DOM Lagging” Actually Means" },
+    { type: "paragraph", html: "&ldquo;DOM lag&rdquo; gets used for two related symptoms. The first is a <em>display</em> delay: the ladder falls a beat behind the real market, so a price that already traded shows up late, and the LAST price can look frozen while the bid and ask columns keep updating correctly. Your fills are still accurate to price, it's the on-screen depth that's trailing. The second is a <em>refresh-rate</em> limitation: the order book redraws only about once per second, which makes it hard to read the nuances of order flow on a fast instrument where real market depth changes many times a second." },
+    { type: "paragraph", html: "Those are different problems with different fixes. Display lag that comes and goes usually points to something local, or a momentary feed hiccup during volatility, and it tends to correct itself within a beat. The steady once-a-second cadence is a different animal, it's a characteristic of the market-data pipeline feeding the current platform, not a glitch on your machine, and no user setting speeds it up." },
+    { type: "paragraph", html: "Here's the reassuring part: in the vast majority of cases, orders still route and fill correctly at the right price. DOM lag is a visualization problem, a slow or coarse <em>picture</em> of the book, not a broken order engine. That distinction shapes every fix below. You can attack the local and connection causes yourself, and for the built-in refresh limit you either accept it or stop depending on eyeballing the ladder." },
+    { type: "heading", text: "Top Causes of Tradovate DOM Lag in 2026" },
+    { type: "heading", text: "1. The order book only refreshes about once per second" },
+    { type: "paragraph", html: "The one cause you can't configure away is the refresh cadence. The DOM updates roughly once per second, and that's tied to the platform's market-data pipeline rather than anything on your end. There's currently <strong class='text-white'>no user-facing setting to raise the DOM's tick refresh rate</strong>, requests to change the tick refresh rate and to allow custom tick intervals on the DOM are still open feature requests, not shipped options. On a high-volume contract whose true depth changes many times a second, a once-a-second redraw simply can't show every flicker of order flow." },
+    { type: "heading", text: "2. Local CPU or memory overload" },
+    { type: "paragraph", html: "When the lag is jerky, gets worse the longer you run, or clears after a restart, the bottleneck is usually your own machine. Running a stack of charts, several DOMs, indicators, and other trading apps all at once can peg the platform's CPU and memory, and a starved renderer redraws the ladder slowly. The standard first diagnostic is to open Task Manager and check the platform's CPU and memory, if either is maxed out, you've found your lag." },
+    { type: "heading", text: "3. Upstream market-data feed lag during volatility" },
+    { type: "paragraph", html: "Some lag starts before it ever reaches your screen. Tradovate's quotes flow from an upstream market-data provider, and when that provider lags, every downstream platform lags with it. That's why the DOM tends to fall behind precisely during high-volatility bursts, a news spike, the cash open, or a fast reversal, and then snaps back into line once the surge passes. You can't fix an upstream feed, but you can recognize it: if the delay hits everyone at once around a volatile event and self-corrects, it's the feed, not your setup." },
+    { type: "heading", text: "4. Too many active sessions and login conflicts" },
+    { type: "paragraph", html: "A Tradovate login is meant to run a limited number of concurrent sessions, typically about two, across web, desktop, mobile, and any TradingView connection. Push past that and the sessions start fighting each other: charts stop refreshing, the DOM stutters, and the platform can go unresponsive when you switch instruments. Plenty of &ldquo;the DOM is lagging&rdquo; cases are really &ldquo;I'm logged in on four devices at once.&rdquo; Trimming down to a single active session strips out a surprising amount of the stutter." },
+    { type: "heading", text: "5. Network instability and clock drift" },
+    { type: "paragraph", html: "The DOM streams live data, so an unstable connection shows up as freezes and catch-up jumps that read like lag. Wi-Fi drops, VPN routing, and a busy home network all interrupt the stream. A drifting system clock makes it worse: Tradovate's real-time services are time-sensitive, and an out-of-sync clock paired with a flaky connection is a direct cause of charts and data freezing. A wired connection and an automatically-synced clock take both off the table." },
+    { type: "heading", text: "How to Fix Tradovate DOM Lag: Step-by-Step" },
+    { type: "heading", text: "Reduce local platform load" },
+    { type: "paragraph", html: "Free up resources so the ladder can redraw quickly." },
+    {
+      type: "steps",
+      items: [
+        { title: "Check Task Manager", html: "Open <strong class='text-white'>Task Manager</strong> (Ctrl+Shift+Esc on Windows) and check the CPU and memory used by the Tradovate app or your browser. Note whether either is near 100%." },
+        { title: "Close panels you aren't trading", html: "In Tradovate, <strong class='text-white'>close every chart, DOM, and panel you aren't actively trading</strong>. Each open module consumes resources." },
+        { title: "Cut instruments and DOMs down", html: "Cut the number of instruments and simultaneous DOMs down to only what you need for the current session." },
+        { title: "Close other heavy applications", html: "Close other heavy applications competing for CPU and RAM, then watch whether the DOM's responsiveness recovers." },
+      ],
+    },
+    { type: "heading", text: "Cut down to a single session" },
+    { type: "paragraph", html: "Kill the session conflicts that masquerade as lag." },
+    {
+      type: "steps",
+      items: [
+        { title: "Log out everywhere", html: "Log out of Tradovate on every device, the web platform, the desktop app, the mobile app, and any TradingView-linked connection." },
+        { title: "Sign back in on one device", html: "Give the old sessions a moment to clear, then sign back in on <strong class='text-white'>one</strong> device only." },
+        { title: "Review authorized sessions", html: "In your account's security or device settings, review any list of active or authorized sessions and remove ones you don't recognize. Menu labels shift between platform updates, so confirm the exact wording in your current build before you rely on it." },
+      ],
+    },
+    { type: "heading", text: "Stabilize your network and clock" },
+    { type: "paragraph", html: "Give the live data stream a clean pipe." },
+    {
+      type: "steps",
+      items: [
+        { title: "Switch to wired Ethernet", html: "Switch from Wi-Fi to a <strong class='text-white'>wired Ethernet connection</strong> where you can, and disable any VPN that routes your trading traffic." },
+        { title: "Sync your system clock", html: "On Windows, turn on <strong class='text-white'>Set time automatically</strong>, then click <strong class='text-white'>Sync now</strong> (Settings &rarr; Time &amp; language &rarr; Date &amp; time) so the system clock matches network time." },
+        { title: "Close bandwidth-hungry background apps", html: "Close background apps and downloads that saturate your bandwidth while you trade." },
+      ],
+    },
+    { type: "heading", text: "Refresh, update, and report to support" },
+    { type: "paragraph", html: "When the lag is fresh or clearly platform-side, reset and escalate." },
+    {
+      type: "steps",
+      items: [
+        { title: "Refresh or restart", html: "On the web platform, <strong class='text-white'>refresh with F5</strong>; on the desktop app, <strong class='text-white'>fully close and reopen</strong> it to rebuild the data connection." },
+        { title: "Update to the latest build", html: "Make sure you're running the <strong class='text-white'>latest desktop build</strong>, an outdated app can render and stream less efficiently." },
+        { title: "Escalate persistent, market-wide lag", html: "If the DOM still lags market-wide during normal conditions, <strong class='text-white'>contact Tradovate support</strong> (or your prop firm, for evaluation accounts) with the time, instrument, and a screenshot. Because the once-a-second cadence and any upstream feed delay are platform-side, this is the right escalation path, not a setting you can change yourself." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Symptom", "What it means", "Fix"],
+      rows: [
+        ["DOM updates only “once every second”", "Built-in refresh cadence of the current data pipeline", "No user setting changes it; accept the limit or automate off signals instead"],
+        ["“LAST price freezes” while bid/ask move", "Display trailing the market by a beat", "Usually self-corrects; reduce local load and stabilize the connection"],
+        ["Lag builds the longer you run, clears on restart", "Local CPU/memory exhaustion", "Close extra charts/DOMs; check Task Manager; restart the app"],
+        ["Whole ladder lags only during volatile bursts", "Upstream market-data feed lag", "Wait for it to self-correct; report if it's severe or persistent"],
+        ["Stutter plus frozen charts on switch", "Too many concurrent sessions", "Log out everywhere; sign in on a single device"],
+        ["Freezes and catch-up jumps", "Unstable network or clock drift", "Use wired Ethernet; enable \"Set time automatically\" and sync now"],
+        ["No option to speed up the DOM", "Tick-rate change is an open feature request", "Reduce load, report to support, or route orders via automation"],
+      ],
+    },
+    { type: "heading", text: "Reduce Your Reliance on a Laggy DOM" },
+    { type: "paragraph", html: "If your edge depends on reading a once-a-second ladder in a market that moves many times a second, the ladder is the wrong thing to bet on. PickMyTrade lets your strategy act on the signal instead of on whatever a lagging DOM happens to show:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signal-based execution</strong>, orders fire from your TradingView strategy the moment your condition triggers, not when your eyes catch up to a slow ladder.",
+        "<strong class='text-white'>Server-side routing</strong>, alerts route to Tradovate from PickMyTrade's servers, so a maxed-out local machine (a top cause of DOM lag) doesn't gate your entries and exits.",
+        "<strong class='text-white'>Rate-limit-safe order flow</strong>, order routing is spaced sensibly so nothing bounces off Tradovate's request limits.",
+        "<strong class='text-white'>Multi-account sync</strong>, the same automated entry and exit mirror across several Tradovate accounts at once, with no per-DOM clicking.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Wenn Sie schnelle Futures wie ES oder NQ scalpen, entscheidet eine hinkende Preisleiter über eine saubere Ausführung oder einen gejagten Einstieg. DOM-Verzögerung ist eine der hartnäckigsten Order-Flow-Beschwerden bei Tradovate: Die Markttiefe aktualisiert sich etwa einmal pro Sekunde, der LAST-Preis wirkt eingefroren, während sich die Bid- und Ask-Spalten weiter bewegen, und die gesamte Preisleiter hinkt dem Markt bei Volatilitätsspitzen hinterher – und das passiert sowohl auf der Chrome-Web-Plattform als auch in der Desktop-App. Die gute Nachricht: Vieles davon lässt sich auf Ihrer Seite beheben. Lokale CPU-Last, zusätzliche Sitzungen und eine wacklige Verbindung summieren sich alle. Der eine Teil, den Sie nicht wegkonfigurieren können, dieses etwa einmal pro Sekunde eingebaute Update in der aktuellen Datenpipeline, ist genau der Grund, warum es sich lohnt, den Finger von einer handgelesenen Preisleiter zu nehmen und stattdessen signalbasierte Automatisierung den Abzug betätigen zu lassen." },
+    {
+      type: "checklist",
+      heading: "Schnelle Checkliste für Tradovate-DOM-Verzögerungen",
+      items: [
+        "<strong class='text-white'>Prüfen Sie zuerst CPU und Arbeitsspeicher.</strong> Öffnen Sie den Task-Manager und beobachten Sie die Auslastung der Plattform. Ist sie ausgelastet, liegt die Verzögerung lokal, nicht am Markt.",
+        "<strong class='text-white'>Schließen Sie jedes Panel, das Sie nicht nutzen.</strong> Zusätzliche Charts, DOMs und Workspaces verbrauchen alle Ressourcen und verlangsamen das Neuzeichnen des Orderbuchs.",
+        "<strong class='text-white'>Reduzieren Sie auf eine einzige Sitzung.</strong> Melden Sie sich von doppelten Web-, Desktop-, Mobil- und TradingView-Logins ab, die um dasselbe Konto konkurrieren.",
+        "<strong class='text-white'>Stabilisieren Sie Ihre Verbindung.</strong> Ein kabelgebundenes Netzwerk und eine synchronisierte Systemuhr stoppen die Aussetzer, die wie DOM-Verzögerungen wirken.",
+        "<strong class='text-white'>Neu laden oder neu starten, dann aktualisieren.</strong> Laden Sie die Web-App neu (F5) oder starten Sie die Desktop-App neu, und stellen Sie sicher, dass Sie den neuesten Build verwenden.",
+        "<strong class='text-white'>Melden Sie anhaltende, marktweite Verzögerungen dem Support.</strong> Hinkt der Feed selbst unter ruhigen Bedingungen hinterher, ist das ein plattformseitiges Problem, das gemeldet werden muss, keine Einstellung, die Sie ändern können.",
+      ],
+    },
+    { type: "heading", text: "Was &ldquo;DOM-Verzögerung&rdquo; tatsächlich bedeutet" },
+    { type: "paragraph", html: "&ldquo;DOM-Verzögerung&rdquo; wird für zwei verwandte Symptome verwendet. Das erste ist eine <em>Anzeige</em>-Verzögerung: Die Preisleiter hinkt dem echten Markt einen Takt hinterher, sodass ein bereits gehandelter Preis verspätet erscheint, und der LAST-Preis kann eingefroren wirken, während die Bid- und Ask-Spalten korrekt weiter aktualisieren. Ihre Ausführungen sind preislich weiterhin korrekt, es ist die auf dem Bildschirm angezeigte Tiefe, die hinterherhinkt. Das zweite ist eine <em>Aktualisierungsrate</em>-Begrenzung: Das Orderbuch wird nur etwa einmal pro Sekunde neu gezeichnet, was es schwer macht, die Feinheiten des Orderflusses bei einem schnellen Instrument zu lesen, dessen tatsächliche Markttiefe sich viele Male pro Sekunde ändert." },
+    { type: "paragraph", html: "Das sind unterschiedliche Probleme mit unterschiedlichen Lösungen. Eine Anzeigeverzögerung, die kommt und geht, deutet meist auf etwas Lokales hin, oder auf einen kurzen Feed-Aussetzer während der Volatilität, und korrigiert sich meist innerhalb eines Takts von selbst. Der stetige Einmal-pro-Sekunde-Rhythmus ist eine andere Sache – er ist eine Eigenschaft der Marktdaten-Pipeline, die die aktuelle Plattform speist, kein Fehler auf Ihrem Rechner, und keine Benutzereinstellung beschleunigt ihn." },
+    { type: "paragraph", html: "Hier der beruhigende Teil: In der überwiegenden Mehrheit der Fälle werden Orders weiterhin korrekt zum richtigen Preis geroutet und ausgeführt. DOM-Verzögerung ist ein Visualisierungsproblem, ein langsames oder grobes <em>Bild</em> des Buchs, keine defekte Order-Engine. Diese Unterscheidung prägt jede der folgenden Lösungen. Die lokalen und verbindungsbezogenen Ursachen können Sie selbst angehen, und bei der eingebauten Aktualisierungsbegrenzung akzeptieren Sie sie entweder oder verlassen sich nicht mehr auf das Ablesen der Preisleiter." },
+    { type: "heading", text: "Häufigste Ursachen für Tradovate-DOM-Verzögerungen im Jahr 2026" },
+    { type: "heading", text: "1. Das Orderbuch aktualisiert sich nur etwa einmal pro Sekunde" },
+    { type: "paragraph", html: "Die eine Ursache, die Sie nicht wegkonfigurieren können, ist der Aktualisierungsrhythmus. Der DOM aktualisiert sich etwa einmal pro Sekunde, und das hängt mit der Marktdaten-Pipeline der Plattform zusammen, nicht mit irgendetwas auf Ihrer Seite. Derzeit gibt es <strong class='text-white'>keine für Nutzer sichtbare Einstellung, um die Tick-Aktualisierungsrate des DOM zu erhöhen</strong>, Anfragen zur Änderung der Tick-Aktualisierungsrate und zur Zulassung benutzerdefinierter Tick-Intervalle im DOM sind weiterhin offene Feature-Anfragen, keine ausgelieferten Optionen. Bei einem hochvolumigen Kontrakt, dessen tatsächliche Tiefe sich viele Male pro Sekunde ändert, kann ein einmal-pro-Sekunde-Neuzeichnen einfach nicht jedes Flackern des Orderflusses zeigen." },
+    { type: "heading", text: "2. Lokale CPU- oder Arbeitsspeicherüberlastung" },
+    { type: "paragraph", html: "Wenn die Verzögerung ruckelig ist, sich mit der Laufzeit verschlimmert, oder nach einem Neustart verschwindet, liegt der Engpass meist an Ihrem eigenen Rechner. Wenn Sie gleichzeitig einen Stapel von Charts, mehrere DOMs, Indikatoren und andere Handelsapps laufen lassen, kann das CPU und Arbeitsspeicher der Plattform an ihre Grenzen bringen, und ein unterversorgter Renderer zeichnet die Preisleiter langsam neu. Die übliche erste Diagnose ist, den Task-Manager zu öffnen und die CPU- und Arbeitsspeichernutzung der Plattform zu prüfen – ist eines davon ausgelastet, haben Sie Ihre Verzögerung gefunden." },
+    { type: "heading", text: "3. Verzögerung des vorgelagerten Marktdaten-Feeds während Volatilität" },
+    { type: "paragraph", html: "Manche Verzögerung beginnt, bevor sie überhaupt Ihren Bildschirm erreicht. Tradovates Kurse fließen von einem vorgelagerten Marktdatenanbieter, und wenn dieser Anbieter hinterherhinkt, hinken alle nachgelagerten Plattformen mit ihm hinterher. Deshalb neigt der DOM dazu, genau während Hochvolatilitäts-Ausbrüchen hinterherzuhinken – bei einem News-Spike, der Kassaeröffnung oder einer schnellen Umkehr – und rastet dann wieder ein, sobald der Ausbruch vorbei ist. Einen vorgelagerten Feed können Sie nicht reparieren, aber Sie können ihn erkennen: Trifft die Verzögerung alle gleichzeitig rund um ein volatiles Ereignis und korrigiert sich von selbst, liegt es am Feed, nicht an Ihrem Setup." },
+    { type: "heading", text: "4. Zu viele aktive Sitzungen und Login-Konflikte" },
+    { type: "paragraph", html: "Ein Tradovate-Login ist dafür ausgelegt, eine begrenzte Anzahl gleichzeitiger Sitzungen zu betreiben, typischerweise etwa zwei, über Web, Desktop, Mobil und jede TradingView-Verbindung hinweg. Überschreiten Sie das, konkurrieren die Sitzungen miteinander: Charts hören auf sich zu aktualisieren, der DOM ruckelt, und die Plattform kann beim Wechseln der Instrumente nicht mehr reagieren. Viele &ldquo;der DOM verzögert&rdquo;-Fälle sind eigentlich &ldquo;Ich bin gleichzeitig auf vier Geräten angemeldet.&rdquo; Die Reduzierung auf eine einzige aktive Sitzung beseitigt überraschend viel vom Ruckeln." },
+    { type: "heading", text: "5. Netzwerkinstabilität und Uhrabweichung" },
+    { type: "paragraph", html: "Der DOM streamt Live-Daten, daher zeigt sich eine instabile Verbindung als Einfrieren und Nachhol-Sprünge, die wie eine Verzögerung wirken. WLAN-Abbrüche, VPN-Routing und ein ausgelastetes Heimnetzwerk unterbrechen alle den Stream. Eine abweichende Systemuhr verschlimmert das: Tradovates Echtzeitdienste sind zeitsensibel, und eine nicht synchronisierte Uhr in Kombination mit einer wackligen Verbindung ist eine direkte Ursache für einfrierende Charts und Daten. Eine kabelgebundene Verbindung und eine automatisch synchronisierte Uhr räumen beides aus dem Weg." },
+    { type: "heading", text: "So beheben Sie Tradovate-DOM-Verzögerungen: Schritt für Schritt" },
+    { type: "heading", text: "Lokale Plattformlast reduzieren" },
+    { type: "paragraph", html: "Setzen Sie Ressourcen frei, damit die Preisleiter schnell neu gezeichnet werden kann." },
+    {
+      type: "steps",
+      items: [
+        { title: "Task-Manager prüfen", html: "Öffnen Sie den <strong class='text-white'>Task-Manager</strong> (Strg+Umschalt+Esc unter Windows) und prüfen Sie die von der Tradovate-App oder Ihrem Browser genutzte CPU und den Arbeitsspeicher. Achten Sie darauf, ob eines von beiden nahe 100 % liegt." },
+        { title: "Schließen Sie Panels, die Sie nicht handeln", html: "Schließen Sie in Tradovate <strong class='text-white'>jeden Chart, DOM und jedes Panel, das Sie nicht aktiv handeln</strong>. Jedes geöffnete Modul verbraucht Ressourcen." },
+        { title: "Instrumente und DOMs reduzieren", html: "Reduzieren Sie die Anzahl der Instrumente und gleichzeitigen DOMs auf nur das, was Sie für die aktuelle Sitzung benötigen." },
+        { title: "Andere ressourcenintensive Anwendungen schließen", html: "Schließen Sie andere ressourcenintensive Anwendungen, die um CPU und RAM konkurrieren, und beobachten Sie dann, ob sich die Reaktionsfähigkeit des DOM erholt." },
+      ],
+    },
+    { type: "heading", text: "Auf eine einzige Sitzung reduzieren" },
+    { type: "paragraph", html: "Beseitigen Sie die Sitzungskonflikte, die sich als Verzögerung tarnen." },
+    {
+      type: "steps",
+      items: [
+        { title: "Überall abmelden", html: "Melden Sie sich auf jedem Gerät von Tradovate ab: der Web-Plattform, der Desktop-App, der mobilen App und jeder mit TradingView verknüpften Verbindung." },
+        { title: "Auf einem Gerät wieder anmelden", html: "Geben Sie den alten Sitzungen einen Moment Zeit, um sich zu löschen, und melden Sie sich dann nur auf <strong class='text-white'>einem</strong> Gerät wieder an." },
+        { title: "Autorisierte Sitzungen überprüfen", html: "Überprüfen Sie in den Sicherheits- oder Geräteeinstellungen Ihres Kontos jede Liste aktiver oder autorisierter Sitzungen und entfernen Sie Einträge, die Sie nicht wiedererkennen. Die Menübezeichnungen ändern sich zwischen Plattform-Updates, bestätigen Sie also die genaue Formulierung in Ihrem aktuellen Build, bevor Sie sich darauf verlassen." },
+      ],
+    },
+    { type: "heading", text: "Ihr Netzwerk und Ihre Uhr stabilisieren" },
+    { type: "paragraph", html: "Geben Sie dem Live-Datenstream eine saubere Leitung." },
+    {
+      type: "steps",
+      items: [
+        { title: "Auf kabelgebundenes Ethernet umsteigen", html: "Wechseln Sie, wo möglich, von WLAN zu einer <strong class='text-white'>kabelgebundenen Ethernet-Verbindung</strong>, und deaktivieren Sie jedes VPN, das Ihren Handelsverkehr routet." },
+        { title: "Systemuhr synchronisieren", html: "Aktivieren Sie unter Windows <strong class='text-white'>Set time automatically</strong> und klicken Sie dann auf <strong class='text-white'>Sync now</strong> (Settings &rarr; Time &amp; language &rarr; Date &amp; time), damit die Systemuhr mit der Netzwerkzeit übereinstimmt." },
+        { title: "Bandbreitenhungrige Hintergrundanwendungen schließen", html: "Schließen Sie Hintergrundanwendungen und Downloads, die Ihre Bandbreite sättigen, während Sie handeln." },
+      ],
+    },
+    { type: "heading", text: "Neu laden, aktualisieren und dem Support melden" },
+    { type: "paragraph", html: "Wenn die Verzögerung frisch aufgetreten ist oder eindeutig plattformseitig liegt, setzen Sie zurück und eskalieren Sie." },
+    {
+      type: "steps",
+      items: [
+        { title: "Neu laden oder neu starten", html: "Auf der Web-Plattform <strong class='text-white'>mit F5 neu laden</strong>; bei der Desktop-App <strong class='text-white'>vollständig schließen und neu öffnen</strong>, um die Datenverbindung neu aufzubauen." },
+        { title: "Auf den neuesten Build aktualisieren", html: "Stellen Sie sicher, dass Sie den <strong class='text-white'>neuesten Desktop-Build</strong> verwenden – eine veraltete App kann weniger effizient rendern und streamen." },
+        { title: "Anhaltende, marktweite Verzögerung eskalieren", html: "Hinkt der DOM unter normalen Bedingungen weiterhin marktweit hinterher, <strong class='text-white'>kontaktieren Sie den Tradovate-Support</strong> (oder Ihre Prop-Firma, bei Evaluierungskonten) mit Uhrzeit, Instrument und einem Screenshot. Da der Einmal-pro-Sekunde-Rhythmus und jede vorgelagerte Feed-Verzögerung plattformseitig sind, ist dies der richtige Eskalationsweg, keine Einstellung, die Sie selbst ändern können." },
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Symptom", "Was es bedeutet", "Lösung"],
+      rows: [
+        ["DOM aktualisiert sich nur &ldquo;einmal pro Sekunde&rdquo;", "Eingebauter Aktualisierungsrhythmus der aktuellen Datenpipeline", "Keine Benutzereinstellung ändert das; das Limit akzeptieren oder stattdessen über Signale automatisieren"],
+        ["&ldquo;LAST-Preis friert ein&rdquo;, während sich Bid/Ask bewegen", "Anzeige hinkt dem Markt einen Takt hinterher", "Korrigiert sich meist von selbst; lokale Last reduzieren und Verbindung stabilisieren"],
+        ["Verzögerung nimmt mit der Laufzeit zu, verschwindet nach Neustart", "Lokale CPU-/Arbeitsspeichererschöpfung", "Zusätzliche Charts/DOMs schließen; Task-Manager prüfen; App neu starten"],
+        ["Gesamte Preisleiter hinkt nur während volatiler Ausbrüche hinterher", "Verzögerung des vorgelagerten Marktdaten-Feeds", "Auf Selbstkorrektur warten; melden, wenn es schwerwiegend oder anhaltend ist"],
+        ["Ruckeln plus eingefrorene Charts beim Wechsel", "Zu viele gleichzeitige Sitzungen", "Überall abmelden; auf einem einzigen Gerät anmelden"],
+        ["Einfrieren und Nachhol-Sprünge", "Instabiles Netzwerk oder Uhrabweichung", "Kabelgebundenes Ethernet verwenden; \"Set time automatically\" aktivieren und synchronisieren"],
+        ["Keine Option, den DOM zu beschleunigen", "Änderung der Tick-Rate ist eine offene Feature-Anfrage", "Last reduzieren, dem Support melden oder Orders über Automatisierung leiten"],
+      ],
+    },
+    { type: "heading", text: "Verringern Sie Ihre Abhängigkeit von einem verzögerten DOM" },
+    { type: "paragraph", html: "Wenn Ihr Vorteil davon abhängt, eine Einmal-pro-Sekunde-Preisleiter in einem Markt zu lesen, der sich viele Male pro Sekunde bewegt, ist die Preisleiter die falsche Sache, auf die Sie setzen sollten. PickMyTrade lässt Ihre Strategie auf das Signal reagieren, statt auf das, was ein verzögerter DOM zufällig gerade anzeigt:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Signalbasierte Ausführung</strong> – Orders werden aus Ihrer TradingView-Strategie ausgelöst, sobald Ihre Bedingung erfüllt ist, nicht erst, wenn Ihre Augen eine langsame Preisleiter eingeholt haben.",
+        "<strong class='text-white'>Serverseitiges Routing</strong> – Alerts werden von PickMyTrades Servern an Tradovate weitergeleitet, sodass ein ausgelasteter lokaler Rechner (eine Hauptursache für DOM-Verzögerungen) Ihre Ein- und Ausstiege nicht blockiert.",
+        "<strong class='text-white'>Rate-Limit-sicherer Orderfluss</strong> – das Order-Routing wird sinnvoll gestaffelt, sodass nichts an Tradovates Anfragelimits abprallt.",
+        "<strong class='text-white'>Multi-Konto-Synchronisierung</strong> – derselbe automatisierte Ein- und Ausstieg wird gleichzeitig über mehrere Tradovate-Konten gespiegelt, ohne Klicken pro DOM.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Cuando hace scalping en futuros de movimiento rápido como ES o NQ, una escalera con retraso marca la diferencia entre una ejecución limpia y una entrada perseguida. El retraso del DOM es una de las quejas de flujo de órdenes más persistentes de Tradovate: la profundidad de mercado se actualiza aproximadamente una vez por segundo, el precio LAST parece congelado mientras las columnas de bid y ask siguen moviéndose, y toda la escalera se queda atrás del mercado cuando la volatilidad se dispara, y ocurre tanto en la plataforma web de Chrome como en la aplicación de escritorio. Aquí la buena noticia: gran parte se puede solucionar de su lado. La carga de CPU local, las sesiones adicionales y una conexión inestable se acumulan unas sobre otras. La única parte que no puede ajustar, esa actualización de aproximadamente una vez por segundo incorporada en el pipeline de datos actual, es exactamente el motivo por el que vale la pena dejar de leer manualmente la escalera y dejar que la automatización basada en señales apriete el gatillo en su lugar." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para el retraso del DOM de Tradovate",
+      items: [
+        "<strong class='text-white'>Revise primero su CPU y memoria.</strong> Abra el Administrador de tareas y observe el uso de la plataforma. Si está al máximo, el retraso es local, no del mercado.",
+        "<strong class='text-white'>Cierre todos los paneles que no esté usando.</strong> Los gráficos, DOMs y espacios de trabajo adicionales consumen recursos y ralentizan el redibujado del libro de órdenes.",
+        "<strong class='text-white'>Redúzcase a una sola sesión.</strong> Cierre sesión en los inicios de sesión duplicados de web, escritorio, móvil y TradingView que compiten por la misma cuenta.",
+        "<strong class='text-white'>Estabilice su conexión.</strong> Una red cableada y un reloj del sistema sincronizado detienen los bloqueos que parecen retraso del DOM.",
+        "<strong class='text-white'>Actualice o reinicie, luego actualice la versión.</strong> Recargue la aplicación web (F5) o reinicie la aplicación de escritorio, y asegúrese de tener la última versión.",
+        "<strong class='text-white'>Reporte a soporte un retraso persistente en todo el mercado.</strong> Si el propio feed va con retraso en condiciones tranquilas, es un problema del lado de la plataforma que hay que plantear, no una configuración que pueda cambiar.",
+      ],
+    },
+    { type: "heading", text: "Qué significa realmente el &ldquo;retraso del DOM&rdquo;" },
+    { type: "paragraph", html: "El &ldquo;retraso del DOM&rdquo; se usa para dos síntomas relacionados. El primero es un retraso de <em>visualización</em>: la escalera se queda un instante por detrás del mercado real, de modo que un precio que ya se negoció aparece tarde, y el precio LAST puede parecer congelado mientras las columnas de bid y ask siguen actualizándose correctamente. Sus ejecuciones siguen siendo precisas en cuanto al precio, es la profundidad en pantalla la que va con retraso. El segundo es una limitación de <em>tasa de actualización</em>: el libro de órdenes se redibuja solo aproximadamente una vez por segundo, lo que dificulta leer los matices del flujo de órdenes en un instrumento rápido cuya profundidad de mercado real cambia muchas veces por segundo." },
+    { type: "paragraph", html: "Se trata de problemas diferentes con soluciones diferentes. El retraso de visualización que va y viene suele apuntar a algo local, o a un fallo momentáneo del feed durante la volatilidad, y tiende a corregirse solo en un instante. La cadencia constante de una vez por segundo es un animal distinto: es una característica del pipeline de datos de mercado que alimenta la plataforma actual, no un fallo en su equipo, y ninguna configuración de usuario la acelera." },
+    { type: "paragraph", html: "Aquí va la parte tranquilizadora: en la gran mayoría de los casos, las órdenes siguen enrutándose y ejecutándose correctamente al precio correcto. El retraso del DOM es un problema de visualización, una <em>imagen</em> lenta o tosca del libro, no un motor de órdenes averiado. Esa distinción da forma a cada solución a continuación. Las causas locales y de conexión puede atacarlas usted mismo, y para el límite de actualización integrado, o lo acepta o deja de depender de leer la escalera a simple vista." },
+    { type: "heading", text: "Principales causas del retraso del DOM de Tradovate en 2026" },
+    { type: "heading", text: "1. El libro de órdenes solo se actualiza aproximadamente una vez por segundo" },
+    { type: "paragraph", html: "La única causa que no puede configurar es la cadencia de actualización. El DOM se actualiza aproximadamente una vez por segundo, y eso está ligado al pipeline de datos de mercado de la plataforma, no a nada de su lado. Actualmente <strong class='text-white'>no existe una configuración visible para el usuario que permita aumentar la tasa de actualización de ticks del DOM</strong>, las solicitudes para cambiar la tasa de actualización de ticks y permitir intervalos de tick personalizados en el DOM siguen siendo solicitudes de funcionalidad abiertas, no opciones ya publicadas. En un contrato de alto volumen cuya profundidad real cambia muchas veces por segundo, un redibujado de una vez por segundo simplemente no puede mostrar cada parpadeo del flujo de órdenes." },
+    { type: "heading", text: "2. Sobrecarga local de CPU o memoria" },
+    { type: "paragraph", html: "Cuando el retraso es a saltos, empeora cuanto más tiempo lleva funcionando, o desaparece tras un reinicio, el cuello de botella suele ser su propio equipo. Ejecutar a la vez una pila de gráficos, varios DOMs, indicadores y otras aplicaciones de trading puede saturar la CPU y la memoria de la plataforma, y un renderizador con recursos escasos redibuja la escalera con lentitud. El primer diagnóstico habitual es abrir el Administrador de tareas y comprobar la CPU y la memoria de la plataforma; si alguna está al máximo, ha encontrado su retraso." },
+    { type: "heading", text: "3. Retraso del feed de datos de mercado ascendente durante la volatilidad" },
+    { type: "paragraph", html: "Parte del retraso comienza antes de que siquiera llegue a su pantalla. Las cotizaciones de Tradovate provienen de un proveedor de datos de mercado ascendente, y cuando ese proveedor se retrasa, todas las plataformas posteriores se retrasan con él. Por eso el DOM tiende a quedarse atrás precisamente durante ráfagas de alta volatilidad, un pico de noticias, la apertura de efectivo, o una reversión rápida, y luego vuelve a alinearse una vez que pasa el repunte. No puede arreglar un feed ascendente, pero sí puede reconocerlo: si el retraso golpea a todos a la vez alrededor de un evento volátil y se autocorrige, es el feed, no su configuración." },
+    { type: "heading", text: "4. Demasiadas sesiones activas y conflictos de inicio de sesión" },
+    { type: "paragraph", html: "Un inicio de sesión de Tradovate está pensado para ejecutar un número limitado de sesiones simultáneas, normalmente unas dos, entre web, escritorio, móvil y cualquier conexión de TradingView. Sobrepase eso y las sesiones empiezan a pelear entre sí: los gráficos dejan de actualizarse, el DOM se traba, y la plataforma puede dejar de responder al cambiar de instrumento. Muchos casos de &ldquo;el DOM tiene retraso&rdquo; son en realidad &ldquo;estoy conectado en cuatro dispositivos a la vez&rdquo;. Reducir a una sola sesión activa elimina una cantidad sorprendente de los tirones." },
+    { type: "heading", text: "5. Inestabilidad de red y desfase del reloj" },
+    { type: "paragraph", html: "El DOM transmite datos en vivo, así que una conexión inestable se manifiesta como congelaciones y saltos de recuperación que parecen retraso. Las caídas de Wi-Fi, el enrutamiento por VPN y una red doméstica saturada interrumpen todos el flujo. Un reloj del sistema desajustado lo empeora: los servicios en tiempo real de Tradovate son sensibles al tiempo, y un reloj desincronizado combinado con una conexión inestable es una causa directa de que gráficos y datos se congelen. Una conexión cableada y un reloj sincronizado automáticamente eliminan ambos problemas." },
+    { type: "heading", text: "Cómo solucionar el retraso del DOM de Tradovate: paso a paso" },
+    { type: "heading", text: "Reduzca la carga local de la plataforma" },
+    { type: "paragraph", html: "Libere recursos para que la escalera pueda redibujarse rápidamente." },
+    {
+      type: "steps",
+      items: [
+        { title: "Compruebe el Administrador de tareas", html: "Abra el <strong class='text-white'>Administrador de tareas</strong> (Ctrl+Mayús+Esc en Windows) y compruebe la CPU y la memoria utilizadas por la app de Tradovate o su navegador. Observe si alguna está cerca del 100 %." },
+        { title: "Cierre los paneles que no está operando", html: "En Tradovate, <strong class='text-white'>cierre todos los gráficos, DOMs y paneles que no esté operando activamente</strong>. Cada módulo abierto consume recursos." },
+        { title: "Reduzca instrumentos y DOMs", html: "Reduzca el número de instrumentos y DOMs simultáneos a solo lo que necesite para la sesión actual." },
+        { title: "Cierre otras aplicaciones pesadas", html: "Cierre otras aplicaciones pesadas que compitan por CPU y RAM, y luego observe si la capacidad de respuesta del DOM se recupera." },
+      ],
+    },
+    { type: "heading", text: "Redúzcase a una sola sesión" },
+    { type: "paragraph", html: "Elimine los conflictos de sesión que se disfrazan de retraso." },
+    {
+      type: "steps",
+      items: [
+        { title: "Cierre sesión en todas partes", html: "Cierre sesión en Tradovate en todos los dispositivos: la plataforma web, la aplicación de escritorio, la aplicación móvil, y cualquier conexión vinculada a TradingView." },
+        { title: "Vuelva a iniciar sesión en un solo dispositivo", html: "Dé a las sesiones antiguas un momento para desaparecer, y luego vuelva a iniciar sesión solo en <strong class='text-white'>un</strong> dispositivo." },
+        { title: "Revise las sesiones autorizadas", html: "En la configuración de seguridad o de dispositivos de su cuenta, revise cualquier lista de sesiones activas o autorizadas y elimine las que no reconozca. Las etiquetas del menú cambian entre actualizaciones de la plataforma, así que confirme el texto exacto en su versión actual antes de confiar en él." },
+      ],
+    },
+    { type: "heading", text: "Estabilice su red y su reloj" },
+    { type: "paragraph", html: "Dele al flujo de datos en vivo un canal limpio." },
+    {
+      type: "steps",
+      items: [
+        { title: "Cambie a Ethernet por cable", html: "Cambie de Wi-Fi a una <strong class='text-white'>conexión Ethernet por cable</strong> donde pueda, y desactive cualquier VPN que enrute su tráfico de trading." },
+        { title: "Sincronice el reloj de su sistema", html: "En Windows, active <strong class='text-white'>Set time automatically</strong>, y luego haga clic en <strong class='text-white'>Sync now</strong> (Settings &rarr; Time &amp; language &rarr; Date &amp; time) para que el reloj del sistema coincida con la hora de red." },
+        { title: "Cierre las aplicaciones en segundo plano que consumen mucho ancho de banda", html: "Cierre las aplicaciones en segundo plano y descargas que saturan su ancho de banda mientras opera." },
+      ],
+    },
+    { type: "heading", text: "Actualice, renueve la versión y reporte a soporte" },
+    { type: "paragraph", html: "Cuando el retraso es reciente o claramente del lado de la plataforma, reinicie y escale." },
+    {
+      type: "steps",
+      items: [
+        { title: "Actualice o reinicie", html: "En la plataforma web, <strong class='text-white'>actualice con F5</strong>; en la aplicación de escritorio, <strong class='text-white'>ciérrela por completo y vuelva a abrirla</strong> para reconstruir la conexión de datos." },
+        { title: "Actualice a la última versión", html: "Asegúrese de estar usando la <strong class='text-white'>última versión de escritorio</strong>, una app desactualizada puede renderizar y transmitir de forma menos eficiente." },
+        { title: "Escale un retraso persistente en todo el mercado", html: "Si el DOM sigue con retraso en todo el mercado bajo condiciones normales, <strong class='text-white'>contacte con el soporte de Tradovate</strong> (o con su prop firm, para cuentas de evaluación) con la hora, el instrumento y una captura de pantalla. Como la cadencia de una vez por segundo y cualquier retraso del feed ascendente son del lado de la plataforma, esta es la vía de escalado correcta, no una configuración que pueda cambiar usted mismo." },
+      ],
+    },
+    { type: "heading", text: "Tabla de solución de problemas" },
+    {
+      type: "table",
+      headers: ["Síntoma", "Qué significa", "Solución"],
+      rows: [
+        ["El DOM solo se actualiza &ldquo;una vez por segundo&rdquo;", "Cadencia de actualización integrada del pipeline de datos actual", "Ninguna configuración de usuario lo cambia; acepte el límite o automatice a partir de señales"],
+        ["&ldquo;El precio LAST se congela&rdquo; mientras bid/ask se mueven", "La visualización va un instante por detrás del mercado", "Normalmente se autocorrige; reduzca la carga local y estabilice la conexión"],
+        ["El retraso aumenta cuanto más tiempo funciona, desaparece al reiniciar", "Agotamiento local de CPU/memoria", "Cierre gráficos/DOMs adicionales; compruebe el Administrador de tareas; reinicie la app"],
+        ["Toda la escalera se retrasa solo durante ráfagas de volatilidad", "Retraso del feed de datos de mercado ascendente", "Espere a que se autocorrija; reporte si es grave o persistente"],
+        ["Tirones y gráficos congelados al cambiar", "Demasiadas sesiones simultáneas", "Cierre sesión en todas partes; inicie sesión en un solo dispositivo"],
+        ["Congelaciones y saltos de recuperación", "Red inestable o desfase del reloj", "Use Ethernet por cable; active \"Set time automatically\" y sincronice"],
+        ["No hay opción para acelerar el DOM", "El cambio de la tasa de ticks es una solicitud de funcionalidad abierta", "Reduzca la carga, reporte a soporte, o enrute órdenes mediante automatización"],
+      ],
+    },
+    { type: "heading", text: "Reduzca su dependencia de un DOM con retraso" },
+    { type: "paragraph", html: "Si su ventaja depende de leer una escalera de una vez por segundo en un mercado que se mueve muchas veces por segundo, la escalera es lo equivocado en lo que apostar. PickMyTrade permite que su estrategia actúe según la señal en lugar de según lo que un DOM con retraso muestre en ese momento:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Ejecución basada en señales</strong>, las órdenes se disparan desde su estrategia de TradingView en el momento en que se cumple su condición, no cuando sus ojos alcanzan a una escalera lenta.",
+        "<strong class='text-white'>Enrutamiento del lado del servidor</strong>, las alertas se enrutan a Tradovate desde los servidores de PickMyTrade, así que un equipo local saturado (una de las principales causas del retraso del DOM) no bloquea sus entradas y salidas.",
+        "<strong class='text-white'>Flujo de órdenes seguro frente a límites de tasa</strong>, el enrutamiento de órdenes se espacia de forma sensata para que nada rebote contra los límites de solicitudes de Tradovate.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, la misma entrada y salida automatizadas se replican en varias cuentas de Tradovate a la vez, sin necesidad de hacer clic en cada DOM.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Lorsque vous scalpez des futures rapides comme ES ou NQ, une échelle en retard fait la différence entre une exécution propre et une entrée poursuivie. Le retard du DOM est l'une des plaintes les plus tenaces de Tradovate concernant le flux d'ordres : la profondeur de marché se met à jour environ une fois par seconde, le prix LAST semble figé pendant que les colonnes bid et ask continuent de bouger, et toute l'échelle prend du retard sur le marché lorsque la volatilité s'envole, et cela se produit à la fois sur la plateforme web Chrome et sur l'application de bureau. Voici la bonne nouvelle : une grande partie de ces problèmes sont réparables de votre côté. La charge CPU locale, les sessions supplémentaires et une connexion instable s'accumulent tous. Le seul élément que vous ne pouvez pas ajuster, cette actualisation d'environ une fois par seconde intégrée au pipeline de données actuel, explique précisément pourquoi il vaut la peine de retirer votre doigt d'une échelle lue à la main et de laisser une automatisation basée sur les signaux appuyer sur la gâchette à votre place." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour le retard du DOM Tradovate",
+      items: [
+        "<strong class='text-white'>Vérifiez d'abord votre CPU et votre mémoire.</strong> Ouvrez le Gestionnaire des tâches et observez l'utilisation de la plateforme. Si elle est saturée, le retard est local, pas dû au marché.",
+        "<strong class='text-white'>Fermez tous les panneaux que vous n'utilisez pas.</strong> Les graphiques, DOM et espaces de travail supplémentaires consomment tous des ressources et ralentissent le redessin du carnet d'ordres.",
+        "<strong class='text-white'>Réduisez-vous à une seule session.</strong> Déconnectez-vous des connexions dupliquées web, bureau, mobile et TradingView qui se disputent le même compte.",
+        "<strong class='text-white'>Stabilisez votre connexion.</strong> Un réseau filaire et une horloge système synchronisée arrêtent les blocages qui ressemblent à un retard du DOM.",
+        "<strong class='text-white'>Actualisez ou redémarrez, puis mettez à jour.</strong> Rechargez l'application web (F5) ou redémarrez l'application de bureau, et assurez-vous d'avoir la dernière version.",
+        "<strong class='text-white'>Signalez au support un retard persistant à l'échelle du marché.</strong> Si le flux lui-même est en retard dans des conditions calmes, c'est un problème côté plateforme à signaler, pas un paramètre que vous pouvez modifier.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie réellement le &laquo;&nbsp;retard du DOM&nbsp;&raquo;" },
+    { type: "paragraph", html: "Le &laquo;&nbsp;retard du DOM&nbsp;&raquo; désigne deux symptômes liés. Le premier est un retard d'<em>affichage</em> : l'échelle prend un temps de retard sur le marché réel, de sorte qu'un prix déjà négocié apparaît en retard, et le prix LAST peut sembler figé pendant que les colonnes bid et ask continuent de se mettre à jour correctement. Vos exécutions restent exactes en termes de prix, c'est la profondeur affichée à l'écran qui est à la traîne. Le second est une limitation du <em>taux de rafraîchissement</em> : le carnet d'ordres ne se redessine qu'environ une fois par seconde, ce qui rend difficile la lecture des nuances du flux d'ordres sur un instrument rapide dont la profondeur de marché réelle change plusieurs fois par seconde." },
+    { type: "paragraph", html: "Ce sont des problèmes différents avec des solutions différentes. Un retard d'affichage qui va et vient indique généralement quelque chose de local, ou un accroc momentané du flux pendant la volatilité, et il tend à se corriger de lui-même en un instant. La cadence stable d'une fois par seconde est une tout autre affaire : c'est une caractéristique du pipeline de données de marché alimentant la plateforme actuelle, pas un problème sur votre machine, et aucun paramètre utilisateur ne l'accélère." },
+    { type: "paragraph", html: "Voici la partie rassurante : dans la grande majorité des cas, les ordres continuent d'être acheminés et exécutés correctement au bon prix. Le retard du DOM est un problème de visualisation, une <em>image</em> lente ou grossière du carnet, pas un moteur d'ordres défaillant. Cette distinction façonne chacune des solutions ci-dessous. Vous pouvez attaquer vous-même les causes locales et de connexion, et pour la limite de rafraîchissement intégrée, vous l'acceptez ou vous arrêtez de dépendre de la lecture visuelle de l'échelle." },
+    { type: "heading", text: "Principales causes du retard du DOM Tradovate en 2026" },
+    { type: "heading", text: "1. Le carnet d'ordres ne se rafraîchit qu'environ une fois par seconde" },
+    { type: "paragraph", html: "La seule cause que vous ne pouvez pas configurer est la cadence de rafraîchissement. Le DOM se met à jour environ une fois par seconde, et cela est lié au pipeline de données de marché de la plateforme plutôt qu'à quoi que ce soit de votre côté. Il n'existe actuellement <strong class='text-white'>aucun paramètre visible par l'utilisateur pour augmenter le taux de rafraîchissement des ticks du DOM</strong>, les demandes visant à modifier le taux de rafraîchissement des ticks et à autoriser des intervalles de tick personnalisés sur le DOM restent des demandes de fonctionnalité ouvertes, pas des options livrées. Sur un contrat à volume élevé dont la profondeur réelle change plusieurs fois par seconde, un redessin d'une fois par seconde ne peut tout simplement pas montrer chaque scintillement du flux d'ordres." },
+    { type: "heading", text: "2. Surcharge locale du CPU ou de la mémoire" },
+    { type: "paragraph", html: "Lorsque le retard est saccadé, s'aggrave plus vous restez en fonctionnement, ou disparaît après un redémarrage, le goulot d'étranglement est généralement votre propre machine. Faire tourner à la fois une pile de graphiques, plusieurs DOM, des indicateurs et d'autres applications de trading peut saturer le CPU et la mémoire de la plateforme, et un moteur de rendu affamé redessine l'échelle lentement. Le premier diagnostic standard consiste à ouvrir le Gestionnaire des tâches et à vérifier le CPU et la mémoire de la plateforme ; si l'un des deux est saturé, vous avez trouvé votre retard." },
+    { type: "heading", text: "3. Retard du flux de données de marché en amont pendant la volatilité" },
+    { type: "paragraph", html: "Certains retards commencent avant même d'atteindre votre écran. Les cotations de Tradovate proviennent d'un fournisseur de données de marché en amont, et lorsque ce fournisseur prend du retard, toutes les plateformes en aval prennent du retard avec lui. C'est pourquoi le DOM a tendance à prendre du retard précisément pendant les rafales de forte volatilité, un pic d'actualité, l'ouverture au comptant, ou un retournement rapide, puis se remet en ligne une fois la poussée passée. Vous ne pouvez pas réparer un flux en amont, mais vous pouvez le reconnaître : si le délai touche tout le monde en même temps autour d'un événement volatil et se corrige de lui-même, c'est le flux, pas votre configuration." },
+    { type: "heading", text: "4. Trop de sessions actives et conflits de connexion" },
+    { type: "paragraph", html: "Une connexion Tradovate est censée faire tourner un nombre limité de sessions simultanées, généralement environ deux, sur le web, le bureau, le mobile et toute connexion TradingView. Dépassez cela et les sessions commencent à se battre entre elles : les graphiques cessent de se rafraîchir, le DOM saccade, et la plateforme peut ne plus répondre quand vous changez d'instrument. Beaucoup de cas de &laquo;&nbsp;le DOM est en retard&nbsp;&raquo; sont en réalité &laquo;&nbsp;je suis connecté sur quatre appareils à la fois&nbsp;&raquo;. Se réduire à une seule session active élimine une quantité surprenante de saccades." },
+    { type: "heading", text: "5. Instabilité réseau et décalage d'horloge" },
+    { type: "paragraph", html: "Le DOM diffuse des données en direct, donc une connexion instable se manifeste par des gels et des sauts de rattrapage qui ressemblent à du retard. Les coupures Wi-Fi, le routage VPN et un réseau domestique surchargé interrompent tous le flux. Une horloge système désynchronisée aggrave les choses : les services en temps réel de Tradovate sont sensibles au temps, et une horloge désynchronisée associée à une connexion instable est une cause directe de gel des graphiques et des données. Une connexion filaire et une horloge synchronisée automatiquement éliminent les deux problèmes." },
+    { type: "heading", text: "Comment résoudre le retard du DOM Tradovate : étape par étape" },
+    { type: "heading", text: "Réduisez la charge locale de la plateforme" },
+    { type: "paragraph", html: "Libérez des ressources pour que l'échelle puisse se redessiner rapidement." },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifiez le Gestionnaire des tâches", html: "Ouvrez le <strong class='text-white'>Gestionnaire des tâches</strong> (Ctrl+Maj+Échap sous Windows) et vérifiez le CPU et la mémoire utilisés par l'application Tradovate ou votre navigateur. Notez si l'un des deux approche 100 %." },
+        { title: "Fermez les panneaux que vous ne tradez pas", html: "Dans Tradovate, <strong class='text-white'>fermez tous les graphiques, DOM et panneaux que vous ne tradez pas activement</strong>. Chaque module ouvert consomme des ressources." },
+        { title: "Réduisez les instruments et les DOM", html: "Réduisez le nombre d'instruments et de DOM simultanés au strict nécessaire pour la session en cours." },
+        { title: "Fermez les autres applications lourdes", html: "Fermez les autres applications lourdes qui se disputent le CPU et la RAM, puis observez si la réactivité du DOM revient." },
+      ],
+    },
+    { type: "heading", text: "Réduisez-vous à une seule session" },
+    { type: "paragraph", html: "Éliminez les conflits de session qui se font passer pour du retard." },
+    {
+      type: "steps",
+      items: [
+        { title: "Déconnectez-vous partout", html: "Déconnectez-vous de Tradovate sur chaque appareil : la plateforme web, l'application de bureau, l'application mobile, et toute connexion liée à TradingView." },
+        { title: "Reconnectez-vous sur un seul appareil", html: "Laissez un moment aux anciennes sessions pour s'effacer, puis reconnectez-vous sur <strong class='text-white'>un seul</strong> appareil." },
+        { title: "Vérifiez les sessions autorisées", html: "Dans les paramètres de sécurité ou des appareils de votre compte, vérifiez toute liste de sessions actives ou autorisées et supprimez celles que vous ne reconnaissez pas. Les libellés du menu changent entre les mises à jour de la plateforme, confirmez donc le libellé exact dans votre version actuelle avant de vous y fier." },
+      ],
+    },
+    { type: "heading", text: "Stabilisez votre réseau et votre horloge" },
+    { type: "paragraph", html: "Offrez au flux de données en direct un tuyau propre." },
+    {
+      type: "steps",
+      items: [
+        { title: "Passez à l'Ethernet filaire", html: "Passez du Wi-Fi à une <strong class='text-white'>connexion Ethernet filaire</strong> quand vous le pouvez, et désactivez tout VPN qui achemine votre trafic de trading." },
+        { title: "Synchronisez l'horloge de votre système", html: "Sous Windows, activez <strong class='text-white'>Set time automatically</strong>, puis cliquez sur <strong class='text-white'>Sync now</strong> (Settings &rarr; Time &amp; language &rarr; Date &amp; time) afin que l'horloge système corresponde à l'heure du réseau." },
+        { title: "Fermez les applications en arrière-plan gourmandes en bande passante", html: "Fermez les applications en arrière-plan et les téléchargements qui saturent votre bande passante pendant que vous tradez." },
+      ],
+    },
+    { type: "heading", text: "Actualisez, mettez à jour et signalez au support" },
+    { type: "paragraph", html: "Lorsque le retard est récent ou clairement côté plateforme, réinitialisez et escaladez." },
+    {
+      type: "steps",
+      items: [
+        { title: "Actualisez ou redémarrez", html: "Sur la plateforme web, <strong class='text-white'>actualisez avec F5</strong> ; sur l'application de bureau, <strong class='text-white'>fermez-la complètement et rouvrez-la</strong> pour reconstruire la connexion de données." },
+        { title: "Mettez à jour vers la dernière version", html: "Assurez-vous d'utiliser la <strong class='text-white'>dernière version de bureau</strong>, une application obsolète peut rendre et diffuser moins efficacement." },
+        { title: "Escaladez un retard persistant à l'échelle du marché", html: "Si le DOM continue de prendre du retard à l'échelle du marché dans des conditions normales, <strong class='text-white'>contactez le support Tradovate</strong> (ou votre prop firm, pour les comptes d'évaluation) avec l'heure, l'instrument et une capture d'écran. Comme la cadence d'une fois par seconde et tout délai de flux en amont sont côté plateforme, c'est la bonne voie d'escalade, pas un paramètre que vous pouvez modifier vous-même." },
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Symptôme", "Ce que cela signifie", "Solution"],
+      rows: [
+        ["Le DOM ne se met à jour que &laquo;&nbsp;une fois par seconde&nbsp;&raquo;", "Cadence de rafraîchissement intégrée au pipeline de données actuel", "Aucun paramètre utilisateur ne le modifie ; acceptez la limite ou automatisez à partir de signaux"],
+        ["&laquo;&nbsp;Le prix LAST se fige&nbsp;&raquo; pendant que bid/ask bougent", "L'affichage traîne d'un temps derrière le marché", "Se corrige généralement de lui-même ; réduisez la charge locale et stabilisez la connexion"],
+        ["Le retard s'accroît plus vous restez en fonctionnement, disparaît au redémarrage", "Épuisement local du CPU/mémoire", "Fermez les graphiques/DOM supplémentaires ; vérifiez le Gestionnaire des tâches ; redémarrez l'application"],
+        ["Toute l'échelle prend du retard uniquement pendant les rafales de volatilité", "Retard du flux de données de marché en amont", "Attendez qu'il se corrige de lui-même ; signalez-le s'il est grave ou persistant"],
+        ["Saccades et graphiques figés lors du changement", "Trop de sessions simultanées", "Déconnectez-vous partout ; connectez-vous sur un seul appareil"],
+        ["Gels et sauts de rattrapage", "Réseau instable ou décalage d'horloge", "Utilisez l'Ethernet filaire ; activez \"Set time automatically\" et synchronisez"],
+        ["Aucune option pour accélérer le DOM", "Le changement du taux de ticks est une demande de fonctionnalité ouverte", "Réduisez la charge, signalez au support, ou acheminez les ordres via l'automatisation"],
+      ],
+    },
+    { type: "heading", text: "Réduisez votre dépendance à un DOM en retard" },
+    { type: "paragraph", html: "Si votre avantage dépend de la lecture d'une échelle rafraîchie une fois par seconde dans un marché qui bouge plusieurs fois par seconde, l'échelle n'est pas ce sur quoi il faut parier. PickMyTrade permet à votre stratégie d'agir selon le signal plutôt que selon ce qu'un DOM en retard affiche à un instant donné :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Exécution basée sur les signaux</strong>, les ordres se déclenchent depuis votre stratégie TradingView dès que votre condition se réalise, pas quand vos yeux rattrapent une échelle lente.",
+        "<strong class='text-white'>Routage côté serveur</strong>, les alertes sont acheminées vers Tradovate depuis les serveurs de PickMyTrade, de sorte qu'une machine locale saturée (une cause majeure du retard du DOM) ne bloque pas vos entrées et sorties.",
+        "<strong class='text-white'>Flux d'ordres sûr face aux limites de débit</strong>, l'acheminement des ordres est espacé judicieusement pour que rien ne rebondisse sur les limites de requêtes de Tradovate.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, la même entrée et sortie automatisées se répliquent sur plusieurs comptes Tradovate à la fois, sans clic par DOM.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Quando fate scalping su futures a movimento rapido come ES o NQ, una scala in ritardo fa la differenza tra un'esecuzione pulita e un ingresso inseguito. Il ritardo del DOM è una delle lamentele più persistenti di Tradovate sul flusso degli ordini: la profondità di mercato si aggiorna circa una volta al secondo, il prezzo LAST sembra congelato mentre le colonne bid e ask continuano a muoversi, e l'intera scala rimane indietro rispetto al mercato quando la volatilità si impenna, e questo accade sia sulla piattaforma web Chrome sia sull'app desktop. Ecco la buona notizia: gran parte del problema è risolvibile dal vostro lato. Il carico CPU locale, sessioni extra e una connessione instabile si sommano tutti insieme. L'unica parte che non potete regolare, quell'aggiornamento di circa una volta al secondo incorporato nell'attuale pipeline di dati, è esattamente il motivo per cui vale la pena togliere il dito da una scala letta a mano e lasciare che sia l'automazione basata su segnali a premere il grilletto." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per il ritardo del DOM di Tradovate",
+      items: [
+        "<strong class='text-white'>Controllate prima CPU e memoria.</strong> Aprite Gestione attività e osservate l'utilizzo della piattaforma. Se è al massimo, il ritardo è locale, non del mercato.",
+        "<strong class='text-white'>Chiudete ogni pannello che non state usando.</strong> Grafici, DOM e spazi di lavoro extra consumano tutti risorse e rallentano il ridisegno del book degli ordini.",
+        "<strong class='text-white'>Riducetevi a una sola sessione.</strong> Disconnettetevi dagli accessi duplicati web, desktop, mobile e TradingView che competono per lo stesso account.",
+        "<strong class='text-white'>Stabilizzate la vostra connessione.</strong> Una rete cablata e un orologio di sistema sincronizzato fermano i blocchi che sembrano ritardo del DOM.",
+        "<strong class='text-white'>Aggiornate o riavviate, poi aggiornate la versione.</strong> Ricaricate l'app web (F5) o riavviate l'app desktop, e assicuratevi di avere l'ultima build.",
+        "<strong class='text-white'>Segnalate al supporto un ritardo persistente su tutto il mercato.</strong> Se il feed stesso è in ritardo in condizioni tranquille, è un problema lato piattaforma da segnalare, non un'impostazione che potete modificare.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa realmente il &ldquo;ritardo del DOM&rdquo;" },
+    { type: "paragraph", html: "Il &ldquo;ritardo del DOM&rdquo; viene usato per due sintomi correlati. Il primo è un ritardo di <em>visualizzazione</em>: la scala rimane un attimo indietro rispetto al mercato reale, quindi un prezzo già scambiato appare in ritardo, e il prezzo LAST può sembrare congelato mentre le colonne bid e ask continuano ad aggiornarsi correttamente. Le vostre esecuzioni restano accurate rispetto al prezzo, è la profondità visualizzata sullo schermo a essere in ritardo. Il secondo è una limitazione della <em>frequenza di aggiornamento</em>: il book degli ordini si ridisegna solo circa una volta al secondo, il che rende difficile leggere le sfumature del flusso degli ordini su uno strumento veloce la cui profondità di mercato reale cambia molte volte al secondo." },
+    { type: "paragraph", html: "Si tratta di problemi diversi con soluzioni diverse. Il ritardo di visualizzazione che va e viene di solito indica qualcosa di locale, o un intoppo momentaneo del feed durante la volatilità, e tende a correggersi da solo in un attimo. La cadenza costante di una volta al secondo è un'altra faccenda: è una caratteristica della pipeline di dati di mercato che alimenta l'attuale piattaforma, non un problema sul vostro computer, e nessuna impostazione utente la accelera." },
+    { type: "paragraph", html: "Ecco la parte rassicurante: nella stragrande maggioranza dei casi, gli ordini continuano a essere instradati ed eseguiti correttamente al prezzo giusto. Il ritardo del DOM è un problema di visualizzazione, un'<em>immagine</em> lenta o grossolana del book, non un motore ordini rotto. Questa distinzione plasma ogni soluzione qui sotto. Potete affrontare voi stessi le cause locali e di connessione, e per il limite di aggiornamento integrato o lo accettate o smettete di affidarvi alla lettura a occhio della scala." },
+    { type: "heading", text: "Principali cause del ritardo del DOM di Tradovate nel 2026" },
+    { type: "heading", text: "1. Il book degli ordini si aggiorna solo circa una volta al secondo" },
+    { type: "paragraph", html: "L'unica causa che non potete configurare via è la cadenza di aggiornamento. Il DOM si aggiorna circa una volta al secondo, e ciò è legato alla pipeline di dati di mercato della piattaforma piuttosto che a qualcosa dal vostro lato. Attualmente <strong class='text-white'>non esiste un'impostazione visibile all'utente per aumentare la frequenza di aggiornamento dei tick del DOM</strong>, le richieste di modificare la frequenza di aggiornamento dei tick e di consentire intervalli di tick personalizzati sul DOM restano richieste di funzionalità aperte, non opzioni rilasciate. Su un contratto ad alto volume la cui profondità reale cambia molte volte al secondo, un ridisegno di una volta al secondo semplicemente non può mostrare ogni sfarfallio del flusso degli ordini." },
+    { type: "heading", text: "2. Sovraccarico locale di CPU o memoria" },
+    { type: "paragraph", html: "Quando il ritardo è a scatti, peggiora più a lungo lo fate girare, o scompare dopo un riavvio, il collo di bottiglia è di solito il vostro stesso computer. Far girare contemporaneamente una pila di grafici, diversi DOM, indicatori e altre app di trading può saturare CPU e memoria della piattaforma, e un renderer affamato di risorse ridisegna la scala lentamente. La prima diagnosi standard è aprire Gestione attività e controllare CPU e memoria della piattaforma; se una delle due è al massimo, avete trovato il vostro ritardo." },
+    { type: "heading", text: "3. Ritardo del feed di dati di mercato a monte durante la volatilità" },
+    { type: "paragraph", html: "Parte del ritardo inizia prima ancora di raggiungere il vostro schermo. Le quotazioni di Tradovate provengono da un fornitore di dati di mercato a monte, e quando quel fornitore è in ritardo, ogni piattaforma a valle è in ritardo con esso. Ecco perché il DOM tende a rimanere indietro proprio durante le raffiche di alta volatilità, un picco di notizie, l'apertura del mercato azionario, o un'inversione rapida, e poi si riallinea una volta passata l'ondata. Non potete correggere un feed a monte, ma potete riconoscerlo: se il ritardo colpisce tutti contemporaneamente attorno a un evento volatile e si autocorregge, è il feed, non la vostra configurazione." },
+    { type: "heading", text: "4. Troppe sessioni attive e conflitti di accesso" },
+    { type: "paragraph", html: "Un accesso Tradovate è pensato per far girare un numero limitato di sessioni simultanee, tipicamente circa due, tra web, desktop, mobile e qualsiasi connessione TradingView. Superate quel limite e le sessioni iniziano a scontrarsi tra loro: i grafici smettono di aggiornarsi, il DOM scatta, e la piattaforma può non rispondere più quando cambiate strumento. Molti casi di &ldquo;il DOM è in ritardo&rdquo; sono in realtà &ldquo;sono connesso su quattro dispositivi contemporaneamente&rdquo;. Ridursi a una singola sessione attiva elimina una quantità sorprendente di scatti." },
+    { type: "heading", text: "5. Instabilità di rete e scostamento dell'orologio" },
+    { type: "paragraph", html: "Il DOM trasmette dati in tempo reale, quindi una connessione instabile si manifesta come blocchi e salti di recupero che sembrano ritardo. Le cadute Wi-Fi, il routing VPN e una rete domestica congestionata interrompono tutti il flusso. Un orologio di sistema disallineato peggiora le cose: i servizi in tempo reale di Tradovate sono sensibili al tempo, e un orologio non sincronizzato abbinato a una connessione instabile è una causa diretta del blocco di grafici e dati. Una connessione cablata e un orologio sincronizzato automaticamente eliminano entrambi i problemi." },
+    { type: "heading", text: "Come risolvere il ritardo del DOM di Tradovate: passo dopo passo" },
+    { type: "heading", text: "Ridurre il carico locale della piattaforma" },
+    { type: "paragraph", html: "Liberate risorse in modo che la scala possa ridisegnarsi rapidamente." },
+    {
+      type: "steps",
+      items: [
+        { title: "Controllate Gestione attività", html: "Aprite <strong class='text-white'>Gestione attività</strong> (Ctrl+Maiusc+Esc su Windows) e controllate CPU e memoria usate dall'app Tradovate o dal vostro browser. Notate se una delle due è vicina al 100%." },
+        { title: "Chiudete i pannelli su cui non state operando", html: "In Tradovate, <strong class='text-white'>chiudete ogni grafico, DOM e pannello su cui non state facendo trading attivamente</strong>. Ogni modulo aperto consuma risorse." },
+        { title: "Riducete strumenti e DOM", html: "Riducete il numero di strumenti e DOM simultanei solo a quanto vi serve per la sessione attuale." },
+        { title: "Chiudete altre applicazioni pesanti", html: "Chiudete altre applicazioni pesanti che competono per CPU e RAM, quindi osservate se la reattività del DOM migliora." },
+      ],
+    },
+    { type: "heading", text: "Ridursi a una sola sessione" },
+    { type: "paragraph", html: "Eliminate i conflitti di sessione che si mascherano da ritardo." },
+    {
+      type: "steps",
+      items: [
+        { title: "Disconnettetevi ovunque", html: "Disconnettetevi da Tradovate su ogni dispositivo: la piattaforma web, l'app desktop, l'app mobile, e qualsiasi connessione collegata a TradingView." },
+        { title: "Riaccedete su un solo dispositivo", html: "Concedete un momento alle vecchie sessioni per svuotarsi, quindi riaccedete solo su <strong class='text-white'>un</strong> dispositivo." },
+        { title: "Verificate le sessioni autorizzate", html: "Nelle impostazioni di sicurezza o dei dispositivi del vostro account, controllate qualsiasi elenco di sessioni attive o autorizzate e rimuovete quelle che non riconoscete. Le etichette del menu cambiano tra gli aggiornamenti della piattaforma, quindi confermate la dicitura esatta nella vostra build attuale prima di affidarvi ad essa." },
+      ],
+    },
+    { type: "heading", text: "Stabilizzare rete e orologio" },
+    { type: "paragraph", html: "Date al flusso di dati in tempo reale un canale pulito." },
+    {
+      type: "steps",
+      items: [
+        { title: "Passate a Ethernet cablata", html: "Passate dal Wi-Fi a una <strong class='text-white'>connessione Ethernet cablata</strong> dove potete, e disattivate qualsiasi VPN che instrada il vostro traffico di trading." },
+        { title: "Sincronizzate l'orologio di sistema", html: "Su Windows, attivate <strong class='text-white'>Set time automatically</strong>, quindi fate clic su <strong class='text-white'>Sync now</strong> (Settings &rarr; Time &amp; language &rarr; Date &amp; time) in modo che l'orologio di sistema corrisponda all'ora di rete." },
+        { title: "Chiudete le app in background che consumano molta banda", html: "Chiudete le app in background e i download che saturano la vostra banda mentre fate trading." },
+      ],
+    },
+    { type: "heading", text: "Aggiornate, aggiornate la versione e segnalate al supporto" },
+    { type: "paragraph", html: "Quando il ritardo è recente o chiaramente lato piattaforma, resettate ed escalate." },
+    {
+      type: "steps",
+      items: [
+        { title: "Aggiornate o riavviate", html: "Sulla piattaforma web, <strong class='text-white'>aggiornate con F5</strong>; sull'app desktop, <strong class='text-white'>chiudetela completamente e riapritela</strong> per ricostruire la connessione dati." },
+        { title: "Aggiornate all'ultima build", html: "Assicuratevi di usare l'<strong class='text-white'>ultima build desktop</strong>, un'app obsoleta può renderizzare e trasmettere in modo meno efficiente." },
+        { title: "Escalate un ritardo persistente su tutto il mercato", html: "Se il DOM continua a essere in ritardo su tutto il mercato in condizioni normali, <strong class='text-white'>contattate il supporto Tradovate</strong> (o la vostra prop firm, per gli account di valutazione) con l'orario, lo strumento e uno screenshot. Poiché la cadenza di una volta al secondo e qualsiasi ritardo del feed a monte sono lato piattaforma, questa è la via di escalation corretta, non un'impostazione che potete modificare voi stessi." },
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Sintomo", "Cosa significa", "Soluzione"],
+      rows: [
+        ["Il DOM si aggiorna solo &ldquo;una volta al secondo&rdquo;", "Cadenza di aggiornamento integrata nell'attuale pipeline di dati", "Nessuna impostazione utente la modifica; accettate il limite o automatizzate tramite segnali"],
+        ["&ldquo;Il prezzo LAST si blocca&rdquo; mentre bid/ask si muovono", "La visualizzazione è indietro di un attimo rispetto al mercato", "Di solito si autocorregge; riducete il carico locale e stabilizzate la connessione"],
+        ["Il ritardo aumenta più a lungo lo fate girare, scompare al riavvio", "Esaurimento locale di CPU/memoria", "Chiudete grafici/DOM extra; controllate Gestione attività; riavviate l'app"],
+        ["L'intera scala è in ritardo solo durante le raffiche di volatilità", "Ritardo del feed di dati di mercato a monte", "Aspettate che si autocorregga; segnalate se è grave o persistente"],
+        ["Scatti e grafici bloccati al cambio", "Troppe sessioni simultanee", "Disconnettetevi ovunque; accedete su un solo dispositivo"],
+        ["Blocchi e salti di recupero", "Rete instabile o scostamento dell'orologio", "Usate Ethernet cablata; attivate \"Set time automatically\" e sincronizzate"],
+        ["Nessuna opzione per velocizzare il DOM", "La modifica della frequenza dei tick è una richiesta di funzionalità aperta", "Riducete il carico, segnalate al supporto, o instradate gli ordini tramite automazione"],
+      ],
+    },
+    { type: "heading", text: "Riducete la vostra dipendenza da un DOM in ritardo" },
+    { type: "paragraph", html: "Se il vostro vantaggio dipende dalla lettura di una scala aggiornata una volta al secondo in un mercato che si muove molte volte al secondo, la scala è la cosa sbagliata su cui puntare. PickMyTrade permette alla vostra strategia di agire in base al segnale invece che a quello che un DOM in ritardo mostra in quel momento:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Esecuzione basata su segnali</strong>, gli ordini si attivano dalla vostra strategia TradingView nel momento in cui la vostra condizione si verifica, non quando i vostri occhi raggiungono una scala lenta.",
+        "<strong class='text-white'>Instradamento lato server</strong>, gli alert vengono instradati a Tradovate dai server di PickMyTrade, così un computer locale saturo (una delle principali cause del ritardo del DOM) non blocca i vostri ingressi e uscite.",
+        "<strong class='text-white'>Flusso di ordini sicuro rispetto ai rate limit</strong>, l'instradamento degli ordini è distanziato in modo sensato così nulla rimbalza sui limiti di richieste di Tradovate.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, lo stesso ingresso e uscita automatizzati si replicano su più account Tradovate contemporaneamente, senza clic per ogni DOM.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Don't Let a Laggy DOM Cost You the Fill", de: "Lassen Sie sich durch einen verzögerten DOM keine Ausführung entgehen", es: "No deje que un DOM con retraso le cueste la ejecución", fr: "Ne laissez pas un DOM en retard vous coûter l'exécution", it: "Non lasciate che un DOM in ritardo vi costi l'esecuzione" },
+  ctaText: { en: "PickMyTrade fires your entries and exits from the signal itself, server-side, so a slow once-a-second ladder never gets a vote in your execution.", de: "PickMyTrade löst Ihre Ein- und Ausstiege direkt aus dem Signal heraus aus, serverseitig, sodass eine langsame Einmal-pro-Sekunde-Preisleiter nie ein Mitspracherecht bei Ihrer Ausführung hat.", es: "PickMyTrade dispara sus entradas y salidas directamente desde la señal, del lado del servidor, así que una escalera lenta de una vez por segundo nunca tiene voto en su ejecución.", fr: "PickMyTrade déclenche vos entrées et sorties directement à partir du signal, côté serveur, afin qu'une échelle lente rafraîchie une fois par seconde n'ait jamais son mot à dire dans votre exécution.", it: "PickMyTrade attiva i vostri ingressi e uscite direttamente dal segnale, lato server, così una scala lenta aggiornata una volta al secondo non ha mai voce in capitolo nella vostra esecuzione." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Inicie su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvia la tua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Is Tradovate DOM lag going to cost me bad fills?", a: "Usually not. In most cases the order engine still fills accurately at the right price, the lag lives in the visual depth display, not the execution. Fast, discretionary DOM entries are where a slow ladder hurts most." },
+    { q: "Why does the DOM only update about once a second?", a: "The roughly once-per-second cadence comes from the platform's market-data pipeline. It's a characteristic of the feed rather than a bug on your machine, and there's no user setting to raise it." },
+    { q: "Can I change Tradovate's DOM tick refresh rate?", a: "No. As of 2026 there's no user-facing control to speed up the DOM's refresh. Requests to change the tick refresh rate and DOM tick intervals remain open feature requests, not shipped settings." },
+    { q: "The bid/ask columns move but the LAST price looks frozen, is that a bug?", a: "That specific symptom is a display and refresh artifact, not a broken account. Reducing local load and stabilizing your connection helps; if it persists market-wide, report it to support." },
+    { q: "Does the desktop app lag less than the browser?", a: "Not reliably, the lag shows up on both Chrome and the desktop app. The desktop build can feel steadier if your browser is resource-starved, so try it, but treat local load and sessions as the real levers." },
+    { q: "Why does the DOM lag only when the market gets fast?", a: "Volatility is when depth changes fastest and when any upstream feed delay is most visible. Tradovate's quotes come from an upstream provider, so when that feed lags in a burst, the ladder falls behind and then snaps back once the surge passes." },
+    { q: "Will closing charts and DOMs actually help?", a: "Yes, when the cause is local. Every open chart, DOM, and panel consumes CPU and memory. Trimming to what you're actively trading, and checking Task Manager, is the fastest self-serve fix." },
+    { q: "When should I contact support instead of troubleshooting?", a: "When the lag is market-wide under normal (non-volatile) conditions, persists after you've reduced load, fixed your session, and stabilized your connection, or coincides with a broader platform slowdown. Send the time, instrument, and a screenshot." },
+  ], de: [
+    { q: "Kostet mich die Tradovate-DOM-Verzögerung schlechte Ausführungen?", a: "Meist nicht. In den meisten Fällen führt die Order-Engine weiterhin präzise zum richtigen Preis aus, die Verzögerung liegt in der visuellen Tiefenanzeige, nicht in der Ausführung. Schnelle, diskretionäre DOM-Einstiege sind der Bereich, in dem eine langsame Preisleiter am meisten schadet." },
+    { q: "Warum aktualisiert sich der DOM nur etwa einmal pro Sekunde?", a: "Der etwa einmal-pro-Sekunde-Rhythmus stammt von der Marktdaten-Pipeline der Plattform. Es ist eine Eigenschaft des Feeds, kein Fehler auf Ihrem Rechner, und es gibt keine Benutzereinstellung, um ihn zu erhöhen." },
+    { q: "Kann ich die Tick-Aktualisierungsrate des Tradovate-DOM ändern?", a: "Nein. Stand 2026 gibt es keine für Nutzer sichtbare Steuerung, um die Aktualisierung des DOM zu beschleunigen. Anfragen zur Änderung der Tick-Aktualisierungsrate und der DOM-Tick-Intervalle bleiben offene Feature-Anfragen, keine ausgelieferten Einstellungen." },
+    { q: "Die Bid-/Ask-Spalten bewegen sich, aber der LAST-Preis wirkt eingefroren – ist das ein Fehler?", a: "Dieses spezifische Symptom ist ein Anzeige- und Aktualisierungsartefakt, kein defektes Konto. Das Reduzieren der lokalen Last und Stabilisieren der Verbindung hilft; hält es marktweit an, melden Sie es dem Support." },
+    { q: "Hinkt die Desktop-App weniger hinterher als der Browser?", a: "Nicht zuverlässig, die Verzögerung tritt sowohl in Chrome als auch in der Desktop-App auf. Der Desktop-Build kann stabiler wirken, wenn Ihr Browser unterversorgt ist, probieren Sie es also, aber betrachten Sie lokale Last und Sitzungen als die eigentlichen Stellschrauben." },
+    { q: "Warum hinkt der DOM nur hinterher, wenn der Markt schnell wird?", a: "Volatilität ist der Zeitpunkt, an dem sich die Tiefe am schnellsten ändert und jede vorgelagerte Feed-Verzögerung am sichtbarsten ist. Tradovates Kurse stammen von einem vorgelagerten Anbieter, wenn dieser Feed also in einem Ausbruch hinterherhinkt, hinkt die Preisleiter hinterher und rastet ein, sobald der Ausbruch vorbei ist." },
+    { q: "Hilft das Schließen von Charts und DOMs tatsächlich?", a: "Ja, wenn die Ursache lokal ist. Jeder geöffnete Chart, DOM und jedes Panel verbraucht CPU und Arbeitsspeicher. Die Reduzierung auf das, was Sie aktiv handeln, und das Prüfen des Task-Managers ist die schnellste Selbsthilfelösung." },
+    { q: "Wann sollte ich den Support kontaktieren, statt selbst zu suchen?", a: "Wenn die Verzögerung unter normalen (nicht volatilen) Bedingungen marktweit auftritt, nach dem Reduzieren der Last, Beheben der Sitzung und Stabilisieren der Verbindung fortbesteht, oder mit einer allgemeineren Plattformverlangsamung zusammenfällt. Senden Sie Uhrzeit, Instrument und einen Screenshot." },
+  ], es: [
+    { q: "¿El retraso del DOM de Tradovate me va a costar malas ejecuciones?", a: "Normalmente no. En la mayoría de los casos, el motor de órdenes sigue ejecutando con precisión al precio correcto; el retraso reside en la visualización de la profundidad, no en la ejecución. Las entradas discrecionales rápidas por DOM son donde más perjudica una escalera lenta." },
+    { q: "¿Por qué el DOM solo se actualiza aproximadamente una vez por segundo?", a: "La cadencia aproximada de una vez por segundo proviene del pipeline de datos de mercado de la plataforma. Es una característica del feed más que un fallo en su equipo, y no hay ninguna configuración de usuario para aumentarla." },
+    { q: "¿Puedo cambiar la tasa de actualización de ticks del DOM de Tradovate?", a: "No. A partir de 2026 no existe un control visible para el usuario que acelere la actualización del DOM. Las solicitudes para cambiar la tasa de actualización de ticks y los intervalos de tick del DOM siguen siendo solicitudes de funcionalidad abiertas, no configuraciones ya publicadas." },
+    { q: "Las columnas de bid/ask se mueven pero el precio LAST parece congelado, ¿es un error?", a: "Ese síntoma específico es un artefacto de visualización y actualización, no una cuenta averiada. Reducir la carga local y estabilizar su conexión ayuda; si persiste en todo el mercado, repórtelo a soporte." },
+    { q: "¿La aplicación de escritorio tiene menos retraso que el navegador?", a: "No de forma fiable, el retraso aparece tanto en Chrome como en la aplicación de escritorio. La versión de escritorio puede sentirse más estable si su navegador tiene pocos recursos, así que pruébela, pero trate la carga local y las sesiones como las palancas reales." },
+    { q: "¿Por qué el DOM se retrasa solo cuando el mercado se acelera?", a: "La volatilidad es cuando la profundidad cambia más rápido y cuando cualquier retraso del feed ascendente es más visible. Las cotizaciones de Tradovate provienen de un proveedor ascendente, así que cuando ese feed se retrasa en una ráfaga, la escalera se queda atrás y luego vuelve a alinearse una vez que pasa el repunte." },
+    { q: "¿Ayuda realmente cerrar gráficos y DOMs?", a: "Sí, cuando la causa es local. Cada gráfico, DOM y panel abierto consume CPU y memoria. Reducir a lo que está operando activamente, y comprobar el Administrador de tareas, es la solución autoaplicable más rápida." },
+    { q: "¿Cuándo debería contactar con soporte en lugar de solucionar el problema yo mismo?", a: "Cuando el retraso es en todo el mercado bajo condiciones normales (no volátiles), persiste después de haber reducido la carga, arreglado su sesión y estabilizado su conexión, o coincide con una ralentización más amplia de la plataforma. Envíe la hora, el instrumento y una captura de pantalla." },
+  ], fr: [
+    { q: "Le retard du DOM Tradovate va-t-il me coûter de mauvaises exécutions ?", a: "Généralement non. Dans la plupart des cas, le moteur d'ordres continue d'exécuter avec précision au bon prix ; le retard réside dans l'affichage visuel de la profondeur, pas dans l'exécution. Les entrées discrétionnaires rapides via le DOM sont là où une échelle lente nuit le plus." },
+    { q: "Pourquoi le DOM ne se met-il à jour qu'environ une fois par seconde ?", a: "La cadence d'environ une fois par seconde provient du pipeline de données de marché de la plateforme. C'est une caractéristique du flux plutôt qu'un bug sur votre machine, et il n'existe aucun paramètre utilisateur pour l'augmenter." },
+    { q: "Puis-je modifier le taux de rafraîchissement des ticks du DOM Tradovate ?", a: "Non. En 2026, il n'existe aucun contrôle visible par l'utilisateur pour accélérer le rafraîchissement du DOM. Les demandes visant à modifier le taux de rafraîchissement des ticks et les intervalles de tick du DOM restent des demandes de fonctionnalité ouvertes, pas des paramètres livrés." },
+    { q: "Les colonnes bid/ask bougent mais le prix LAST semble figé, est-ce un bug ?", a: "Ce symptôme spécifique est un artefact d'affichage et de rafraîchissement, pas un compte défaillant. Réduire la charge locale et stabiliser votre connexion aide ; si cela persiste à l'échelle du marché, signalez-le au support." },
+    { q: "L'application de bureau a-t-elle moins de retard que le navigateur ?", a: "Pas de manière fiable, le retard apparaît à la fois sur Chrome et sur l'application de bureau. La version de bureau peut sembler plus stable si votre navigateur manque de ressources, essayez-la donc, mais considérez la charge locale et les sessions comme les vrais leviers." },
+    { q: "Pourquoi le DOM ne prend-il du retard que lorsque le marché s'accélère ?", a: "La volatilité est le moment où la profondeur change le plus vite et où tout délai de flux en amont est le plus visible. Les cotations de Tradovate proviennent d'un fournisseur en amont, donc lorsque ce flux prend du retard lors d'une rafale, l'échelle prend du retard puis se remet en ligne une fois la poussée passée." },
+    { q: "Fermer les graphiques et les DOM aide-t-il vraiment ?", a: "Oui, lorsque la cause est locale. Chaque graphique, DOM et panneau ouvert consomme du CPU et de la mémoire. Se réduire à ce que vous tradez activement, et vérifier le Gestionnaire des tâches, est la solution autonome la plus rapide." },
+    { q: "Quand dois-je contacter le support plutôt que dépanner moi-même ?", a: "Lorsque le retard est à l'échelle du marché dans des conditions normales (non volatiles), persiste après avoir réduit la charge, réparé votre session et stabilisé votre connexion, ou coïncide avec un ralentissement plus large de la plateforme. Envoyez l'heure, l'instrument et une capture d'écran." },
+  ], it: [
+    { q: "Il ritardo del DOM di Tradovate mi costerà esecuzioni sbagliate?", a: "Di solito no. Nella maggior parte dei casi il motore ordini esegue comunque con precisione al prezzo giusto, il ritardo risiede nella visualizzazione della profondità, non nell'esecuzione. Gli ingressi discrezionali rapidi tramite DOM sono dove una scala lenta danneggia di più." },
+    { q: "Perché il DOM si aggiorna solo circa una volta al secondo?", a: "La cadenza di circa una volta al secondo deriva dalla pipeline di dati di mercato della piattaforma. È una caratteristica del feed piuttosto che un bug sul vostro computer, e non esiste un'impostazione utente per aumentarla." },
+    { q: "Posso modificare la frequenza di aggiornamento dei tick del DOM di Tradovate?", a: "No. A partire dal 2026 non esiste un controllo visibile all'utente per velocizzare l'aggiornamento del DOM. Le richieste di modificare la frequenza di aggiornamento dei tick e gli intervalli di tick del DOM restano richieste di funzionalità aperte, non impostazioni rilasciate." },
+    { q: "Le colonne bid/ask si muovono ma il prezzo LAST sembra congelato, è un bug?", a: "Quel sintomo specifico è un artefatto di visualizzazione e aggiornamento, non un account guasto. Ridurre il carico locale e stabilizzare la connessione aiuta; se persiste su tutto il mercato, segnalatelo al supporto." },
+    { q: "L'app desktop ha meno ritardo del browser?", a: "Non in modo affidabile, il ritardo compare sia su Chrome sia sull'app desktop. La build desktop può sembrare più stabile se il vostro browser è a corto di risorse, quindi provatela, ma considerate il carico locale e le sessioni come le vere leve." },
+    { q: "Perché il DOM è in ritardo solo quando il mercato accelera?", a: "La volatilità è il momento in cui la profondità cambia più velocemente e in cui qualsiasi ritardo del feed a monte è più visibile. Le quotazioni di Tradovate provengono da un fornitore a monte, quindi quando quel feed è in ritardo durante una raffica, la scala rimane indietro e poi si riallinea una volta passata l'ondata." },
+    { q: "Chiudere grafici e DOM aiuta davvero?", a: "Sì, quando la causa è locale. Ogni grafico, DOM e pannello aperto consuma CPU e memoria. Ridursi a ciò su cui state facendo trading attivamente, e controllare Gestione attività, è la soluzione autonoma più rapida." },
+    { q: "Quando dovrei contattare il supporto invece di risolvere da solo?", a: "Quando il ritardo è su tutto il mercato in condizioni normali (non volatili), persiste dopo aver ridotto il carico, sistemato la vostra sessione e stabilizzato la connessione, oppure coincide con un rallentamento più ampio della piattaforma. Inviate l'orario, lo strumento e uno screenshot." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Drittanbieter-Automatisierungsplattform und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Abläufe der Plattform ändern sich im Laufe der Zeit; bestätigen Sie den aktuellen Prozess daher stets in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión o de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; confirmez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha uno scopo puramente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi verificate sempre il processo attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

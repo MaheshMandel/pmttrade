@@ -1,0 +1,618 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "daily-disconnect-forcibly-closed";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate MD 'Connection Forcibly Closed' Daily";
+const META_DESCRIPTION =
+  "Tradovate MD 'connection forcibly closed' every day? Add auto-reconnect, heartbeats, and OAuth re-auth to survive daily forced disconnects.";
+
+// Short SEO title (<=60 chars) for locales where the shared h1 is too long for a SERP title.
+const TITLE_OVERRIDE: Partial<Record<Locale, string>> = { de: "Tradovate MD: Tägliches „Connection Forcibly Closed“", es: "Tradovate MD: “Connection Forcibly Closed” a diario", fr: "Tradovate MD : « Connection Forcibly Closed » chaque jour", it: "Tradovate MD: “Connection Forcibly Closed” ogni giorno" };
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate", de: "Tradovate", es: "Tradovate", fr: "Tradovate", it: "Tradovate" },
+  h1: { en: META_TITLE, de: "Tradovate MD: Täglich &ldquo;Connection Forcibly Closed&rdquo;", es: "Tradovate MD: &ldquo;Connection Forcibly Closed&rdquo; a diario", fr: "Tradovate MD : &laquo;Connection Forcibly Closed&raquo; chaque jour", it: "Tradovate MD: &ldquo;Connection Forcibly Closed&rdquo; quotidiano" },
+  dek: { en: "The market-data feed drops with &ldquo;An existing connection was forcibly closed by the remote host&rdquo; at the same quiet stretch every day. Here's what the reset actually means and the heartbeat, backoff, and re-auth pattern that keeps it from costing you a fill.", de: "Der Market-Data-Feed bricht jeden Tag zur gleichen ruhigen Zeit mit &ldquo;An existing connection was forcibly closed by the remote host&rdquo; ab. Hier erfahren Sie, was der Reset wirklich bedeutet und mit welchem Muster aus Heartbeat, Backoff und Re-Auth Sie verhindern, dass er Sie einen Fill kostet.", es: "El feed de datos de mercado se interrumpe cada día en el mismo tramo de calma con &ldquo;An existing connection was forcibly closed by the remote host&rdquo;. Esto es lo que ese reinicio realmente significa y el patrón de heartbeat, backoff y reautenticación que evita que le cueste una ejecución.", fr: "Le flux de données de marché s'interrompt chaque jour au même moment calme avec &ldquo;An existing connection was forcibly closed by the remote host&rdquo;. Voici ce que cette réinitialisation signifie réellement et le schéma de heartbeat, de backoff et de réauthentification qui vous évite de perdre une exécution.", it: "Il feed di dati di mercato si interrompe ogni giorno nello stesso momento di calma con &ldquo;An existing connection was forcibly closed by the remote host&rdquo;. Ecco cosa significa davvero questo reset e lo schema di heartbeat, backoff e ri-autenticazione che Le evita di perdere un fill." },
+  readTime: { en: "9 min read", de: "9 Minuten Lesezeit", es: "Lectura de 9 minutos", fr: "Lecture de 9 minutes", it: "Lettura di 9 minuti" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "You know the pattern by now. Everything streams fine through the busy open, then the market goes quiet and the feed collapses with <strong class='text-white'>An existing connection was forcibly closed by the remote host</strong>. Sometimes the charts snap back after a rapid reload. Sometimes the whole market-data feed goes dark and the OAuth login screen slides back into view, asking you to sign in again. And it's not random, it tends to hit the same slow stretch of the day. Here's what that error actually means, why quiet contracts trigger it more than fast ones, and the exact reconnect-plus-re-auth pattern that keeps a daily forced disconnect from turning into a missed fill." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for the Daily Forced Disconnect",
+      items: [
+        "<strong class='text-white'>Send a heartbeat about every 2.5 seconds</strong>, an empty JSON array, <code>[]</code>. On a quiet contract this is the only thing telling the path your socket is still alive.",
+        "<strong class='text-white'>Treat the close as normal, not fatal</strong>, a forced close is a TCP reset from the far end, not a bug you can code away. Plan to survive it.",
+        "<strong class='text-white'>Reconnect with backoff, never on a tight loop</strong>, reconnecting every few seconds trips a 429 rate-limit lockout. Use exponential backoff with jitter.",
+        "<strong class='text-white'>Re-authorize with a fresh token</strong>, the dead socket took your session with it, which is why the OAuth screen reappears. Refresh the token before it expires so you never fall back to a login.",
+        "<strong class='text-white'>Resubscribe to every feed</strong>, a new socket starts blank, so resend your sync request and re-subscribe to each symbol.",
+        "<strong class='text-white'>Watch the session lulls</strong>, pre-open, lunch, and overnight are when idle timers fire. If it drops at the same hour daily, that's your window.",
+      ],
+    },
+    { type: "heading", text: "What &ldquo;Connection Forcibly Closed&rdquo; Actually Means" },
+    { type: "paragraph", html: "The phrase <code>An existing connection was forcibly closed by the remote host</code> is a Windows sockets message, WinSock error 10054, also written as WSAECONNRESET. In plain terms, the other end sent a TCP <strong class='text-white'>RST packet</strong>: it slammed the connection shut instead of going through the polite close handshake. Your client didn't decide to hang up. Something on the far side did it for you." },
+    { type: "paragraph", html: "That &ldquo;something&rdquo; can be Tradovate's server, a load balancer, a proxy, or a session timer anywhere along the route. On the market-data (MD) socket the practical read is simple: the connection was healthy, then it was gone in one abrupt step, with no clean shutdown to give your code a graceful heads-up. Because it's a hard reset, your normal close handler may barely get a chance to run, and any write you had queued on that socket throws right after." },
+    { type: "paragraph", html: "The key mental shift is this: a forced close isn't a defect you can patch out of existence. TCP resets happen, networks blip, upstream timers fire, sessions age out. The durable fix isn't preventing every close. It's building a connection that notices the drop instantly and rebuilds itself before you'd ever reach for the mouse." },
+    { type: "heading", text: "Top Causes of the Daily Forced Disconnect in 2026" },
+    { type: "heading", text: "1. Idle timeouts during quiet market periods" },
+    { type: "paragraph", html: "This is the big one for the &ldquo;same time every day&rdquo; pattern. When a contract dries up, a thin ag future mid-session, or any symbol in the overnight lull, quotes stop arriving. A socket that only carries market-data ticks now looks idle to whatever timer sits on the path. Without a steady client heartbeat proving otherwise, that timer eventually decides the connection is stale and forcibly closes it. The quieter the tape, the more this bites, which is why the drop clusters around the slow parts of your trading day." },
+    { type: "heading", text: "2. No heartbeat, or a heartbeat arriving late" },
+    { type: "paragraph", html: "Tradovate's real-time feed expects the client to send a small keep-alive frame, text content <code>[]</code>, roughly every 2.5 seconds. Once live data starts flowing, <strong class='text-white'>the server stops sending its own heartbeats</strong>, so you can't lean on incoming traffic to hold the line open. Skip the frame, or let it slip past the window, and the connection gets marked dead. On a quiet contract there's no tick traffic to mask a missed heartbeat, so a lazy keep-alive gets exposed fast." },
+    { type: "heading", text: "3. The session and token behind the socket expired" },
+    { type: "paragraph", html: "When the socket dies, the authorized session riding on it dies too. That's the reason the <strong class='text-white'>OAuth login screen reappears</strong>, the client has no live session to stream on, so it bounces you back to sign in. It gets worse if your access token was already close to expiry: even an instant reconnect can't authorize on a stale token, so the new socket fails the same way and you're stuck in a login loop." },
+    { type: "heading", text: "4. Reconnecting too aggressively (and getting rate-limited)" },
+    { type: "paragraph", html: "Once you see the drops, the instinct is to reconnect fast, retry every three or five seconds until it sticks. That backfires. Opening connections that quickly trips Tradovate's rate limit and hands you a <strong class='text-white'>429 Too Many Requests</strong>, which locks you out even harder. A tight reconnect loop turns one quiet-market blip into a self-inflicted outage." },
+    { type: "heading", text: "5. Session limits and long-lived connections" },
+    { type: "paragraph", html: "Each fresh sign-in starts a new server-side session, and you're capped at a small number of concurrent sessions, start too many and the oldest ones get closed out from under you. Connections also aren't meant to live forever; hold one socket open across a full day and it tends to drop on its own. On a prop or evaluation account, session and reconnection rules can be stricter and vary by firm and account size, check your firm's current rules rather than assuming the retail defaults apply." },
+    { type: "heading", text: "How to Fix the Daily Forced Disconnect: Step-by-Step" },
+    { type: "heading", text: "Fix 1: Keep the socket alive with a real heartbeat" },
+    { type: "paragraph", html: "Heartbeats are your first line of defense, and they matter most exactly when the market is quiet:" },
+    {
+      type: "list",
+      items: [
+        "After the socket opens and you've authorized, start a keep-alive routine that runs on its own clock, not off incoming ticks.",
+        "On each tick, send a frame whose text is <code>[]</code>, the empty-bracket keep-alive.",
+        "Target a cadence a touch under 2.5 seconds so a slightly late frame still lands inside the window.",
+        "Don't schedule it with a plain browser timer in a background tab, those get throttled, the interval slips, and the socket drops anyway. Run the connection server-side or in a worker so the timer stays honest.",
+      ],
+    },
+    { type: "heading", text: "Fix 2: Detect the close and reconnect with backoff" },
+    { type: "paragraph", html: "Since a forced close is going to happen sooner or later, wrap the socket so a drop rebuilds it automatically, carefully:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Own the lifecycle.</strong> Put the socket inside one class or function that's responsible for creating, tearing down, and recreating it, so there's a single place that reacts to a close.",
+        "<strong class='text-white'>Reconnect on close, don't revive.</strong> Open a brand-new socket instead of trying to resuscitate the dead one.",
+        "<strong class='text-white'>Back off exponentially.</strong> Start around one second, double the wait after each failed attempt, cap it near sixty seconds, and add 0&ndash;10% random jitter so a fleet of clients doesn't retry in lockstep. This is what keeps you clear of the 429 lockout.",
+        "<strong class='text-white'>Cap the attempts</strong> so a genuine outage doesn't spin forever, then surface a clear error instead of looping silently.",
+      ],
+    },
+    { type: "heading", text: "Fix 3: Re-authorize with a fresh token so the OAuth screen never returns" },
+    { type: "paragraph", html: "The reconnect is only half the job, the new socket still needs a valid session:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Renew the token proactively.</strong> The access token has a limited lifetime (commonly cited around 60&ndash;90 minutes, and it changes over time, confirm the current value in the API docs). Renew it well ahead of expiry using the token-renewal endpoint; a common guideline is refreshing roughly 15 minutes before it lapses.",
+        "<strong class='text-white'>Keep a fresh token ready.</strong> When a drop hits, authorize the new socket with a token you already know is valid, not the one that may have just expired.",
+        "<strong class='text-white'>Reuse the session where you can</strong> so you don't burn through your concurrent-session limit and knock out your own other connections.",
+        "Done right, the client re-authorizes in the background and you never see the login screen at all.",
+      ],
+    },
+    { type: "heading", text: "Fix 4: Resubscribe to every feed after reconnecting" },
+    { type: "paragraph", html: "A new socket starts with a clean slate, no subscriptions, no sync, so restore state before you trust the data:" },
+    {
+      type: "list",
+      items: [
+        "Resend your sync request so account and order state is current again.",
+        "Re-subscribe to each symbol and market-data feed you were watching; the fresh socket knows about none of them.",
+        "Wait until the socket reports it's genuinely open before sending anything, so you don't write into a half-open connection.",
+        "Log the close code and reason on every drop, over a week it tells you which quiet window keeps killing the feed.",
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / signal", "What it means", "Fix"],
+      rows: [
+        ["An existing connection was forcibly closed by the remote host", "TCP reset (WinSock 10054), the far end dropped the socket abruptly", "Reconnect, re-authorize, and resubscribe automatically"],
+        ["Drops at the same quiet hour daily", "An idle timer fired because no ticks and no heartbeats were flowing", "Send the [] heartbeat every ~2.5s, especially on slow contracts"],
+        ["OAuth login screen reappears after a drop", "The authorized session died with the socket", "Refresh the token before expiry and re-authorize in the background"],
+        ["429 Too Many Requests after a drop", "Reconnect loop is hammering the server", "Use exponential backoff with jitter, not a fixed short interval"],
+        ["New socket connects but no data arrives", "You reconnected but never resubscribed", "Resend the sync request and re-subscribe to each feed"],
+        ["Feed dies after very long uptime", "Token expired or the connection aged out over the day", "Renew the token on a schedule and cycle the connection"],
+        ["Reconnect keeps closing older sessions", "You exceeded the concurrent-session limit", "Reuse a session instead of opening a fresh one on each retry"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade sits between your TradingView alerts and Tradovate and runs the connection layer as a managed, server-side service, so a daily forced close is handled long before it can cost you a trade:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Managed Heartbeats</strong>, sends the keep-alive frame on a steady server-side cadence, so a quiet contract never looks idle to an upstream timer.",
+        "<strong class='text-white'>Auto-Reconnect With Backoff</strong>, detects the forced close, reopens the socket with exponential backoff and jitter, and stays clear of the 429 lockout.",
+        "<strong class='text-white'>Background OAuth Re-Auth</strong>, refreshes the token ahead of expiry and re-authorizes automatically, so the login screen never interrupts you.",
+        "<strong class='text-white'>Automatic Resubscribe &amp; Multi-Account Sync</strong>, restores every feed after a reconnect and keeps each connected account streaming, so one drop never leaves an account behind.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph", html: "Das Muster kennen Sie inzwischen. In der lebhaften Eröffnungsphase läuft alles einwandfrei, dann wird der Markt ruhig und der Feed bricht mit <strong class='text-white'>An existing connection was forcibly closed by the remote host</strong> zusammen. Manchmal erholen sich die Charts nach einem schnellen Neuladen von selbst. Manchmal wird der gesamte Market-Data-Feed dunkel, und der OAuth-Login-Bildschirm erscheint erneut und verlangt eine neue Anmeldung. Und das ist kein Zufall, es trifft meist denselben ruhigen Abschnitt des Tages. Im Folgenden erfahren Sie, was dieser Fehler wirklich bedeutet, warum ruhige Kontrakte ihn häufiger auslösen als schnelle, und mit welchem Reconnect-plus-Re-Auth-Muster Sie verhindern, dass ein täglicher Zwangsabbruch zu einem verpassten Fill wird." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste für den täglichen Zwangsabbruch",
+      items: [
+        "<strong class='text-white'>Senden Sie etwa alle 2,5 Sekunden einen Heartbeat</strong>, ein leeres JSON-Array, <code>[]</code>. Bei einem ruhigen Kontrakt ist das die einzige Information, die dem Übertragungsweg zeigt, dass Ihr Socket noch lebt.",
+        "<strong class='text-white'>Behandeln Sie den Abbruch als normal, nicht als fatal</strong>, ein Zwangsabbruch ist ein TCP-Reset von der Gegenseite, kein Bug, den Sie wegprogrammieren können. Planen Sie, ihn zu überstehen.",
+        "<strong class='text-white'>Verbinden Sie sich mit Backoff neu, nie in einer engen Schleife</strong>, ein Reconnect alle paar Sekunden löst eine 429-Rate-Limit-Sperre aus. Verwenden Sie exponentiellen Backoff mit Jitter.",
+        "<strong class='text-white'>Autorisieren Sie sich mit einem frischen Token neu</strong>, der tote Socket hat Ihre Sitzung mit sich gerissen, deshalb erscheint der OAuth-Bildschirm erneut. Erneuern Sie das Token vor Ablauf, damit Sie nie wieder zum Login zurückfallen.",
+        "<strong class='text-white'>Abonnieren Sie jeden Feed erneut</strong>, ein neuer Socket startet leer, senden Sie also Ihre Sync-Anfrage erneut und abonnieren Sie jedes Symbol neu.",
+        "<strong class='text-white'>Achten Sie auf die ruhigen Sitzungsphasen</strong>, vor der Eröffnung, in der Mittagspause und über Nacht feuern Idle-Timer am häufigsten. Bricht die Verbindung täglich zur gleichen Stunde ab, ist das Ihr Zeitfenster.",
+      ],
+    },
+    { type: "heading", text: "Was &ldquo;Connection Forcibly Closed&rdquo; wirklich bedeutet" },
+    { type: "paragraph", html: "Die Meldung <code>An existing connection was forcibly closed by the remote host</code> ist eine Windows-Sockets-Meldung, WinSock-Fehler 10054, auch als WSAECONNRESET bekannt. Vereinfacht gesagt hat die Gegenseite ein TCP-<strong class='text-white'>RST-Paket</strong> gesendet: Sie hat die Verbindung abrupt gekappt, statt den höflichen Close-Handshake zu durchlaufen. Ihr Client hat sich nicht selbst entschieden, aufzulegen. Etwas auf der Gegenseite hat es für Sie erledigt." },
+    { type: "paragraph", html: "Dieses &ldquo;Etwas&rdquo; kann Tradovates Server sein, ein Load Balancer, ein Proxy oder ein Session-Timer irgendwo auf der Strecke. Beim Market-Data-Socket (MD) ist die praktische Lesart einfach: Die Verbindung war intakt, dann war sie in einem abrupten Schritt weg, ohne sauberes Herunterfahren, das Ihrem Code einen geordneten Hinweis gegeben hätte. Weil es sich um einen harten Reset handelt, kommt Ihr normaler Close-Handler kaum noch zum Zug, und jeder Schreibvorgang, den Sie auf diesem Socket in der Warteschlange hatten, wirft direkt danach einen Fehler." },
+    { type: "paragraph", html: "Der entscheidende Perspektivwechsel: Ein Zwangsabbruch ist kein Defekt, den Sie wegpatchen können. TCP-Resets passieren, Netzwerke stottern, vorgelagerte Timer feuern, Sitzungen laufen ab. Die dauerhafte Lösung besteht nicht darin, jeden Abbruch zu verhindern. Sie besteht darin, eine Verbindung zu bauen, die den Abbruch sofort bemerkt und sich selbst wieder aufbaut, bevor Sie überhaupt zur Maus greifen würden." },
+    { type: "heading", text: "Die häufigsten Ursachen für den täglichen Zwangsabbruch im Jahr 2026" },
+    { type: "heading", text: "1. Idle-Timeouts in ruhigen Marktphasen" },
+    { type: "paragraph", html: "Das ist die Hauptursache für das Muster &ldquo;jeden Tag zur gleichen Zeit&rdquo;. Wenn ein Kontrakt austrocknet, ein dünn gehandelter Agrar-Future mitten in der Sitzung oder ein beliebiges Symbol in der Übernachtruhe, bleiben Kursupdates aus. Ein Socket, der nur Market-Data-Ticks transportiert, wirkt für jeden Timer auf dem Weg nun untätig. Ohne einen stetigen Client-Heartbeat, der das Gegenteil beweist, entscheidet dieser Timer irgendwann, dass die Verbindung veraltet ist, und schließt sie zwangsweise. Je ruhiger das Tape, desto stärker schlägt das zu, weshalb sich die Abbrüche in den ruhigen Abschnitten Ihres Handelstags häufen." },
+    { type: "heading", text: "2. Kein Heartbeat oder ein verspäteter Heartbeat" },
+    { type: "paragraph", html: "Tradovates Echtzeit-Feed erwartet, dass der Client etwa alle 2,5 Sekunden einen kleinen Keep-Alive-Frame mit dem Textinhalt <code>[]</code> sendet. Sobald Live-Daten fließen, <strong class='text-white'>stellt der Server das Senden eigener Heartbeats ein</strong>, Sie können sich also nicht auf eingehenden Traffic verlassen, um die Leitung offenzuhalten. Lassen Sie den Frame aus oder das Zeitfenster verstreichen, wird die Verbindung als tot markiert. Bei einem ruhigen Kontrakt gibt es keinen Tick-Verkehr, der einen verpassten Heartbeat verdeckt, ein nachlässiger Keep-Alive fliegt also schnell auf." },
+    { type: "heading", text: "3. Die Sitzung und das Token hinter dem Socket sind abgelaufen" },
+    { type: "paragraph", html: "Stirbt der Socket, stirbt auch die darauf laufende autorisierte Sitzung. Deshalb erscheint der <strong class='text-white'>OAuth-Login-Bildschirm erneut</strong>: Der Client hat keine aktive Sitzung mehr, über die er streamen kann, und schickt Sie zurück zur Anmeldung. Schlimmer wird es, wenn Ihr Access-Token bereits kurz vor dem Ablauf stand: Selbst ein sofortiger Reconnect kann sich nicht mit einem veralteten Token autorisieren, sodass der neue Socket auf die gleiche Weise scheitert und Sie in einer Login-Schleife feststecken." },
+    { type: "heading", text: "4. Zu aggressives Reconnecten (und die Folge: Rate-Limiting)" },
+    { type: "paragraph", html: "Sobald Sie die Abbrüche bemerken, ist der Instinkt, schnell neu zu verbinden, alle drei bis fünf Sekunden erneut zu versuchen, bis es klappt. Das geht nach hinten los. So schnell Verbindungen zu öffnen, löst Tradovates Rate-Limit aus und beschert Ihnen ein <strong class='text-white'>429 Too Many Requests</strong>, das Sie noch härter aussperrt. Eine enge Reconnect-Schleife macht aus einem kurzen Ruhephasen-Aussetzer einen selbst verschuldeten Ausfall." },
+    { type: "heading", text: "5. Sitzungslimits und langlebige Verbindungen" },
+    { type: "paragraph", html: "Jede neue Anmeldung startet eine neue serverseitige Sitzung, und die Anzahl gleichzeitiger Sitzungen ist begrenzt, starten Sie zu viele, werden die ältesten unter Ihnen weggeschlossen. Verbindungen sind zudem nicht für die Ewigkeit gedacht; halten Sie einen Socket über einen ganzen Tag offen, bricht er meist von selbst ab. Bei einem Prop- oder Evaluierungskonto können Sitzungs- und Reconnect-Regeln strenger sein und je nach Firma und Kontogröße variieren, prüfen Sie die aktuellen Regeln Ihrer Firma, statt anzunehmen, dass die Retail-Standardwerte gelten." },
+    { type: "heading", text: "So beheben Sie den täglichen Zwangsabbruch: Schritt für Schritt" },
+    { type: "heading", text: "Lösung 1: Halten Sie den Socket mit einem echten Heartbeat am Leben" },
+    { type: "paragraph", html: "Heartbeats sind Ihre erste Verteidigungslinie, und sie zählen am meisten genau dann, wenn der Markt ruhig ist:" },
+    {
+      type: "list",
+      items: [
+        "Starten Sie nach dem Öffnen des Sockets und der Autorisierung eine Keep-Alive-Routine, die nach ihrer eigenen Uhr läuft, nicht abhängig von eingehenden Ticks.",
+        "Senden Sie bei jedem Takt einen Frame mit dem Text <code>[]</code>, den Keep-Alive mit leeren Klammern.",
+        "Zielen Sie auf einen Takt knapp unter 2,5 Sekunden, damit ein leicht verspäteter Frame trotzdem innerhalb des Zeitfensters ankommt.",
+        "Planen Sie ihn nicht mit einem einfachen Browser-Timer in einem Hintergrund-Tab, diese werden gedrosselt, das Intervall verschiebt sich, und der Socket bricht trotzdem ab. Betreiben Sie die Verbindung serverseitig oder in einem Worker, damit der Timer zuverlässig bleibt.",
+      ],
+    },
+    { type: "heading", text: "Lösung 2: Erkennen Sie den Abbruch und verbinden Sie sich mit Backoff neu" },
+    { type: "paragraph", html: "Da ein Zwangsabbruch früher oder später ohnehin passiert, kapseln Sie den Socket so, dass ein Abbruch ihn automatisch und kontrolliert wiederherstellt:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Übernehmen Sie den Lebenszyklus.</strong> Kapseln Sie den Socket in einer einzigen Klasse oder Funktion, die für Erstellung, Abbau und Neuaufbau zuständig ist, sodass es eine einzige Stelle gibt, die auf einen Abbruch reagiert.",
+        "<strong class='text-white'>Verbinden Sie bei Abbruch neu, wiederbeleben Sie nicht.</strong> Öffnen Sie einen brandneuen Socket, statt zu versuchen, den toten wiederzubeleben.",
+        "<strong class='text-white'>Nutzen Sie exponentiellen Backoff.</strong> Beginnen Sie bei rund einer Sekunde, verdoppeln Sie die Wartezeit nach jedem gescheiterten Versuch, deckeln Sie sie bei rund sechzig Sekunden und fügen Sie 0&ndash;10&nbsp;% zufälligen Jitter hinzu, damit nicht viele Clients gleichzeitig im Gleichschritt erneut versuchen. Das hält Sie von der 429-Sperre fern.",
+        "<strong class='text-white'>Begrenzen Sie die Versuche</strong>, damit ein echter Ausfall nicht endlos weiterläuft, und zeigen Sie stattdessen einen klaren Fehler an, statt still weiterzuschleifen.",
+      ],
+    },
+    { type: "heading", text: "Lösung 3: Autorisieren Sie sich mit einem frischen Token neu, damit der OAuth-Bildschirm nie wieder erscheint" },
+    { type: "paragraph", html: "Der Reconnect ist nur die halbe Miete, der neue Socket braucht weiterhin eine gültige Sitzung:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Erneuern Sie das Token proaktiv.</strong> Das Access-Token hat eine begrenzte Lebensdauer (häufig werden rund 60&ndash;90 Minuten genannt, und dieser Wert ändert sich mit der Zeit, prüfen Sie den aktuellen Wert in der API-Dokumentation). Erneuern Sie es rechtzeitig vor Ablauf über den Token-Erneuerungs-Endpunkt; eine gängige Richtlinie ist, etwa 15 Minuten vor Ablauf zu erneuern.",
+        "<strong class='text-white'>Halten Sie ein frisches Token bereit.</strong> Tritt ein Abbruch ein, autorisieren Sie den neuen Socket mit einem Token, von dem Sie bereits wissen, dass es gültig ist, nicht mit dem, das gerade eben abgelaufen sein könnte.",
+        "<strong class='text-white'>Nutzen Sie die Sitzung wo möglich weiter</strong>, damit Sie Ihr Limit für gleichzeitige Sitzungen nicht ausschöpfen und Ihre eigenen anderen Verbindungen nicht selbst aushebeln.",
+        "Richtig umgesetzt, autorisiert sich der Client im Hintergrund neu, und Sie sehen den Login-Bildschirm überhaupt nie.",
+      ],
+    },
+    { type: "heading", text: "Lösung 4: Abonnieren Sie nach dem Reconnect jeden Feed erneut" },
+    { type: "paragraph", html: "Ein neuer Socket startet bei null, keine Abonnements, kein Sync, stellen Sie also den Zustand wieder her, bevor Sie den Daten vertrauen:" },
+    {
+      type: "list",
+      items: [
+        "Senden Sie Ihre Sync-Anfrage erneut, damit Konto- und Orderstatus wieder aktuell sind.",
+        "Abonnieren Sie jedes Symbol und jeden Marktdaten-Feed, den Sie beobachtet haben, erneut; der neue Socket kennt keinen davon.",
+        "Warten Sie, bis der Socket meldet, dass er wirklich offen ist, bevor Sie etwas senden, damit Sie nicht in eine halboffene Verbindung schreiben.",
+        "Protokollieren Sie bei jedem Abbruch den Close-Code und den Grund, über eine Woche zeigt Ihnen das, welches ruhige Zeitfenster den Feed immer wieder killt.",
+      ],
+    },
+    { type: "heading", text: "Fehlerbehebungstabelle" },
+    {
+      type: "table",
+      headers: ["Fehler / Signal", "Was es bedeutet", "Lösung"],
+      rows: [
+        ["An existing connection was forcibly closed by the remote host", "TCP-Reset (WinSock 10054), die Gegenseite hat den Socket abrupt beendet", "Automatisch neu verbinden, neu autorisieren und neu abonnieren"],
+        ["Abbruch täglich zur gleichen ruhigen Stunde", "Ein Idle-Timer hat ausgelöst, weil weder Ticks noch Heartbeats geflossen sind", "Senden Sie den []-Heartbeat alle ~2,5 s, besonders bei ruhigen Kontrakten"],
+        ["OAuth-Login-Bildschirm erscheint nach einem Abbruch erneut", "Die autorisierte Sitzung ist mit dem Socket gestorben", "Erneuern Sie das Token vor Ablauf und autorisieren Sie im Hintergrund neu"],
+        ["429 Too Many Requests nach einem Abbruch", "Eine Reconnect-Schleife bombardiert den Server", "Verwenden Sie exponentiellen Backoff mit Jitter statt eines festen kurzen Intervalls"],
+        ["Neuer Socket verbindet sich, aber es kommen keine Daten an", "Sie haben neu verbunden, aber nie neu abonniert", "Senden Sie die Sync-Anfrage erneut und abonnieren Sie jeden Feed neu"],
+        ["Feed stirbt nach sehr langer Laufzeit", "Token abgelaufen, oder die Verbindung ist im Laufe des Tages gealtert", "Erneuern Sie das Token nach Zeitplan und wechseln Sie die Verbindung turnusmäßig"],
+        ["Reconnect schließt immer wieder ältere Sitzungen", "Sie haben das Limit für gleichzeitige Sitzungen überschritten", "Nutzen Sie eine Sitzung weiter, statt bei jedem Versuch eine neue zu öffnen"],
+      ],
+    },
+    { type: "heading", text: "So verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade sitzt zwischen Ihren TradingView-Alerts und Tradovate und betreibt die Verbindungsschicht als verwalteten, serverseitigen Dienst, sodass ein täglicher Zwangsabbruch längst behandelt ist, bevor er Sie einen Trade kosten kann:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Verwaltete Heartbeats</strong>, sendet den Keep-Alive-Frame in einem stetigen serverseitigen Takt, sodass ein ruhiger Kontrakt für einen vorgelagerten Timer nie untätig wirkt.",
+        "<strong class='text-white'>Automatischer Reconnect mit Backoff</strong>, erkennt den Zwangsabbruch, öffnet den Socket mit exponentiellem Backoff und Jitter neu und bleibt fern von der 429-Sperre.",
+        "<strong class='text-white'>OAuth-Re-Auth im Hintergrund</strong>, erneuert das Token vor Ablauf und autorisiert automatisch neu, sodass der Login-Bildschirm Sie nie unterbricht.",
+        "<strong class='text-white'>Automatisches Neu-Abonnieren &amp; Multi-Account-Sync</strong>, stellt nach einem Reconnect jeden Feed wieder her und hält jedes verbundene Konto am Streamen, sodass ein Abbruch nie ein Konto zurücklässt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph", html: "Ya conoce el patrón. Todo transmite bien durante la apertura activa, y luego el mercado se calma y el feed se colapsa con <strong class='text-white'>An existing connection was forcibly closed by the remote host</strong>. A veces los gráficos se recuperan tras una recarga rápida. A veces todo el feed de datos de mercado se apaga y la pantalla de inicio de sesión OAuth vuelve a aparecer, pidiéndole que inicie sesión de nuevo. Y no es aleatorio, suele ocurrir en el mismo tramo tranquilo del día. A continuación, lo que ese error realmente significa, por qué los contratos tranquilos lo desencadenan más que los rápidos, y el patrón exacto de reconexión más reautenticación que evita que una desconexión forzada diaria se convierta en una ejecución perdida." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para la desconexión forzada diaria",
+      items: [
+        "<strong class='text-white'>Envíe un heartbeat aproximadamente cada 2,5 segundos</strong>, un array JSON vacío, <code>[]</code>. En un contrato tranquilo, es lo único que indica a la ruta que su socket sigue vivo.",
+        "<strong class='text-white'>Trate el cierre como normal, no como fatal</strong>, un cierre forzado es un reinicio TCP del extremo remoto, no un error que pueda eliminar con código. Planifique para sobrevivirlo.",
+        "<strong class='text-white'>Reconéctese con backoff, nunca en un bucle ajustado</strong>, reconectar cada pocos segundos activa un bloqueo por límite de tasa 429. Use backoff exponencial con jitter.",
+        "<strong class='text-white'>Reautentíquese con un token nuevo</strong>, el socket muerto se llevó su sesión consigo, por eso reaparece la pantalla de OAuth. Renueve el token antes de que expire para no volver nunca a un inicio de sesión.",
+        "<strong class='text-white'>Vuelva a suscribirse a cada feed</strong>, un socket nuevo comienza en blanco, así que reenvíe su solicitud de sincronización y vuelva a suscribirse a cada símbolo.",
+        "<strong class='text-white'>Vigile los momentos de calma de la sesión</strong>, antes de la apertura, en el almuerzo y durante la noche es cuando se disparan los temporizadores de inactividad. Si se cae a la misma hora cada día, esa es su ventana.",
+      ],
+    },
+    { type: "heading", text: "Qué significa realmente &ldquo;Connection Forcibly Closed&rdquo;" },
+    { type: "paragraph", html: "La frase <code>An existing connection was forcibly closed by the remote host</code> es un mensaje de Windows Sockets, error WinSock 10054, también escrito como WSAECONNRESET. En términos simples, el otro extremo envió un <strong class='text-white'>paquete TCP RST</strong>: cerró la conexión de golpe en lugar de seguir el protocolo de cierre educado. Su cliente no decidió colgar. Algo del otro lado lo hizo por usted." },
+    { type: "paragraph", html: "Ese &ldquo;algo&rdquo; puede ser el servidor de Tradovate, un balanceador de carga, un proxy o un temporizador de sesión en cualquier punto de la ruta. En el socket de datos de mercado (MD), la lectura práctica es simple: la conexión estaba sana y luego desapareció en un paso abrupto, sin un cierre limpio que le diera a su código un aviso ordenado. Al ser un reinicio duro, su gestor de cierre habitual apenas tiene ocasión de ejecutarse, y cualquier escritura que tuviera en cola en ese socket falla inmediatamente después." },
+    { type: "paragraph", html: "El cambio de mentalidad clave es este: un cierre forzado no es un defecto que pueda parchear hasta que desaparezca. Los reinicios TCP ocurren, las redes tienen fallos, los temporizadores previos se disparan, las sesiones caducan. La solución duradera no es evitar todos los cierres. Es construir una conexión que note la caída al instante y se reconstruya antes de que usted llegue siquiera a tocar el ratón." },
+    { type: "heading", text: "Principales causas de la desconexión forzada diaria en 2026" },
+    { type: "heading", text: "1. Tiempos de espera por inactividad durante periodos de mercado tranquilos" },
+    { type: "paragraph", html: "Esta es la causa principal del patrón &ldquo;a la misma hora cada día&rdquo;. Cuando un contrato se seca, un futuro agrícola con poco volumen a media sesión, o cualquier símbolo en la calma nocturna, las cotizaciones dejan de llegar. Un socket que solo transporta ticks de datos de mercado ahora parece inactivo para cualquier temporizador que esté en la ruta. Sin un heartbeat constante del cliente que demuestre lo contrario, ese temporizador termina decidiendo que la conexión está obsoleta y la cierra a la fuerza. Cuanto más tranquila esté la cinta, más se nota, por eso las caídas se agrupan en las partes lentas de su jornada de trading." },
+    { type: "heading", text: "2. Ausencia de heartbeat, o un heartbeat que llega tarde" },
+    { type: "paragraph", html: "El feed en tiempo real de Tradovate espera que el cliente envíe un pequeño frame de keep-alive, con el contenido de texto <code>[]</code>, aproximadamente cada 2,5 segundos. Una vez que empiezan a fluir datos en vivo, <strong class='text-white'>el servidor deja de enviar sus propios heartbeats</strong>, así que no puede apoyarse en el tráfico entrante para mantener la línea abierta. Omita el frame, o deje que se pase de la ventana, y la conexión se marca como muerta. En un contrato tranquilo no hay tráfico de ticks que enmascare un heartbeat perdido, así que un keep-alive descuidado queda expuesto rápido." },
+    { type: "heading", text: "3. La sesión y el token detrás del socket caducaron" },
+    { type: "paragraph", html: "Cuando el socket muere, la sesión autorizada que viaja sobre él también muere. Por eso reaparece la <strong class='text-white'>pantalla de inicio de sesión OAuth</strong>: el cliente no tiene una sesión activa sobre la que transmitir, así que le devuelve a iniciar sesión. Empeora si su token de acceso ya estaba cerca de caducar: incluso una reconexión instantánea no puede autorizarse con un token obsoleto, así que el nuevo socket falla de la misma manera y usted queda atrapado en un bucle de inicio de sesión." },
+    { type: "heading", text: "4. Reconectar de forma demasiado agresiva (y quedar limitado por tasa)" },
+    { type: "paragraph", html: "Al ver las caídas, el instinto es reconectar rápido, reintentar cada tres o cinco segundos hasta que funcione. Eso sale mal. Abrir conexiones tan rápido activa el límite de tasa de Tradovate y le entrega un <strong class='text-white'>429 Too Many Requests</strong>, que le bloquea aún más. Un bucle de reconexión ajustado convierte un pequeño bache de mercado tranquilo en una interrupción autoinfligida." },
+    { type: "heading", text: "5. Límites de sesión y conexiones de larga duración" },
+    { type: "paragraph", html: "Cada nuevo inicio de sesión arranca una sesión nueva en el servidor, y usted tiene un límite de sesiones simultáneas, si abre demasiadas, las más antiguas se cierran sin previo aviso. Las conexiones tampoco están pensadas para durar para siempre; mantener un socket abierto durante todo un día tiende a provocar que se caiga por sí solo. En una cuenta prop o de evaluación, las reglas de sesión y reconexión pueden ser más estrictas y variar según la firma y el tamaño de la cuenta, consulte las reglas actuales de su firma en lugar de asumir que se aplican los valores predeterminados minoristas." },
+    { type: "heading", text: "Cómo solucionar la desconexión forzada diaria: paso a paso" },
+    { type: "heading", text: "Solución 1: mantenga el socket vivo con un heartbeat real" },
+    { type: "paragraph", html: "Los heartbeats son su primera línea de defensa, y son más importantes precisamente cuando el mercado está tranquilo:" },
+    {
+      type: "list",
+      items: [
+        "Después de que el socket se abra y usted se haya autenticado, inicie una rutina de keep-alive que funcione con su propio reloj, no en función de los ticks entrantes.",
+        "En cada ciclo, envíe un frame cuyo texto sea <code>[]</code>, el keep-alive de corchetes vacíos.",
+        "Apunte a una cadencia ligeramente inferior a 2,5 segundos para que un frame algo tardío siga llegando dentro de la ventana.",
+        "No la programe con un simple temporizador del navegador en una pestaña en segundo plano, esos se limitan, el intervalo se desfasa y el socket se cae de todos modos. Ejecute la conexión en el servidor o en un worker para que el temporizador siga siendo fiable.",
+      ],
+    },
+    { type: "heading", text: "Solución 2: detecte el cierre y reconéctese con backoff" },
+    { type: "paragraph", html: "Dado que un cierre forzado va a ocurrir tarde o temprano, envuelva el socket para que una caída lo reconstruya automáticamente, con cuidado:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Gestione el ciclo de vida.</strong> Coloque el socket dentro de una única clase o función responsable de crearlo, desmontarlo y recrearlo, de modo que haya un único lugar que reaccione a un cierre.",
+        "<strong class='text-white'>Reconecte al cerrar, no reviva.</strong> Abra un socket completamente nuevo en lugar de intentar resucitar el que murió.",
+        "<strong class='text-white'>Aplique backoff exponencial.</strong> Empiece alrededor de un segundo, duplique la espera tras cada intento fallido, límitelo cerca de sesenta segundos y añada un 0&ndash;10&nbsp;% de jitter aleatorio para que una flota de clientes no reintente al unísono. Esto es lo que le mantiene alejado del bloqueo 429.",
+        "<strong class='text-white'>Limite los intentos</strong> para que una interrupción genuina no gire indefinidamente, y muestre un error claro en lugar de seguir en bucle en silencio.",
+      ],
+    },
+    { type: "heading", text: "Solución 3: reautentíquese con un token nuevo para que la pantalla de OAuth no vuelva a aparecer" },
+    { type: "paragraph", html: "La reconexión es solo la mitad del trabajo, el nuevo socket sigue necesitando una sesión válida:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Renueve el token de forma proactiva.</strong> El token de acceso tiene una vida útil limitada (comúnmente citada en torno a 60&ndash;90 minutos, y cambia con el tiempo, confirme el valor actual en la documentación de la API). Renuévelo con antelación suficiente antes de que caduque usando el endpoint de renovación de token; una pauta habitual es renovarlo unos 15 minutos antes de que expire.",
+        "<strong class='text-white'>Tenga siempre un token fresco listo.</strong> Cuando se produzca una caída, autorice el nuevo socket con un token que ya sepa que es válido, no con el que puede haber caducado hace un momento.",
+        "<strong class='text-white'>Reutilice la sesión cuando pueda</strong> para no agotar su límite de sesiones simultáneas ni anular sus propias otras conexiones.",
+        "Hecho correctamente, el cliente se reautentica en segundo plano y usted nunca ve la pantalla de inicio de sesión.",
+      ],
+    },
+    { type: "heading", text: "Solución 4: vuelva a suscribirse a cada feed tras reconectar" },
+    { type: "paragraph", html: "Un socket nuevo empieza de cero, sin suscripciones, sin sincronización, así que restaure el estado antes de confiar en los datos:" },
+    {
+      type: "list",
+      items: [
+        "Reenvíe su solicitud de sincronización para que el estado de la cuenta y las órdenes vuelva a estar actualizado.",
+        "Vuelva a suscribirse a cada símbolo y feed de datos de mercado que estaba siguiendo; el socket nuevo no conoce ninguno de ellos.",
+        "Espere hasta que el socket informe que está realmente abierto antes de enviar nada, para no escribir en una conexión a medio abrir.",
+        "Registre el código de cierre y el motivo en cada caída, a lo largo de una semana le indicará qué ventana tranquila sigue matando el feed.",
+      ],
+    },
+    { type: "heading", text: "Tabla de resolución de problemas" },
+    {
+      type: "table",
+      headers: ["Error / señal", "Qué significa", "Solución"],
+      rows: [
+        ["An existing connection was forcibly closed by the remote host", "Reinicio TCP (WinSock 10054), el extremo remoto cerró el socket de forma abrupta", "Reconectar, reautenticar y volver a suscribirse automáticamente"],
+        ["Se cae a la misma hora tranquila cada día", "Se disparó un temporizador de inactividad porque no fluían ni ticks ni heartbeats", "Envíe el heartbeat [] cada ~2,5 s, especialmente en contratos lentos"],
+        ["La pantalla de inicio de sesión OAuth reaparece tras una caída", "La sesión autorizada murió junto con el socket", "Renueve el token antes de que caduque y reautentíquese en segundo plano"],
+        ["429 Too Many Requests tras una caída", "Un bucle de reconexión está saturando el servidor", "Use backoff exponencial con jitter, no un intervalo corto fijo"],
+        ["El nuevo socket se conecta pero no llegan datos", "Se reconectó pero nunca volvió a suscribirse", "Reenvíe la solicitud de sincronización y vuelva a suscribirse a cada feed"],
+        ["El feed muere tras un tiempo de actividad muy largo", "El token caducó o la conexión envejeció a lo largo del día", "Renueve el token según un calendario y rote la conexión"],
+        ["La reconexión sigue cerrando sesiones más antiguas", "Superó el límite de sesiones simultáneas", "Reutilice una sesión en lugar de abrir una nueva en cada reintento"],
+      ],
+    },
+    { type: "heading", text: "Prevéngalo con PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade se sitúa entre sus alertas de TradingView y Tradovate y ejecuta la capa de conexión como un servicio gestionado del lado del servidor, de modo que un cierre forzado diario se gestiona mucho antes de que pueda costarle una operación:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeats gestionados</strong>, envía el frame de keep-alive con una cadencia estable del lado del servidor, para que un contrato tranquilo nunca parezca inactivo ante un temporizador previo.",
+        "<strong class='text-white'>Reconexión automática con backoff</strong>, detecta el cierre forzado, reabre el socket con backoff exponencial y jitter, y se mantiene alejado del bloqueo 429.",
+        "<strong class='text-white'>Reautenticación OAuth en segundo plano</strong>, renueva el token antes de que caduque y se reautentica automáticamente, para que la pantalla de inicio de sesión nunca le interrumpa.",
+        "<strong class='text-white'>Nueva suscripción automática y sincronización multicuenta</strong>, restaura cada feed tras una reconexión y mantiene cada cuenta conectada transmitiendo, para que una caída nunca deje una cuenta atrás.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph", html: "Vous connaissez le schéma maintenant. Tout se transmet bien pendant l'ouverture active, puis le marché se calme et le flux s'effondre avec <strong class='text-white'>An existing connection was forcibly closed by the remote host</strong>. Parfois les graphiques reviennent après un rechargement rapide. Parfois tout le flux de données de marché s'éteint et l'écran de connexion OAuth réapparaît, vous demandant de vous reconnecter. Et ce n'est pas aléatoire, cela a tendance à survenir au même moment calme chaque jour. Voici ce que cette erreur signifie réellement, pourquoi les contrats calmes la déclenchent plus que les contrats rapides, et le schéma exact de reconnexion plus réauthentification qui évite qu'une déconnexion forcée quotidienne ne se transforme en exécution manquée." },
+    {
+      type: "checklist",
+      heading: "Liste de vérification rapide pour la déconnexion forcée quotidienne",
+      items: [
+        "<strong class='text-white'>Envoyez un heartbeat environ toutes les 2,5 secondes</strong>, un tableau JSON vide, <code>[]</code>. Sur un contrat calme, c'est le seul signal indiquant que votre socket est toujours actif.",
+        "<strong class='text-white'>Considérez la fermeture comme normale, pas comme fatale</strong>, une fermeture forcée est une réinitialisation TCP venant de l'autre extrémité, pas un bug que vous pouvez corriger. Prévoyez d'y survivre.",
+        "<strong class='text-white'>Reconnectez-vous avec un backoff, jamais en boucle serrée</strong>, se reconnecter toutes les quelques secondes déclenche un blocage par limitation de débit 429. Utilisez un backoff exponentiel avec jitter.",
+        "<strong class='text-white'>Réautentifiez-vous avec un jeton frais</strong>, le socket mort a emporté votre session avec lui, c'est pourquoi l'écran OAuth réapparaît. Renouvelez le jeton avant son expiration pour ne jamais revenir à un écran de connexion.",
+        "<strong class='text-white'>Réabonnez-vous à chaque flux</strong>, un nouveau socket démarre vierge, renvoyez donc votre requête de synchronisation et réabonnez-vous à chaque symbole.",
+        "<strong class='text-white'>Surveillez les creux de session</strong>, avant l'ouverture, le déjeuner et la nuit sont les moments où les temporisateurs d'inactivité se déclenchent. Si la coupure survient à la même heure chaque jour, c'est votre fenêtre.",
+      ],
+    },
+    { type: "heading", text: "Ce que signifie réellement &laquo;Connection Forcibly Closed&raquo;" },
+    { type: "paragraph", html: "L'expression <code>An existing connection was forcibly closed by the remote host</code> est un message des sockets Windows, l'erreur WinSock 10054, aussi notée WSAECONNRESET. En clair, l'autre extrémité a envoyé un <strong class='text-white'>paquet TCP RST</strong> : elle a coupé la connexion brutalement au lieu de suivre la poignée de main de fermeture polie. Votre client n'a pas décidé de raccrocher. Quelque chose de l'autre côté l'a fait à votre place." },
+    { type: "paragraph", html: "Ce &laquo;quelque chose&raquo; peut être le serveur de Tradovate, un répartiteur de charge, un proxy ou un temporisateur de session n'importe où sur le trajet. Sur le socket de données de marché (MD), la lecture pratique est simple : la connexion était saine, puis elle a disparu en une étape brutale, sans arrêt propre pour donner à votre code un signal ordonné. S'agissant d'une réinitialisation brutale, votre gestionnaire de fermeture habituel a à peine l'occasion de s'exécuter, et toute écriture mise en file sur ce socket échoue immédiatement après." },
+    { type: "paragraph", html: "Le changement de mentalité essentiel est le suivant : une fermeture forcée n'est pas un défaut que vous pouvez corriger jusqu'à le faire disparaître. Les réinitialisations TCP se produisent, les réseaux ont des ratés, les temporisateurs en amont se déclenchent, les sessions expirent. La solution durable ne consiste pas à empêcher chaque fermeture. Elle consiste à construire une connexion qui remarque la coupure instantanément et se reconstruit avant même que vous ayez le temps de toucher la souris." },
+    { type: "heading", text: "Principales causes de la déconnexion forcée quotidienne en 2026" },
+    { type: "heading", text: "1. Délais d'inactivité pendant les périodes de marché calmes" },
+    { type: "paragraph", html: "C'est la cause principale du schéma &laquo;à la même heure chaque jour&raquo;. Quand un contrat se tarit, un future agricole peu actif en milieu de séance, ou n'importe quel symbole dans le creux nocturne, les cotations cessent d'arriver. Un socket qui ne transporte que des ticks de données de marché paraît alors inactif pour n'importe quel temporisateur situé sur le trajet. Sans un heartbeat client régulier prouvant le contraire, ce temporisateur finit par décider que la connexion est obsolète et la ferme de force. Plus le marché est calme, plus cela se produit, ce qui explique pourquoi les coupures se regroupent dans les moments creux de votre journée de trading." },
+    { type: "heading", text: "2. Absence de heartbeat, ou heartbeat en retard" },
+    { type: "paragraph", html: "Le flux temps réel de Tradovate attend que le client envoie une petite trame de maintien de connexion, avec le contenu texte <code>[]</code>, environ toutes les 2,5 secondes. Une fois que les données en direct commencent à circuler, <strong class='text-white'>le serveur cesse d'envoyer ses propres heartbeats</strong>, vous ne pouvez donc pas compter sur le trafic entrant pour maintenir la ligne ouverte. Omettez la trame, ou laissez-la dépasser la fenêtre, et la connexion est marquée comme morte. Sur un contrat calme, il n'y a pas de trafic de ticks pour masquer un heartbeat manqué, un maintien de connexion négligé est donc rapidement exposé." },
+    { type: "heading", text: "3. La session et le jeton derrière le socket ont expiré" },
+    { type: "paragraph", html: "Quand le socket meurt, la session autorisée qui circulait dessus meurt aussi. C'est pourquoi <strong class='text-white'>l'écran de connexion OAuth réapparaît</strong> : le client n'a plus de session active sur laquelle diffuser, il vous renvoie donc vous connecter. La situation empire si votre jeton d'accès était déjà proche de l'expiration : même une reconnexion instantanée ne peut pas s'autoriser avec un jeton périmé, le nouveau socket échoue donc de la même façon et vous restez coincé dans une boucle de connexion." },
+    { type: "heading", text: "4. Se reconnecter de façon trop agressive (et être limité en débit)" },
+    { type: "paragraph", html: "Dès que vous constatez les coupures, le réflexe est de vous reconnecter rapidement, de réessayer toutes les trois à cinq secondes jusqu'à ce que ça tienne. Cela se retourne contre vous. Ouvrir des connexions aussi vite déclenche la limitation de débit de Tradovate et vous vaut un <strong class='text-white'>429 Too Many Requests</strong>, qui vous bloque encore plus. Une boucle de reconnexion serrée transforme un simple accroc de marché calme en une panne auto-infligée." },
+    { type: "heading", text: "5. Limites de session et connexions de longue durée" },
+    { type: "paragraph", html: "Chaque nouvelle connexion démarre une nouvelle session côté serveur, et vous êtes plafonné à un petit nombre de sessions simultanées, en démarrer trop entraîne la fermeture des plus anciennes sans préavis. Les connexions ne sont pas non plus censées durer éternellement ; garder un socket ouvert toute une journée tend à provoquer sa coupure spontanée. Sur un compte prop ou d'évaluation, les règles de session et de reconnexion peuvent être plus strictes et varier selon la société et la taille du compte, vérifiez les règles actuelles de votre société plutôt que de supposer que les valeurs par défaut du retail s'appliquent." },
+    { type: "heading", text: "Comment corriger la déconnexion forcée quotidienne : étape par étape" },
+    { type: "heading", text: "Solution 1 : maintenez le socket actif avec un véritable heartbeat" },
+    { type: "paragraph", html: "Les heartbeats sont votre première ligne de défense, et ils comptent le plus précisément quand le marché est calme :" },
+    {
+      type: "list",
+      items: [
+        "Une fois le socket ouvert et l'autorisation obtenue, lancez une routine de maintien de connexion qui tourne sur sa propre horloge, pas en fonction des ticks entrants.",
+        "À chaque cycle, envoyez une trame dont le texte est <code>[]</code>, le maintien de connexion à crochets vides.",
+        "Visez une cadence légèrement inférieure à 2,5 secondes pour qu'une trame un peu tardive arrive quand même dans la fenêtre.",
+        "Ne la programmez pas avec un simple minuteur de navigateur dans un onglet en arrière-plan, ceux-ci sont limités, l'intervalle dérive et le socket se coupe quand même. Faites tourner la connexion côté serveur ou dans un worker pour que le minuteur reste fiable.",
+      ],
+    },
+    { type: "heading", text: "Solution 2 : détectez la fermeture et reconnectez-vous avec un backoff" },
+    { type: "paragraph", html: "Puisqu'une fermeture forcée finira par se produire tôt ou tard, encapsulez le socket pour qu'une coupure le reconstruise automatiquement, avec précaution :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Gérez le cycle de vie.</strong> Placez le socket dans une seule classe ou fonction responsable de sa création, de son démontage et de sa recréation, afin qu'il n'y ait qu'un seul endroit réagissant à une fermeture.",
+        "<strong class='text-white'>Reconnectez à la fermeture, ne ranimez pas.</strong> Ouvrez un tout nouveau socket plutôt que d'essayer de ranimer celui qui est mort.",
+        "<strong class='text-white'>Appliquez un backoff exponentiel.</strong> Commencez autour d'une seconde, doublez l'attente après chaque tentative échouée, plafonnez près de soixante secondes, et ajoutez 0&ndash;10&nbsp;% de jitter aléatoire pour qu'une flotte de clients ne réessaie pas au même instant. C'est ce qui vous tient à l'écart du blocage 429.",
+        "<strong class='text-white'>Plafonnez les tentatives</strong> pour qu'une panne réelle ne tourne pas indéfiniment, puis affichez une erreur claire au lieu de boucler silencieusement.",
+      ],
+    },
+    { type: "heading", text: "Solution 3 : réautentifiez-vous avec un jeton frais pour que l'écran OAuth ne revienne jamais" },
+    { type: "paragraph", html: "La reconnexion n'est que la moitié du travail, le nouveau socket a toujours besoin d'une session valide :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Renouvelez le jeton de façon proactive.</strong> Le jeton d'accès a une durée de vie limitée (couramment citée autour de 60&ndash;90 minutes, et elle évolue dans le temps, confirmez la valeur actuelle dans la documentation de l'API). Renouvelez-le bien avant l'expiration via le point de terminaison de renouvellement de jeton ; une pratique courante consiste à le renouveler environ 15 minutes avant qu'il n'expire.",
+        "<strong class='text-white'>Gardez un jeton frais prêt.</strong> Quand une coupure survient, autorisez le nouveau socket avec un jeton dont vous savez déjà qu'il est valide, pas celui qui vient peut-être d'expirer.",
+        "<strong class='text-white'>Réutilisez la session quand vous le pouvez</strong> pour ne pas épuiser votre limite de sessions simultanées et couper vos propres autres connexions.",
+        "Bien fait, le client se réautentifie en arrière-plan et vous ne voyez jamais l'écran de connexion.",
+      ],
+    },
+    { type: "heading", text: "Solution 4 : réabonnez-vous à chaque flux après la reconnexion" },
+    { type: "paragraph", html: "Un nouveau socket repart de zéro, sans abonnements, sans synchronisation, restaurez donc l'état avant de faire confiance aux données :" },
+    {
+      type: "list",
+      items: [
+        "Renvoyez votre requête de synchronisation pour que l'état du compte et des ordres soit de nouveau à jour.",
+        "Réabonnez-vous à chaque symbole et flux de données de marché que vous suiviez ; le nouveau socket n'en connaît aucun.",
+        "Attendez que le socket signale qu'il est réellement ouvert avant d'envoyer quoi que ce soit, pour ne pas écrire dans une connexion à moitié ouverte.",
+        "Consignez le code de fermeture et la raison à chaque coupure, sur une semaine cela vous indique quelle fenêtre calme continue de tuer le flux.",
+      ],
+    },
+    { type: "heading", text: "Tableau de dépannage" },
+    {
+      type: "table",
+      headers: ["Erreur / signal", "Ce que cela signifie", "Solution"],
+      rows: [
+        ["An existing connection was forcibly closed by the remote host", "Réinitialisation TCP (WinSock 10054), l'extrémité distante a coupé le socket brutalement", "Se reconnecter, se réautentifier et se réabonner automatiquement"],
+        ["Coupure à la même heure calme chaque jour", "Un temporisateur d'inactivité s'est déclenché car ni ticks ni heartbeats ne circulaient", "Envoyez le heartbeat [] toutes les ~2,5 s, surtout sur les contrats lents"],
+        ["L'écran de connexion OAuth réapparaît après une coupure", "La session autorisée est morte avec le socket", "Renouvelez le jeton avant expiration et réautentifiez-vous en arrière-plan"],
+        ["429 Too Many Requests après une coupure", "Une boucle de reconnexion sature le serveur", "Utilisez un backoff exponentiel avec jitter, pas un intervalle court fixe"],
+        ["Le nouveau socket se connecte mais aucune donnée n'arrive", "Vous vous êtes reconnecté mais jamais réabonné", "Renvoyez la requête de synchronisation et réabonnez-vous à chaque flux"],
+        ["Le flux meurt après un très long temps de fonctionnement", "Le jeton a expiré ou la connexion a vieilli au fil de la journée", "Renouvelez le jeton selon un calendrier et faites tourner la connexion"],
+        ["La reconnexion continue de fermer les sessions plus anciennes", "Vous avez dépassé la limite de sessions simultanées", "Réutilisez une session au lieu d'en ouvrir une nouvelle à chaque tentative"],
+      ],
+    },
+    { type: "heading", text: "Prévenez cela avec PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade se place entre vos alertes TradingView et Tradovate et fait fonctionner la couche de connexion comme un service géré côté serveur, de sorte qu'une fermeture forcée quotidienne est traitée bien avant de pouvoir vous coûter un trade :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeats gérés</strong>, envoie la trame de maintien de connexion selon une cadence stable côté serveur, pour qu'un contrat calme ne paraisse jamais inactif pour un temporisateur en amont.",
+        "<strong class='text-white'>Reconnexion automatique avec backoff</strong>, détecte la fermeture forcée, rouvre le socket avec backoff exponentiel et jitter, et reste à l'écart du blocage 429.",
+        "<strong class='text-white'>Réauthentification OAuth en arrière-plan</strong>, renouvelle le jeton avant expiration et se réautentifie automatiquement, pour que l'écran de connexion ne vous interrompe jamais.",
+        "<strong class='text-white'>Réabonnement automatique &amp; synchronisation multi-comptes</strong>, restaure chaque flux après une reconnexion et maintient chaque compte connecté en diffusion, pour qu'une coupure ne laisse jamais un compte de côté.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph", html: "Ormai conosce lo schema. Tutto scorre bene durante l'apertura attiva, poi il mercato si calma e il feed collassa con <strong class='text-white'>An existing connection was forcibly closed by the remote host</strong>. A volte i grafici si riprendono dopo un ricaricamento rapido. A volte l'intero feed di dati di mercato si spegne e la schermata di accesso OAuth ricompare, chiedendo di accedere di nuovo. E non è casuale, tende a colpire nello stesso tratto tranquillo della giornata. Ecco cosa significa davvero quell'errore, perché i contratti tranquilli lo innescano più spesso di quelli veloci, e lo schema esatto di riconnessione più ri-autenticazione che evita che una disconnessione forzata quotidiana si trasformi in un fill mancato." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per la disconnessione forzata quotidiana",
+      items: [
+        "<strong class='text-white'>Invii un heartbeat circa ogni 2,5 secondi</strong>, un array JSON vuoto, <code>[]</code>. Su un contratto tranquillo è l'unica cosa che dice al percorso che il socket è ancora vivo.",
+        "<strong class='text-white'>Consideri la chiusura come normale, non fatale</strong>, una chiusura forzata è un reset TCP dal lato remoto, non un bug che può eliminare con il codice. Pianifichi di sopravvivere.",
+        "<strong class='text-white'>Si riconnetta con backoff, mai in un loop serrato</strong>, riconnettersi ogni pochi secondi fa scattare un blocco per limite di frequenza 429. Usi un backoff esponenziale con jitter.",
+        "<strong class='text-white'>Si ri-autorizzi con un token nuovo</strong>, il socket morto ha trascinato via la sessione, motivo per cui la schermata OAuth ricompare. Rinnovi il token prima che scada così da non tornare mai a un login.",
+        "<strong class='text-white'>Si riabboni a ogni feed</strong>, un nuovo socket parte vuoto, quindi rinvii la richiesta di sincronizzazione e si riabboni a ogni simbolo.",
+        "<strong class='text-white'>Tenga d'occhio i momenti di calma della sessione</strong>, pre-apertura, pausa pranzo e overnight sono i momenti in cui scattano i timer di inattività. Se cade alla stessa ora ogni giorno, quella è la sua finestra.",
+      ],
+    },
+    { type: "heading", text: "Cosa significa davvero &ldquo;Connection Forcibly Closed&rdquo;" },
+    { type: "paragraph", html: "La frase <code>An existing connection was forcibly closed by the remote host</code> è un messaggio dei socket Windows, errore WinSock 10054, scritto anche come WSAECONNRESET. In termini semplici, l'altro lato ha inviato un <strong class='text-white'>pacchetto TCP RST</strong>: ha chiuso la connessione di colpo invece di seguire il gentile handshake di chiusura. Il suo client non ha deciso di riagganciare. Qualcosa dall'altra parte lo ha fatto per lei." },
+    { type: "paragraph", html: "Quel &ldquo;qualcosa&rdquo; può essere il server di Tradovate, un load balancer, un proxy o un timer di sessione in qualsiasi punto del percorso. Sul socket dei dati di mercato (MD) la lettura pratica è semplice: la connessione era sana, poi è sparita in un passaggio brusco, senza una chiusura pulita che desse al suo codice un avviso ordinato. Trattandosi di un reset duro, il suo normale gestore di chiusura ha appena il tempo di girare, e qualsiasi scrittura in coda su quel socket fallisce subito dopo." },
+    { type: "paragraph", html: "Il cambio di mentalità chiave è questo: una chiusura forzata non è un difetto che può correggere fino a farlo sparire. I reset TCP accadono, le reti hanno intoppi, i timer a monte scattano, le sessioni scadono. La soluzione duratura non è impedire ogni chiusura. È costruire una connessione che nota la caduta all'istante e si ricostruisce da sola prima ancora che lei arrivi a toccare il mouse." },
+    { type: "heading", text: "Le principali cause della disconnessione forzata quotidiana nel 2026" },
+    { type: "heading", text: "1. Timeout di inattività durante i periodi di mercato tranquilli" },
+    { type: "paragraph", html: "Questa è la causa principale dello schema &ldquo;stessa ora ogni giorno&rdquo;. Quando un contratto si prosciuga, un future agricolo con poco volume a metà sessione, o qualsiasi simbolo nella calma overnight, le quotazioni smettono di arrivare. Un socket che trasporta solo tick di dati di mercato appare ora inattivo per qualsiasi timer presente sul percorso. Senza un heartbeat costante del client che dimostri il contrario, quel timer alla fine decide che la connessione è obsoleta e la chiude forzatamente. Più il mercato è tranquillo, più questo colpisce, motivo per cui le cadute si concentrano nelle parti lente della sua giornata di trading." },
+    { type: "heading", text: "2. Nessun heartbeat, o un heartbeat in ritardo" },
+    { type: "paragraph", html: "Il feed in tempo reale di Tradovate si aspetta che il client invii un piccolo frame di keep-alive, con contenuto testuale <code>[]</code>, circa ogni 2,5 secondi. Una volta che i dati live iniziano a scorrere, <strong class='text-white'>il server smette di inviare i propri heartbeat</strong>, quindi non può fare affidamento sul traffico in entrata per mantenere la linea aperta. Se salta il frame, o lo lascia scivolare oltre la finestra, la connessione viene contrassegnata come morta. Su un contratto tranquillo non c'è traffico di tick a mascherare un heartbeat mancato, quindi un keep-alive trascurato viene scoperto rapidamente." },
+    { type: "heading", text: "3. La sessione e il token dietro il socket sono scaduti" },
+    { type: "paragraph", html: "Quando il socket muore, muore anche la sessione autorizzata che vi transita sopra. Questo è il motivo per cui <strong class='text-white'>la schermata di accesso OAuth ricompare</strong>: il client non ha più una sessione attiva su cui trasmettere, quindi la riporta al login. Peggiora se il suo token di accesso era già vicino alla scadenza: anche una riconnessione istantanea non può autorizzarsi con un token obsoleto, quindi il nuovo socket fallisce allo stesso modo e resta bloccato in un ciclo di login." },
+    { type: "heading", text: "4. Riconnettersi in modo troppo aggressivo (e finire limitati per frequenza)" },
+    { type: "paragraph", html: "Quando nota le cadute, l'istinto è riconnettersi rapidamente, riprovare ogni tre o cinque secondi finché non funziona. Questo si ritorce contro. Aprire connessioni così rapidamente fa scattare il limite di frequenza di Tradovate e le procura un <strong class='text-white'>429 Too Many Requests</strong>, che la blocca ancora più duramente. Un loop di riconnessione serrato trasforma un piccolo intoppo di mercato tranquillo in un'interruzione autoinflitta." },
+    { type: "heading", text: "5. Limiti di sessione e connessioni di lunga durata" },
+    { type: "paragraph", html: "Ogni nuovo accesso avvia una nuova sessione lato server, ed è previsto un limite al numero di sessioni simultanee, se ne avvia troppe, le più vecchie vengono chiuse senza preavviso. Anche le connessioni non sono pensate per durare per sempre; tenere un socket aperto per un'intera giornata tende a farlo cadere da solo. Su un conto prop o di valutazione, le regole di sessione e riconnessione possono essere più rigide e variare in base alla società e alla dimensione del conto, verifichi le regole attuali della sua società invece di presumere che si applichino i valori predefiniti retail." },
+    { type: "heading", text: "Come risolvere la disconnessione forzata quotidiana: passo dopo passo" },
+    { type: "heading", text: "Soluzione 1: mantenga il socket attivo con un heartbeat reale" },
+    { type: "paragraph", html: "Gli heartbeat sono la sua prima linea di difesa, e contano di più esattamente quando il mercato è tranquillo:" },
+    {
+      type: "list",
+      items: [
+        "Dopo che il socket si apre e lei si è autorizzato, avvii una routine di keep-alive che gira sul proprio orologio, non in base ai tick in arrivo.",
+        "A ogni ciclo, invii un frame il cui testo è <code>[]</code>, il keep-alive a parentesi vuote.",
+        "Punti a una cadenza leggermente inferiore a 2,5 secondi così che un frame un po' in ritardo arrivi comunque entro la finestra.",
+        "Non lo programmi con un semplice timer del browser in una scheda in background, questi vengono limitati, l'intervallo slitta e il socket cade comunque. Esegua la connessione lato server o in un worker così che il timer resti affidabile.",
+      ],
+    },
+    { type: "heading", text: "Soluzione 2: rilevi la chiusura e si riconnetta con backoff" },
+    { type: "paragraph", html: "Poiché una chiusura forzata prima o poi accadrà comunque, incapsuli il socket così che una caduta lo ricostruisca automaticamente, con attenzione:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Gestisca il ciclo di vita.</strong> Metta il socket dentro un'unica classe o funzione responsabile di crearlo, smontarlo e ricrearlo, così che ci sia un unico punto che reagisce a una chiusura.",
+        "<strong class='text-white'>Si riconnetta alla chiusura, non rianimi.</strong> Apra un socket completamente nuovo invece di provare a rianimare quello morto.",
+        "<strong class='text-white'>Applichi un backoff esponenziale.</strong> Inizi intorno a un secondo, raddoppi l'attesa dopo ogni tentativo fallito, la limiti a circa sessanta secondi, e aggiunga uno 0&ndash;10&nbsp;% di jitter casuale così che una flotta di client non riprovi in modo sincronizzato. Questo è ciò che la tiene lontano dal blocco 429.",
+        "<strong class='text-white'>Limiti i tentativi</strong> così che un'interruzione genuina non giri all'infinito, e mostri un errore chiaro invece di continuare in loop silenziosamente.",
+      ],
+    },
+    { type: "heading", text: "Soluzione 3: si ri-autorizzi con un token nuovo così che la schermata OAuth non torni mai" },
+    { type: "paragraph", html: "La riconnessione è solo metà del lavoro, il nuovo socket ha comunque bisogno di una sessione valida:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Rinnovi il token in modo proattivo.</strong> Il token di accesso ha una durata limitata (comunemente indicata intorno ai 60&ndash;90 minuti, e cambia nel tempo, confermi il valore attuale nella documentazione API). Lo rinnovi con largo anticipo rispetto alla scadenza usando l'endpoint di rinnovo token; una linea guida comune è rinnovarlo circa 15 minuti prima che scada.",
+        "<strong class='text-white'>Tenga sempre pronto un token fresco.</strong> Quando si verifica una caduta, autorizzi il nuovo socket con un token di cui sa già che è valido, non con quello che potrebbe essere appena scaduto.",
+        "<strong class='text-white'>Riutilizzi la sessione quando può</strong> per non esaurire il suo limite di sessioni simultanee e non far saltare le sue altre connessioni.",
+        "Fatto correttamente, il client si ri-autorizza in background e la schermata di login non compare mai.",
+      ],
+    },
+    { type: "heading", text: "Soluzione 4: si riabboni a ogni feed dopo la riconnessione" },
+    { type: "paragraph", html: "Un nuovo socket parte da zero, senza sottoscrizioni, senza sincronizzazione, quindi ripristini lo stato prima di fidarsi dei dati:" },
+    {
+      type: "list",
+      items: [
+        "Rinvii la richiesta di sincronizzazione così che lo stato del conto e degli ordini torni aggiornato.",
+        "Si riabboni a ogni simbolo e feed di dati di mercato che stava seguendo; il nuovo socket non ne conosce nessuno.",
+        "Attenda che il socket segnali di essere realmente aperto prima di inviare qualsiasi cosa, così da non scrivere in una connessione semiaperta.",
+        "Registri il codice di chiusura e il motivo a ogni caduta, nell'arco di una settimana le indicherà quale finestra tranquilla continua a uccidere il feed.",
+      ],
+    },
+    { type: "heading", text: "Tabella di risoluzione dei problemi" },
+    {
+      type: "table",
+      headers: ["Errore / segnale", "Cosa significa", "Soluzione"],
+      rows: [
+        ["An existing connection was forcibly closed by the remote host", "Reset TCP (WinSock 10054), il lato remoto ha chiuso il socket bruscamente", "Riconnettersi, ri-autorizzarsi e riabbonarsi automaticamente"],
+        ["Cade alla stessa ora tranquilla ogni giorno", "È scattato un timer di inattività perché non scorrevano né tick né heartbeat", "Invii l'heartbeat [] ogni ~2,5 s, specialmente sui contratti lenti"],
+        ["La schermata di accesso OAuth ricompare dopo una caduta", "La sessione autorizzata è morta insieme al socket", "Rinnovi il token prima della scadenza e si ri-autorizzi in background"],
+        ["429 Too Many Requests dopo una caduta", "Un loop di riconnessione sta martellando il server", "Usi un backoff esponenziale con jitter, non un intervallo breve fisso"],
+        ["Il nuovo socket si connette ma non arrivano dati", "Si è riconnesso ma non si è mai riabbonato", "Rinvii la richiesta di sincronizzazione e si riabboni a ogni feed"],
+        ["Il feed muore dopo un tempo di attività molto lungo", "Il token è scaduto o la connessione è invecchiata nell'arco della giornata", "Rinnovi il token secondo una pianificazione e faccia ruotare la connessione"],
+        ["La riconnessione continua a chiudere sessioni più vecchie", "Ha superato il limite di sessioni simultanee", "Riutilizzi una sessione invece di aprirne una nuova a ogni tentativo"],
+      ],
+    },
+    { type: "heading", text: "Lo previene con PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade si colloca tra i suoi alert di TradingView e Tradovate ed esegue lo strato di connessione come servizio gestito lato server, così che una chiusura forzata quotidiana venga gestita ben prima che possa costarle un trade:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeat gestiti</strong>, invia il frame di keep-alive con una cadenza stabile lato server, così che un contratto tranquillo non appaia mai inattivo a un timer a monte.",
+        "<strong class='text-white'>Riconnessione automatica con backoff</strong>, rileva la chiusura forzata, riapre il socket con backoff esponenziale e jitter, e resta lontano dal blocco 429.",
+        "<strong class='text-white'>Ri-autenticazione OAuth in background</strong>, rinnova il token prima della scadenza e si ri-autorizza automaticamente, così che la schermata di login non la interrompa mai.",
+        "<strong class='text-white'>Riabbonamento automatico e sincronizzazione multi-account</strong>, ripristina ogni feed dopo una riconnessione e mantiene ogni account connesso in streaming, così che una caduta non lasci mai indietro un account.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Through the Drops", de: "Handeln Sie trotz jedem Abbruch weiter", es: "Opere sin que las caídas se lo impidan", fr: "Tradez malgré les coupures", it: "Faccia trading nonostante le disconnessioni" },
+  ctaText: { en: "PickMyTrade manages heartbeats, reconnect backoff, and OAuth re-auth for you, so a daily forced disconnect never costs you a fill.", de: "PickMyTrade verwaltet Heartbeats, Reconnect-Backoff und OAuth-Re-Auth für Sie, sodass ein täglicher Zwangsabbruch Sie nie einen Fill kostet.", es: "PickMyTrade gestiona los heartbeats, el backoff de reconexión y la reautenticación OAuth por usted, para que una desconexión forzada diaria nunca le cueste una ejecución.", fr: "PickMyTrade gère pour vous les heartbeats, le backoff de reconnexion et la réauthentification OAuth, afin qu'une déconnexion forcée quotidienne ne vous coûte jamais une exécution.", it: "PickMyTrade gestisce per lei gli heartbeat, il backoff di riconnessione e la ri-autenticazione OAuth, così che una disconnessione forzata quotidiana non le costi mai un fill." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 5-Tage-Testversion", es: "Comience su prueba gratuita de 5 días", fr: "Démarrez votre essai gratuit de 5 jours", it: "Avvii la sua prova gratuita di 5 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "What does &ldquo;An existing connection was forcibly closed by the remote host&rdquo; mean on Tradovate?", a: "It's the Windows sockets version of a TCP reset (WinSock error 10054). The far end sent an RST packet and dropped the connection abruptly instead of closing it cleanly. On the market-data feed it means Tradovate's side, or something on the network path, tore the socket down rather than your client timing out on its own. The fix is to treat it as a recoverable event: reconnect, re-authorize, and resubscribe." },
+    { q: "Why does the disconnect happen more during quiet or low-volume markets?", a: "When a contract goes quiet and quotes stop flowing, a socket that only carries market-data ticks can look idle to a proxy, load balancer, or session timer somewhere on the path. With no client heartbeat proving the connection is alive, that idle timer eventually fires and the connection is forcibly closed. Slow contracts and pre-open or overnight lulls are the classic triggers, which is why the drop feels like it happens at roughly the same quiet stretch every day." },
+    { q: "Why does the OAuth login screen come back after a disconnect?", a: "When the socket dies, your authorized session on that connection dies with it. The client can't keep streaming on a dead token, so it kicks you back to the OAuth login to establish a fresh session. If you re-authorize automatically with a valid, unexpired token the moment you detect the close, you never see that screen." },
+    { q: "How often do I need to send a heartbeat to keep the market-data socket open?", a: "About every 2.5 seconds. The heartbeat is a frame whose text is an empty JSON array, []. Once real-time data starts streaming the server stops sending its own keep-alives, so the client has to send them. Aim slightly under 2.5 seconds so a late frame doesn't slip past the limit." },
+    { q: "How should I reconnect without getting a 429 error?", a: "Don't hammer the server on a fixed short interval. Reconnecting every few seconds trips the rate limit and gets you a 429 lockout. Use exponential backoff with jitter: start around one second, double the wait on each failed attempt, cap it near sixty seconds, and add a little randomness so many clients don't retry in lockstep." },
+    { q: "How long does a Tradovate access token last?", a: "The access token has a limited lifetime, commonly cited around 60 to 90 minutes, and it changes over time. Renew it well before it expires using the token-renewal endpoint rather than waiting for a failure. A reconnect that tries to authorize on an expired token just fails again, so always have a fresh token ready before the old one lapses." },
+  ], de: [
+    { q: "Was bedeutet &ldquo;An existing connection was forcibly closed by the remote host&rdquo; bei Tradovate?", a: "Das ist die Windows-Sockets-Version eines TCP-Resets (WinSock-Fehler 10054). Die Gegenseite hat ein RST-Paket gesendet und die Verbindung abrupt statt sauber geschlossen. Beim Market-Data-Feed bedeutet das, dass Tradovates Seite oder etwas auf dem Netzwerkpfad den Socket abgerissen hat, statt dass Ihr Client selbst in ein Timeout gelaufen ist. Die Lösung besteht darin, das als wiederherstellbares Ereignis zu behandeln: neu verbinden, neu autorisieren und neu abonnieren." },
+    { q: "Warum tritt der Abbruch häufiger bei ruhigen oder umsatzschwachen Märkten auf?", a: "Wenn ein Kontrakt ruhig wird und Kursupdates ausbleiben, kann ein Socket, der nur Market-Data-Ticks transportiert, für einen Proxy, Load Balancer oder Session-Timer irgendwo auf dem Pfad untätig wirken. Ohne einen Client-Heartbeat, der das Gegenteil beweist, feuert dieser Idle-Timer irgendwann, und die Verbindung wird zwangsweise geschlossen. Ruhige Kontrakte sowie die Phasen vor der Eröffnung oder über Nacht sind die klassischen Auslöser, weshalb sich der Abbruch täglich etwa zur gleichen ruhigen Zeit anfühlt." },
+    { q: "Warum erscheint der OAuth-Login-Bildschirm nach einem Abbruch erneut?", a: "Stirbt der Socket, stirbt Ihre autorisierte Sitzung auf dieser Verbindung mit. Der Client kann mit einem toten Token nicht weiterstreamen und schickt Sie deshalb zurück zum OAuth-Login, um eine neue Sitzung aufzubauen. Autorisieren Sie sich automatisch mit einem gültigen, nicht abgelaufenen Token in dem Moment, in dem Sie den Abbruch erkennen, sehen Sie diesen Bildschirm nie." },
+    { q: "Wie oft muss ich einen Heartbeat senden, um den Market-Data-Socket offen zu halten?", a: "Etwa alle 2,5 Sekunden. Der Heartbeat ist ein Frame, dessen Text ein leeres JSON-Array ist, []. Sobald Echtzeitdaten zu fließen beginnen, stellt der Server das Senden eigener Keep-Alives ein, der Client muss sie also selbst senden. Zielen Sie auf etwas unter 2,5 Sekunden, damit ein verspäteter Frame nicht am Limit vorbeirutscht." },
+    { q: "Wie sollte ich neu verbinden, ohne einen 429-Fehler zu bekommen?", a: "Bombardieren Sie den Server nicht in einem festen kurzen Intervall. Ein Reconnect alle paar Sekunden löst das Rate-Limit aus und beschert Ihnen eine 429-Sperre. Verwenden Sie exponentiellen Backoff mit Jitter: Beginnen Sie bei rund einer Sekunde, verdoppeln Sie die Wartezeit nach jedem gescheiterten Versuch, deckeln Sie sie bei rund sechzig Sekunden und fügen Sie etwas Zufälligkeit hinzu, damit nicht viele Clients im Gleichschritt erneut versuchen." },
+    { q: "Wie lange ist ein Tradovate-Access-Token gültig?", a: "Das Access-Token hat eine begrenzte Lebensdauer, häufig werden rund 60 bis 90 Minuten genannt, und dieser Wert ändert sich mit der Zeit. Erneuern Sie es rechtzeitig vor Ablauf über den Token-Erneuerungs-Endpunkt, statt auf einen Fehler zu warten. Ein Reconnect, der versucht, sich mit einem abgelaufenen Token zu autorisieren, scheitert einfach erneut, halten Sie also immer ein frisches Token bereit, bevor das alte abläuft." },
+  ], es: [
+    { q: "¿Qué significa &ldquo;An existing connection was forcibly closed by the remote host&rdquo; en Tradovate?", a: "Es la versión de Windows Sockets de un reinicio TCP (error WinSock 10054). El extremo remoto envió un paquete RST y cerró la conexión de forma abrupta en lugar de cerrarla limpiamente. En el feed de datos de mercado significa que el lado de Tradovate, o algo en la ruta de red, derribó el socket, en lugar de que su cliente entrara en tiempo de espera por sí solo. La solución es tratarlo como un evento recuperable: reconectar, reautenticar y volver a suscribirse." },
+    { q: "¿Por qué la desconexión ocurre más en mercados tranquilos o de bajo volumen?", a: "Cuando un contrato se calma y las cotizaciones dejan de fluir, un socket que solo transporta ticks de datos de mercado puede parecer inactivo para un proxy, balanceador de carga o temporizador de sesión en algún punto de la ruta. Sin un heartbeat del cliente que demuestre que la conexión está viva, ese temporizador de inactividad termina disparándose y la conexión se cierra a la fuerza. Los contratos lentos y las calmas previas a la apertura o nocturnas son los desencadenantes clásicos, por eso la caída parece ocurrir en el mismo tramo tranquilo cada día." },
+    { q: "¿Por qué vuelve a aparecer la pantalla de inicio de sesión OAuth tras una desconexión?", a: "Cuando el socket muere, su sesión autorizada en esa conexión muere con él. El cliente no puede seguir transmitiendo con un token muerto, así que le devuelve al inicio de sesión OAuth para establecer una sesión nueva. Si se reautentica automáticamente con un token válido y no caducado en el momento en que detecta el cierre, nunca verá esa pantalla." },
+    { q: "¿Con qué frecuencia necesito enviar un heartbeat para mantener abierto el socket de datos de mercado?", a: "Aproximadamente cada 2,5 segundos. El heartbeat es un frame cuyo texto es un array JSON vacío, []. Una vez que los datos en tiempo real empiezan a transmitirse, el servidor deja de enviar sus propios keep-alives, así que el cliente tiene que enviarlos. Apunte a algo ligeramente inferior a 2,5 segundos para que un frame tardío no se escape del límite." },
+    { q: "¿Cómo debo reconectarme sin obtener un error 429?", a: "No sature al servidor con un intervalo corto fijo. Reconectar cada pocos segundos activa el límite de tasa y le provoca un bloqueo 429. Use backoff exponencial con jitter: empiece alrededor de un segundo, duplique la espera en cada intento fallido, límitelo cerca de sesenta segundos y añada algo de aleatoriedad para que muchos clientes no reintenten al unísono." },
+    { q: "¿Cuánto dura un token de acceso de Tradovate?", a: "El token de acceso tiene una vida útil limitada, comúnmente citada entre 60 y 90 minutos, y cambia con el tiempo. Renuévelo bien antes de que caduque usando el endpoint de renovación de token en lugar de esperar a un fallo. Una reconexión que intenta autorizarse con un token caducado simplemente vuelve a fallar, así que tenga siempre un token fresco listo antes de que el antiguo expire." },
+  ], fr: [
+    { q: "Que signifie &laquo;An existing connection was forcibly closed by the remote host&raquo; sur Tradovate ?", a: "C'est la version Windows Sockets d'une réinitialisation TCP (erreur WinSock 10054). L'extrémité distante a envoyé un paquet RST et a coupé la connexion brutalement au lieu de la fermer proprement. Sur le flux de données de marché, cela signifie que le côté Tradovate, ou quelque chose sur le chemin réseau, a démoli le socket, plutôt que votre client n'ait expiré de lui-même. La solution consiste à traiter cela comme un événement récupérable : se reconnecter, se réautentifier et se réabonner." },
+    { q: "Pourquoi la déconnexion survient-elle davantage sur des marchés calmes ou à faible volume ?", a: "Quand un contrat se calme et que les cotations cessent d'affluer, un socket qui ne transporte que des ticks de données de marché peut paraître inactif pour un proxy, un répartiteur de charge ou un temporisateur de session quelque part sur le trajet. Sans heartbeat client prouvant que la connexion est vivante, ce temporisateur d'inactivité finit par se déclencher et la connexion est fermée de force. Les contrats calmes et les creux avant ouverture ou nocturnes sont les déclencheurs classiques, ce qui explique pourquoi la coupure semble survenir au même moment calme chaque jour." },
+    { q: "Pourquoi l'écran de connexion OAuth revient-il après une déconnexion ?", a: "Quand le socket meurt, votre session autorisée sur cette connexion meurt avec lui. Le client ne peut pas continuer à diffuser avec un jeton mort, il vous renvoie donc à la connexion OAuth pour établir une nouvelle session. Si vous vous réautentifiez automatiquement avec un jeton valide et non expiré dès que vous détectez la fermeture, vous ne verrez jamais cet écran." },
+    { q: "À quelle fréquence dois-je envoyer un heartbeat pour garder le socket de données de marché ouvert ?", a: "Environ toutes les 2,5 secondes. Le heartbeat est une trame dont le texte est un tableau JSON vide, []. Une fois que les données en temps réel commencent à circuler, le serveur cesse d'envoyer ses propres maintiens de connexion, le client doit donc les envoyer lui-même. Visez légèrement moins de 2,5 secondes pour qu'une trame tardive ne dépasse pas la limite." },
+    { q: "Comment dois-je me reconnecter sans obtenir une erreur 429 ?", a: "Ne martelez pas le serveur avec un intervalle court fixe. Se reconnecter toutes les quelques secondes déclenche la limitation de débit et vous vaut un blocage 429. Utilisez un backoff exponentiel avec jitter : commencez autour d'une seconde, doublez l'attente à chaque tentative échouée, plafonnez près de soixante secondes, et ajoutez un peu d'aléatoire pour que de nombreux clients ne réessaient pas au même instant." },
+    { q: "Combien de temps dure un jeton d'accès Tradovate ?", a: "Le jeton d'accès a une durée de vie limitée, couramment citée entre 60 et 90 minutes, et elle évolue dans le temps. Renouvelez-le bien avant son expiration via le point de terminaison de renouvellement de jeton plutôt que d'attendre un échec. Une reconnexion qui tente de s'autoriser avec un jeton expiré échoue simplement à nouveau, ayez donc toujours un jeton frais prêt avant que l'ancien n'expire." },
+  ], it: [
+    { q: "Cosa significa &ldquo;An existing connection was forcibly closed by the remote host&rdquo; su Tradovate?", a: "È la versione Windows Sockets di un reset TCP (errore WinSock 10054). Il lato remoto ha inviato un pacchetto RST e ha chiuso la connessione bruscamente invece di chiuderla in modo pulito. Sul feed di dati di mercato significa che il lato Tradovate, o qualcosa sul percorso di rete, ha demolito il socket, invece che il suo client sia andato in timeout da solo. La soluzione è trattarlo come un evento recuperabile: riconnettersi, ri-autorizzarsi e riabbonarsi." },
+    { q: "Perché la disconnessione si verifica più spesso in mercati tranquilli o a basso volume?", a: "Quando un contratto si calma e le quotazioni smettono di arrivare, un socket che trasporta solo tick di dati di mercato può apparire inattivo a un proxy, load balancer o timer di sessione in qualche punto del percorso. Senza un heartbeat del client che dimostri che la connessione è viva, quel timer di inattività finisce per scattare e la connessione viene chiusa forzatamente. I contratti lenti e le calme pre-apertura o overnight sono gli inneschi classici, motivo per cui la caduta sembra verificarsi nello stesso tratto tranquillo ogni giorno." },
+    { q: "Perché la schermata di accesso OAuth ricompare dopo una disconnessione?", a: "Quando il socket muore, la sua sessione autorizzata su quella connessione muore con esso. Il client non può continuare a trasmettere con un token morto, quindi la riporta al login OAuth per stabilire una nuova sessione. Se si ri-autorizza automaticamente con un token valido e non scaduto nel momento in cui rileva la chiusura, non vedrà mai quella schermata." },
+    { q: "Con quale frequenza devo inviare un heartbeat per mantenere aperto il socket dei dati di mercato?", a: "Circa ogni 2,5 secondi. L'heartbeat è un frame il cui testo è un array JSON vuoto, []. Una volta che i dati in tempo reale iniziano a scorrere, il server smette di inviare i propri keep-alive, quindi il client deve inviarli. Punti a poco meno di 2,5 secondi così che un frame in ritardo non superi il limite." },
+    { q: "Come dovrei riconnettermi senza ottenere un errore 429?", a: "Non martelli il server con un intervallo breve fisso. Riconnettersi ogni pochi secondi fa scattare il limite di frequenza e le procura un blocco 429. Usi un backoff esponenziale con jitter: inizi intorno a un secondo, raddoppi l'attesa a ogni tentativo fallito, la limiti a circa sessanta secondi, e aggiunga un po' di casualità così che molti client non riprovino in modo sincronizzato." },
+    { q: "Quanto dura un token di accesso Tradovate?", a: "Il token di accesso ha una durata limitata, comunemente indicata tra 60 e 90 minuti, e cambia nel tempo. Lo rinnovi ben prima che scada usando l'endpoint di rinnovo token invece di aspettare un fallimento. Una riconnessione che tenta di autorizzarsi con un token scaduto fallisce semplicemente di nuovo, quindi tenga sempre pronto un token fresco prima che quello vecchio scada." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Anleitungen", es: "Guías relacionadas", fr: "Guides connexes", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. or Bookmap. All related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official platform documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform von Drittanbietern und steht in keiner Verbindung zu Tradovate, Inc. oder Bookmap und wird von diesen weder unterstützt noch gesponsert. Alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und -schritte ändern sich im Laufe der Zeit, bestätigen Sie den aktuellen Ablauf daher stets in der offiziellen Plattformdokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. ni por Bookmap. Todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, así que confirme siempre el proceso actual en la documentación oficial de la plataforma antes de actuar.", fr: "Ce guide est fourni à des fins éducatives et informatives uniquement et ne constitue pas un conseil financier, d'investissement ou de trading. Négocier des contrats à terme et d'autres produits à effet de levier comporte un risque de perte substantiel et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est affiliée à, approuvée par, ni sponsorisée par Tradovate, Inc. ou Bookmap. Tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et étapes de la plateforme évoluent avec le temps, confirmez donc toujours le processus actuel dans la documentation officielle de la plateforme avant d'agir.", it: "Questa guida ha uno scopo esclusivamente educativo e informativo e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e altri prodotti a leva comporta un rischio sostanziale di perdita e non è adatto a ogni investitore. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata o sponsorizzata da Tradovate, Inc. o Bookmap. Tutti i nomi, i loghi e i marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo, quindi confermi sempre il processo attuale nella documentazione ufficiale della piattaforma prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${TITLE_OVERRIDE[locale] ?? content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

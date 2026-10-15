@@ -1,0 +1,594 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "websocket-closes-at-5-minutes";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate WebSocket Closes at Exactly 5 Minutes";
+const META_DESCRIPTION =
+  "Tradovate WebSocket closes at exactly 5 minutes? Send heartbeat frames every 2.5 seconds and add reconnect logic to keep the connection alive.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate-WebSocket schließt sich genau nach 5 Minuten", es: "El WebSocket de Tradovate se cierra exactamente a los 5 minutos", fr: "Le WebSocket Tradovate se ferme exactement au bout de 5 minutes", it: "Il WebSocket di Tradovate si chiude esattamente dopo 5 minuti" },
+  dek: { en: "The socket streams perfectly for 300 seconds, then drops with no error and no warning. Here's what's really closing it, the heartbeat cadence that extends it, and the reconnect pattern that makes the drop a non-event.", de: "Der Socket streamt 300 Sekunden lang einwandfrei und bricht dann ohne Fehler und ohne Warnung ab. Hier erfahren Sie, was ihn wirklich schließt, welcher Heartbeat-Takt ihn verlängert und welches Reconnect-Muster den Abbruch zum Nicht-Ereignis macht.", es: "El socket transmite perfectamente durante 300 segundos y luego se cae sin error ni aviso. Esto es lo que realmente lo cierra, la cadencia de heartbeat que lo extiende y el patrón de reconexión que convierte la caída en algo irrelevante.", fr: "Le socket diffuse parfaitement pendant 300 secondes, puis tombe sans erreur ni avertissement. Voici ce qui le ferme réellement, la cadence de heartbeat qui le prolonge et le schéma de reconnexion qui fait de la coupure un non-événement.", it: "Il socket trasmette perfettamente per 300 secondi, poi cade senza errori e senza avvisi. Ecco cosa lo chiude davvero, la cadenza di heartbeat che lo prolunga e lo schema di riconnessione che trasforma la caduta in un non-evento." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "When you're automating fast movers like ES or NQ, few things sting more than a Tradovate WebSocket that dies on a timer. You connect, authorize, subscribe to market data, and everything streams beautifully, right up until 300 seconds, when the socket drops with no error, no close reason, no warning. It's the same story every time: the connection closes at exactly 5 minutes, even when your heartbeats look like they're firing correctly. Two related errors usually tag along, a <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> exception when your code writes to a half-open socket, and a bare <strong class='text-white'>close code 1006</strong> (abnormal closure) from the remote peer. Here's what the 5-minute close actually means in 2026, the real causes behind it, and the exact heartbeat-plus-reconnect pattern that keeps the connection alive, plus how PickMyTrade runs this plumbing for you so a dropped socket never costs you a fill." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for the 5-Minute WebSocket Close",
+      items: [
+        "<strong class='text-white'>Send a heartbeat roughly every 2.5 seconds</strong>, a frame whose text is an empty JSON array, <code>[]</code>. Skip it, and Tradovate closes the socket for inactivity.",
+        "<strong class='text-white'>Don't trust setInterval in a browser tab</strong>, background tabs get throttled, your heartbeat slips past 2.5s, and the server hangs up.",
+        "<strong class='text-white'>Send your own heartbeats</strong>, once real-time data starts flowing, the server stops sending them, so the client has to keep the rhythm going.",
+        "<strong class='text-white'>Guard every send with a readyState check</strong>, only write when the socket is OPEN (1), never while it's still CONNECTING (0).",
+        "<strong class='text-white'>Log the close event</strong>, <code>ws.addEventListener('close', e =&gt; console.log(e))</code> reveals the code (often 1006) and any reason.",
+        "<strong class='text-white'>Assume drops will happen and reconnect</strong>, wrap the socket so a close automatically re-authorizes and resubscribes.",
+      ],
+    },
+    { type: "heading", text: "What \"WebSocket Closes at Exactly 5 Minutes\" Means" },
+    { type: "paragraph", html: "Tradovate's real-time API is a WebSocket connection: you open it, send an authorization frame, then subscribe to the data and events you care about. To keep that connection open, <strong class='text-white'>the client is responsible for sending heartbeats</strong>, small keep-alive frames, on a fixed cadence. Stop sending them and Tradovate treats the socket as idle, then closes it from the server side." },
+    { type: "paragraph", html: "The reason the failure so often lands on a clean 5-minute mark is that timeouts along the network path, the server, a load balancer, or a proxy in between, tend to be enforced in round numbers. The connection disconnects every 5 minutes exactly (300 seconds) with no message, and tellingly, <strong class='text-white'>without heartbeats the drop happens after about 2 minutes instead.</strong> So heartbeats extend the life of the socket, but a lagging or missed heartbeat, or an independent idle timer somewhere on the path, can still guillotine it at 300 seconds. There's no published root cause for the exact-5-minute case, so the durable engineering answer isn't to prevent every close. It's to survive it." },
+    { type: "paragraph", html: "The two error strings you'll see are symptoms of the same underlying problem. <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> means your code tried to send() before the handshake finished, common inside a heartbeat function that fires while the socket is mid-reconnect. <strong class='text-white'>Close code 1006</strong> is the browser or library's way of saying &ldquo;the connection dropped abnormally,&rdquo; with no clean close handshake, exactly what you get when a server-side idle timer cuts the line." },
+    { type: "heading", text: "Top Causes of the 5-Minute WebSocket Close in 2026" },
+    { type: "heading", text: "1. Heartbeat frames arriving late or missing entirely" },
+    { type: "paragraph", html: "This is the number-one cause. Tradovate expects a heartbeat frame, text content <code>[]</code>, roughly every 2.5 seconds to prove the client is alive. Miss that window and the server starts the countdown to close. And here's the catch: <strong class='text-white'>once you start streaming real-time quotes, Tradovate's server stops sending its own heartbeats</strong>, so you can't lean on the connection's built-in traffic to hold it open. Your client has to send the empty-bracket frame on its own schedule." },
+    { type: "heading", text: "2. Browser timer throttling (setInterval / setTimeout)" },
+    { type: "paragraph", html: "If you schedule heartbeats with setInterval() or setTimeout() in a browser, you're at the mercy of the tab's priority. When the tab loses focus, Chrome (and most browsers) lower the priority of those timers, so a &ldquo;2.5-second&rdquo; interval can quietly stretch to several seconds. The heartbeat slips past the deadline and the socket closes, often right around the 5-minute mark, once enough lag piles up." },
+    { type: "heading", text: "3. Server-side idle or session timeout" },
+    { type: "paragraph", html: "Even a perfectly paced heartbeat can't override a timeout enforced upstream. A proxy, a gateway, or the Tradovate session itself may cap idle or total connection time, which is why the close lands on that suspiciously round 300-second boundary. Since this is outside your control, the fix is reconnection, not prevention." },
+    { type: "heading", text: "4. Sending on a socket that is not OPEN (readyState 0)" },
+    { type: "paragraph", html: "A WebSocket has four states: CONNECTING (0), OPEN (1), CLOSING (2), and CLOSED (3). If your heartbeat loop or order code calls send() while the socket is still at readyState 0, you get <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> and, often, a &ldquo;Disconnected from Tradovate Market WebSocket&rdquo; message right behind it. This one bites hardest in the instant after a drop, when your reconnect has spun up a new socket that hasn't finished its handshake yet." },
+    { type: "heading", text: "5. Token expiry and long-lived connections" },
+    { type: "paragraph", html: "A Tradovate access token has a limited lifetime, and these connections aren't built to live forever, hold a single socket open for very long stretches (over a day) and it tends to drop. If your token expires mid-session or the connection ages out, the socket closes and any re-authorization on the old token fails. Token lifetimes vary and change over time, so confirm the current values in Tradovate's API docs and refresh proactively instead of waiting for a failure." },
+    { type: "heading", text: "How to Fix the 5-Minute WebSocket Close: Step-by-Step" },
+    { type: "heading", text: "Fix 1: Send a Heartbeat Frame Roughly Every 2.5 Seconds" },
+    { type: "paragraph", html: "The heartbeat is the foundation. On a cadence of about every 2.5 seconds, send a frame whose text is an empty JSON array:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Start the keep-alive routine", html: "After the socket opens and you've authorized, start a keep-alive routine." },
+        { title: "Send the empty-bracket frame", html: "On each tick, call <code>ws.send('[]')</code>, the empty-bracket frame is Tradovate's heartbeat." },
+        { title: "Keep the interval under 2.5s", html: "Keep the interval comfortably under the limit (2.5 seconds is the target; a touch more often is safer than a touch less)." },
+        { title: "Never assume server pings", html: "Never assume the server will ping you, after data starts streaming, it won't." },
+      ],
+    },
+    { type: "heading", text: "Fix 2: Replace setInterval with a Timestamp Check or a Web Worker" },
+    { type: "paragraph", html: "Because browser timers get throttled, don't lean on setInterval alone in a foreground or background tab. Two proven alternatives:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Timestamp-driven heartbeats.</strong> Record a timestamp (<code>new Date()</code>) each time you receive a message. Compare it against the last time you sent a heartbeat; if more than 2500ms has elapsed, send <code>[]</code> now. This reacts to real traffic instead of a timer the browser can starve.",
+        "<strong class='text-white'>Move the timer off the main thread.</strong> Run the heartbeat inside a Web Worker, or run the whole connection as a Node.js service. Both sidestep browser tab throttling entirely, a Node process isn't subject to the background-tab penalty at all.",
+      ],
+    },
+    { type: "heading", text: "Fix 3: Guard Every Send with a readyState Check" },
+    { type: "paragraph", html: "Kill the readyState 0 error by never writing to a socket that isn't open:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Check readyState before every send", html: "Before every send(), heartbeat or order, check <code>if (ws.readyState === WebSocket.OPEN)</code> (that's state 1)." },
+        { title: "Skip and let reconnect logic take over", html: "If it's still CONNECTING (0) or already CLOSING/CLOSED, skip the send and let your reconnect logic take over." },
+        { title: "Attach listeners for all state transitions", html: "Attach listeners for open, message, error, and close so state transitions are explicit, and log the close event object to capture the code and reason." },
+      ],
+    },
+    { type: "heading", text: "Fix 4: Add Reconnect, Re-Authorize, and Resubscribe Logic" },
+    { type: "paragraph", html: "Since some 5-minute closes are enforced upstream and can't be prevented, treat every drop as a recoverable error and rebuild automatically:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Wrap the socket", html: "Wrap the socket in a class or function that owns its lifecycle, so one place is responsible for creating and tearing it down." },
+        { title: "Reconnect on close", html: "On close, reconnect, open a fresh socket rather than trying to revive the dead one." },
+        { title: "Re-authorize the new socket", html: "Re-authorize the new socket with a valid token (regenerate the token before it expires so a fresh one is always ready)." },
+        { title: "Resubscribe to everything", html: "Resubscribe to everything you had, resend your user/syncrequest and re-subscribe to each market-data feed, because a new socket starts with no subscriptions." },
+        { title: "Wait for OPEN before sending", html: "Wait for OPEN before sending anything on the new socket, and add a short backoff so a flapping connection doesn't hammer the server." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error / signal", "What it means", "Fix"],
+      rows: [
+        ["Socket closes at exactly 300s", "An idle or session timeout on the path cut the connection", "Send heartbeats every ~2.5s and auto-reconnect on close"],
+        ["Drops after ~2 minutes", "No heartbeats are being sent at all", "Start a keep-alive that sends the [] frame on a 2.5s cadence"],
+        ["WebSocket is not open: readyState 0 (CONNECTING)", "Code called send() before the handshake finished", "Only send when readyState === OPEN (1); skip otherwise"],
+        ["Close code 1006", "Abnormal closure with no clean handshake", "Reconnect on close, re-authorize, and resubscribe"],
+        ["\"Disconnected from Tradovate Market WebSocket\"", "The socket dropped mid-stream", "Rebuild the socket and restore your subscriptions"],
+        ["Heartbeats fine but tab was inactive", "Browser throttled setInterval/setTimeout", "Use timestamp-based heartbeats or a Web Worker / Node.js"],
+        ["Drop after very long uptime", "Token expired or the connection aged out", "Refresh the token before expiry and reconnect on a schedule"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "PickMyTrade sits between your TradingView alerts and Tradovate and runs the WebSocket layer as a managed, server-side service, so the 5-minute close is handled before it ever reaches you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Managed Heartbeats</strong>, sends the keep-alive frame on a reliable server-side cadence, with no browser tab to throttle the timer.",
+        "<strong class='text-white'>Auto-Reconnect &amp; Re-Auth</strong>, detects a dropped socket, opens a fresh one, re-authorizes with a valid token, and resubscribes automatically.",
+        "<strong class='text-white'>Connection-State Guards</strong>, only transmits when the socket is genuinely open, eliminating readyState 0 send errors.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, keeps every connected account's stream healthy so a single reconnect never leaves one account behind.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Beim Automatisieren schneller Werte wie ES oder NQ ärgert wenig mehr als ein Tradovate-WebSocket, der nach einem Timer stirbt. Sie verbinden sich, autorisieren, abonnieren Marktdaten, und alles streamt wunderbar, bis genau zu den 300 Sekunden, wenn der Socket ohne Fehler, ohne Close-Grund und ohne Warnung abbricht. Es ist jedes Mal dieselbe Geschichte: Die Verbindung schließt sich genau nach 5 Minuten, selbst wenn Ihre Heartbeats korrekt zu feuern scheinen. Meist treten zwei verwandte Fehler auf, eine Ausnahme <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong>, wenn Ihr Code auf einen halb offenen Socket schreibt, und ein nackter <strong class='text-white'>Close-Code 1006</strong> (abnormaler Abbruch) von der Gegenstelle. Hier erfahren Sie, was das 5-Minuten-Schließen 2026 tatsächlich bedeutet, die wirklichen Ursachen dahinter und das genaue Heartbeat-plus-Reconnect-Muster, das die Verbindung am Leben hält, außerdem, wie PickMyTrade diese Infrastruktur für Sie betreibt, sodass ein abgebrochener Socket Sie nie einen Fill kostet." },
+    {
+      type: "checklist",
+      heading: "Kurze Checkliste für das 5-Minuten-Schließen des WebSockets",
+      items: [
+        "<strong class='text-white'>Senden Sie etwa alle 2,5 Sekunden einen Heartbeat</strong>, einen Frame, dessen Text ein leeres JSON-Array ist, <code>[]</code>. Lassen Sie ihn aus, und Tradovate schließt den Socket wegen Inaktivität.",
+        "<strong class='text-white'>Vertrauen Sie setInterval in einem Browser-Tab nicht</strong>, Hintergrund-Tabs werden gedrosselt, Ihr Heartbeat rutscht über 2,5 s hinaus, und der Server legt auf.",
+        "<strong class='text-white'>Senden Sie Ihre eigenen Heartbeats</strong>, sobald Echtzeitdaten fließen, hört der Server auf, welche zu senden, der Client muss den Rhythmus also selbst halten.",
+        "<strong class='text-white'>Sichern Sie jedes Senden mit einer readyState-Prüfung ab</strong>, schreiben Sie nur, wenn der Socket OPEN (1) ist, niemals solange er noch CONNECTING (0) ist.",
+        "<strong class='text-white'>Protokollieren Sie das Close-Ereignis</strong>, <code>ws.addEventListener('close', e =&gt; console.log(e))</code> zeigt den Code (oft 1006) und einen etwaigen Grund.",
+        "<strong class='text-white'>Gehen Sie davon aus, dass Abbrüche vorkommen, und verbinden Sie sich neu</strong>, kapseln Sie den Socket so, dass ein Schließen automatisch neu autorisiert und neu abonniert.",
+      ],
+    },
+    { type: "heading",text: "Was „WebSocket schließt sich genau nach 5 Minuten“ bedeutet" },
+    { type: "paragraph",html: "Die Echtzeit-API von Tradovate ist eine WebSocket-Verbindung: Sie öffnen sie, senden einen Autorisierungs-Frame und abonnieren dann die Daten und Ereignisse, die Sie interessieren. Damit die Verbindung offen bleibt, ist <strong class='text-white'>der Client dafür verantwortlich, Heartbeats zu senden</strong>, kleine Keep-Alive-Frames in einem festen Takt. Hören Sie damit auf, betrachtet Tradovate den Socket als im Leerlauf und schließt ihn serverseitig." },
+    { type: "paragraph",html: "Dass der Ausfall so oft genau auf die 5-Minuten-Marke fällt, liegt daran, dass Timeouts entlang des Netzwerkpfads, beim Server, einem Load Balancer oder einem Proxy dazwischen, tendenziell in runden Zahlen durchgesetzt werden. Die Verbindung trennt sich genau alle 5 Minuten (300 Sekunden) ohne Meldung, und bezeichnenderweise <strong class='text-white'>erfolgt der Abbruch ohne Heartbeats stattdessen nach etwa 2 Minuten.</strong> Heartbeats verlängern also die Lebensdauer des Sockets, aber ein verspäteter oder ausgefallener Heartbeat oder ein unabhängiger Leerlauf-Timer irgendwo auf dem Pfad kann ihn dennoch bei 300 Sekunden guillotinieren. Es gibt keine veröffentlichte Grundursache für den exakten 5-Minuten-Fall, die dauerhafte technische Antwort lautet also nicht, jedes Schließen zu verhindern, sondern es zu überleben." },
+    { type: "paragraph",html: "Die beiden Fehlermeldungen, die Sie sehen, sind Symptome desselben zugrunde liegenden Problems. <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> bedeutet, dass Ihr Code versuchte, send() aufzurufen, bevor der Handshake abgeschlossen war, häufig in einer Heartbeat-Funktion, die mitten in einer Neuverbindung feuert. <strong class='text-white'>Close-Code 1006</strong> ist die Art von Browser oder Bibliothek zu sagen: &ldquo;Die Verbindung ist abnormal abgebrochen&rdquo;, ohne sauberen Close-Handshake, genau das, was Sie erhalten, wenn ein serverseitiger Leerlauf-Timer die Leitung kappt." },
+    { type: "heading",text: "Die häufigsten Ursachen für das 5-Minuten-Schließen des WebSockets 2026" },
+    { type: "heading",text: "1. Heartbeat-Frames kommen verspätet oder fehlen ganz" },
+    { type: "paragraph",html: "Das ist die Ursache Nummer eins. Tradovate erwartet etwa alle 2,5 Sekunden einen Heartbeat-Frame mit dem Textinhalt <code>[]</code>, um zu belegen, dass der Client lebt. Verpassen Sie dieses Fenster, startet der Server den Countdown zum Schließen. Und hier der Haken: <strong class='text-white'>Sobald Sie Echtzeitkurse streamen, hört der Tradovate-Server auf, eigene Heartbeats zu senden</strong>, Sie können sich also nicht auf den eingebauten Verkehr der Verbindung verlassen, um sie offen zu halten. Ihr Client muss den Frame mit den leeren Klammern nach eigenem Zeitplan senden." },
+    { type: "heading",text: "2. Timer-Drosselung im Browser (setInterval / setTimeout)" },
+    { type: "paragraph",html: "Wenn Sie Heartbeats mit setInterval() oder setTimeout() in einem Browser planen, sind Sie der Priorität des Tabs ausgeliefert. Verliert der Tab den Fokus, senken Chrome (und die meisten Browser) die Priorität dieser Timer, sodass sich ein &ldquo;2,5-Sekunden&rdquo;-Intervall unbemerkt auf mehrere Sekunden dehnen kann. Der Heartbeat verpasst die Frist und der Socket schließt sich, oft rund um die 5-Minuten-Marke, sobald genügend Verzögerung aufgelaufen ist." },
+    { type: "heading",text: "3. Serverseitiges Leerlauf- oder Sitzungs-Timeout" },
+    { type: "paragraph",html: "Selbst ein perfekt getakteter Heartbeat kann ein vorgelagert durchgesetztes Timeout nicht außer Kraft setzen. Ein Proxy, ein Gateway oder die Tradovate-Sitzung selbst kann die Leerlauf- oder Gesamtverbindungszeit begrenzen, weshalb der Abbruch auf die verdächtig runde 300-Sekunden-Grenze fällt. Da dies außerhalb Ihrer Kontrolle liegt, ist die Lösung die Wiederverbindung, nicht die Vorbeugung." },
+    { type: "heading",text: "4. Senden auf einem Socket, der nicht OPEN ist (readyState 0)" },
+    { type: "paragraph",html: "Ein WebSocket hat vier Zustände: CONNECTING (0), OPEN (1), CLOSING (2) und CLOSED (3). Ruft Ihre Heartbeat-Schleife oder Ihr Order-Code send() auf, während der Socket noch bei readyState 0 ist, erhalten Sie <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> und oft direkt dahinter eine Meldung &ldquo;Disconnected from Tradovate Market WebSocket&rdquo;. Das trifft am härtesten im Augenblick nach einem Abbruch, wenn Ihre Neuverbindung einen neuen Socket gestartet hat, der seinen Handshake noch nicht abgeschlossen hat." },
+    { type: "heading",text: "5. Token-Ablauf und langlebige Verbindungen" },
+    { type: "paragraph",html: "Ein Tradovate-Zugriffstoken hat eine begrenzte Lebensdauer, und diese Verbindungen sind nicht dafür gebaut, ewig zu leben, halten Sie einen einzelnen Socket sehr lange offen (über einen Tag), bricht er tendenziell ab. Läuft Ihr Token mitten in der Sitzung ab oder altert die Verbindung aus, schließt sich der Socket und jede erneute Autorisierung mit dem alten Token schlägt fehl. Token-Laufzeiten variieren und ändern sich im Lauf der Zeit, bestätigen Sie also die aktuellen Werte in der API-Dokumentation von Tradovate und erneuern Sie proaktiv, statt auf einen Fehler zu warten." },
+    { type: "heading",text: "So beheben Sie das 5-Minuten-Schließen des WebSockets: Schritt für Schritt" },
+    { type: "heading",text: "Lösung 1: Etwa alle 2,5 Sekunden einen Heartbeat-Frame senden" },
+    { type: "paragraph",html: "Der Heartbeat ist die Grundlage. Senden Sie im Takt von etwa 2,5 Sekunden einen Frame, dessen Text ein leeres JSON-Array ist:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Die Keep-Alive-Routine starten", html: "Starten Sie nach dem Öffnen des Sockets und der Autorisierung eine Keep-Alive-Routine." },
+        { title: "Den Frame mit den leeren Klammern senden", html: "Rufen Sie bei jedem Takt <code>ws.send('[]')</code> auf, der Frame mit den leeren Klammern ist der Heartbeat von Tradovate." },
+        { title: "Das Intervall unter 2,5 s halten", html: "Halten Sie das Intervall deutlich unter dem Limit (2,5 Sekunden ist das Ziel, etwas häufiger ist sicherer als etwas seltener)." },
+        { title: "Nie auf Server-Pings vertrauen", html: "Gehen Sie nie davon aus, dass der Server Sie anpingt, nachdem Daten zu streamen begonnen haben, tut er es nicht." },
+      ],
+    },
+    { type: "heading",text: "Lösung 2: setInterval durch eine Zeitstempelprüfung oder einen Web Worker ersetzen" },
+    { type: "paragraph",html: "Da Browser-Timer gedrosselt werden, verlassen Sie sich nicht allein auf setInterval, weder in einem Vordergrund- noch in einem Hintergrund-Tab. Zwei bewährte Alternativen:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Zeitstempelgesteuerte Heartbeats.</strong> Speichern Sie bei jeder empfangenen Nachricht einen Zeitstempel (<code>new Date()</code>). Vergleichen Sie ihn mit dem Zeitpunkt, an dem Sie zuletzt einen Heartbeat gesendet haben; sind mehr als 2500 ms vergangen, senden Sie sofort <code>[]</code>. Das reagiert auf echten Verkehr statt auf einen Timer, den der Browser aushungern kann.",
+        "<strong class='text-white'>Den Timer vom Hauptthread verlagern.</strong> Führen Sie den Heartbeat in einem Web Worker aus oder betreiben Sie die gesamte Verbindung als Node.js-Dienst. Beides umgeht die Tab-Drosselung des Browsers vollständig, ein Node-Prozess unterliegt der Hintergrund-Tab-Strafe überhaupt nicht.",
+      ],
+    },
+    { type: "heading",text: "Lösung 3: Jedes Senden mit einer readyState-Prüfung absichern" },
+    { type: "paragraph",html: "Beseitigen Sie den readyState-0-Fehler, indem Sie nie auf einen Socket schreiben, der nicht offen ist:" },
+    {
+      type: "steps",
+      items: [
+        { title: "readyState vor jedem Senden prüfen", html: "Prüfen Sie vor jedem send(), ob Heartbeat oder Order, <code>if (ws.readyState === WebSocket.OPEN)</code> (das ist Zustand 1)." },
+        { title: "Überspringen und die Reconnect-Logik übernehmen lassen", html: "Ist er noch CONNECTING (0) oder bereits CLOSING/CLOSED, überspringen Sie das Senden und lassen Sie Ihre Reconnect-Logik übernehmen." },
+        { title: "Listener für alle Zustandsübergänge anhängen", html: "Hängen Sie Listener für open, message, error und close an, damit Zustandsübergänge explizit sind, und protokollieren Sie das Close-Ereignisobjekt, um Code und Grund zu erfassen." },
+      ],
+    },
+    { type: "heading",text: "Lösung 4: Reconnect-, Re-Authorize- und Resubscribe-Logik hinzufügen" },
+    { type: "paragraph",html: "Da einige 5-Minuten-Abbrüche vorgelagert erzwungen werden und nicht verhindert werden können, behandeln Sie jeden Abbruch als behebbaren Fehler und bauen Sie automatisch neu auf:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Den Socket kapseln", html: "Kapseln Sie den Socket in einer Klasse oder Funktion, die seinen Lebenszyklus besitzt, sodass eine einzige Stelle für Erzeugung und Abbau verantwortlich ist." },
+        { title: "Beim Schließen neu verbinden", html: "Verbinden Sie sich beim Schließen neu, öffnen Sie einen frischen Socket, statt zu versuchen, den toten wiederzubeleben." },
+        { title: "Den neuen Socket neu autorisieren", html: "Autorisieren Sie den neuen Socket mit einem gültigen Token neu (erzeugen Sie das Token vor Ablauf neu, damit immer ein frisches bereitsteht)." },
+        { title: "Alles neu abonnieren", html: "Abonnieren Sie alles neu, was Sie hatten, senden Sie Ihren user/syncrequest erneut und abonnieren Sie jeden Marktdaten-Feed neu, denn ein neuer Socket beginnt ohne Abonnements." },
+        { title: "Vor dem Senden auf OPEN warten", html: "Warten Sie auf OPEN, bevor Sie irgendetwas auf dem neuen Socket senden, und fügen Sie ein kurzes Backoff hinzu, damit eine flatternde Verbindung den Server nicht bombardiert." },
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Fehler / Signal","Was es bedeutet","Lösung"], rows: [
+      ["Socket schließt sich genau nach 300 s","Ein Leerlauf- oder Sitzungs-Timeout auf dem Pfad hat die Verbindung gekappt","Heartbeats etwa alle 2,5 s senden und beim Schließen automatisch neu verbinden"],
+      ["Abbruch nach ca. 2 Minuten","Es werden überhaupt keine Heartbeats gesendet","Eine Keep-Alive-Routine starten, die den []-Frame im 2,5-s-Takt sendet"],
+      ["WebSocket is not open: readyState 0 (CONNECTING)","Code hat send() aufgerufen, bevor der Handshake abgeschlossen war","Nur senden, wenn readyState === OPEN (1); sonst überspringen"],
+      ["Close-Code 1006","Abnormaler Abbruch ohne sauberen Handshake","Beim Schließen neu verbinden, neu autorisieren und neu abonnieren"],
+      ["„Disconnected from Tradovate Market WebSocket“","Der Socket ist mitten im Stream abgebrochen","Den Socket neu aufbauen und Ihre Abonnements wiederherstellen"],
+      ["Heartbeats in Ordnung, aber Tab war inaktiv","Browser hat setInterval/setTimeout gedrosselt","Zeitstempelbasierte Heartbeats oder einen Web Worker / Node.js verwenden"],
+      ["Abbruch nach sehr langer Laufzeit","Token abgelaufen oder Verbindung gealtert","Das Token vor Ablauf erneuern und planmäßig neu verbinden"],
+    ] },
+    { type: "heading",text: "Verhindern Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade sitzt zwischen Ihren TradingView-Alarmen und Tradovate und betreibt die WebSocket-Schicht als verwalteten, serverseitigen Dienst, sodass das 5-Minuten-Schließen behandelt wird, bevor es Sie überhaupt erreicht:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Verwaltete Heartbeats</strong>, sendet den Keep-Alive-Frame in einem zuverlässigen serverseitigen Takt, ohne Browser-Tab, der den Timer drosseln könnte.",
+        "<strong class='text-white'>Auto-Reconnect &amp; Re-Auth</strong>, erkennt einen abgebrochenen Socket, öffnet einen neuen, autorisiert mit einem gültigen Token neu und abonniert automatisch neu.",
+        "<strong class='text-white'>Verbindungszustands-Schutz</strong>, sendet nur, wenn der Socket tatsächlich offen ist, und eliminiert damit readyState-0-Sendefehler.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, hält den Stream jedes verbundenen Kontos gesund, sodass ein einzelner Reconnect nie ein Konto zurücklässt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Cuando automatiza valores rápidos como ES o NQ, pocas cosas duelen más que un WebSocket de Tradovate que muere por un temporizador. Se conecta, autoriza, se suscribe a datos de mercado y todo fluye de maravilla, justo hasta los 300 segundos, cuando el socket se cae sin error, sin motivo de cierre, sin aviso. Es la misma historia cada vez: la conexión se cierra exactamente a los 5 minutos, incluso cuando sus heartbeats parecen dispararse correctamente. Normalmente aparecen dos errores relacionados, una excepción <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> cuando su código escribe en un socket medio abierto, y un simple <strong class='text-white'>código de cierre 1006</strong> (cierre anormal) del extremo remoto. Esto es lo que significa realmente el cierre a los 5 minutos en 2026, las causas reales y el patrón exacto de heartbeat más reconexión que mantiene viva la conexión, además de cómo PickMyTrade ejecuta esta infraestructura por usted para que un socket caído nunca le cueste una ejecución." },
+    {
+      type: "checklist",
+      heading: "Lista rápida para el cierre del WebSocket a los 5 minutos",
+      items: [
+        "<strong class='text-white'>Envíe un heartbeat aproximadamente cada 2,5 segundos</strong>, un frame cuyo texto es un array JSON vacío, <code>[]</code>. Si lo omite, Tradovate cierra el socket por inactividad.",
+        "<strong class='text-white'>No confíe en setInterval en una pestaña del navegador</strong>, las pestañas en segundo plano se limitan, su heartbeat se retrasa más de 2,5 s y el servidor cuelga.",
+        "<strong class='text-white'>Envíe sus propios heartbeats</strong>, una vez que fluyen los datos en tiempo real, el servidor deja de enviarlos, así que el cliente tiene que mantener el ritmo.",
+        "<strong class='text-white'>Proteja cada envío con una comprobación de readyState</strong>, escriba solo cuando el socket esté OPEN (1), nunca mientras siga en CONNECTING (0).",
+        "<strong class='text-white'>Registre el evento de cierre</strong>, <code>ws.addEventListener('close', e =&gt; console.log(e))</code> revela el código (a menudo 1006) y cualquier motivo.",
+        "<strong class='text-white'>Asuma que habrá caídas y reconecte</strong>, envuelva el socket para que un cierre vuelva a autorizar y a suscribirse automáticamente.",
+      ],
+    },
+    { type: "heading",text: "Qué significa «El WebSocket se cierra exactamente a los 5 minutos»" },
+    { type: "paragraph",html: "La API en tiempo real de Tradovate es una conexión WebSocket: la abre, envía un frame de autorización y luego se suscribe a los datos y eventos que le interesan. Para mantener abierta esa conexión, <strong class='text-white'>el cliente es responsable de enviar heartbeats</strong>, pequeños frames de keep-alive, con una cadencia fija. Si deja de enviarlos, Tradovate considera el socket inactivo y lo cierra desde el lado del servidor." },
+    { type: "paragraph",html: "El motivo por el que el fallo cae con tanta frecuencia en la marca exacta de 5 minutos es que los tiempos de espera a lo largo de la ruta de red, el servidor, un balanceador de carga o un proxy intermedio, tienden a aplicarse en cifras redondas. La conexión se desconecta exactamente cada 5 minutos (300 segundos) sin mensaje y, significativamente, <strong class='text-white'>sin heartbeats la caída ocurre en cambio a los 2 minutos aproximadamente.</strong> Así que los heartbeats prolongan la vida del socket, pero un heartbeat retrasado o perdido, o un temporizador de inactividad independiente en algún punto de la ruta, aún puede guillotinarlo a los 300 segundos. No hay una causa raíz publicada para el caso exacto de 5 minutos, así que la respuesta de ingeniería duradera no es evitar cada cierre, sino sobrevivirlo." },
+    { type: "paragraph",html: "Los dos mensajes de error que verá son síntomas del mismo problema de fondo. <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> significa que su código intentó send() antes de que terminara el handshake, algo habitual dentro de una función de heartbeat que se dispara en plena reconexión. <strong class='text-white'>El código de cierre 1006</strong> es la forma que tienen el navegador o la biblioteca de decir &ldquo;la conexión se cayó de forma anormal&rdquo;, sin handshake de cierre limpio, exactamente lo que ocurre cuando un temporizador de inactividad del servidor corta la línea." },
+    { type: "heading",text: "Principales causas del cierre del WebSocket a los 5 minutos en 2026" },
+    { type: "heading",text: "1. Frames de heartbeat que llegan tarde o no llegan" },
+    { type: "paragraph",html: "Esta es la causa número uno. Tradovate espera un frame de heartbeat, con contenido de texto <code>[]</code>, aproximadamente cada 2,5 segundos para comprobar que el cliente está vivo. Si pierde esa ventana, el servidor inicia la cuenta atrás para cerrar. Y aquí está el problema: <strong class='text-white'>una vez que empieza a transmitir cotizaciones en tiempo real, el servidor de Tradovate deja de enviar sus propios heartbeats</strong>, así que no puede apoyarse en el tráfico integrado de la conexión para mantenerla abierta. Su cliente tiene que enviar el frame de corchetes vacíos según su propio calendario." },
+    { type: "heading",text: "2. Limitación de temporizadores del navegador (setInterval / setTimeout)" },
+    { type: "paragraph",html: "Si programa heartbeats con setInterval() o setTimeout() en un navegador, queda a merced de la prioridad de la pestaña. Cuando la pestaña pierde el foco, Chrome (y la mayoría de los navegadores) reducen la prioridad de esos temporizadores, de modo que un intervalo de &ldquo;2,5 segundos&rdquo; puede estirarse sin avisar a varios segundos. El heartbeat se pasa del plazo y el socket se cierra, a menudo justo alrededor de la marca de 5 minutos, cuando se ha acumulado suficiente retraso." },
+    { type: "heading",text: "3. Tiempo de espera de inactividad o de sesión del lado del servidor" },
+    { type: "paragraph",html: "Ni siquiera un heartbeat perfectamente espaciado puede anular un tiempo de espera aplicado aguas arriba. Un proxy, una pasarela o la propia sesión de Tradovate pueden limitar el tiempo de inactividad o la duración total de la conexión, por lo que el cierre cae en esa sospechosa frontera redonda de 300 segundos. Como esto escapa a su control, la solución es la reconexión, no la prevención." },
+    { type: "heading",text: "4. Enviar en un socket que no está OPEN (readyState 0)" },
+    { type: "paragraph",html: "Un WebSocket tiene cuatro estados: CONNECTING (0), OPEN (1), CLOSING (2) y CLOSED (3). Si su bucle de heartbeat o su código de órdenes llama a send() mientras el socket aún está en readyState 0, obtiene <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> y, a menudo, un mensaje &ldquo;Disconnected from Tradovate Market WebSocket&rdquo; justo detrás. Esto duele más en el instante posterior a una caída, cuando su reconexión ha levantado un socket nuevo que aún no completó su handshake." },
+    { type: "heading",text: "5. Caducidad del token y conexiones de larga duración" },
+    { type: "paragraph",html: "Un token de acceso de Tradovate tiene una vida limitada, y estas conexiones no están hechas para vivir para siempre; si mantiene un único socket abierto durante periodos muy largos (más de un día), tiende a caerse. Si su token caduca a mitad de sesión o la conexión envejece, el socket se cierra y cualquier reautorización con el token antiguo falla. La duración de los tokens varía y cambia con el tiempo, así que confirme los valores actuales en la documentación de la API de Tradovate y renueve de forma proactiva en lugar de esperar a un fallo." },
+    { type: "heading",text: "Cómo arreglar el cierre del WebSocket a los 5 minutos: paso a paso" },
+    { type: "heading",text: "Solución 1: envíe un frame de heartbeat aproximadamente cada 2,5 segundos" },
+    { type: "paragraph",html: "El heartbeat es la base. Con una cadencia de aproximadamente cada 2,5 segundos, envíe un frame cuyo texto sea un array JSON vacío:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Inicie la rutina de keep-alive", html: "Después de que el socket se abra y de haber autorizado, inicie una rutina de keep-alive." },
+        { title: "Envíe el frame de corchetes vacíos", html: "En cada tick, llame a <code>ws.send('[]')</code>, el frame de corchetes vacíos es el heartbeat de Tradovate." },
+        { title: "Mantenga el intervalo por debajo de 2,5 s", html: "Mantenga el intervalo cómodamente por debajo del límite (2,5 segundos es el objetivo; un poco más a menudo es más seguro que un poco menos)." },
+        { title: "Nunca asuma pings del servidor", html: "Nunca dé por hecho que el servidor le hará ping, una vez que comienzan a transmitirse datos, no lo hará." },
+      ],
+    },
+    { type: "heading",text: "Solución 2: sustituya setInterval por una comprobación de marca de tiempo o un Web Worker" },
+    { type: "paragraph",html: "Como los temporizadores del navegador se limitan, no se apoye solo en setInterval, ni en una pestaña en primer plano ni en segundo plano. Dos alternativas probadas:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeats guiados por marca de tiempo.</strong> Registre una marca de tiempo (<code>new Date()</code>) cada vez que reciba un mensaje. Compárela con la última vez que envió un heartbeat; si han transcurrido más de 2500 ms, envíe <code>[]</code> ahora. Esto reacciona al tráfico real en lugar de a un temporizador que el navegador puede dejar sin recursos.",
+        "<strong class='text-white'>Saque el temporizador del hilo principal.</strong> Ejecute el heartbeat dentro de un Web Worker o ejecute toda la conexión como un servicio Node.js. Ambos evitan por completo la limitación de pestañas del navegador, un proceso de Node no está sujeto en absoluto a la penalización de las pestañas en segundo plano.",
+      ],
+    },
+    { type: "heading",text: "Solución 3: proteja cada envío con una comprobación de readyState" },
+    { type: "paragraph",html: "Elimine el error de readyState 0 no escribiendo nunca en un socket que no esté abierto:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Compruebe readyState antes de cada envío", html: "Antes de cada send(), sea heartbeat u orden, compruebe <code>if (ws.readyState === WebSocket.OPEN)</code> (es decir, el estado 1)." },
+        { title: "Omita y deje que la lógica de reconexión se encargue", html: "Si todavía está en CONNECTING (0) o ya en CLOSING/CLOSED, omita el envío y deje que su lógica de reconexión tome el relevo." },
+        { title: "Adjunte listeners para todas las transiciones de estado", html: "Adjunte listeners para open, message, error y close para que las transiciones de estado sean explícitas, y registre el objeto del evento close para capturar el código y el motivo." },
+      ],
+    },
+    { type: "heading",text: "Solución 4: añada lógica de reconexión, reautorización y resuscripción" },
+    { type: "paragraph",html: "Como algunos cierres a los 5 minutos se aplican aguas arriba y no se pueden evitar, trate cada caída como un error recuperable y reconstruya automáticamente:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Envuelva el socket", html: "Envuelva el socket en una clase o función que posea su ciclo de vida, de modo que un único lugar sea responsable de crearlo y destruirlo." },
+        { title: "Reconecte al cerrarse", html: "Al cerrarse, reconecte, abra un socket nuevo en lugar de intentar revivir el muerto." },
+        { title: "Vuelva a autorizar el nuevo socket", html: "Vuelva a autorizar el nuevo socket con un token válido (regenere el token antes de que caduque para que siempre haya uno nuevo listo)." },
+        { title: "Vuelva a suscribirse a todo", html: "Vuelva a suscribirse a todo lo que tenía, reenvíe su user/syncrequest y suscríbase de nuevo a cada feed de datos de mercado, porque un socket nuevo empieza sin suscripciones." },
+        { title: "Espere a OPEN antes de enviar", html: "Espere a OPEN antes de enviar nada en el nuevo socket y añada un breve backoff para que una conexión inestable no sature al servidor." },
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Error / señal","Qué significa","Solución"], rows: [
+      ["El socket se cierra exactamente a los 300 s","Un tiempo de espera de inactividad o de sesión en la ruta cortó la conexión","Envíe heartbeats cada ~2,5 s y reconecte automáticamente al cerrarse"],
+      ["Se cae a los ~2 minutos","No se envía ningún heartbeat","Inicie un keep-alive que envíe el frame [] con cadencia de 2,5 s"],
+      ["WebSocket is not open: readyState 0 (CONNECTING)","El código llamó a send() antes de que terminara el handshake","Envíe solo cuando readyState === OPEN (1); omita en caso contrario"],
+      ["Código de cierre 1006","Cierre anormal sin handshake limpio","Reconecte al cerrarse, vuelva a autorizar y vuelva a suscribirse"],
+      ["«Disconnected from Tradovate Market WebSocket»","El socket se cayó a mitad de flujo","Reconstruya el socket y restaure sus suscripciones"],
+      ["Heartbeats bien, pero la pestaña estaba inactiva","El navegador limitó setInterval/setTimeout","Use heartbeats basados en marcas de tiempo o un Web Worker / Node.js"],
+      ["Caída tras un tiempo de actividad muy largo","Token caducado o la conexión envejeció","Renueve el token antes de que caduque y reconecte según un calendario"],
+    ] },
+    { type: "heading",text: "Evite esto con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade se sitúa entre sus alertas de TradingView y Tradovate y ejecuta la capa de WebSocket como un servicio gestionado del lado del servidor, de modo que el cierre a los 5 minutos se gestiona antes de que llegue a usted:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeats gestionados</strong>, envía el frame de keep-alive con una cadencia fiable del lado del servidor, sin pestaña de navegador que limite el temporizador.",
+        "<strong class='text-white'>Auto-Reconnect &amp; Re-Auth</strong>, detecta un socket caído, abre uno nuevo, vuelve a autorizar con un token válido y se resuscribe automáticamente.",
+        "<strong class='text-white'>Protecciones de estado de conexión</strong>, solo transmite cuando el socket está realmente abierto, eliminando los errores de envío con readyState 0.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mantiene sano el flujo de cada cuenta conectada para que una única reconexión nunca deje atrás a una cuenta.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Quand vous automatisez des valeurs rapides comme ES ou NQ, peu de choses font plus mal qu'un WebSocket Tradovate qui meurt sur un minuteur. Vous vous connectez, autorisez, vous abonnez aux données de marché, et tout se diffuse à merveille, jusqu'à 300 secondes pile, quand le socket tombe sans erreur, sans motif de fermeture, sans avertissement. C'est chaque fois la même histoire : la connexion se ferme exactement au bout de 5 minutes, même quand vos heartbeats semblent partir correctement. Deux erreurs liées accompagnent généralement ce phénomène, une exception <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> quand votre code écrit sur un socket à moitié ouvert, et un simple <strong class='text-white'>code de fermeture 1006</strong> (fermeture anormale) de la part du pair distant. Voici ce que signifie réellement la fermeture à 5 minutes en 2026, les vraies causes derrière, et le schéma exact heartbeat plus reconnexion qui maintient la connexion en vie, ainsi que la façon dont PickMyTrade gère cette tuyauterie pour vous afin qu'un socket tombé ne vous coûte jamais une exécution." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour la fermeture du WebSocket à 5 minutes",
+      items: [
+        "<strong class='text-white'>Envoyez un heartbeat environ toutes les 2,5 secondes</strong>, une trame dont le texte est un tableau JSON vide, <code>[]</code>. Sautez-le, et Tradovate ferme le socket pour inactivité.",
+        "<strong class='text-white'>Ne vous fiez pas à setInterval dans un onglet de navigateur</strong>, les onglets en arrière-plan sont bridés, votre heartbeat dépasse 2,5 s et le serveur raccroche.",
+        "<strong class='text-white'>Envoyez vos propres heartbeats</strong>, une fois que les données en temps réel circulent, le serveur cesse d'en envoyer ; le client doit donc entretenir le rythme.",
+        "<strong class='text-white'>Protégez chaque envoi par une vérification de readyState</strong>, n'écrivez que lorsque le socket est OPEN (1), jamais tant qu'il est encore CONNECTING (0).",
+        "<strong class='text-white'>Journalisez l'événement de fermeture</strong>, <code>ws.addEventListener('close', e =&gt; console.log(e))</code> révèle le code (souvent 1006) et l'éventuel motif.",
+        "<strong class='text-white'>Partez du principe que des coupures se produiront et reconnectez-vous</strong>, encapsulez le socket pour qu'une fermeture réautorise et réabonne automatiquement.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie « le WebSocket se ferme exactement au bout de 5 minutes »" },
+    { type: "paragraph",html: "L'API temps réel de Tradovate est une connexion WebSocket : vous l'ouvrez, envoyez une trame d'autorisation, puis vous abonnez aux données et événements qui vous intéressent. Pour que cette connexion reste ouverte, <strong class='text-white'>le client est chargé d'envoyer des heartbeats</strong>, de petites trames de keep-alive, à cadence fixe. Cessez de les envoyer et Tradovate considère le socket comme inactif, puis le ferme côté serveur." },
+    { type: "paragraph",html: "Si l'échec tombe si souvent sur la marque nette des 5 minutes, c'est que les délais d'expiration le long du chemin réseau, le serveur, un répartiteur de charge ou un proxy intermédiaire, ont tendance à être appliqués sur des chiffres ronds. La connexion se coupe exactement toutes les 5 minutes (300 secondes) sans message, et, fait révélateur, <strong class='text-white'>sans heartbeats, la coupure survient plutôt au bout d'environ 2 minutes.</strong> Les heartbeats prolongent donc la vie du socket, mais un heartbeat en retard ou manquant, ou un minuteur d'inactivité indépendant quelque part sur le chemin, peut encore le guillotiner à 300 secondes. Il n'existe pas de cause racine publiée pour le cas exact des 5 minutes ; la réponse d'ingénierie durable n'est donc pas d'empêcher chaque fermeture, mais d'y survivre." },
+    { type: "paragraph",html: "Les deux messages d'erreur que vous verrez sont des symptômes du même problème sous-jacent. <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> signifie que votre code a tenté un send() avant la fin du handshake, ce qui arrive souvent dans une fonction de heartbeat qui se déclenche en pleine reconnexion. Le <strong class='text-white'>code de fermeture 1006</strong> est la façon dont le navigateur ou la bibliothèque dit &ldquo;la connexion est tombée de manière anormale&rdquo;, sans handshake de fermeture propre, exactement ce que vous obtenez quand un minuteur d'inactivité côté serveur coupe la ligne." },
+    { type: "heading",text: "Principales causes de la fermeture du WebSocket à 5 minutes en 2026" },
+    { type: "heading",text: "1. Trames de heartbeat tardives ou totalement absentes" },
+    { type: "paragraph",html: "C'est la cause numéro un. Tradovate attend une trame de heartbeat, de contenu texte <code>[]</code>, environ toutes les 2,5 secondes pour prouver que le client est vivant. Manquez cette fenêtre et le serveur lance le compte à rebours de fermeture. Et voici le piège : <strong class='text-white'>dès que vous diffusez des cotations en temps réel, le serveur Tradovate cesse d'envoyer ses propres heartbeats</strong>, vous ne pouvez donc pas compter sur le trafic intégré de la connexion pour la maintenir ouverte. Votre client doit envoyer la trame de crochets vides à son propre rythme." },
+    { type: "heading",text: "2. Bridage des minuteurs du navigateur (setInterval / setTimeout)" },
+    { type: "paragraph",html: "Si vous planifiez les heartbeats avec setInterval() ou setTimeout() dans un navigateur, vous êtes à la merci de la priorité de l'onglet. Quand l'onglet perd le focus, Chrome (et la plupart des navigateurs) abaisse la priorité de ces minuteurs, si bien qu'un intervalle de &ldquo;2,5 secondes&rdquo; peut discrètement s'étirer sur plusieurs secondes. Le heartbeat dépasse l'échéance et le socket se ferme, souvent autour de la marque des 5 minutes, une fois assez de retard accumulé." },
+    { type: "heading",text: "3. Délai d'inactivité ou de session côté serveur" },
+    { type: "paragraph",html: "Même un heartbeat parfaitement cadencé ne peut pas annuler un délai d'expiration appliqué en amont. Un proxy, une passerelle ou la session Tradovate elle-même peut plafonner la durée d'inactivité ou la durée totale de connexion, ce qui explique pourquoi la fermeture tombe sur cette frontière suspecte de 300 secondes. Comme cela échappe à votre contrôle, la solution est la reconnexion, pas la prévention." },
+    { type: "heading",text: "4. Envoi sur un socket qui n'est pas OPEN (readyState 0)" },
+    { type: "paragraph",html: "Un WebSocket a quatre états : CONNECTING (0), OPEN (1), CLOSING (2) et CLOSED (3). Si votre boucle de heartbeat ou votre code d'ordres appelle send() alors que le socket est encore à readyState 0, vous obtenez <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> et, souvent, un message &ldquo;Disconnected from Tradovate Market WebSocket&rdquo; juste derrière. C'est ce qui frappe le plus fort juste après une coupure, quand votre reconnexion a lancé un nouveau socket qui n'a pas encore terminé son handshake." },
+    { type: "heading",text: "5. Expiration du jeton et connexions de longue durée" },
+    { type: "paragraph",html: "Un jeton d'accès Tradovate a une durée de vie limitée, et ces connexions ne sont pas conçues pour vivre éternellement ; maintenez un même socket ouvert très longtemps (plus d'une journée) et il a tendance à tomber. Si votre jeton expire en pleine session ou si la connexion vieillit, le socket se ferme et toute réautorisation avec l'ancien jeton échoue. La durée de vie des jetons varie et évolue avec le temps ; confirmez donc les valeurs actuelles dans la documentation API de Tradovate et renouvelez de façon proactive plutôt que d'attendre un échec." },
+    { type: "heading",text: "Comment corriger la fermeture du WebSocket à 5 minutes : pas à pas" },
+    { type: "heading",text: "Solution 1 : envoyer une trame de heartbeat environ toutes les 2,5 secondes" },
+    { type: "paragraph",html: "Le heartbeat est le fondement. À une cadence d'environ 2,5 secondes, envoyez une trame dont le texte est un tableau JSON vide :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Démarrez la routine de keep-alive", html: "Une fois le socket ouvert et l'autorisation effectuée, démarrez une routine de keep-alive." },
+        { title: "Envoyez la trame de crochets vides", html: "À chaque tick, appelez <code>ws.send('[]')</code>, la trame de crochets vides est le heartbeat de Tradovate." },
+        { title: "Gardez l'intervalle sous 2,5 s", html: "Gardez l'intervalle confortablement sous la limite (2,5 secondes est la cible ; un peu plus souvent est plus sûr qu'un peu moins)." },
+        { title: "Ne comptez jamais sur des pings du serveur", html: "Ne supposez jamais que le serveur vous pingera, une fois que les données commencent à être diffusées, il ne le fera pas." },
+      ],
+    },
+    { type: "heading",text: "Solution 2 : remplacer setInterval par une vérification d'horodatage ou un Web Worker" },
+    { type: "paragraph",html: "Comme les minuteurs du navigateur sont bridés, ne vous appuyez pas sur setInterval seul, que l'onglet soit au premier plan ou en arrière-plan. Deux alternatives éprouvées :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeats pilotés par horodatage.</strong> Enregistrez un horodatage (<code>new Date()</code>) chaque fois que vous recevez un message. Comparez-le à la dernière fois où vous avez envoyé un heartbeat ; si plus de 2500 ms se sont écoulées, envoyez <code>[]</code> immédiatement. Cela réagit au trafic réel plutôt qu'à un minuteur que le navigateur peut priver de ressources.",
+        "<strong class='text-white'>Déplacez le minuteur hors du thread principal.</strong> Exécutez le heartbeat dans un Web Worker, ou exécutez toute la connexion comme un service Node.js. Les deux contournent entièrement le bridage des onglets du navigateur, un processus Node n'est pas du tout soumis à la pénalité des onglets en arrière-plan.",
+      ],
+    },
+    { type: "heading",text: "Solution 3 : protéger chaque envoi par une vérification de readyState" },
+    { type: "paragraph",html: "Supprimez l'erreur readyState 0 en n'écrivant jamais sur un socket qui n'est pas ouvert :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Vérifiez readyState avant chaque envoi", html: "Avant chaque send(), heartbeat ou ordre, vérifiez <code>if (ws.readyState === WebSocket.OPEN)</code> (c'est l'état 1)." },
+        { title: "Sautez et laissez la logique de reconnexion prendre le relais", html: "S'il est encore CONNECTING (0) ou déjà CLOSING/CLOSED, sautez l'envoi et laissez votre logique de reconnexion prendre le relais." },
+        { title: "Attachez des écouteurs pour toutes les transitions d'état", html: "Attachez des écouteurs pour open, message, error et close afin que les transitions d'état soient explicites, et journalisez l'objet de l'événement close pour capturer le code et le motif." },
+      ],
+    },
+    { type: "heading",text: "Solution 4 : ajouter une logique de reconnexion, de réautorisation et de réabonnement" },
+    { type: "paragraph",html: "Comme certaines fermetures à 5 minutes sont imposées en amont et ne peuvent pas être évitées, traitez chaque coupure comme une erreur récupérable et reconstruisez automatiquement :" },
+    {
+      type: "steps",
+      items: [
+        { title: "Encapsulez le socket", html: "Encapsulez le socket dans une classe ou une fonction qui possède son cycle de vie, de sorte qu'un seul endroit soit responsable de sa création et de sa destruction." },
+        { title: "Reconnectez-vous à la fermeture", html: "À la fermeture, reconnectez-vous, ouvrez un nouveau socket plutôt que d'essayer de ranimer le mort." },
+        { title: "Réautorisez le nouveau socket", html: "Réautorisez le nouveau socket avec un jeton valide (régénérez le jeton avant son expiration pour qu'un jeton neuf soit toujours prêt)." },
+        { title: "Réabonnez-vous à tout", html: "Réabonnez-vous à tout ce que vous aviez, renvoyez votre user/syncrequest et réabonnez-vous à chaque flux de données de marché, car un nouveau socket démarre sans abonnements." },
+        { title: "Attendez OPEN avant d'envoyer", html: "Attendez OPEN avant d'envoyer quoi que ce soit sur le nouveau socket, et ajoutez un court backoff pour qu'une connexion instable ne martèle pas le serveur." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Erreur / signal","Ce que cela signifie","Solution"], rows: [
+      ["Le socket se ferme à exactement 300 s","Un délai d'inactivité ou de session sur le chemin a coupé la connexion","Envoyer des heartbeats toutes les ~2,5 s et se reconnecter automatiquement à la fermeture"],
+      ["Coupures au bout de ~2 minutes","Aucun heartbeat n'est envoyé","Démarrer un keep-alive qui envoie la trame [] à une cadence de 2,5 s"],
+      ["WebSocket is not open: readyState 0 (CONNECTING)","Le code a appelé send() avant la fin du handshake","N'envoyer que lorsque readyState === OPEN (1) ; sinon sauter"],
+      ["Code de fermeture 1006","Fermeture anormale sans handshake propre","Se reconnecter à la fermeture, réautoriser et réabonner"],
+      ["« Disconnected from Tradovate Market WebSocket »","Le socket est tombé en plein flux","Reconstruire le socket et restaurer vos abonnements"],
+      ["Heartbeats corrects mais onglet inactif","Le navigateur a bridé setInterval/setTimeout","Utiliser des heartbeats basés sur des horodatages ou un Web Worker / Node.js"],
+      ["Coupure après une très longue durée de fonctionnement","Jeton expiré ou connexion vieillie","Renouveler le jeton avant son expiration et se reconnecter selon un calendrier"],
+    ] },
+    { type: "heading",text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade se place entre vos alertes TradingView et Tradovate et exécute la couche WebSocket comme un service géré côté serveur, de sorte que la fermeture à 5 minutes est traitée avant même de vous atteindre :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeats gérés</strong>, envoie la trame de keep-alive à une cadence fiable côté serveur, sans onglet de navigateur pour brider le minuteur.",
+        "<strong class='text-white'>Auto-Reconnect &amp; Re-Auth</strong>, détecte un socket tombé, en ouvre un nouveau, réautorise avec un jeton valide et se réabonne automatiquement.",
+        "<strong class='text-white'>Garde-fous d'état de connexion</strong>, ne transmet que lorsque le socket est réellement ouvert, éliminant les erreurs d'envoi readyState 0.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, maintient le flux de chaque compte connecté en bonne santé afin qu'une seule reconnexion ne laisse jamais un compte à la traîne.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Quando automatizza strumenti veloci come ES o NQ, poche cose bruciano più di un WebSocket di Tradovate che muore a tempo. Si connette, autorizza, si iscrive ai dati di mercato e tutto scorre benissimo, fino ai 300 secondi, quando il socket cade senza errore, senza motivo di chiusura, senza avviso. È la stessa storia ogni volta: la connessione si chiude esattamente a 5 minuti, anche quando i suoi heartbeat sembrano partire correttamente. Di solito si accompagnano due errori correlati, un'eccezione <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> quando il suo codice scrive su un socket semiaperto, e un semplice <strong class='text-white'>codice di chiusura 1006</strong> (chiusura anomala) dal peer remoto. Ecco cosa significa davvero la chiusura a 5 minuti nel 2026, le vere cause alla base e lo schema esatto heartbeat più riconnessione che mantiene viva la connessione, oltre a come PickMyTrade gestisce questa infrastruttura per Lei, così che un socket caduto non le costi mai un fill." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per la chiusura del WebSocket a 5 minuti",
+      items: [
+        "<strong class='text-white'>Invii un heartbeat circa ogni 2,5 secondi</strong>, un frame il cui testo è un array JSON vuoto, <code>[]</code>. Lo ometta e Tradovate chiude il socket per inattività.",
+        "<strong class='text-white'>Non si fidi di setInterval in una scheda del browser</strong>, le schede in background vengono limitate, il suo heartbeat supera i 2,5 s e il server riaggancia.",
+        "<strong class='text-white'>Invii i suoi heartbeat</strong>, una volta che i dati in tempo reale iniziano a scorrere, il server smette di inviarli, quindi il client deve mantenere il ritmo.",
+        "<strong class='text-white'>Protegga ogni invio con un controllo di readyState</strong>, scriva solo quando il socket è OPEN (1), mai mentre è ancora CONNECTING (0).",
+        "<strong class='text-white'>Registri l'evento di chiusura</strong>, <code>ws.addEventListener('close', e =&gt; console.log(e))</code> rivela il codice (spesso 1006) e l'eventuale motivo.",
+        "<strong class='text-white'>Dia per scontato che le cadute avverranno e si riconnetta</strong>, incapsuli il socket in modo che una chiusura riautorizzi e si iscriva di nuovo automaticamente.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa «il WebSocket si chiude esattamente dopo 5 minuti»" },
+    { type: "paragraph",html: "L'API in tempo reale di Tradovate è una connessione WebSocket: la apre, invia un frame di autorizzazione, quindi si iscrive ai dati e agli eventi che le interessano. Per mantenere aperta la connessione, <strong class='text-white'>il client è responsabile dell'invio degli heartbeat</strong>, piccoli frame keep-alive, con una cadenza fissa. Se smette di inviarli, Tradovate considera il socket inattivo e lo chiude lato server." },
+    { type: "paragraph",html: "Il motivo per cui l'errore cade così spesso sul preciso traguardo dei 5 minuti è che i timeout lungo il percorso di rete, il server, un load balancer o un proxy intermedio, tendono a essere applicati su cifre tonde. La connessione si interrompe esattamente ogni 5 minuti (300 secondi) senza alcun messaggio e, in modo rivelatore, <strong class='text-white'>senza heartbeat la caduta avviene invece dopo circa 2 minuti.</strong> Quindi gli heartbeat prolungano la vita del socket, ma un heartbeat in ritardo o mancato, o un timer di inattività indipendente da qualche parte sul percorso, può comunque ghigliottinarlo a 300 secondi. Non c'è una causa radice pubblicata per il caso esatto dei 5 minuti, quindi la risposta ingegneristica duratura non è prevenire ogni chiusura, ma sopravviverle." },
+    { type: "paragraph",html: "I due messaggi di errore che vedrà sono sintomi dello stesso problema di fondo. <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> significa che il suo codice ha tentato un send() prima che l'handshake fosse completato, cosa comune in una funzione heartbeat che scatta a metà riconnessione. Il <strong class='text-white'>codice di chiusura 1006</strong> è il modo in cui browser o libreria dicono &ldquo;la connessione è caduta in modo anomalo&rdquo;, senza handshake di chiusura pulito, esattamente ciò che ottiene quando un timer di inattività lato server taglia la linea." },
+    { type: "heading",text: "Principali cause della chiusura del WebSocket a 5 minuti nel 2026" },
+    { type: "heading",text: "1. Frame heartbeat in ritardo o del tutto mancanti" },
+    { type: "paragraph",html: "È la causa numero uno. Tradovate si aspetta un frame heartbeat, con contenuto testuale <code>[]</code>, circa ogni 2,5 secondi per dimostrare che il client è vivo. Se manca quella finestra, il server avvia il conto alla rovescia per la chiusura. E qui sta il problema: <strong class='text-white'>una volta che inizia a trasmettere quotazioni in tempo reale, il server di Tradovate smette di inviare i propri heartbeat</strong>, quindi non può contare sul traffico integrato della connessione per mantenerla aperta. Il suo client deve inviare il frame di parentesi vuote secondo un proprio programma." },
+    { type: "heading",text: "2. Limitazione dei timer del browser (setInterval / setTimeout)" },
+    { type: "paragraph",html: "Se pianifica gli heartbeat con setInterval() o setTimeout() in un browser, è alla mercé della priorità della scheda. Quando la scheda perde il focus, Chrome (e la maggior parte dei browser) abbassa la priorità di quei timer, così un intervallo di &ldquo;2,5 secondi&rdquo; può dilatarsi silenziosamente fino a diversi secondi. L'heartbeat supera la scadenza e il socket si chiude, spesso intorno ai 5 minuti, quando si è accumulato abbastanza ritardo." },
+    { type: "heading",text: "3. Timeout di inattività o di sessione lato server" },
+    { type: "paragraph",html: "Nemmeno un heartbeat perfettamente cadenzato può annullare un timeout applicato a monte. Un proxy, un gateway o la stessa sessione di Tradovate possono limitare il tempo di inattività o la durata totale della connessione, ed è per questo che la chiusura cade su quel sospetto confine tondo di 300 secondi. Poiché ciò è fuori dal suo controllo, la soluzione è la riconnessione, non la prevenzione." },
+    { type: "heading",text: "4. Invio su un socket che non è OPEN (readyState 0)" },
+    { type: "paragraph",html: "Un WebSocket ha quattro stati: CONNECTING (0), OPEN (1), CLOSING (2) e CLOSED (3). Se il suo ciclo heartbeat o il codice degli ordini chiama send() mentre il socket è ancora a readyState 0, ottiene <strong class='text-white'>WebSocket is not open: readyState 0 (CONNECTING)</strong> e, spesso, subito dietro un messaggio &ldquo;Disconnected from Tradovate Market WebSocket&rdquo;. Colpisce più duramente nell'istante successivo a una caduta, quando la sua riconnessione ha avviato un nuovo socket che non ha ancora completato l'handshake." },
+    { type: "heading",text: "5. Scadenza del token e connessioni di lunga durata" },
+    { type: "paragraph",html: "Un token di accesso di Tradovate ha una durata limitata e queste connessioni non sono pensate per vivere in eterno; se mantiene un singolo socket aperto per periodi molto lunghi (oltre un giorno), tende a cadere. Se il token scade a metà sessione o la connessione invecchia, il socket si chiude e qualsiasi riautorizzazione con il vecchio token fallisce. La durata dei token varia e cambia nel tempo, quindi verifichi i valori attuali nella documentazione API di Tradovate e rinnovi in modo proattivo invece di aspettare un errore." },
+    { type: "heading",text: "Come risolvere la chiusura del WebSocket a 5 minuti: passo dopo passo" },
+    { type: "heading",text: "Soluzione 1: inviare un frame heartbeat circa ogni 2,5 secondi" },
+    { type: "paragraph",html: "L'heartbeat è la base. Con una cadenza di circa 2,5 secondi, invii un frame il cui testo è un array JSON vuoto:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Avvii la routine keep-alive", html: "Dopo che il socket si è aperto e ha autorizzato, avvii una routine keep-alive." },
+        { title: "Invii il frame di parentesi vuote", html: "A ogni tick, chiami <code>ws.send('[]')</code>, il frame di parentesi vuote è l'heartbeat di Tradovate." },
+        { title: "Mantenga l'intervallo sotto i 2,5 s", html: "Mantenga l'intervallo comodamente sotto il limite (2,5 secondi è l'obiettivo; un po' più spesso è più sicuro che un po' meno)." },
+        { title: "Non dia mai per scontati i ping del server", html: "Non dia mai per scontato che il server le invierà un ping, dopo che i dati iniziano a scorrere, non lo farà." },
+      ],
+    },
+    { type: "heading",text: "Soluzione 2: sostituire setInterval con un controllo del timestamp o un Web Worker" },
+    { type: "paragraph",html: "Poiché i timer del browser vengono limitati, non si affidi solo a setInterval, né in una scheda in primo piano né in background. Due alternative collaudate:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeat guidati dal timestamp.</strong> Registri un timestamp (<code>new Date()</code>) ogni volta che riceve un messaggio. Lo confronti con l'ultima volta che ha inviato un heartbeat; se sono trascorsi più di 2500 ms, invii <code>[]</code> subito. Questo reagisce al traffico reale invece che a un timer che il browser può mettere a digiuno.",
+        "<strong class='text-white'>Sposti il timer fuori dal thread principale.</strong> Esegua l'heartbeat all'interno di un Web Worker, oppure esegua l'intera connessione come servizio Node.js. Entrambi aggirano del tutto la limitazione delle schede del browser, un processo Node non è affatto soggetto alla penalità delle schede in background.",
+      ],
+    },
+    { type: "heading",text: "Soluzione 3: proteggere ogni invio con un controllo di readyState" },
+    { type: "paragraph",html: "Elimini l'errore readyState 0 non scrivendo mai su un socket che non è aperto:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Controlli readyState prima di ogni invio", html: "Prima di ogni send(), heartbeat o ordine, controlli <code>if (ws.readyState === WebSocket.OPEN)</code> (cioè lo stato 1)." },
+        { title: "Salti e lasci subentrare la logica di riconnessione", html: "Se è ancora CONNECTING (0) o già CLOSING/CLOSED, salti l'invio e lasci subentrare la sua logica di riconnessione." },
+        { title: "Colleghi listener per tutte le transizioni di stato", html: "Colleghi listener per open, message, error e close in modo che le transizioni di stato siano esplicite, e registri l'oggetto dell'evento close per catturare codice e motivo." },
+      ],
+    },
+    { type: "heading",text: "Soluzione 4: aggiungere logica di riconnessione, riautorizzazione e nuova iscrizione" },
+    { type: "paragraph",html: "Poiché alcune chiusure a 5 minuti sono imposte a monte e non possono essere prevenute, tratti ogni caduta come un errore recuperabile e ricostruisca automaticamente:" },
+    {
+      type: "steps",
+      items: [
+        { title: "Incapsuli il socket", html: "Incapsuli il socket in una classe o funzione che ne possieda il ciclo di vita, così un unico punto è responsabile della sua creazione e distruzione." },
+        { title: "Si riconnetta alla chiusura", html: "Alla chiusura, si riconnetta, apra un socket nuovo invece di cercare di far rivivere quello morto." },
+        { title: "Riautorizzi il nuovo socket", html: "Riautorizzi il nuovo socket con un token valido (rigeneri il token prima della scadenza così che ce ne sia sempre uno fresco pronto)." },
+        { title: "Si iscriva di nuovo a tutto", html: "Si iscriva di nuovo a tutto ciò che aveva, reinvii il suo user/syncrequest e si iscriva di nuovo a ogni feed di dati di mercato, perché un nuovo socket parte senza iscrizioni." },
+        { title: "Attenda OPEN prima di inviare", html: "Attenda OPEN prima di inviare qualsiasi cosa sul nuovo socket e aggiunga un breve backoff in modo che una connessione instabile non martelli il server." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Errore / segnale","Cosa significa","Soluzione"], rows: [
+      ["Il socket si chiude esattamente a 300 s","Un timeout di inattività o di sessione sul percorso ha tagliato la connessione","Inviare heartbeat ogni ~2,5 s e riconnettersi automaticamente alla chiusura"],
+      ["Cade dopo ~2 minuti","Non viene inviato alcun heartbeat","Avviare un keep-alive che invii il frame [] con cadenza di 2,5 s"],
+      ["WebSocket is not open: readyState 0 (CONNECTING)","Il codice ha chiamato send() prima che l'handshake fosse completato","Inviare solo quando readyState === OPEN (1); altrimenti saltare"],
+      ["Codice di chiusura 1006","Chiusura anomala senza handshake pulito","Riconnettersi alla chiusura, riautorizzare e iscriversi di nuovo"],
+      ["«Disconnected from Tradovate Market WebSocket»","Il socket è caduto a metà flusso","Ricostruire il socket e ripristinare le iscrizioni"],
+      ["Heartbeat a posto ma la scheda era inattiva","Il browser ha limitato setInterval/setTimeout","Usare heartbeat basati sul timestamp o un Web Worker / Node.js"],
+      ["Caduta dopo un uptime molto lungo","Token scaduto o connessione invecchiata","Rinnovare il token prima della scadenza e riconnettersi secondo una pianificazione"],
+    ] },
+    { type: "heading",text: "Lo prevenga con PickMyTrade" },
+    { type: "paragraph",html: "PickMyTrade si colloca tra i suoi alert di TradingView e Tradovate e gestisce il livello WebSocket come servizio gestito lato server, così la chiusura a 5 minuti viene trattata prima ancora di raggiungerla:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Heartbeat gestiti</strong>, invia il frame keep-alive con una cadenza affidabile lato server, senza alcuna scheda del browser che limiti il timer.",
+        "<strong class='text-white'>Auto-Reconnect &amp; Re-Auth</strong>, rileva un socket caduto, ne apre uno nuovo, riautorizza con un token valido e si iscrive di nuovo automaticamente.",
+        "<strong class='text-white'>Protezioni sullo stato della connessione</strong>, trasmette solo quando il socket è davvero aperto, eliminando gli errori di invio con readyState 0.",
+        "<strong class='text-white'>Multi-Account Sync</strong>, mantiene sano il flusso di ogni conto collegato così che una singola riconnessione non lasci mai indietro un conto.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Trade Rejection-Free", de: "Handeln Sie ohne Ablehnungen", es: "Opere sin rechazos", fr: "Tradez sans rejet", it: "Faccia trading senza rifiuti" },
+  ctaText: { en: "Start your free 7-day trial, link your alerts today and trade rejection-free.", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase, verknüpfen Sie heute Ihre Alarme und handeln Sie ohne Ablehnungen.", es: "Comience su prueba gratuita de 7 días, vincule sus alertas hoy y opere sin rechazos.", fr: "Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et tradez sans rejet.", it: "Inizi la prova gratuita di 7 giorni, colleghi oggi i suoi alert e faccia trading senza rifiuti." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Why does my Tradovate WebSocket close at exactly 5 minutes?", a: "The socket is being closed by an idle or session timeout on the connection path, which tends to trigger on round numbers like 300 seconds. Sending heartbeats extends the connection, but if a heartbeat lags or an upstream timer fires anyway, the socket still drops. The reliable fix is heartbeats plus automatic reconnection." },
+    { q: "How often does Tradovate require a heartbeat?", a: "About every 2.5 seconds. The heartbeat is a frame whose text is an empty JSON array, []. Sending slightly more often than 2.5 seconds is safer than risking a late frame." },
+    { q: "What is the heartbeat frame supposed to contain?", a: "Just [], an empty JSON array sent as the WebSocket message text. That empty-bracket frame is what Tradovate reads as a keep-alive." },
+    { q: "Why do I get \"WebSocket is not open: readyState 0 (CONNECTING)\"?", a: "Your code called send() while the socket was still handshaking (state 0), not yet OPEN (state 1). Check readyState before every send and skip the write until the socket reports OPEN, letting your reconnect logic finish first." },
+    { q: "Does Tradovate send heartbeats back to me?", a: "Not once real-time data is streaming. The server stops sending heartbeats after the data flow begins, so the client must send its own on the 2.5-second cadence. You cannot rely on server traffic to hold the connection open." },
+    { q: "Why do my heartbeats work when the tab is focused but fail in the background?", a: "Browsers throttle setInterval and setTimeout in inactive tabs, stretching your 2.5-second heartbeat past the limit. Use timestamp-based heartbeats keyed off received messages, or run the connection in a Web Worker or a Node.js process to avoid tab throttling entirely." },
+    { q: "What does close code 1006 mean and how do I handle it?", a: "Code 1006 is an abnormal closure with no clean close handshake, typically a dropped connection or a server-side timeout. Do not try to prevent every 1006; wrap the socket, reconnect on close, re-authorize with a fresh token, and resubscribe to your feeds." },
+  ], de: [
+    { q: "Warum schließt sich mein Tradovate-WebSocket genau nach 5 Minuten?", a: "Der Socket wird durch ein Leerlauf- oder Sitzungs-Timeout auf dem Verbindungsweg geschlossen, das gerne bei runden Zahlen wie 300 Sekunden greift. Heartbeats verlängern die Verbindung, doch wenn ein Heartbeat sich verspätet oder ein vorgelagerter Timer trotzdem auslöst, bricht der Socket dennoch ab. Die verlässliche Lösung sind Heartbeats plus automatische Wiederverbindung." },
+    { q: "Wie oft verlangt Tradovate einen Heartbeat?", a: "Etwa alle 2,5 Sekunden. Der Heartbeat ist ein Frame, dessen Text ein leeres JSON-Array ist, []. Etwas häufiger als alle 2,5 Sekunden zu senden ist sicherer, als einen verspäteten Frame zu riskieren." },
+    { q: "Was soll der Heartbeat-Frame enthalten?", a: "Nur [], ein leeres JSON-Array, das als WebSocket-Nachrichtentext gesendet wird. Dieser Frame mit den leeren Klammern wird von Tradovate als Keep-Alive gelesen." },
+    { q: "Warum erhalte ich „WebSocket is not open: readyState 0 (CONNECTING)“?", a: "Ihr Code hat send() aufgerufen, während der Socket noch im Handshake war (Zustand 0) und noch nicht OPEN (Zustand 1). Prüfen Sie vor jedem Senden den readyState und überspringen Sie das Schreiben, bis der Socket OPEN meldet, damit Ihre Reconnect-Logik zuerst abschließen kann." },
+    { q: "Sendet Tradovate mir Heartbeats zurück?", a: "Nicht, sobald Echtzeitdaten streamen. Der Server hört auf, Heartbeats zu senden, nachdem der Datenfluss begonnen hat, daher muss der Client seine eigenen im 2,5-Sekunden-Takt senden. Sie können sich nicht auf Serververkehr verlassen, um die Verbindung offen zu halten." },
+    { q: "Warum funktionieren meine Heartbeats bei fokussiertem Tab, scheitern aber im Hintergrund?", a: "Browser drosseln setInterval und setTimeout in inaktiven Tabs und dehnen Ihren 2,5-Sekunden-Heartbeat über das Limit hinaus. Verwenden Sie zeitstempelbasierte Heartbeats, die an empfangene Nachrichten gekoppelt sind, oder betreiben Sie die Verbindung in einem Web Worker oder einem Node.js-Prozess, um die Tab-Drosselung ganz zu umgehen." },
+    { q: "Was bedeutet Close-Code 1006 und wie gehe ich damit um?", a: "Code 1006 ist ein abnormaler Abbruch ohne sauberen Close-Handshake, typischerweise eine abgebrochene Verbindung oder ein serverseitiges Timeout. Versuchen Sie nicht, jeden 1006 zu verhindern; kapseln Sie den Socket, verbinden Sie sich beim Schließen neu, autorisieren Sie mit einem frischen Token erneut und abonnieren Sie Ihre Feeds neu." },
+  ], es: [
+    { q: "¿Por qué mi WebSocket de Tradovate se cierra exactamente a los 5 minutos?", a: "El socket se cierra por un tiempo de espera por inactividad o de sesión en la ruta de conexión, que suele dispararse en cifras redondas como 300 segundos. Enviar heartbeats prolonga la conexión, pero si un heartbeat se retrasa o salta un temporizador aguas arriba, el socket se cae de todos modos. La solución fiable es heartbeats más reconexión automática." },
+    { q: "¿Con qué frecuencia exige Tradovate un heartbeat?", a: "Aproximadamente cada 2,5 segundos. El heartbeat es un frame cuyo texto es un array JSON vacío, []. Enviar algo más a menudo que cada 2,5 segundos es más seguro que arriesgarse a un frame tardío." },
+    { q: "¿Qué debe contener el frame de heartbeat?", a: "Solo [], un array JSON vacío enviado como texto del mensaje WebSocket. Ese frame de corchetes vacíos es lo que Tradovate interpreta como keep-alive." },
+    { q: "¿Por qué recibo «WebSocket is not open: readyState 0 (CONNECTING)»?", a: "Su código llamó a send() mientras el socket aún estaba en el handshake (estado 0), todavía no OPEN (estado 1). Compruebe readyState antes de cada envío y omita la escritura hasta que el socket indique OPEN, dejando que su lógica de reconexión termine primero." },
+    { q: "¿Me envía Tradovate heartbeats de vuelta?", a: "No una vez que se transmiten datos en tiempo real. El servidor deja de enviar heartbeats después de que comienza el flujo de datos, así que el cliente debe enviar los suyos en la cadencia de 2,5 segundos. No puede confiar en el tráfico del servidor para mantener abierta la conexión." },
+    { q: "¿Por qué mis heartbeats funcionan con la pestaña enfocada pero fallan en segundo plano?", a: "Los navegadores limitan setInterval y setTimeout en pestañas inactivas, estirando su heartbeat de 2,5 segundos por encima del límite. Use heartbeats basados en marcas de tiempo ligadas a los mensajes recibidos, o ejecute la conexión en un Web Worker o en un proceso de Node.js para evitar por completo la limitación de pestañas." },
+    { q: "¿Qué significa el código de cierre 1006 y cómo lo manejo?", a: "El código 1006 es un cierre anormal sin handshake de cierre limpio, normalmente una conexión caída o un tiempo de espera del servidor. No intente prevenir todos los 1006; envuelva el socket, reconecte al cerrarse, vuelva a autorizar con un token nuevo y vuelva a suscribirse a sus feeds." },
+  ], fr: [
+    { q: "Pourquoi mon WebSocket Tradovate se ferme-t-il exactement au bout de 5 minutes ?", a: "Le socket est fermé par un délai d'inactivité ou de session sur le chemin de connexion, qui se déclenche souvent sur des chiffres ronds comme 300 secondes. L'envoi de heartbeats prolonge la connexion, mais si un heartbeat prend du retard ou si un minuteur en amont se déclenche malgré tout, le socket tombe quand même. La solution fiable consiste à combiner heartbeats et reconnexion automatique." },
+    { q: "À quelle fréquence Tradovate exige-t-il un heartbeat ?", a: "Environ toutes les 2,5 secondes. Le heartbeat est une trame dont le texte est un tableau JSON vide, []. Envoyer un peu plus souvent que toutes les 2,5 secondes est plus sûr que de risquer une trame tardive." },
+    { q: "Que doit contenir la trame de heartbeat ?", a: "Juste [], un tableau JSON vide envoyé comme texte du message WebSocket. C'est cette trame de crochets vides que Tradovate lit comme un keep-alive." },
+    { q: "Pourquoi ai-je « WebSocket is not open: readyState 0 (CONNECTING) » ?", a: "Votre code a appelé send() alors que le socket était encore en cours de handshake (état 0), pas encore OPEN (état 1). Vérifiez readyState avant chaque envoi et sautez l'écriture jusqu'à ce que le socket indique OPEN, en laissant d'abord votre logique de reconnexion se terminer." },
+    { q: "Tradovate me renvoie-t-il des heartbeats ?", a: "Pas une fois que les données en temps réel sont diffusées. Le serveur cesse d'envoyer des heartbeats après le début du flux de données ; le client doit donc envoyer les siens à la cadence de 2,5 secondes. Vous ne pouvez pas compter sur le trafic du serveur pour maintenir la connexion ouverte." },
+    { q: "Pourquoi mes heartbeats fonctionnent-ils quand l'onglet est au premier plan mais échouent en arrière-plan ?", a: "Les navigateurs brident setInterval et setTimeout dans les onglets inactifs, ce qui étire votre heartbeat de 2,5 secondes au-delà de la limite. Utilisez des heartbeats basés sur des horodatages liés aux messages reçus, ou exécutez la connexion dans un Web Worker ou un processus Node.js pour éviter entièrement le bridage des onglets." },
+    { q: "Que signifie le code de fermeture 1006 et comment le gérer ?", a: "Le code 1006 est une fermeture anormale sans handshake de fermeture propre, généralement une connexion perdue ou un délai d'expiration côté serveur. N'essayez pas d'empêcher chaque 1006 ; encapsulez le socket, reconnectez-vous à la fermeture, réautorisez avec un jeton neuf et réabonnez-vous à vos flux." },
+  ], it: [
+    { q: "Perché il mio WebSocket di Tradovate si chiude esattamente dopo 5 minuti?", a: "Il socket viene chiuso da un timeout di inattività o di sessione sul percorso di connessione, che tende a scattare su cifre tonde come 300 secondi. L'invio di heartbeat prolunga la connessione, ma se un heartbeat ritarda o scatta comunque un timer a monte, il socket cade lo stesso. La soluzione affidabile è heartbeat più riconnessione automatica." },
+    { q: "Con quale frequenza Tradovate richiede un heartbeat?", a: "Circa ogni 2,5 secondi. L'heartbeat è un frame il cui testo è un array JSON vuoto, []. Inviarlo leggermente più spesso di ogni 2,5 secondi è più sicuro che rischiare un frame in ritardo." },
+    { q: "Cosa deve contenere il frame heartbeat?", a: "Solo [], un array JSON vuoto inviato come testo del messaggio WebSocket. Quel frame di parentesi vuote è ciò che Tradovate legge come keep-alive." },
+    { q: "Perché ricevo «WebSocket is not open: readyState 0 (CONNECTING)»?", a: "Il suo codice ha chiamato send() mentre il socket era ancora in fase di handshake (stato 0), non ancora OPEN (stato 1). Controlli readyState prima di ogni invio e salti la scrittura finché il socket non segnala OPEN, lasciando prima terminare la sua logica di riconnessione." },
+    { q: "Tradovate mi rimanda indietro degli heartbeat?", a: "Non una volta che i dati in tempo reale sono in streaming. Il server smette di inviare heartbeat dopo l'avvio del flusso di dati, quindi il client deve inviare i propri con la cadenza di 2,5 secondi. Non può contare sul traffico del server per mantenere aperta la connessione." },
+    { q: "Perché i miei heartbeat funzionano con la scheda attiva ma falliscono in background?", a: "I browser limitano setInterval e setTimeout nelle schede inattive, estendendo il suo heartbeat di 2,5 secondi oltre il limite. Usi heartbeat basati su timestamp agganciati ai messaggi ricevuti, oppure esegua la connessione in un Web Worker o in un processo Node.js per evitare del tutto la limitazione delle schede." },
+    { q: "Cosa significa il codice di chiusura 1006 e come lo gestisco?", a: "Il codice 1006 è una chiusura anomala senza handshake di chiusura pulito, tipicamente una connessione caduta o un timeout lato server. Non cerchi di prevenire ogni 1006; incapsuli il socket, si riconnetta alla chiusura, riautorizzi con un token nuovo e si iscriva di nuovo ai suoi feed." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Verwandte Leitfäden", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. \"Tradovate\" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt keine Finanz-, Anlage- oder Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird von diesem weder unterstützt noch gesponsert. „Tradovate“ und alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Plattformfunktionen und Abläufe ändern sich im Laufe der Zeit. Bestätigen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones de la plataforma y los pasos cambian con el tiempo, por lo que debe confirmar siempre el proceso vigente en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue pas un conseil financier, d'investissement ou de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. « Tradovate » ainsi que tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités de la plateforme et les étapes évoluent avec le temps ; confirmez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha esclusivamente finalità educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Il trading di futures e di altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata a Tradovate, Inc., né approvata o sponsorizzata da essa. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità della piattaforma e le procedure cambiano nel tempo, quindi verifichi sempre la procedura attuale nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>

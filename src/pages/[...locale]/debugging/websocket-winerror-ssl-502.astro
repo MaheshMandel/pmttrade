@@ -1,0 +1,529 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GuideArticle from "../../../components/GuideArticle.astro";
+import { getLocalePaths, localizedPath } from "../../../i18n/utils";
+import type { Locale } from "../../../i18n/config";
+import { relatedGuides } from "../../../data/guides";
+import type { GuideArticleI18nData } from "../../../types/guide";
+import { resolveGuideContent } from "../../../types/guide";
+import type { GuideArticleData } from "../../../types/guide";
+
+export const getStaticPaths = getLocalePaths;
+
+const { locale } = Astro.props as { locale: Locale };
+
+const SLUG = "websocket-winerror-ssl-502";
+const SITE_URL = "https://pickmytrade.trade";
+const withSlash = (p: string) => (p.endsWith("/") ? p : `${p}/`);
+const IMG = `/assets/debugging/${SLUG}`;
+
+const META_TITLE = "Tradovate WebSocket 10054 / SSL / 502 Errors";
+const META_DESCRIPTION =
+  "Tradovate WebSocket errors like 10054, SSL protocol version, and 502? Use TLS 1.1+ and add reconnect logic to survive forcibly-closed connections.";
+
+const related = relatedGuides(SLUG).map((g) => ({ title: g.title[locale], href: localizedPath(locale, `${g.section}/${g.slug}`) }));
+const content: GuideArticleI18nData = {
+  badge: { en: "Tradovate API", de: "Tradovate API", es: "Tradovate API", fr: "Tradovate API", it: "Tradovate API" },
+  h1: { en: META_TITLE, de: "Tradovate-WebSocket-Fehler 10054 / SSL / 502", es: "Errores 10054 / SSL / 502 del WebSocket de Tradovate", fr: "Erreurs WebSocket Tradovate 10054 / SSL / 502", it: "Errori WebSocket Tradovate 10054 / SSL / 502" },
+  dek: { en: "WinError 10054, SSL protocol-version alerts, and a 502 at the handshake are the three errors that kill the most Tradovate sockets. Here's which are TLS problems you can fix and which are transient server hiccups you just need to survive.", de: "WinError 10054, SSL-Protokollversions-Alerts und ein 502 beim Handshake sind die drei Fehler, die die meisten Tradovate-Sockets beenden. Hier sehen Sie, welche TLS-Probleme Sie beheben können und welche vorübergehenden Server-Aussetzer Sie einfach überstehen müssen.", es: "WinError 10054, las alertas de versión de protocolo SSL y un 502 en el handshake son los tres errores que más sockets de Tradovate matan. Aquí verá cuáles son problemas de TLS que puede corregir y cuáles son fallos transitorios del servidor que solo debe sobrellevar.", fr: "WinError 10054, les alertes de version de protocole SSL et un 502 lors du handshake sont les trois erreurs qui tuent le plus de sockets Tradovate. Voici lesquelles sont des problèmes TLS que vous pouvez corriger et lesquelles sont des accrocs serveur transitoires qu'il suffit de traverser.", it: "WinError 10054, gli alert di versione del protocollo SSL e un 502 all'handshake sono i tre errori che uccidono più socket Tradovate. Ecco quali sono problemi TLS che può correggere e quali sono intoppi transitori del server che deve solo superare." },
+  readTime: { en: "8 min read", de: "8 Min. Lesezeit", es: "Lectura de 8 min", fr: "Lecture : 8 min", it: "Lettura di 8 min" },
+  lastUpdated: "2026-07-08",
+  blocks: { en: [
+    { type: "paragraph", html: "When your bot is streaming live ES or NQ quotes over the Tradovate API and the socket dies mid-session, every second offline is a fill you can't manage. Three WebSocket errors kill more connections than anything else: <code>[WinError 10054] An existing connection was forcibly closed by the remote host</code>, the SSL pair <code>SSL: TLSV1_ALERT_PROTOCOL_VERSION</code> / <code>SSL: SSLV3_ALERT_BAD_RECORD_MAC</code>, and a <code>502 Bad Gateway</code> at the handshake. The first two are almost always a TLS negotiation problem on your side. The 502 is a transient server-side hiccup. The permanent fix is a two-part combo, negotiate a modern TLS version so the handshake succeeds, and wrap the socket in reconnect logic so a dropped connection re-instantiates itself instead of stopping your automation cold. A bridge like PickMyTrade handles both for you, but if you're rolling your own client, here's how to diagnose and fix each variant." },
+    {
+      type: "checklist",
+      heading: "Quick Checklist for Tradovate WebSocket Errors",
+      items: [
+        "<strong class='text-white'>Getting an SSL protocol/version alert?</strong> Force your client to TLS 1.2 or higher. Tradovate's servers accept TLS v1.1 and above, and old defaults like TLS 1.0 and SSLv3 get refused.",
+        "<strong class='text-white'>Getting WinError 10054 at random?</strong> Treat it as an expected &ldquo;we dropped you&rdquo; signal, not a bug. Build catch-and-reconnect instead of trying to prevent every drop.",
+        "<strong class='text-white'>Getting a 502 Bad Gateway?</strong> It's server-side. Back off, then retry the handshake with exponential backoff and jitter.",
+        "<strong class='text-white'>Socket closes after a few minutes of quiet?</strong> You're missing heartbeats, send a <code>[]</code> frame every ~2.5 seconds.",
+        "<strong class='text-white'>Socket dies right after you log in elsewhere?</strong> You tripped the 2-session limit. A new token voids the old session and closes its socket.",
+        "<strong class='text-white'>Never reconnect in a tight loop.</strong> Hammering the endpoint can trip rate limits and make things worse.",
+      ],
+    },
+    { type: "heading", text: "What \"[WinError 10054] An Existing Connection Was Forcibly Closed by the Remote Host\" Means" },
+    { type: "paragraph", html: "<code>WinError 10054</code> (also written <code>WSAECONNRESET</code>) is a Windows sockets&ndash;layer error, not a Tradovate-specific one. It means the TCP connection was reset by the other end before your code expected it. Think of it as a generic websocket-server message that says, in effect, &ldquo;Hey, we dropped your connection, sorry.&rdquo; For a long-lived socket, seeing it once in a while is normal." },
+    { type: "paragraph", html: "Two things trigger it most. First, a <strong class='text-white'>failed TLS handshake</strong>: if your client and Tradovate's servers can't agree on a TLS version or cipher suite, the server resets the connection and Windows surfaces it as 10054. This same error maps to pre-login handshake failures where no matching TLS protocols exist between the client and the server. Second, <strong class='text-white'>inactivity or a transient network blip</strong>, a throttled heartbeat, a dropped Wi-Fi packet, or a routine server-side recycle." },
+    { type: "paragraph", html: "The SSL variants make the handshake cause explicit. <code>SSL: TLSV1_ALERT_PROTOCOL_VERSION</code> means the server rejected the TLS version your client offered. <code>SSL: SSLV3_ALERT_BAD_RECORD_MAC</code> points at a corrupted or mismatched TLS record, often from a legacy SSL/TLS stack. A <code>502 Bad Gateway</code> is different again: the handshake reached Tradovate's edge but an upstream node was momentarily unavailable, so nothing you change client-side &ldquo;fixes&rdquo; it, you just retry." },
+    { type: "heading", text: "Top Causes of Tradovate WebSocket Errors" },
+    { type: "heading", text: "1. Outdated TLS version on the client" },
+    { type: "paragraph", html: "This is the single most common cause of the SSL and 10054 errors. Tradovate's servers support TLS v1.1 or higher, so any client still defaulting to TLS 1.0 or SSLv3, old Python builds, legacy .NET framework settings, an unpatched OpenSSL, gets its handshake refused. Negotiate TLS 1.2 or 1.3, which every current Tradovate endpoint accepts." },
+    { type: "heading", text: "2. Missing or throttled heartbeats" },
+    { type: "paragraph", html: "Once connected, your client is responsible for keeping the socket alive. Tradovate expects a heartbeat frame, the literal text <code>[]</code>, roughly every 2.5 seconds. Miss the window and the server closes the connection, which resurfaces as a 10054 on your next read. In browsers this is a classic trap: background tabs throttle timers, so a setInterval() heartbeat quietly slows down and the socket dies." },
+    { type: "heading", text: "3. The 2-session limit and token invalidation" },
+    { type: "paragraph", html: "A Tradovate user is limited to a small number of concurrent sessions. Once a third (or additional) session is created, the oldest sessions are closed. Requesting a fresh access token starts a new session and voids the old token, so any WebSocket still riding the previous token gets disconnected. If your socket dies the instant you log in from another device or re-authenticate a second client, this is why." },
+    { type: "heading", text: "4. Transient 502 / server-side drops" },
+    { type: "paragraph", html: "Sometimes the fault genuinely isn't yours. A <code>502 Bad Gateway</code> during the handshake, or a mid-session reset with no code changes on your end, is Tradovate's infrastructure recycling or momentarily unreachable. Don't try to prevent every drop, detect it and recover." },
+    { type: "heading", text: "5. Reconnecting too aggressively" },
+    { type: "paragraph", html: "The flip side of recovery is overcorrection. A reconnect loop with no delay slams the endpoint, can trip login and request rate limits, and turns a two-second blip into a lockout. Every reliable client needs backoff, not a <code>while True</code> retry." },
+    { type: "heading", text: "How to Fix Tradovate WebSocket Errors: Step-by-Step" },
+    { type: "heading", text: "Fixing SSL / Protocol-Version Errors (and the Handshake-Triggered 10054)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Pin a modern minimum TLS version", html: "Explicitly require TLS 1.2 or 1.3 in your socket/SSL context rather than relying on the language default." },
+        { title: "Update your crypto stack", html: "Upgrade Python (and its bundled OpenSSL), Node, or the .NET runtime so the newer protocols are actually available to negotiate." },
+        { title: "Confirm the endpoint", html: "Point at the correct, current Tradovate WebSocket host, for example <code>wss://live.tradovateapi.com/v1/websocket</code> for live, the demo host for simulation, and the market-data host for quotes. Confirm the exact host in the current API docs, since endpoints occasionally change." },
+        { title: "Re-test the handshake", html: "A clean connect now returns the server's <code>o</code> open frame instead of an SSL alert or an immediate 10054." },
+      ],
+    },
+    { type: "heading", text: "Keeping the Connection Alive with Heartbeats" },
+    {
+      type: "steps",
+      items: [
+        { title: "Send [] on a ~2.5-second cadence", html: "After you authorize, start emitting the empty-array frame so the server never sees you as idle." },
+        { title: "Don't trust setInterval in a browser", html: "Drive heartbeats reactively, timestamp each received message and send a heartbeat whenever ~2.5 seconds have elapsed, or run the client in a Web Worker or as a Node.js process so timers aren't throttled." },
+        { title: "Watch for silence", html: "If you receive no server message for several seconds, assume the socket is stale and tear it down rather than waiting for a read to fail." },
+      ],
+    },
+    { type: "heading", text: "Adding Reconnect Logic for 10054 and 502" },
+    {
+      type: "steps",
+      items: [
+        { title: "Catch the drop", html: "Handle the socket's close/error event (including 10054 and 502) instead of letting the exception halt your program." },
+        { title: "Re-instantiate and re-authorize", html: "On disconnect, open a fresh socket and re-run the full authorize handshake, the old session or token may be dead." },
+        { title: "Back off exponentially with jitter", html: "Start around one second and grow the delay up to a sensible ceiling (tens of seconds), adding random jitter so parallel clients don't reconnect in lockstep." },
+        { title: "Cap and alert", html: "Limit attempts, and if you exhaust them, surface an alert rather than looping forever, that's your cue a real outage or a rate-limit/session issue is in play." },
+      ],
+    },
+    { type: "heading", text: "Troubleshooting Table" },
+    {
+      type: "table",
+      headers: ["Error", "Meaning", "Fix"],
+      rows: [
+        ["[WinError 10054] An existing connection was forcibly closed by the remote host", "Server reset the TCP/WebSocket connection, handshake failure or a transient drop", "Pin TLS 1.2+, then catch and reconnect with backoff"],
+        ["SSL: TLSV1_ALERT_PROTOCOL_VERSION", "Server rejected the TLS version your client offered", "Force TLS 1.2/1.3; update your crypto stack"],
+        ["SSL: SSLV3_ALERT_BAD_RECORD_MAC", "Corrupt/mismatched TLS record from a legacy SSL stack", "Upgrade OpenSSL/runtime and negotiate a modern TLS version"],
+        ["502 Bad Gateway", "Transient server-side unavailability at the handshake", "Wait and retry with exponential backoff (server-side, not your bug)"],
+        ["Socket closes after ~seconds of quiet", "Missed heartbeats, server treats you as idle", "Send a [] heartbeat every ~2.5 seconds"],
+        ["Socket dies right after a new login/token", "Concurrent-session limit hit; old token voided", "Consolidate sessions; reconnect and re-authorize"],
+      ],
+    },
+    { type: "heading", text: "Prevent This with PickMyTrade" },
+    { type: "paragraph", html: "If you'd rather not maintain a hand-rolled WebSocket client, PickMyTrade sits between TradingView and Tradovate and manages the connection for you:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Managed, TLS-correct connection</strong>, the bridge negotiates a modern, compatible TLS handshake, so SSL protocol-version and bad-record errors never reach your strategy.",
+        "<strong class='text-white'>Built-in heartbeats and reconnect</strong>, heartbeats and exponential-backoff reconnection are handled server-side, so a 10054 or 502 self-heals instead of stopping your automation.",
+        "<strong class='text-white'>Session-aware routing</strong>, order flow is spaced and sequenced so you don't trip concurrent-session or rate limits during reconnects.",
+        "<strong class='text-white'>Multi-account sync</strong>, once the connection recovers, the same alert is mirrored across every linked account without duplicate or missed orders.",
+      ],
+    },
+  ], de: [
+    { type: "paragraph",html: "Wenn Ihr Bot über die Tradovate-API Live-Kurse von ES oder NQ streamt und der Socket mitten in der Sitzung stirbt, ist jede Sekunde offline ein Fill, den Sie nicht managen können. Drei WebSocket-Fehler beenden mehr Verbindungen als alles andere: <code>[WinError 10054] An existing connection was forcibly closed by the remote host</code>, das SSL-Paar <code>SSL: TLSV1_ALERT_PROTOCOL_VERSION</code> / <code>SSL: SSLV3_ALERT_BAD_RECORD_MAC</code> und ein <code>502 Bad Gateway</code> beim Handshake. Die ersten beiden sind fast immer ein TLS-Verhandlungsproblem auf Ihrer Seite. Das 502 ist ein vorübergehender Server-Aussetzer. Die dauerhafte Lösung ist eine zweiteilige Kombination: Verhandeln Sie eine moderne TLS-Version, damit der Handshake gelingt, und umhüllen Sie den Socket mit Reconnect-Logik, damit sich eine getrennte Verbindung selbst neu aufbaut, statt Ihre Automatisierung komplett zu stoppen. Eine Brücke wie PickMyTrade übernimmt beides für Sie, aber wenn Sie Ihren eigenen Client bauen, zeigen wir hier, wie Sie jede Variante diagnostizieren und beheben." },
+    {
+      type: "checklist",
+      heading: "Kurz-Checkliste bei Tradovate-WebSocket-Fehlern",
+      items: [
+        "<strong class='text-white'>Erhalten Sie einen SSL-Protokoll-/Versions-Alert?</strong> Erzwingen Sie in Ihrem Client TLS 1.2 oder höher. Die Server von Tradovate akzeptieren TLS ab v1.1, und alte Standardwerte wie TLS 1.0 und SSLv3 werden abgelehnt.",
+        "<strong class='text-white'>Erhalten Sie WinError 10054 zufällig?</strong> Behandeln Sie es als erwartetes Signal &ldquo;wir haben Sie getrennt&rdquo;, nicht als Fehler. Bauen Sie Catch-and-Reconnect, statt jede Trennung verhindern zu wollen.",
+        "<strong class='text-white'>Erhalten Sie ein 502 Bad Gateway?</strong> Es liegt auf Serverseite. Warten Sie ab und wiederholen Sie dann den Handshake mit exponentiellem Backoff und Jitter.",
+        "<strong class='text-white'>Socket schließt sich nach ein paar Minuten Ruhe?</strong> Ihnen fehlen Heartbeats, senden Sie alle ~2,5 Sekunden einen <code>[]</code>-Frame.",
+        "<strong class='text-white'>Socket stirbt direkt nach einem Login an anderer Stelle?</strong> Sie haben das 2-Sitzungen-Limit überschritten. Ein neues Token macht die alte Sitzung ungültig und schließt deren Socket.",
+        "<strong class='text-white'>Verbinden Sie sich nie in einer engen Schleife neu.</strong> Den Endpunkt zu bombardieren kann Ratenlimits auslösen und alles verschlimmern.",
+      ],
+    },
+    { type: "heading",text: "Was \"[WinError 10054] An Existing Connection Was Forcibly Closed by the Remote Host\" bedeutet" },
+    { type: "paragraph",html: "<code>WinError 10054</code> (auch als <code>WSAECONNRESET</code> geschrieben) ist ein Fehler der Windows-Sockets&ndash;Schicht, kein Tradovate-spezifischer. Er bedeutet, dass die TCP-Verbindung von der Gegenseite zurückgesetzt wurde, bevor Ihr Code damit rechnete. Sehen Sie ihn als allgemeine Websocket-Server-Meldung, die im Grunde sagt: &ldquo;Hey, wir haben Ihre Verbindung getrennt, Entschuldigung.&rdquo; Bei einem langlebigen Socket ist es normal, ihn ab und zu zu sehen." },
+    { type: "paragraph",html: "Zwei Dinge lösen ihn am häufigsten aus. Erstens ein <strong class='text-white'>fehlgeschlagener TLS-Handshake</strong>: Wenn sich Ihr Client und die Server von Tradovate nicht auf eine TLS-Version oder Cipher Suite einigen können, setzt der Server die Verbindung zurück und Windows meldet das als 10054. Derselbe Fehler steht für Handshake-Fehler vor dem Login, bei denen zwischen Client und Server keine passenden TLS-Protokolle existieren. Zweitens <strong class='text-white'>Inaktivität oder ein vorübergehender Netzwerkaussetzer</strong>, ein gedrosselter Heartbeat, ein verlorenes WLAN-Paket oder ein routinemäßiger Server-Neustart." },
+    { type: "paragraph",html: "Die SSL-Varianten machen die Handshake-Ursache explizit. <code>SSL: TLSV1_ALERT_PROTOCOL_VERSION</code> bedeutet, dass der Server die von Ihrem Client angebotene TLS-Version abgelehnt hat. <code>SSL: SSLV3_ALERT_BAD_RECORD_MAC</code> deutet auf einen beschädigten oder nicht passenden TLS-Record hin, oft von einem veralteten SSL/TLS-Stack. Ein <code>502 Bad Gateway</code> ist wieder etwas anderes: Der Handshake hat den Edge von Tradovate erreicht, aber ein Upstream-Knoten war kurzzeitig nicht verfügbar, sodass nichts, was Sie clientseitig ändern, es &ldquo;behebt&rdquo;, Sie wiederholen es einfach." },
+    { type: "heading",text: "Häufigste Ursachen für Tradovate-WebSocket-Fehler" },
+    { type: "heading",text: "1. Veraltete TLS-Version im Client" },
+    { type: "paragraph",html: "Das ist die mit Abstand häufigste Ursache der SSL- und 10054-Fehler. Die Server von Tradovate unterstützen TLS ab v1.1, sodass jeder Client, der noch standardmäßig TLS 1.0 oder SSLv3 verwendet, alte Python-Builds, veraltete .NET-Framework-Einstellungen, ein ungepatchtes OpenSSL, seinen Handshake abgelehnt bekommt. Verhandeln Sie TLS 1.2 oder 1.3, die jeder aktuelle Tradovate-Endpunkt akzeptiert." },
+    { type: "heading",text: "2. Fehlende oder gedrosselte Heartbeats" },
+    { type: "paragraph",html: "Nach dem Verbinden ist Ihr Client dafür verantwortlich, den Socket am Leben zu halten. Tradovate erwartet etwa alle 2,5 Sekunden einen Heartbeat-Frame, den Text <code>[]</code>. Verpassen Sie das Fenster, schließt der Server die Verbindung, was bei Ihrem nächsten Lesevorgang als 10054 wieder auftaucht. In Browsern ist das eine klassische Falle: Hintergrund-Tabs drosseln Timer, sodass ein setInterval()-Heartbeat leise langsamer wird und der Socket stirbt." },
+    { type: "heading",text: "3. Das 2-Sitzungen-Limit und Token-Invalidierung" },
+    { type: "paragraph",html: "Ein Tradovate-Nutzer ist auf eine kleine Zahl gleichzeitiger Sitzungen begrenzt. Sobald eine dritte (oder weitere) Sitzung erstellt wird, werden die ältesten Sitzungen geschlossen. Das Anfordern eines neuen Access-Tokens startet eine neue Sitzung und macht das alte Token ungültig, sodass jeder WebSocket, der noch das vorherige Token nutzt, getrennt wird. Stirbt Ihr Socket in dem Moment, in dem Sie sich auf einem anderen Gerät anmelden oder einen zweiten Client neu authentifizieren, ist das der Grund." },
+    { type: "heading",text: "4. Vorübergehende 502-/serverseitige Trennungen" },
+    { type: "paragraph",html: "Manchmal liegt der Fehler wirklich nicht bei Ihnen. Ein <code>502 Bad Gateway</code> beim Handshake oder ein Reset mitten in der Sitzung ohne Code-Änderungen auf Ihrer Seite bedeutet, dass die Infrastruktur von Tradovate neu startet oder kurzzeitig nicht erreichbar ist. Versuchen Sie nicht, jede Trennung zu verhindern, erkennen Sie sie und stellen Sie die Verbindung wieder her." },
+    { type: "heading",text: "5. Zu aggressives Neuverbinden" },
+    { type: "paragraph",html: "Die Kehrseite der Wiederherstellung ist die Überkorrektur. Eine Reconnect-Schleife ohne Verzögerung bombardiert den Endpunkt, kann Login- und Anfrage-Ratenlimits auslösen und macht aus einem Zwei-Sekunden-Aussetzer eine Sperre. Jeder zuverlässige Client braucht Backoff, keine <code>while True</code>-Wiederholung." },
+    { type: "heading",text: "So beheben Sie Tradovate-WebSocket-Fehler: Schritt für Schritt" },
+    { type: "heading",text: "SSL-/Protokollversionsfehler beheben (und das durch den Handshake ausgelöste 10054)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Eine moderne Mindest-TLS-Version festlegen", html: "Verlangen Sie in Ihrem Socket-/SSL-Kontext ausdrücklich TLS 1.2 oder 1.3, statt sich auf den Sprachstandard zu verlassen." },
+        { title: "Ihren Krypto-Stack aktualisieren", html: "Aktualisieren Sie Python (und das mitgelieferte OpenSSL), Node oder die .NET-Runtime, damit die neueren Protokolle tatsächlich zur Verhandlung zur Verfügung stehen." },
+        { title: "Den Endpunkt bestätigen", html: "Verweisen Sie auf den korrekten, aktuellen Tradovate-WebSocket-Host, zum Beispiel <code>wss://live.tradovateapi.com/v1/websocket</code> für Live, den Demo-Host für die Simulation und den Marktdaten-Host für Kurse. Bestätigen Sie den genauen Host in der aktuellen API-Dokumentation, da sich Endpunkte gelegentlich ändern." },
+        { title: "Den Handshake erneut testen", html: "Eine saubere Verbindung liefert jetzt den <code>o</code>-Open-Frame des Servers statt eines SSL-Alerts oder eines sofortigen 10054." },
+      ],
+    },
+    { type: "heading",text: "Die Verbindung mit Heartbeats am Leben halten" },
+    {
+      type: "steps",
+      items: [
+        { title: "[] im ~2,5-Sekunden-Takt senden", html: "Beginnen Sie nach der Autorisierung, den Frame mit dem leeren Array auszugeben, damit der Server Sie nie als inaktiv ansieht." },
+        { title: "Verlassen Sie sich in einem Browser nicht auf setInterval", html: "Steuern Sie Heartbeats reaktiv: Versehen Sie jede empfangene Nachricht mit einem Zeitstempel und senden Sie einen Heartbeat, sobald ~2,5 Sekunden vergangen sind, oder führen Sie den Client in einem Web Worker oder als Node.js-Prozess aus, damit Timer nicht gedrosselt werden." },
+        { title: "Auf Stille achten", html: "Erhalten Sie mehrere Sekunden lang keine Servernachricht, gehen Sie davon aus, dass der Socket veraltet ist, und bauen Sie ihn ab, statt zu warten, bis ein Lesevorgang fehlschlägt." },
+      ],
+    },
+    { type: "heading",text: "Reconnect-Logik für 10054 und 502 hinzufügen" },
+    {
+      type: "steps",
+      items: [
+        { title: "Die Trennung abfangen", html: "Behandeln Sie das Close-/Error-Ereignis des Sockets (einschließlich 10054 und 502), statt die Ausnahme Ihr Programm anhalten zu lassen." },
+        { title: "Neu instanziieren und neu autorisieren", html: "Öffnen Sie bei einer Trennung einen neuen Socket und führen Sie den vollständigen Authorize-Handshake erneut aus, die alte Sitzung oder das Token könnte tot sein." },
+        { title: "Exponentiell mit Jitter zurückfahren", html: "Beginnen Sie bei etwa einer Sekunde und steigern Sie die Verzögerung bis zu einer sinnvollen Obergrenze (zehn Sekunden), und fügen Sie zufälligen Jitter hinzu, damit parallele Clients sich nicht im Gleichschritt neu verbinden." },
+        { title: "Begrenzen und alarmieren", html: "Begrenzen Sie die Versuche und lösen Sie bei Erschöpfung einen Alert aus, statt endlos zu schleifen, das ist Ihr Hinweis darauf, dass ein echter Ausfall oder ein Ratenlimit-/Sitzungsproblem vorliegt." },
+      ],
+    },
+    { type: "heading",text: "Tabelle zur Fehlerbehebung" },
+    { type: "table", headers: ["Fehler","Bedeutung","Lösung"], rows: [
+      ["[WinError 10054] An existing connection was forcibly closed by the remote host","Server hat die TCP-/WebSocket-Verbindung zurückgesetzt, Handshake-Fehler oder vorübergehende Trennung","TLS 1.2+ festlegen, dann abfangen und mit Backoff neu verbinden"],
+      ["SSL: TLSV1_ALERT_PROTOCOL_VERSION","Server hat die von Ihrem Client angebotene TLS-Version abgelehnt","TLS 1.2/1.3 erzwingen; Krypto-Stack aktualisieren"],
+      ["SSL: SSLV3_ALERT_BAD_RECORD_MAC","Beschädigter/nicht passender TLS-Record von einem veralteten SSL-Stack","OpenSSL/Runtime aktualisieren und eine moderne TLS-Version verhandeln"],
+      ["502 Bad Gateway","Vorübergehende serverseitige Nichtverfügbarkeit beim Handshake","Warten und mit exponentiellem Backoff wiederholen (serverseitig, nicht Ihr Fehler)"],
+      ["Socket schließt sich nach ~Sekunden Stille","Heartbeats verpasst, Server behandelt Sie als inaktiv","Alle ~2,5 Sekunden einen []-Heartbeat senden"],
+      ["Socket stirbt direkt nach neuem Login/Token","Limit gleichzeitiger Sitzungen erreicht; altes Token ungültig","Sitzungen zusammenführen; neu verbinden und neu autorisieren"],
+    ] },
+    { type: "heading",text: "Vermeiden Sie das mit PickMyTrade" },
+    { type: "paragraph",html: "Wenn Sie lieber keinen selbstgebauten WebSocket-Client pflegen möchten, sitzt PickMyTrade zwischen TradingView und Tradovate und verwaltet die Verbindung für Sie:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Verwaltete, TLS-korrekte Verbindung</strong>, die Brücke verhandelt einen modernen, kompatiblen TLS-Handshake, sodass SSL-Protokollversions- und Bad-Record-Fehler Ihre Strategie nie erreichen.",
+        "<strong class='text-white'>Integrierte Heartbeats und Wiederverbindung</strong>, Heartbeats und Wiederverbindung mit exponentiellem Backoff laufen serverseitig, sodass sich ein 10054 oder 502 selbst heilt, statt Ihre Automatisierung zu stoppen.",
+        "<strong class='text-white'>Sitzungsbewusstes Routing</strong>, der Orderfluss wird getaktet und sequenziert, damit Sie bei Wiederverbindungen keine Limits für gleichzeitige Sitzungen oder Ratenlimits auslösen.",
+        "<strong class='text-white'>Multi-Account-Synchronisierung</strong>, sobald sich die Verbindung erholt, wird derselbe Alert ohne doppelte oder verpasste Orders auf alle verknüpften Konten gespiegelt.",
+      ],
+    },
+  ], es: [
+    { type: "paragraph",html: "Cuando su bot transmite cotizaciones en vivo de ES o NQ por la API de Tradovate y el socket muere a mitad de sesión, cada segundo sin conexión es un fill que no puede gestionar. Tres errores de WebSocket matan más conexiones que cualquier otra cosa: <code>[WinError 10054] An existing connection was forcibly closed by the remote host</code>, el par SSL <code>SSL: TLSV1_ALERT_PROTOCOL_VERSION</code> / <code>SSL: SSLV3_ALERT_BAD_RECORD_MAC</code> y un <code>502 Bad Gateway</code> en el handshake. Los dos primeros son casi siempre un problema de negociación TLS de su lado. El 502 es un fallo transitorio del servidor. La solución permanente es una combinación en dos partes: negociar una versión moderna de TLS para que el handshake tenga éxito y envolver el socket en lógica de reconexión para que una conexión caída se reinstancie sola en lugar de detener en seco su automatización. Un puente como PickMyTrade gestiona ambas cosas por usted, pero si programa su propio cliente, aquí le explicamos cómo diagnosticar y corregir cada variante." },
+    {
+      type: "checklist",
+      heading: "Lista de verificación rápida para errores del WebSocket de Tradovate",
+      items: [
+        "<strong class='text-white'>¿Recibe una alerta de protocolo/versión SSL?</strong> Fuerce a su cliente a TLS 1.2 o superior. Los servidores de Tradovate aceptan TLS v1.1 y superiores, y los valores predeterminados antiguos como TLS 1.0 y SSLv3 se rechazan.",
+        "<strong class='text-white'>¿Recibe WinError 10054 al azar?</strong> Trátelo como una señal esperada de &ldquo;le hemos desconectado&rdquo;, no como un error. Construya captura y reconexión en lugar de intentar evitar cada caída.",
+        "<strong class='text-white'>¿Recibe un 502 Bad Gateway?</strong> Es del lado del servidor. Espere y luego reintente el handshake con backoff exponencial y jitter.",
+        "<strong class='text-white'>¿El socket se cierra tras unos minutos de calma?</strong> Le faltan heartbeats, envíe una trama <code>[]</code> cada ~2,5 segundos.",
+        "<strong class='text-white'>¿El socket muere justo después de iniciar sesión en otro sitio?</strong> Superó el límite de 2 sesiones. Un nuevo token invalida la sesión anterior y cierra su socket.",
+        "<strong class='text-white'>Nunca reconecte en un bucle cerrado.</strong> Martillear el endpoint puede activar límites de tasa y empeorar las cosas.",
+      ],
+    },
+    { type: "heading",text: "Qué significa \"[WinError 10054] An Existing Connection Was Forcibly Closed by the Remote Host\"" },
+    { type: "paragraph",html: "<code>WinError 10054</code> (también escrito <code>WSAECONNRESET</code>) es un error de la capa de sockets&ndash;de Windows, no específico de Tradovate. Significa que el otro extremo restableció la conexión TCP antes de lo que su código esperaba. Piense en él como un mensaje genérico de servidor websocket que dice, en esencia, &ldquo;Oye, hemos cortado su conexión, lo sentimos.&rdquo; En un socket de larga duración, verlo de vez en cuando es normal." },
+    { type: "paragraph",html: "Dos cosas lo provocan sobre todo. Primero, un <strong class='text-white'>handshake TLS fallido</strong>: si su cliente y los servidores de Tradovate no logran acordar una versión de TLS o un conjunto de cifrado, el servidor restablece la conexión y Windows lo muestra como 10054. Este mismo error corresponde a fallos de handshake previos al inicio de sesión en los que no existen protocolos TLS coincidentes entre cliente y servidor. Segundo, <strong class='text-white'>la inactividad o un fallo transitorio de red</strong>, un heartbeat limitado, un paquete Wi-Fi perdido o un reciclaje rutinario del servidor." },
+    { type: "paragraph",html: "Las variantes SSL hacen explícita la causa del handshake. <code>SSL: TLSV1_ALERT_PROTOCOL_VERSION</code> significa que el servidor rechazó la versión de TLS que ofreció su cliente. <code>SSL: SSLV3_ALERT_BAD_RECORD_MAC</code> apunta a un registro TLS corrupto o no coincidente, a menudo de una pila SSL/TLS heredada. Un <code>502 Bad Gateway</code> es distinto otra vez: el handshake llegó al borde de Tradovate pero un nodo ascendente no estuvo disponible por un momento, así que nada de lo que cambie en el cliente lo &ldquo;soluciona&rdquo;, simplemente reintenta." },
+    { type: "heading",text: "Principales causas de los errores del WebSocket de Tradovate" },
+    { type: "heading",text: "1. Versión de TLS obsoleta en el cliente" },
+    { type: "paragraph",html: "Esta es la causa más común de los errores SSL y 10054. Los servidores de Tradovate admiten TLS v1.1 o superior, así que cualquier cliente que aún use TLS 1.0 o SSLv3 por defecto, compilaciones antiguas de Python, ajustes heredados del framework .NET, un OpenSSL sin parchear, ve rechazado su handshake. Negocie TLS 1.2 o 1.3, que acepta todo endpoint actual de Tradovate." },
+    { type: "heading",text: "2. Heartbeats ausentes o limitados" },
+    { type: "paragraph",html: "Una vez conectado, su cliente es responsable de mantener vivo el socket. Tradovate espera una trama de heartbeat, el texto literal <code>[]</code>, aproximadamente cada 2,5 segundos. Si pierde la ventana, el servidor cierra la conexión, lo que reaparece como un 10054 en su siguiente lectura. En los navegadores esto es una trampa clásica: las pestañas en segundo plano limitan los temporizadores, por lo que un heartbeat con setInterval() se ralentiza en silencio y el socket muere." },
+    { type: "heading",text: "3. El límite de 2 sesiones y la invalidación del token" },
+    { type: "paragraph",html: "Un usuario de Tradovate está limitado a un pequeño número de sesiones simultáneas. Cuando se crea una tercera sesión (o más), se cierran las más antiguas. Solicitar un nuevo token de acceso inicia una nueva sesión e invalida el token anterior, por lo que cualquier WebSocket que siga usando el token previo se desconecta. Si su socket muere en el instante en que inicia sesión desde otro dispositivo o reautentica un segundo cliente, esta es la razón." },
+    { type: "heading",text: "4. Caídas transitorias 502 / del lado del servidor" },
+    { type: "paragraph",html: "A veces el fallo realmente no es suyo. Un <code>502 Bad Gateway</code> durante el handshake, o un restablecimiento a mitad de sesión sin cambios de código por su parte, es la infraestructura de Tradovate reciclándose o inaccesible momentáneamente. No intente evitar cada caída, deténgala y recupérese." },
+    { type: "heading",text: "5. Reconectar de forma demasiado agresiva" },
+    { type: "paragraph",html: "La otra cara de la recuperación es la sobrecorrección. Un bucle de reconexión sin retardo satura el endpoint, puede activar límites de tasa de inicio de sesión y de solicitudes, y convierte un fallo de dos segundos en un bloqueo. Todo cliente fiable necesita backoff, no un reintento <code>while True</code>." },
+    { type: "heading",text: "Cómo solucionar los errores del WebSocket de Tradovate: paso a paso" },
+    { type: "heading",text: "Corregir errores de SSL / versión de protocolo (y el 10054 provocado por el handshake)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Fije una versión mínima moderna de TLS", html: "Exija explícitamente TLS 1.2 o 1.3 en su contexto de socket/SSL en lugar de depender del valor predeterminado del lenguaje." },
+        { title: "Actualice su pila criptográfica", html: "Actualice Python (y su OpenSSL incluido), Node o el runtime de .NET para que los protocolos más nuevos estén realmente disponibles para negociar." },
+        { title: "Confirme el endpoint", html: "Apunte al host WebSocket de Tradovate correcto y actual, por ejemplo <code>wss://live.tradovateapi.com/v1/websocket</code> para live, el host demo para simulación y el host de datos de mercado para cotizaciones. Confirme el host exacto en la documentación actual de la API, ya que los endpoints cambian ocasionalmente." },
+        { title: "Vuelva a probar el handshake", html: "Una conexión limpia devuelve ahora la trama open <code>o</code> del servidor en lugar de una alerta SSL o un 10054 inmediato." },
+      ],
+    },
+    { type: "heading",text: "Mantener viva la conexión con heartbeats" },
+    {
+      type: "steps",
+      items: [
+        { title: "Envíe [] con una cadencia de ~2,5 segundos", html: "Tras autorizar, empiece a emitir la trama de array vacío para que el servidor nunca le vea como inactivo." },
+        { title: "No confíe en setInterval en un navegador", html: "Dirija los heartbeats de forma reactiva: marque con la hora cada mensaje recibido y envíe un heartbeat cuando hayan transcurrido ~2,5 segundos, o ejecute el cliente en un Web Worker o como proceso Node.js para que los temporizadores no se limiten." },
+        { title: "Vigile el silencio", html: "Si no recibe ningún mensaje del servidor durante varios segundos, asuma que el socket está obsoleto y ciérrelo en lugar de esperar a que falle una lectura." },
+      ],
+    },
+    { type: "heading",text: "Añadir lógica de reconexión para 10054 y 502" },
+    {
+      type: "steps",
+      items: [
+        { title: "Capture la caída", html: "Gestione el evento close/error del socket (incluidos 10054 y 502) en lugar de dejar que la excepción detenga su programa." },
+        { title: "Reinstancie y vuelva a autorizar", html: "Al desconectarse, abra un socket nuevo y vuelva a ejecutar el handshake de autorización completo, la sesión o el token anteriores pueden estar muertos." },
+        { title: "Retroceda exponencialmente con jitter", html: "Empiece en torno a un segundo y aumente el retardo hasta un techo razonable (decenas de segundos), añadiendo jitter aleatorio para que los clientes paralelos no reconecten al unísono." },
+        { title: "Limite y alerte", html: "Limite los intentos y, si los agota, emita una alerta en lugar de repetir sin fin, es la señal de que hay una caída real o un problema de límite de tasa/sesión." },
+      ],
+    },
+    { type: "heading",text: "Tabla de solución de problemas" },
+    { type: "table", headers: ["Error","Significado","Solución"], rows: [
+      ["[WinError 10054] An existing connection was forcibly closed by the remote host","El servidor restableció la conexión TCP/WebSocket, fallo de handshake o caída transitoria","Fijar TLS 1.2+, luego capturar y reconectar con backoff"],
+      ["SSL: TLSV1_ALERT_PROTOCOL_VERSION","El servidor rechazó la versión de TLS que ofreció su cliente","Forzar TLS 1.2/1.3; actualizar la pila criptográfica"],
+      ["SSL: SSLV3_ALERT_BAD_RECORD_MAC","Registro TLS corrupto/no coincidente de una pila SSL heredada","Actualizar OpenSSL/runtime y negociar una versión moderna de TLS"],
+      ["502 Bad Gateway","No disponibilidad transitoria del lado del servidor en el handshake","Esperar y reintentar con backoff exponencial (del lado del servidor, no es un error suyo)"],
+      ["El socket se cierra tras ~segundos de calma","Heartbeats perdidos, el servidor le trata como inactivo","Enviar un heartbeat [] cada ~2,5 segundos"],
+      ["El socket muere justo tras un nuevo inicio de sesión/token","Límite de sesiones simultáneas alcanzado; token anterior invalidado","Consolidar sesiones; reconectar y volver a autorizar"],
+    ] },
+    { type: "heading",text: "Evítelo con PickMyTrade" },
+    { type: "paragraph",html: "Si prefiere no mantener un cliente WebSocket hecho a mano, PickMyTrade se sitúa entre TradingView y Tradovate y gestiona la conexión por usted:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Conexión gestionada y correcta en TLS</strong>, el puente negocia un handshake TLS moderno y compatible, de modo que los errores de versión de protocolo SSL y de registro dañado nunca llegan a su estrategia.",
+        "<strong class='text-white'>Heartbeats y reconexión integrados</strong>, los heartbeats y la reconexión con backoff exponencial se gestionan en el servidor, de modo que un 10054 o un 502 se autorrepara en lugar de detener su automatización.",
+        "<strong class='text-white'>Enrutamiento consciente de la sesión</strong>, el flujo de órdenes se espacia y se ordena para que no active límites de sesiones simultáneas ni de tasa durante las reconexiones.",
+        "<strong class='text-white'>Sincronización multicuenta</strong>, una vez que la conexión se recupera, la misma alerta se replica en todas las cuentas vinculadas sin órdenes duplicadas ni perdidas.",
+      ],
+    },
+  ], fr: [
+    { type: "paragraph",html: "Lorsque votre bot diffuse des cotations ES ou NQ en direct via l'API Tradovate et que le socket meurt en pleine séance, chaque seconde hors ligne est un fill que vous ne pouvez pas gérer. Trois erreurs WebSocket tuent plus de connexions que tout le reste : <code>[WinError 10054] An existing connection was forcibly closed by the remote host</code>, la paire SSL <code>SSL: TLSV1_ALERT_PROTOCOL_VERSION</code> / <code>SSL: SSLV3_ALERT_BAD_RECORD_MAC</code>, et un <code>502 Bad Gateway</code> lors du handshake. Les deux premières sont presque toujours un problème de négociation TLS de votre côté. Le 502 est un accroc serveur transitoire. Le correctif permanent est un combo en deux parties : négocier une version moderne de TLS pour que le handshake réussisse, et envelopper le socket dans une logique de reconnexion pour qu'une connexion coupée se réinstancie d'elle-même au lieu d'arrêter net votre automatisation. Un pont comme PickMyTrade gère les deux pour vous, mais si vous développez votre propre client, voici comment diagnostiquer et corriger chaque variante." },
+    {
+      type: "checklist",
+      heading: "Liste de contrôle rapide pour les erreurs WebSocket Tradovate",
+      items: [
+        "<strong class='text-white'>Vous recevez une alerte de protocole/version SSL ?</strong> Forcez votre client en TLS 1.2 ou supérieur. Les serveurs de Tradovate acceptent TLS v1.1 et supérieur, et les anciennes valeurs par défaut comme TLS 1.0 et SSLv3 sont refusées.",
+        "<strong class='text-white'>Vous recevez WinError 10054 au hasard ?</strong> Traitez-le comme un signal attendu &ldquo;nous vous avons déconnecté&rdquo;, pas comme un bug. Construisez capture et reconnexion plutôt que d'essayer d'empêcher chaque coupure.",
+        "<strong class='text-white'>Vous recevez un 502 Bad Gateway ?</strong> C'est côté serveur. Patientez, puis réessayez le handshake avec un backoff exponentiel et du jitter.",
+        "<strong class='text-white'>Le socket se ferme après quelques minutes de calme ?</strong> Il vous manque des heartbeats, envoyez une trame <code>[]</code> toutes les ~2,5 secondes.",
+        "<strong class='text-white'>Le socket meurt juste après une connexion ailleurs ?</strong> Vous avez dépassé la limite de 2 sessions. Un nouveau jeton invalide l'ancienne session et ferme son socket.",
+        "<strong class='text-white'>Ne vous reconnectez jamais dans une boucle serrée.</strong> Marteler le point de terminaison peut déclencher des limites de débit et aggraver les choses.",
+      ],
+    },
+    { type: "heading",text: "Ce que signifie \"[WinError 10054] An Existing Connection Was Forcibly Closed by the Remote Host\"" },
+    { type: "paragraph",html: "<code>WinError 10054</code> (également écrit <code>WSAECONNRESET</code>) est une erreur de la couche sockets&ndash;de Windows, pas une erreur propre à Tradovate. Elle signifie que la connexion TCP a été réinitialisée par l'autre extrémité avant que votre code ne s'y attende. Voyez-y un message générique de serveur websocket qui dit, en substance, &ldquo;Hé, nous avons coupé votre connexion, désolé.&rdquo; Pour un socket de longue durée, la voir de temps en temps est normal." },
+    { type: "paragraph",html: "Deux choses la déclenchent le plus souvent. D'abord, un <strong class='text-white'>échec du handshake TLS</strong> : si votre client et les serveurs de Tradovate ne parviennent pas à s'accorder sur une version de TLS ou une suite de chiffrement, le serveur réinitialise la connexion et Windows la remonte sous la forme 10054. Cette même erreur correspond aux échecs de handshake avant connexion où aucun protocole TLS commun n'existe entre le client et le serveur. Ensuite, <strong class='text-white'>l'inactivité ou un accroc réseau transitoire</strong>, un heartbeat bridé, un paquet Wi-Fi perdu ou un recyclage serveur de routine." },
+    { type: "paragraph",html: "Les variantes SSL rendent la cause du handshake explicite. <code>SSL: TLSV1_ALERT_PROTOCOL_VERSION</code> signifie que le serveur a rejeté la version de TLS proposée par votre client. <code>SSL: SSLV3_ALERT_BAD_RECORD_MAC</code> pointe vers un enregistrement TLS corrompu ou non concordant, souvent issu d'une pile SSL/TLS héritée. Un <code>502 Bad Gateway</code> est encore différent : le handshake a atteint la périphérie de Tradovate mais un nœud en amont a été momentanément indisponible, donc rien de ce que vous changez côté client ne le &ldquo;corrige&rdquo;, vous réessayez simplement." },
+    { type: "heading",text: "Principales causes des erreurs WebSocket Tradovate" },
+    { type: "heading",text: "1. Version de TLS obsolète côté client" },
+    { type: "paragraph",html: "C'est la cause la plus courante des erreurs SSL et 10054. Les serveurs de Tradovate prennent en charge TLS v1.1 ou supérieur, donc tout client qui utilise encore TLS 1.0 ou SSLv3 par défaut, d'anciennes versions de Python, des paramètres .NET Framework hérités, un OpenSSL non patché, voit son handshake refusé. Négociez TLS 1.2 ou 1.3, que tout point de terminaison Tradovate actuel accepte." },
+    { type: "heading",text: "2. Heartbeats manquants ou bridés" },
+    { type: "paragraph",html: "Une fois connecté, votre client est responsable du maintien en vie du socket. Tradovate attend une trame de heartbeat, le texte littéral <code>[]</code>, environ toutes les 2,5 secondes. Manquez la fenêtre et le serveur ferme la connexion, ce qui réapparaît sous la forme d'un 10054 à votre prochaine lecture. Dans les navigateurs, c'est un piège classique : les onglets en arrière-plan brident les minuteries, de sorte qu'un heartbeat setInterval() ralentit discrètement et que le socket meurt." },
+    { type: "heading",text: "3. La limite de 2 sessions et l'invalidation du jeton" },
+    { type: "paragraph",html: "Un utilisateur Tradovate est limité à un petit nombre de sessions simultanées. Dès qu'une troisième session (ou davantage) est créée, les plus anciennes sont fermées. Demander un nouveau jeton d'accès démarre une nouvelle session et invalide l'ancien jeton, de sorte que tout WebSocket utilisant encore le jeton précédent est déconnecté. Si votre socket meurt à l'instant où vous vous connectez depuis un autre appareil ou réauthentifiez un second client, voilà pourquoi." },
+    { type: "heading",text: "4. Coupures 502 / côté serveur transitoires" },
+    { type: "paragraph",html: "Parfois, la faute n'est vraiment pas la vôtre. Un <code>502 Bad Gateway</code> pendant le handshake, ou une réinitialisation en cours de session sans changement de code de votre côté, correspond à l'infrastructure de Tradovate qui se recycle ou est momentanément injoignable. N'essayez pas d'empêcher chaque coupure, détectez-la et récupérez." },
+    { type: "heading",text: "5. Reconnexion trop agressive" },
+    { type: "paragraph",html: "Le revers de la récupération est la surcorrection. Une boucle de reconnexion sans délai martèle le point de terminaison, peut déclencher des limites de débit de connexion et de requêtes, et transforme un accroc de deux secondes en blocage. Tout client fiable a besoin d'un backoff, pas d'une relance <code>while True</code>." },
+    { type: "heading",text: "Comment corriger les erreurs WebSocket Tradovate : pas à pas" },
+    { type: "heading",text: "Corriger les erreurs SSL / de version de protocole (et le 10054 déclenché par le handshake)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Fixer une version minimale moderne de TLS", html: "Exigez explicitement TLS 1.2 ou 1.3 dans votre contexte socket/SSL plutôt que de vous fier à la valeur par défaut du langage." },
+        { title: "Mettre à jour votre pile cryptographique", html: "Mettez à niveau Python (et son OpenSSL intégré), Node ou le runtime .NET afin que les protocoles récents soient réellement disponibles pour la négociation." },
+        { title: "Confirmer le point de terminaison", html: "Pointez vers l'hôte WebSocket Tradovate correct et actuel, par exemple <code>wss://live.tradovateapi.com/v1/websocket</code> pour le live, l'hôte démo pour la simulation et l'hôte de données de marché pour les cotations. Confirmez l'hôte exact dans la documentation actuelle de l'API, car les points de terminaison changent à l'occasion." },
+        { title: "Retester le handshake", html: "Une connexion propre renvoie désormais la trame open <code>o</code> du serveur au lieu d'une alerte SSL ou d'un 10054 immédiat." },
+      ],
+    },
+    { type: "heading",text: "Maintenir la connexion en vie avec des heartbeats" },
+    {
+      type: "steps",
+      items: [
+        { title: "Envoyer [] à une cadence d'environ 2,5 secondes", html: "Après l'autorisation, commencez à émettre la trame de tableau vide afin que le serveur ne vous considère jamais comme inactif." },
+        { title: "Ne pas se fier à setInterval dans un navigateur", html: "Pilotez les heartbeats de façon réactive : horodatez chaque message reçu et envoyez un heartbeat dès que ~2,5 secondes se sont écoulées, ou exécutez le client dans un Web Worker ou comme processus Node.js afin que les minuteries ne soient pas bridées." },
+        { title: "Surveiller le silence", html: "Si vous ne recevez aucun message du serveur pendant plusieurs secondes, considérez le socket comme périmé et démontez-le plutôt que d'attendre qu'une lecture échoue." },
+      ],
+    },
+    { type: "heading",text: "Ajouter une logique de reconnexion pour 10054 et 502" },
+    {
+      type: "steps",
+      items: [
+        { title: "Capturer la coupure", html: "Gérez l'événement close/error du socket (y compris 10054 et 502) au lieu de laisser l'exception arrêter votre programme." },
+        { title: "Réinstancier et réautoriser", html: "À la déconnexion, ouvrez un nouveau socket et réexécutez le handshake d'autorisation complet, l'ancienne session ou l'ancien jeton peut être mort." },
+        { title: "Temporiser exponentiellement avec jitter", html: "Commencez autour d'une seconde et augmentez le délai jusqu'à un plafond raisonnable (des dizaines de secondes), en ajoutant un jitter aléatoire pour que les clients parallèles ne se reconnectent pas en cadence." },
+        { title: "Plafonner et alerter", html: "Limitez les tentatives et, si vous les épuisez, remontez une alerte plutôt que de boucler indéfiniment, c'est le signe d'une vraie panne ou d'un problème de limite de débit/session." },
+      ],
+    },
+    { type: "heading",text: "Tableau de dépannage" },
+    { type: "table", headers: ["Erreur","Signification","Correctif"], rows: [
+      ["[WinError 10054] An existing connection was forcibly closed by the remote host","Le serveur a réinitialisé la connexion TCP/WebSocket, échec de handshake ou coupure transitoire","Fixer TLS 1.2+, puis capturer et se reconnecter avec backoff"],
+      ["SSL: TLSV1_ALERT_PROTOCOL_VERSION","Le serveur a rejeté la version de TLS proposée par votre client","Forcer TLS 1.2/1.3 ; mettre à jour la pile cryptographique"],
+      ["SSL: SSLV3_ALERT_BAD_RECORD_MAC","Enregistrement TLS corrompu/non concordant issu d'une pile SSL héritée","Mettre à niveau OpenSSL/runtime et négocier une version moderne de TLS"],
+      ["502 Bad Gateway","Indisponibilité transitoire côté serveur lors du handshake","Attendre et réessayer avec un backoff exponentiel (côté serveur, pas votre bug)"],
+      ["Le socket se ferme après ~quelques secondes de calme","Heartbeats manqués, le serveur vous traite comme inactif","Envoyer un heartbeat [] toutes les ~2,5 secondes"],
+      ["Le socket meurt juste après une nouvelle connexion/un nouveau jeton","Limite de sessions simultanées atteinte ; ancien jeton invalidé","Regrouper les sessions ; se reconnecter et se réautoriser"],
+    ] },
+    { type: "heading",text: "Évitez cela avec PickMyTrade" },
+    { type: "paragraph",html: "Si vous préférez ne pas maintenir un client WebSocket artisanal, PickMyTrade se place entre TradingView et Tradovate et gère la connexion pour vous :" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connexion gérée et conforme TLS</strong>, le pont négocie un handshake TLS moderne et compatible, de sorte que les erreurs de version de protocole SSL et d'enregistrement corrompu n'atteignent jamais votre stratégie.",
+        "<strong class='text-white'>Heartbeats et reconnexion intégrés</strong>, les heartbeats et la reconnexion à backoff exponentiel sont gérés côté serveur, de sorte qu'un 10054 ou un 502 se répare tout seul au lieu d'arrêter votre automatisation.",
+        "<strong class='text-white'>Routage conscient des sessions</strong>, le flux d'ordres est espacé et séquencé pour que vous ne déclenchiez pas les limites de sessions simultanées ou de débit pendant les reconnexions.",
+        "<strong class='text-white'>Synchronisation multi-comptes</strong>, une fois la connexion rétablie, la même alerte est répliquée sur tous les comptes liés sans ordres en double ni manqués.",
+      ],
+    },
+  ], it: [
+    { type: "paragraph",html: "Quando il suo bot trasmette quotazioni live di ES o NQ tramite l'API di Tradovate e il socket muore a metà sessione, ogni secondo offline è un fill che non può gestire. Tre errori WebSocket uccidono più connessioni di qualsiasi altra cosa: <code>[WinError 10054] An existing connection was forcibly closed by the remote host</code>, la coppia SSL <code>SSL: TLSV1_ALERT_PROTOCOL_VERSION</code> / <code>SSL: SSLV3_ALERT_BAD_RECORD_MAC</code> e un <code>502 Bad Gateway</code> all'handshake. I primi due sono quasi sempre un problema di negoziazione TLS da parte sua. Il 502 è un intoppo transitorio del server. La correzione permanente è una combinazione in due parti: negoziare una versione moderna di TLS affinché l'handshake riesca e avvolgere il socket in una logica di riconnessione affinché una connessione caduta si reistanzi da sola invece di fermare di colpo la sua automazione. Un bridge come PickMyTrade gestisce entrambe per lei, ma se sviluppa il suo client, ecco come diagnosticare e correggere ogni variante." },
+    {
+      type: "checklist",
+      heading: "Checklist rapida per gli errori del WebSocket Tradovate",
+      items: [
+        "<strong class='text-white'>Riceve un alert di protocollo/versione SSL?</strong> Forzi il suo client a TLS 1.2 o superiore. I server di Tradovate accettano TLS v1.1 e superiori, e i vecchi default come TLS 1.0 e SSLv3 vengono rifiutati.",
+        "<strong class='text-white'>Riceve WinError 10054 a caso?</strong> Lo tratti come un segnale atteso &ldquo;l'abbiamo disconnessa&rdquo;, non come un bug. Costruisca cattura e riconnessione invece di cercare di evitare ogni caduta.",
+        "<strong class='text-white'>Riceve un 502 Bad Gateway?</strong> È lato server. Attenda, poi riprovi l'handshake con backoff esponenziale e jitter.",
+        "<strong class='text-white'>Il socket si chiude dopo qualche minuto di calma?</strong> Le mancano gli heartbeat, invii un frame <code>[]</code> ogni ~2,5 secondi.",
+        "<strong class='text-white'>Il socket muore subito dopo un login altrove?</strong> Ha superato il limite di 2 sessioni. Un nuovo token invalida la vecchia sessione e ne chiude il socket.",
+        "<strong class='text-white'>Non si riconnetta mai in un ciclo serrato.</strong> Martellare l'endpoint può far scattare i limiti di frequenza e peggiorare le cose.",
+      ],
+    },
+    { type: "heading",text: "Cosa significa \"[WinError 10054] An Existing Connection Was Forcibly Closed by the Remote Host\"" },
+    { type: "paragraph",html: "<code>WinError 10054</code> (scritto anche <code>WSAECONNRESET</code>) è un errore del livello sockets&ndash;di Windows, non specifico di Tradovate. Significa che la connessione TCP è stata reimpostata dall'altro capo prima del previsto dal suo codice. Lo consideri un messaggio generico di server websocket che dice, in sostanza, &ldquo;Ehi, abbiamo interrotto la sua connessione, ci dispiace.&rdquo; Per un socket di lunga durata, vederlo ogni tanto è normale." },
+    { type: "paragraph",html: "Due cose lo scatenano soprattutto. Primo, un <strong class='text-white'>handshake TLS fallito</strong>: se il suo client e i server di Tradovate non riescono ad accordarsi su una versione di TLS o su una cipher suite, il server reimposta la connessione e Windows lo mostra come 10054. Questo stesso errore corrisponde a fallimenti di handshake pre-login in cui non esistono protocolli TLS corrispondenti tra client e server. Secondo, <strong class='text-white'>l'inattività o un intoppo di rete transitorio</strong>, un heartbeat limitato, un pacchetto Wi-Fi perso o un riciclo di routine del server." },
+    { type: "paragraph",html: "Le varianti SSL rendono esplicita la causa dell'handshake. <code>SSL: TLSV1_ALERT_PROTOCOL_VERSION</code> significa che il server ha rifiutato la versione di TLS offerta dal suo client. <code>SSL: SSLV3_ALERT_BAD_RECORD_MAC</code> indica un record TLS corrotto o non corrispondente, spesso da uno stack SSL/TLS legacy. Un <code>502 Bad Gateway</code> è ancora diverso: l'handshake ha raggiunto l'edge di Tradovate ma un nodo upstream è stato momentaneamente non disponibile, quindi nulla di ciò che cambia lato client lo &ldquo;risolve&rdquo;, riprova e basta." },
+    { type: "heading",text: "Principali cause degli errori del WebSocket Tradovate" },
+    { type: "heading",text: "1. Versione di TLS obsoleta sul client" },
+    { type: "paragraph",html: "Questa è la causa più comune degli errori SSL e 10054. I server di Tradovate supportano TLS v1.1 o superiore, quindi qualsiasi client che usi ancora per default TLS 1.0 o SSLv3, vecchie build di Python, impostazioni legacy del framework .NET, un OpenSSL non aggiornato, si vede rifiutare l'handshake. Negozi TLS 1.2 o 1.3, che ogni endpoint Tradovate attuale accetta." },
+    { type: "heading",text: "2. Heartbeat mancanti o limitati" },
+    { type: "paragraph",html: "Una volta connesso, il suo client è responsabile di mantenere vivo il socket. Tradovate si aspetta un frame di heartbeat, il testo letterale <code>[]</code>, circa ogni 2,5 secondi. Se perde la finestra, il server chiude la connessione, il che riemerge come 10054 alla sua lettura successiva. Nei browser è una trappola classica: le schede in background limitano i timer, quindi un heartbeat con setInterval() rallenta silenziosamente e il socket muore." },
+    { type: "heading",text: "3. Il limite di 2 sessioni e l'invalidazione del token" },
+    { type: "paragraph",html: "Un utente Tradovate è limitato a un piccolo numero di sessioni simultanee. Quando viene creata una terza sessione (o altre), le sessioni più vecchie vengono chiuse. Richiedere un nuovo token di accesso avvia una nuova sessione e invalida il vecchio token, quindi qualsiasi WebSocket che usi ancora il token precedente viene disconnesso. Se il suo socket muore nell'istante in cui accede da un altro dispositivo o riautentica un secondo client, ecco perché." },
+    { type: "heading",text: "4. Cadute transitorie 502 / lato server" },
+    { type: "paragraph",html: "A volte la colpa davvero non è sua. Un <code>502 Bad Gateway</code> durante l'handshake, o un reset a metà sessione senza modifiche al codice da parte sua, è l'infrastruttura di Tradovate che si ricicla o è momentaneamente irraggiungibile. Non cerchi di evitare ogni caduta, la rilevi e si riprenda." },
+    { type: "heading",text: "5. Riconnettersi in modo troppo aggressivo" },
+    { type: "paragraph",html: "L'altra faccia del ripristino è la sovracorrezione. Un ciclo di riconnessione senza ritardo travolge l'endpoint, può far scattare i limiti di frequenza di login e richieste e trasforma un intoppo di due secondi in un blocco. Ogni client affidabile ha bisogno di backoff, non di un tentativo <code>while True</code>." },
+    { type: "heading",text: "Come risolvere gli errori del WebSocket Tradovate: passo dopo passo" },
+    { type: "heading",text: "Risolvere gli errori SSL / di versione del protocollo (e il 10054 causato dall'handshake)" },
+    {
+      type: "steps",
+      items: [
+        { title: "Fissare una versione minima moderna di TLS", html: "Richieda esplicitamente TLS 1.2 o 1.3 nel suo contesto socket/SSL invece di affidarsi al default del linguaggio." },
+        { title: "Aggiornare il suo stack crittografico", html: "Aggiorni Python (e il suo OpenSSL incluso), Node o il runtime .NET in modo che i protocolli più recenti siano effettivamente disponibili per la negoziazione." },
+        { title: "Confermare l'endpoint", html: "Punti all'host WebSocket Tradovate corretto e attuale, ad esempio <code>wss://live.tradovateapi.com/v1/websocket</code> per il live, l'host demo per la simulazione e l'host dei dati di mercato per le quotazioni. Confermi l'host esatto nella documentazione API attuale, poiché gli endpoint cambiano occasionalmente." },
+        { title: "Ripetere il test dell'handshake", html: "Una connessione pulita restituisce ora il frame open <code>o</code> del server invece di un alert SSL o di un 10054 immediato." },
+      ],
+    },
+    { type: "heading",text: "Mantenere viva la connessione con gli heartbeat" },
+    {
+      type: "steps",
+      items: [
+        { title: "Inviare [] con cadenza di ~2,5 secondi", html: "Dopo l'autorizzazione, inizi a emettere il frame con array vuoto in modo che il server non la veda mai come inattivo." },
+        { title: "Non fidarsi di setInterval in un browser", html: "Guidi gli heartbeat in modo reattivo: apponga un timestamp a ogni messaggio ricevuto e invii un heartbeat ogni volta che sono trascorsi ~2,5 secondi, oppure esegua il client in un Web Worker o come processo Node.js in modo che i timer non vengano limitati." },
+        { title: "Fare attenzione al silenzio", html: "Se non riceve alcun messaggio dal server per diversi secondi, presuma che il socket sia obsoleto e lo smantelli invece di aspettare che una lettura fallisca." },
+      ],
+    },
+    { type: "heading",text: "Aggiungere la logica di riconnessione per 10054 e 502" },
+    {
+      type: "steps",
+      items: [
+        { title: "Catturare la caduta", html: "Gestisca l'evento close/error del socket (inclusi 10054 e 502) invece di lasciare che l'eccezione fermi il suo programma." },
+        { title: "Reistanziare e autorizzarsi di nuovo", html: "Alla disconnessione, apra un nuovo socket ed esegua di nuovo l'handshake di autorizzazione completo, la vecchia sessione o il vecchio token potrebbero essere morti." },
+        { title: "Backoff esponenziale con jitter", html: "Parta da circa un secondo e aumenti il ritardo fino a un tetto ragionevole (decine di secondi), aggiungendo jitter casuale in modo che i client paralleli non si riconnettano all'unisono." },
+        { title: "Limitare e segnalare", html: "Limiti i tentativi e, se li esaurisce, faccia scattare un alert invece di ciclare all'infinito, è il segnale che è in gioco un vero guasto o un problema di limite di frequenza/sessione." },
+      ],
+    },
+    { type: "heading",text: "Tabella di risoluzione dei problemi" },
+    { type: "table", headers: ["Errore","Significato","Correzione"], rows: [
+      ["[WinError 10054] An existing connection was forcibly closed by the remote host","Il server ha reimpostato la connessione TCP/WebSocket, fallimento dell'handshake o caduta transitoria","Fissare TLS 1.2+, poi catturare e riconnettersi con backoff"],
+      ["SSL: TLSV1_ALERT_PROTOCOL_VERSION","Il server ha rifiutato la versione di TLS offerta dal suo client","Forzare TLS 1.2/1.3; aggiornare lo stack crittografico"],
+      ["SSL: SSLV3_ALERT_BAD_RECORD_MAC","Record TLS corrotto/non corrispondente da uno stack SSL legacy","Aggiornare OpenSSL/runtime e negoziare una versione moderna di TLS"],
+      ["502 Bad Gateway","Indisponibilità transitoria lato server all'handshake","Attendere e riprovare con backoff esponenziale (lato server, non un suo bug)"],
+      ["Il socket si chiude dopo ~secondi di calma","Heartbeat persi, il server la tratta come inattivo","Inviare un heartbeat [] ogni ~2,5 secondi"],
+      ["Il socket muore subito dopo un nuovo login/token","Limite di sessioni simultanee raggiunto; vecchio token invalidato","Consolidare le sessioni; riconnettersi e autorizzarsi di nuovo"],
+    ] },
+    { type: "heading",text: "Lo eviti con PickMyTrade" },
+    { type: "paragraph",html: "Se preferisce non mantenere un client WebSocket artigianale, PickMyTrade si colloca tra TradingView e Tradovate e gestisce la connessione per lei:" },
+    {
+      type: "list",
+      items: [
+        "<strong class='text-white'>Connessione gestita e corretta in TLS</strong>, il bridge negozia un handshake TLS moderno e compatibile, così gli errori di versione del protocollo SSL e di record errato non raggiungono mai la sua strategia.",
+        "<strong class='text-white'>Heartbeat e riconnessione integrati</strong>, heartbeat e riconnessione con backoff esponenziale sono gestiti lato server, così un 10054 o un 502 si autoripara invece di fermare la sua automazione.",
+        "<strong class='text-white'>Instradamento consapevole della sessione</strong>, il flusso degli ordini è distanziato e sequenziato in modo da non far scattare i limiti di sessioni simultanee o di frequenza durante le riconnessioni.",
+        "<strong class='text-white'>Sincronizzazione multi-account</strong>, una volta ripristinata la connessione, lo stesso alert viene replicato su ogni account collegato senza ordini duplicati o mancati.",
+      ],
+    },
+  ] },
+  ctaHeading: { en: "Let the Bridge Handle the Socket", de: "Lassen Sie die Brücke den Socket übernehmen", es: "Deje que el puente gestione el socket", fr: "Laissez le pont gérer le socket", it: "Lasci che il bridge gestisca il socket" },
+  ctaText: { en: "Tired of babysitting a raw socket? Start your free 7-day trial, link your alerts today and let the bridge handle TLS, heartbeats, and reconnects for you.", de: "Haben Sie genug davon, einen rohen Socket zu bemuttern? Starten Sie Ihre kostenlose 7-Tage-Testphase, verknüpfen Sie noch heute Ihre Alerts und lassen Sie die Brücke TLS, Heartbeats und Wiederverbindungen für Sie erledigen.", es: "¿Cansado de vigilar un socket en bruto? Comience su prueba gratuita de 7 días, vincule sus alertas hoy mismo y deje que el puente gestione TLS, heartbeats y reconexiones por usted.", fr: "Fatigué de surveiller un socket brut ? Commencez votre essai gratuit de 7 jours, reliez vos alertes dès aujourd'hui et laissez le pont gérer TLS, les heartbeats et les reconnexions pour vous.", it: "Stanco di fare da babysitter a un socket grezzo? Inizi la prova gratuita di 7 giorni, colleghi i suoi alert oggi stesso e lasci che il bridge gestisca TLS, heartbeat e riconnessioni per lei." },
+  ctaButtonText: { en: "Start Your Free 7-Day Trial", de: "Starten Sie Ihre kostenlose 7-Tage-Testphase", es: "Comience su prueba gratuita de 7 días", fr: "Commencez votre essai gratuit de 7 jours", it: "Inizi la prova gratuita di 7 giorni" },
+  ctaUrl: "https://app.pickmytrade.trade/?register=true&utm_source=content&utm_medium=debugging",
+  faqHeading: { en: "Frequently Asked Questions", de: "Häufig gestellte Fragen", es: "Preguntas frecuentes", fr: "Questions fréquentes", it: "Domande frequenti" },
+  faqs: { en: [
+    { q: "Is WinError 10054 a bug in my code?", a: "Not usually. It's a generic \"we dropped your connection\" signal for long-lived WebSocket connections. It only becomes a problem if you don't reconnect. Build catch-and-reconnect logic and an occasional 10054 turns into a non-event." },
+    { q: "What TLS version does the Tradovate API require?", a: "Tradovate's servers accept TLS v1.1 and above. Because TLS 1.0 and 1.1 are deprecated industry-wide, negotiate TLS 1.2 or 1.3, both are accepted and are the modern default." },
+    { q: "Why do I get 502 Bad Gateway when nothing changed on my end?", a: "A 502 is server-side. The handshake reached Tradovate's edge but an upstream node was briefly unavailable. There's nothing to fix client-side, wait a moment and retry with backoff." },
+    { q: "How often do I need to send a WebSocket heartbeat?", a: "About every 2.5 seconds. The heartbeat is a frame whose text is [] (an empty array). Miss the cadence and the server closes the socket for inactivity." },
+    { q: "Why does my socket close the moment I open a second connection?", a: "You likely hit the concurrent-session limit. Creating a new access token starts a new session and voids the old token, so any socket still using the previous token gets disconnected. Reuse one session, or reconnect and re-authorize." },
+    { q: "My reconnect loop keeps failing, what am I doing wrong?", a: "A no-delay loop hammers the endpoint and can trip rate limits, making recovery worse. Add exponential backoff with jitter, cap the attempts, and re-run the full authorize handshake on each try." },
+    { q: "Do these errors mean my orders were lost?", a: "A dropped socket doesn't cancel working orders on Tradovate's side, but you lose real-time visibility until you reconnect. Always reconcile positions and orders after a disconnect before sending new entries." },
+    { q: "Can I avoid managing the WebSocket connection at all?", a: "Yes. A bridge like PickMyTrade maintains the TLS handshake, heartbeats, and reconnection for you, so you send a simple alert and never touch raw socket code." },
+  ], de: [
+    { q: "Ist WinError 10054 ein Fehler in meinem Code?", a: "In der Regel nicht. Es ist ein allgemeines Signal „wir haben Ihre Verbindung getrennt“ für langlebige WebSocket-Verbindungen. Zum Problem wird es nur, wenn Sie sich nicht neu verbinden. Bauen Sie eine Catch-and-Reconnect-Logik, und ein gelegentliches 10054 wird zum Nicht-Ereignis." },
+    { q: "Welche TLS-Version verlangt die Tradovate-API?", a: "Die Server von Tradovate akzeptieren TLS ab v1.1. Da TLS 1.0 und 1.1 branchenweit veraltet sind, verhandeln Sie TLS 1.2 oder 1.3, beide werden akzeptiert und sind der moderne Standard." },
+    { q: "Warum erhalte ich 502 Bad Gateway, obwohl sich bei mir nichts geändert hat?", a: "Ein 502 liegt auf Serverseite. Der Handshake hat den Edge von Tradovate erreicht, aber ein Upstream-Knoten war kurzzeitig nicht verfügbar. Clientseitig gibt es nichts zu beheben, warten Sie einen Moment und versuchen Sie es mit Backoff erneut." },
+    { q: "Wie oft muss ich einen WebSocket-Heartbeat senden?", a: "Etwa alle 2,5 Sekunden. Der Heartbeat ist ein Frame mit dem Text [] (ein leeres Array). Verpassen Sie den Takt, schließt der Server den Socket wegen Inaktivität." },
+    { q: "Warum schließt sich mein Socket, sobald ich eine zweite Verbindung öffne?", a: "Sie haben wahrscheinlich das Limit gleichzeitiger Sitzungen erreicht. Das Erstellen eines neuen Access-Tokens startet eine neue Sitzung und macht das alte Token ungültig, sodass jeder Socket, der noch das vorherige Token verwendet, getrennt wird. Verwenden Sie eine Sitzung wieder oder verbinden Sie sich neu und autorisieren Sie sich erneut." },
+    { q: "Meine Reconnect-Schleife schlägt ständig fehl, was mache ich falsch?", a: "Eine Schleife ohne Verzögerung bombardiert den Endpunkt und kann Ratenlimits auslösen, was die Wiederherstellung verschlimmert. Fügen Sie exponentielles Backoff mit Jitter hinzu, begrenzen Sie die Versuche und führen Sie bei jedem Versuch den vollständigen Authorize-Handshake erneut aus." },
+    { q: "Bedeuten diese Fehler, dass meine Orders verloren gingen?", a: "Ein getrennter Socket storniert keine aktiven Orders auf Seiten von Tradovate, aber Sie verlieren die Echtzeit-Sicht, bis Sie sich neu verbinden. Gleichen Sie nach einer Trennung stets Positionen und Orders ab, bevor Sie neue Einstiege senden." },
+    { q: "Kann ich die Verwaltung der WebSocket-Verbindung ganz vermeiden?", a: "Ja. Eine Brücke wie PickMyTrade übernimmt den TLS-Handshake, die Heartbeats und die Wiederverbindung für Sie, sodass Sie einen einfachen Alert senden und nie rohen Socket-Code anfassen." },
+  ], es: [
+    { q: "¿Es WinError 10054 un error en mi código?", a: "Normalmente no. Es una señal genérica de «hemos cortado su conexión» para conexiones WebSocket de larga duración. Solo se convierte en un problema si no se reconecta. Construya lógica de captura y reconexión y un 10054 ocasional pasa a ser un no-evento." },
+    { q: "¿Qué versión de TLS exige la API de Tradovate?", a: "Los servidores de Tradovate aceptan TLS v1.1 y superiores. Como TLS 1.0 y 1.1 están obsoletos en toda la industria, negocie TLS 1.2 o 1.3; ambos se aceptan y son el estándar moderno." },
+    { q: "¿Por qué recibo 502 Bad Gateway si no cambió nada por mi parte?", a: "Un 502 es del lado del servidor. El handshake llegó al borde de Tradovate, pero un nodo ascendente no estuvo disponible brevemente. No hay nada que corregir en el cliente, espere un momento y reintente con backoff." },
+    { q: "¿Con qué frecuencia debo enviar un heartbeat de WebSocket?", a: "Aproximadamente cada 2,5 segundos. El heartbeat es una trama cuyo texto es [] (un array vacío). Si pierde el ritmo, el servidor cierra el socket por inactividad." },
+    { q: "¿Por qué se cierra mi socket en cuanto abro una segunda conexión?", a: "Probablemente alcanzó el límite de sesiones simultáneas. Crear un nuevo token de acceso inicia una nueva sesión e invalida el token anterior, por lo que cualquier socket que siga usando el token previo se desconecta. Reutilice una sola sesión, o reconecte y vuelva a autorizar." },
+    { q: "Mi bucle de reconexión sigue fallando, ¿qué hago mal?", a: "Un bucle sin retardo martillea el endpoint y puede activar límites de tasa, empeorando la recuperación. Añada backoff exponencial con jitter, limite los intentos y vuelva a ejecutar el handshake de autorización completo en cada intento." },
+    { q: "¿Significan estos errores que mis órdenes se perdieron?", a: "Un socket caído no cancela las órdenes activas del lado de Tradovate, pero pierde la visibilidad en tiempo real hasta que reconecta. Concilie siempre posiciones y órdenes tras una desconexión antes de enviar nuevas entradas." },
+    { q: "¿Puedo evitar por completo gestionar la conexión WebSocket?", a: "Sí. Un puente como PickMyTrade mantiene el handshake TLS, los heartbeats y la reconexión por usted, de modo que envía una alerta sencilla y nunca toca código de socket en bruto." },
+  ], fr: [
+    { q: "WinError 10054 est-il un bug dans mon code ?", a: "En général non. C'est un signal générique « nous avons coupé votre connexion » pour les connexions WebSocket de longue durée. Cela ne devient un problème que si vous ne vous reconnectez pas. Construisez une logique de capture et de reconnexion et un 10054 occasionnel devient un non-événement." },
+    { q: "Quelle version de TLS l'API Tradovate exige-t-elle ?", a: "Les serveurs de Tradovate acceptent TLS v1.1 et supérieur. TLS 1.0 et 1.1 étant dépréciés dans toute l'industrie, négociez TLS 1.2 ou 1.3, tous deux sont acceptés et constituent la norme moderne." },
+    { q: "Pourquoi ai-je un 502 Bad Gateway alors que rien n'a changé de mon côté ?", a: "Un 502 vient du serveur. Le handshake a atteint la périphérie de Tradovate mais un nœud en amont a été brièvement indisponible. Il n'y a rien à corriger côté client, attendez un instant et réessayez avec un backoff." },
+    { q: "À quelle fréquence dois-je envoyer un heartbeat WebSocket ?", a: "Environ toutes les 2,5 secondes. Le heartbeat est une trame dont le texte est [] (un tableau vide). Manquez la cadence et le serveur ferme le socket pour inactivité." },
+    { q: "Pourquoi mon socket se ferme-t-il dès que j'ouvre une seconde connexion ?", a: "Vous avez probablement atteint la limite de sessions simultanées. Créer un nouveau jeton d'accès démarre une nouvelle session et invalide l'ancien jeton, de sorte que tout socket utilisant encore le jeton précédent est déconnecté. Réutilisez une seule session, ou reconnectez-vous et réautorisez-vous." },
+    { q: "Ma boucle de reconnexion échoue sans cesse, que fais-je de travers ?", a: "Une boucle sans délai martèle le point de terminaison et peut déclencher des limites de débit, aggravant la récupération. Ajoutez un backoff exponentiel avec jitter, plafonnez les tentatives et réexécutez le handshake d'autorisation complet à chaque essai." },
+    { q: "Ces erreurs signifient-elles que mes ordres ont été perdus ?", a: "Un socket coupé n'annule pas les ordres actifs côté Tradovate, mais vous perdez la visibilité en temps réel jusqu'à la reconnexion. Réconciliez toujours positions et ordres après une déconnexion avant d'envoyer de nouvelles entrées." },
+    { q: "Puis-je éviter complètement de gérer la connexion WebSocket ?", a: "Oui. Un pont comme PickMyTrade maintient le handshake TLS, les heartbeats et la reconnexion pour vous : vous envoyez une simple alerte et ne touchez jamais au code de socket brut." },
+  ], it: [
+    { q: "WinError 10054 è un bug nel mio codice?", a: "Di solito no. È un segnale generico «abbiamo interrotto la sua connessione» per le connessioni WebSocket di lunga durata. Diventa un problema solo se non si riconnette. Costruisca una logica di cattura e riconnessione e un 10054 occasionale diventa un non-evento." },
+    { q: "Quale versione di TLS richiede l'API di Tradovate?", a: "I server di Tradovate accettano TLS v1.1 e superiori. Poiché TLS 1.0 e 1.1 sono deprecati in tutto il settore, negozi TLS 1.2 o 1.3: entrambi sono accettati e sono lo standard moderno." },
+    { q: "Perché ricevo 502 Bad Gateway quando da parte mia non è cambiato nulla?", a: "Un 502 è lato server. L'handshake ha raggiunto l'edge di Tradovate ma un nodo upstream è stato brevemente non disponibile. Non c'è nulla da correggere lato client, attenda un momento e riprovi con backoff." },
+    { q: "Con che frequenza devo inviare un heartbeat WebSocket?", a: "Circa ogni 2,5 secondi. L'heartbeat è un frame il cui testo è [] (un array vuoto). Se perde il ritmo, il server chiude il socket per inattività." },
+    { q: "Perché il mio socket si chiude appena apro una seconda connessione?", a: "Probabilmente ha raggiunto il limite di sessioni simultanee. Creare un nuovo token di accesso avvia una nuova sessione e invalida il vecchio token, quindi qualsiasi socket che usi ancora il token precedente viene disconnesso. Riutilizzi una sola sessione, oppure si riconnetta e si autorizzi di nuovo." },
+    { q: "Il mio ciclo di riconnessione continua a fallire, cosa sbaglio?", a: "Un ciclo senza ritardo martella l'endpoint e può far scattare i limiti di frequenza, peggiorando il ripristino. Aggiunga un backoff esponenziale con jitter, limiti i tentativi ed esegua di nuovo l'handshake di autorizzazione completo a ogni prova." },
+    { q: "Questi errori significano che i miei ordini sono andati persi?", a: "Un socket caduto non annulla gli ordini attivi lato Tradovate, ma perde la visibilità in tempo reale finché non si riconnette. Riconcili sempre posizioni e ordini dopo una disconnessione prima di inviare nuovi ingressi." },
+    { q: "Posso evitare del tutto di gestire la connessione WebSocket?", a: "Sì. Un bridge come PickMyTrade mantiene per lei l'handshake TLS, gli heartbeat e la riconnessione, così lei invia un semplice alert e non tocca mai codice di socket grezzo." },
+  ] },
+  relatedHeading: { en: "Related Guides", de: "Weitere Anleitungen", es: "Guías relacionadas", fr: "Guides associés", it: "Guide correlate" },
+  disclosureText: { en: "This guide is for educational and informational purposes only and is not financial, investment, or trading advice. Trading futures and other leveraged products carries a substantial risk of loss and is not suitable for every investor. PickMyTrade is an independent third-party automation platform and is not affiliated with, endorsed by, or sponsored by Tradovate, Inc. \"Tradovate\" and all related names, logos, and trademarks are the property of their respective owners. Platform features and steps change over time, so always confirm the current process in the official Tradovate platform and documentation before acting.", de: "Dieser Leitfaden dient ausschließlich Bildungs- und Informationszwecken und stellt weder Finanz-, Anlage- noch Handelsberatung dar. Der Handel mit Futures und anderen gehebelten Produkten birgt ein erhebliches Verlustrisiko und ist nicht für jeden Anleger geeignet. PickMyTrade ist eine unabhängige Automatisierungsplattform eines Drittanbieters und steht in keiner Verbindung zu Tradovate, Inc., wird weder von Tradovate, Inc. unterstützt noch gesponsert. „Tradovate“ sowie alle zugehörigen Namen, Logos und Marken sind Eigentum ihrer jeweiligen Inhaber. Funktionen und Schritte der Plattform ändern sich im Laufe der Zeit. Prüfen Sie daher stets den aktuellen Ablauf in der offiziellen Tradovate-Plattform und -Dokumentation, bevor Sie handeln.", es: "Esta guía tiene fines exclusivamente educativos e informativos y no constituye asesoramiento financiero, de inversión ni de trading. Operar con futuros y otros productos apalancados conlleva un riesgo sustancial de pérdida y no es adecuado para todos los inversores. PickMyTrade es una plataforma de automatización independiente de terceros y no está afiliada, respaldada ni patrocinada por Tradovate, Inc. «Tradovate» y todos los nombres, logotipos y marcas relacionados son propiedad de sus respectivos titulares. Las funciones y los pasos de la plataforma cambian con el tiempo, por lo que debe confirmar siempre el proceso actual en la plataforma y la documentación oficiales de Tradovate antes de actuar.", fr: "Ce guide est fourni à des fins exclusivement éducatives et informatives et ne constitue ni un conseil financier, ni un conseil en investissement, ni un conseil de trading. Le trading de contrats à terme et d'autres produits à effet de levier comporte un risque de perte important et ne convient pas à tous les investisseurs. PickMyTrade est une plateforme d'automatisation tierce indépendante et n'est ni affiliée à Tradovate, Inc., ni approuvée ou parrainée par cette dernière. « Tradovate » ainsi que tous les noms, logos et marques associés sont la propriété de leurs détenteurs respectifs. Les fonctionnalités et les étapes de la plateforme évoluent avec le temps ; vérifiez donc toujours la procédure en vigueur dans la plateforme et la documentation officielles de Tradovate avant d'agir.", it: "Questa guida ha esclusivamente finalità educative e informative e non costituisce consulenza finanziaria, di investimento o di trading. Operare in futures e in altri prodotti a leva comporta un rischio di perdita sostanziale e non è adatto a tutti gli investitori. PickMyTrade è una piattaforma di automazione indipendente di terze parti e non è affiliata, approvata né sponsorizzata da Tradovate, Inc. «Tradovate» e tutti i nomi, loghi e marchi correlati sono di proprietà dei rispettivi titolari. Le funzionalità e i passaggi della piattaforma cambiano nel tempo: confermi sempre la procedura aggiornata nella piattaforma e nella documentazione ufficiali di Tradovate prima di agire." },
+};
+const data: GuideArticleData = resolveGuideContent(content, locale, related);
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: data.faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}${withSlash(localizedPath(locale))}` },
+    { "@type": "ListItem", position: 2, name: "Debugging", item: `${SITE_URL}${withSlash(localizedPath(locale, "debugging"))}` },
+    { "@type": "ListItem", position: 3, name: content.h1[locale], item: `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+  ],
+};
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: content.h1[locale],
+  description: content.dek[locale],
+  image: `${SITE_URL}/assets/og-default.webp`,
+  publisher: { "@type": "Organization", name: "PickMyTrade", logo: { "@type": "ImageObject", url: `${SITE_URL}/assets/logo.png` } },
+  datePublished: "2026-07-08",
+  dateModified: "2026-07-08",
+  mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}${withSlash(localizedPath(locale, `debugging/${SLUG}`))}` },
+};
+---
+
+<BaseLayout
+  locale={locale}
+  title={`${content.h1[locale]} | PickMyTrade`}
+  description={content.dek[locale]}
+  ogType="article"
+  ogImage="/assets/og-default.webp"
+  ldJson={[breadcrumbSchema, faqSchema, articleSchema]}
+>
+  <GuideArticle locale={locale} data={data} sectionPath="debugging" />
+</BaseLayout>
